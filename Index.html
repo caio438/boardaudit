@@ -6051,7 +6051,13 @@
     google.script.run
       .withSuccessHandler(resposta => {
         estado.circleManualAtual = resposta;
-        document.getElementById('circleManualTitulo').value = resposta.titulo || '';
+        const auditoria = (estado.auditorias || []).find(item =>
+          String(item.idAuditoria || '') === String(resposta.idAuditoria || '')
+        );
+        const tituloFallback = auditoria
+          ? `[${resposta.cliente || auditoria.cliente || 'Cliente'} + VOLUM] Auditoria ${String(auditoria.tipoAuditoria || 'SDR').toUpperCase()} | ${empresaAuditoriaExibicao_(auditoria)}`
+          : `[${resposta.cliente || 'Cliente'} + VOLUM] Auditoria`;
+        document.getElementById('circleManualTitulo').value = resposta.titulo || tituloFallback;
         document.getElementById('circleManualSpaceUrl').value = resposta.spaceUrl || '';
         document.getElementById('circleManualPostUrl').value = resposta.postUrl || '';
         renderizarConteudoPlanoCircle_(resposta.conteudoHtml || '');
