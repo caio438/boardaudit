@@ -2778,7 +2778,7 @@
     function renderizarEntregasArea_() {
       const itens = (estado.areaCliente || {}).entregas || [];
       document.getElementById('areaEntregas').innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr>
-        <th>Entrega</th><th>Área</th><th>Prazo</th><th>Situação</th><th>Auditoria</th><th>Referência</th><th>Publicação na Comunidade</th>
+        <th>Entrega</th><th>Área</th><th>Prazo</th><th>Situação</th><th>Auditoria</th><th>Referência</th><th>Publicação</th>
       </tr></thead><tbody>${itens.map(item => {
         const status = String(item.status || 'PREVISTA').toUpperCase();
         const tipo = String(item.tipoEntrega || '').toUpperCase();
@@ -2787,6 +2787,7 @@
         const formalizada = item.formalizacaoEncontrada === true;
         const auditoriaFeita = item.auditoriaEncontrada === true;
         const publicacaoFeita = item.publicacaoComunidadeFeita === true;
+        const circlePublicado = item.circlePublicado === true;
         let situacaoExtra = '';
         let referencia = item.linkDocumento ? `<a href="${escapeHtml(item.linkDocumento)}" target="_blank" rel="noopener">Abrir evidência</a>` : '-';
         let visaoAuditoria = '<span class="small muted">Não se aplica</span>';
@@ -2797,7 +2798,7 @@
         }
         if (ehReuniao && item.idReuniao) {
           situacaoExtra = reuniaoConfirmada
-            ? `<div style="margin-top:7px"><span class="status success">GRAVAÇÃO + TRANSCRIÇÃO</span> <span class="status ${formalizada ? 'success' : 'warning'}">${formalizada ? 'FORMALIZADA' : 'AGUARDANDO FORMALIZAÇÃO'}</span></div>`
+            ? `<div style="margin-top:7px"><span class="status success">GRAVAÇÃO + TRANSCRIÇÃO</span> <span class="status ${formalizada ? 'success' : 'warning'}">${formalizada ? 'FORMALIZADA' : 'AGUARDANDO FORMALIZAÇÃO'}</span>${item.formalizacaoPreAprovada ? ' <span class="status success">PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> formalizar no Circle.</div>' : ''}</div>`
             : `<div style="margin-top:7px"><span class="status warning">${item.gravacaoEncontrada ? 'GRAVAÇÃO OK' : 'GRAVAÇÃO PENDENTE'}</span> <span class="status warning">${item.transcricaoEncontrada ? 'TRANSCRIÇÃO OK' : 'TRANSCRIÇÃO PENDENTE'}</span></div>`;
           if (formalizada) {
             referencia = `${item.formalizacaoCircleUrl ? `<a href="${escapeHtml(item.formalizacaoCircleUrl)}" target="_blank" rel="noopener">Abrir formalização</a>` : '<span class="small muted">Formalização encontrada na base.</span>'}`;
@@ -2811,17 +2812,21 @@
         } else if (tipo === 'FORMALIZACAO' && !formalizada && item.idTranscricao) {
           referencia = `<button class="btn" type="button" onclick="abrirFormalizacaoDaJornada('${escapeAtributo(item.idTranscricao)}','${escapeAtributo((estado.areaCliente || {}).idCliente || '')}')">Formalizar reunião</button>`;
         }
-        let publicacaoComunidade = '';
-        if (publicacaoFeita && item.publicacaoComunidadeUrl) {
-          publicacaoComunidade = `<div class="actions" style="margin-top:0"><span class="status success">PUBLICADA</span><a class="btn secondary" href="${escapeAtributo(item.publicacaoComunidadeUrl)}" target="_blank" rel="noopener">Verificar na Comunidade</a></div>`;
-        } else if (auditoriaFeita) {
-          publicacaoComunidade = `<div class="actions" style="margin-top:0"><span class="status warning">NÃO PUBLICADA</span><button class="btn secondary" type="button" onclick="abrirAuditoriaExistenteDaJornada('${escapeAtributo(item.idAuditoria)}')">Publicação não feita</button></div>`;
+        let publicacao = '';
+        const statusCircle = circlePublicado
+          ? `<span class="status success">CIRCLE: PUBLICADA</span>${item.circleUrl ? `<a class="btn secondary" href="${escapeAtributo(item.circleUrl)}" target="_blank" rel="noopener">Verificar no Circle</a>` : ''}`
+          : '<span class="status warning">CIRCLE: NÃO PUBLICADA</span>';
+        const statusComunidade = publicacaoFeita
+          ? `<span class="status success">COMUNIDADE: PUBLICADA</span>${item.publicacaoComunidadeUrl ? `<a class="btn secondary" href="${escapeAtributo(item.publicacaoComunidadeUrl)}" target="_blank" rel="noopener">Verificar na Comunidade</a>` : ''}`
+          : '<span class="status warning">COMUNIDADE: NÃO PUBLICADA</span>';
+        if (auditoriaFeita) {
+          publicacao = `<div class="actions" style="margin-top:0">${statusCircle}${statusComunidade}${(!circlePublicado || !publicacaoFeita) ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaExistenteDaJornada('${escapeAtributo(item.idAuditoria)}')">Conferir publicação</button>` : ''}</div>`;
         } else if (formalizada) {
-          publicacaoComunidade = `<div class="actions" style="margin-top:0"><span class="status warning">NÃO PUBLICADA</span><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Publicação não feita</button></div>`;
+          publicacao = `<div class="actions" style="margin-top:0">${statusCircle}${statusComunidade}${(!circlePublicado || !publicacaoFeita) ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Conferir publicação</button>` : ''}</div>`;
         } else if (['ENTREGUE','REALIZADA','PUBLICADA'].includes(status) && item.linkDocumento) {
-          publicacaoComunidade = `<div class="actions" style="margin-top:0"><span class="status warning">NÃO PUBLICADA</span><input class="inline-link-input" id="area-circle-${escapeHtml(item.idEntrega)}" type="url" placeholder="Cole o link publicado"><button class="btn secondary" type="button" onclick="registrarCircleAreaFront('${escapeHtml(item.idEntrega)}')">Registrar</button></div>`;
+          publicacao = `<div class="actions" style="margin-top:0"><span class="status warning">CIRCLE: NÃO PUBLICADA</span><input class="inline-link-input" id="area-circle-${escapeHtml(item.idEntrega)}" type="url" placeholder="Cole o link publicado"><button class="btn secondary" type="button" onclick="registrarCircleAreaFront('${escapeHtml(item.idEntrega)}')">Registrar</button></div>`;
         } else {
-          publicacaoComunidade = '<span class="small muted">Aguardando a entrega.</span>';
+          publicacao = '<span class="small muted">Aguardando a entrega.</span>';
         }
         return `<tr>
           <td><strong>${escapeHtml(item.nome)}</strong><br><span class="small muted">${escapeHtml(item.tipoEntrega)}${item.idReuniao ? ' · encontrada na Agenda' : ''}</span></td>
@@ -2830,7 +2835,7 @@
           <td><span class="status ${status === 'REALIZADA' || status === 'ENTREGUE' || status === 'PUBLICADA' ? 'success' : (status === 'ATRASADA' || status === 'NAO_REALIZADA' ? 'danger' : 'warning')}">${escapeHtml(formatarStatusArea_(status))}</span>${situacaoExtra}</td>
           <td>${visaoAuditoria}</td>
           <td>${referencia}</td>
-          <td>${publicacaoComunidade}</td>
+          <td>${publicacao}</td>
         </tr>`;
       }).join('')}</tbody></table></div>` : '<div class="empty">Nenhuma entrega prevista para este período.</div>';
     }
@@ -6169,12 +6174,27 @@
 
     alvo.innerHTML = estado.auditorias.map(item => {
       const classe = item.status === 'APROVADA' ? 'status success' : item.status === 'ERRO' ? 'status danger' : 'status warning';
+      const circlePublicado = Boolean(item.circlePostUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(item.circleStatus || '').toUpperCase());
+      const comunidadePublicada = Boolean(item.comunidadePostUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(String(item.comunidadeStatus || '').toUpperCase());
+      const comunidadeErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
+      const indicadorCircle = item.circlePostUrl
+        ? `<a class="status success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Circle: publicado</a>`
+        : `<span class="status warning">Circle: não publicado</span>`;
+      const indicadorComunidade = item.comunidadePostUrl
+        ? `<a class="status success" href="${escapeAtributo(item.comunidadePostUrl)}" target="_blank" rel="noopener">Comunidade: publicada</a>`
+        : `<span class="status ${comunidadePublicada ? 'success' : comunidadeErro ? 'danger' : 'warning'}">Comunidade: ${comunidadePublicada ? 'publicada' : comunidadeErro ? 'erro' : 'não publicada'}</span>`;
       return `<div class="card" style="box-shadow:none;margin-bottom:10px">
         <div class="section-title">
           <div><strong>${escapeHtml(nomeAuditoriaExibicao_(item))}</strong><div class="small muted">${escapeHtml(item.tipoAuditoria || '')} - ${escapeHtml(formatarDataDia(item.dataInteracao))}</div></div>
-          <span class="${classe}">${escapeHtml(item.status || '')}</span>
+          <div class="actions" style="margin:0;justify-content:flex-end"><span class="${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div>
         </div>
         ${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}
+        ${item.circleErro ? `<div class="status danger">${escapeHtml(item.circleErro)}</div>` : ''}
+        ${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}
+        <div class="toolbar" style="align-items:end;margin-top:12px">
+          <div class="field" style="flex:1;min-width:260px"><label for="auditCircleLink_${escapeAtributo(item.idAuditoria)}">Link do post no Circle</label><input id="auditCircleLink_${escapeAtributo(item.idAuditoria)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div>
+          <button id="btnAuditCircleLink_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarLinkCircleAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">${circlePublicado ? 'Atualizar link' : 'Registrar link'}</button>
+        </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
           ${item.status === 'EM_REVISAO' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Aprovar e gerar Docs</button>` : ''}
@@ -6182,6 +6202,34 @@
         </div>
       </div>`;
     }).join('');
+  }
+
+  function salvarLinkCircleAuditoriaFront(idAuditoria) {
+    const campo = document.getElementById('auditCircleLink_' + idAuditoria);
+    const botao = document.getElementById('btnAuditCircleLink_' + idAuditoria);
+    if (!campo || !botao || botao.disabled) return;
+    const urlCircle = String(campo.value || '').trim();
+    if (urlCircle && !/^https?:\/\/[^\s]+$/i.test(urlCircle)) {
+      return mostrarToast('Informe o link completo do post no Circle.', 'error');
+    }
+    const textoOriginal = botao.textContent;
+    botao.disabled = true;
+    botao.textContent = 'Salvando...';
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || [];
+        if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) {
+          estado.auditoriaAtual = resposta.auditoria;
+        }
+        renderizarAuditorias();
+        mostrarToast(resposta.mensagem, 'success');
+      })
+      .withFailureHandler(erro => {
+        botao.disabled = false;
+        botao.textContent = textoOriginal;
+        tratarErro(erro);
+      })
+      .salvarLinkCircleAuditoria({ idAuditoria: idAuditoria, urlCircle: urlCircle });
   }
 
     function preencherSelectIntegracaoClientes() {
@@ -6989,7 +7037,10 @@
         const indicadorComunidade = item.comunidadePostUrl
           ? `<a class="status ${classeComunidade}" href="${escapeAtributo(item.comunidadePostUrl)}" target="_blank" rel="noopener" title="Abrir publicação na Comunidade">${escapeHtml(textoComunidade)}</a>`
           : `<span class="status ${classeComunidade}">${escapeHtml(textoComunidade)}</span>`;
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const avisoPreAprovada = item.preAprovada
+          ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
+          : '';
+        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       }).join('');
     }
 

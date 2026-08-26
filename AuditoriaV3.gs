@@ -409,6 +409,9 @@ function formalSerializar_(item) {
   if (resultado.metadados && typeof resultado.metadados === 'object') {
     resultado.metadados.participantes = formalParticipantes_(resultado.metadados.participantes);
   }
+  const circleStatus = String(item.CIRCLE_STATUS || '').toUpperCase();
+  const circlePublicado = Boolean(String(item.CIRCLE_POST_URL || '').trim()) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(circleStatus);
+  const preAprovada = String(item.STATUS || '').toUpperCase() === 'APROVADA' && !circlePublicado;
   return {
     idFormalizacao: item.ID_FORMALIZACAO || '',
     idInteracao: item.ID_INTERACAO || '',
@@ -428,7 +431,40 @@ function formalSerializar_(item) {
     comunidadeStatus: item.COMUNIDADE_STATUS || '',
     comunidadePostId: item.COMUNIDADE_POST_ID || '',
     comunidadePostUrl: item.COMUNIDADE_POST_URL || '',
-    comunidadeErro: item.COMUNIDADE_ERRO || ''
+    comunidadeErro: item.COMUNIDADE_ERRO || '',
+    preAprovada: preAprovada,
+    proximoPasso: preAprovada ? 'Formalizar no Circle' : (circlePublicado ? 'Publicação no Circle concluída' : '')
+  };
+}
+
+function salvarLinkCircleAuditoria(dados) {
+  dados = dados || {};
+  const id = String(dados.idAuditoria || '').trim();
+  const existente = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!existente) throw new Error('Auditoria não encontrada.');
+  const url = String(dados.urlCircle || '').trim();
+  if (url && !/^https?:\/\/[^\s]+$/i.test(url)) {
+    throw new Error('Informe o link completo do post no Circle, começando com http:// ou https://.');
+  }
+  let postId = '';
+  if (url) {
+    const semParametros = url.split(/[?#]/)[0].replace(/\/+$/, '');
+    postId = semParametros.split('/').pop() || '';
+  }
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    CIRCLE_STATUS: url ? 'PUBLICADA_MANUALMENTE' : '',
+    CIRCLE_POST_ID: url ? (postId || existente.CIRCLE_POST_ID || '') : '',
+    CIRCLE_POST_URL: url,
+    CIRCLE_PUBLICADO_EM: url ? (existente.CIRCLE_PUBLICADO_EM || new Date()) : '',
+    CIRCLE_ERRO: ''
+  });
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  return {
+    sucesso: true,
+    mensagem: url ? 'Link do Circle da auditoria registrado.' : 'Link do Circle da auditoria removido.',
+    auditoria: audV3AuditoriaFront_(atualizada),
+    auditorias: audV3ListarAuditoriasFront_()
   };
 }
 

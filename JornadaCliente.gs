@@ -1967,16 +1967,28 @@ function jornadaListarEntregas_(idCliente, periodo, itensInformados, reunioesInf
       const temGravacao = Boolean(reuniao && String(reuniao.GRAVACAO_URL || '').trim());
       const temTranscricao = Boolean(reuniao && String(reuniao.TRANSCRICAO_URL || reuniao.ID_TRANSCRICAO || '').trim());
       const comunidadeUrl = String(
-        item.LINK_CIRCLE ||
-        (auditoria && (auditoria.COMUNIDADE_POST_URL || auditoria.CIRCLE_POST_URL)) ||
-        (formalizacao && (formalizacao.COMUNIDADE_POST_URL || formalizacao.CIRCLE_POST_URL)) ||
+        (auditoria && auditoria.COMUNIDADE_POST_URL) ||
+        (formalizacao && formalizacao.COMUNIDADE_POST_URL) ||
         ''
       ).trim();
       const comunidadeStatus = String(
-        (auditoria && (auditoria.COMUNIDADE_STATUS || auditoria.CIRCLE_STATUS)) ||
-        (formalizacao && (formalizacao.COMUNIDADE_STATUS || formalizacao.CIRCLE_STATUS)) ||
+        (auditoria && auditoria.COMUNIDADE_STATUS) ||
+        (formalizacao && formalizacao.COMUNIDADE_STATUS) ||
         (comunidadeUrl ? 'PUBLICADA' : '')
       ).toUpperCase();
+      const auditoriaCircleUrl = String(auditoria && auditoria.CIRCLE_POST_URL || '').trim();
+      const auditoriaComunidadeUrl = String(auditoria && auditoria.COMUNIDADE_POST_URL || '').trim();
+      const formalizacaoCircleUrl = String(formalizacao && formalizacao.CIRCLE_POST_URL || '').trim();
+      const formalizacaoComunidadeUrl = String(formalizacao && formalizacao.COMUNIDADE_POST_URL || '').trim();
+      const circleUrl = String(item.LINK_CIRCLE || auditoriaCircleUrl || formalizacaoCircleUrl || '').trim();
+      const circleStatus = String(
+        (auditoria && auditoria.CIRCLE_STATUS) ||
+        (formalizacao && formalizacao.CIRCLE_STATUS) ||
+        (circleUrl ? 'PUBLICADA' : '')
+      ).toUpperCase();
+      const circlePublicado = Boolean(circleUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(circleStatus);
+      const comunidadePublicado = Boolean(auditoriaComunidadeUrl || formalizacaoComunidadeUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(comunidadeStatus);
+      const formalizacaoPreAprovada = Boolean(formalizacao) && String(formalizacao.STATUS || '').toUpperCase() === 'APROVADA' && !Boolean(formalizacaoCircleUrl) && !['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(formalizacao.CIRCLE_STATUS || '').toUpperCase());
       return {
         idEntrega: item.ID_ENTREGA, tipoEntrega: item.TIPO_ENTREGA, escopo: item.ESCOPO, nome: item.NOME, dataLimite: serializarData_(item.DATA_LIMITE),
         status: item.STATUS, origem: item.ORIGEM, idReuniao: item.ID_REUNIAO || (reuniao && reuniao.ID_REUNIAO) || '', idAuditoria: item.ID_AUDITORIA || (auditoria && auditoria.ID_AUDITORIA) || '',
@@ -1986,11 +1998,17 @@ function jornadaListarEntregas_(idCliente, periodo, itensInformados, reunioesInf
         idTranscricao: reuniao ? reuniao.ID_TRANSCRICAO || '' : '', reuniaoConfirmada: temGravacao && temTranscricao,
         gravacaoEncontrada: temGravacao, transcricaoEncontrada: temTranscricao,
         formalizacaoEncontrada: Boolean(formalizacao), statusFormalizacao: formalizacao ? formalizacao.STATUS || '' : '',
-        formalizacaoCircleUrl: formalizacao ? formalizacao.COMUNIDADE_POST_URL || formalizacao.CIRCLE_POST_URL || '' : '',
+        formalizacaoCircleUrl: formalizacaoCircleUrl,
+        formalizacaoComunidadeUrl: formalizacaoComunidadeUrl,
+        formalizacaoPreAprovada: formalizacaoPreAprovada,
+        proximoPassoFormalizacao: formalizacaoPreAprovada ? 'Formalizar no Circle' : '',
         auditoriaEncontrada: Boolean(auditoria), statusAuditoria: auditoria ? auditoria.STATUS || '' : '',
         auditoriaLinkDocumento: auditoria ? auditoria.LINK_DOCUMENTO || '' : '',
+        auditoriaCircleUrl: auditoriaCircleUrl,
+        auditoriaComunidadeUrl: auditoriaComunidadeUrl,
+        circleUrl: circleUrl, circleStatus: circleStatus, circlePublicado: circlePublicado,
         publicacaoComunidadeUrl: comunidadeUrl, publicacaoComunidadeStatus: comunidadeStatus,
-        publicacaoComunidadeFeita: Boolean(comunidadeUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(comunidadeStatus)
+        publicacaoComunidadeFeita: comunidadePublicado
       };
     });
 }
