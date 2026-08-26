@@ -13,6 +13,9 @@ const duplicados = [...new Set(ids.filter((id, indice) => ids.indexOf(id) !== in
 if (duplicados.length) throw new Error(`IDs HTML duplicados: ${duplicados.join(', ')}`);
 
 const scriptCompleto = scripts.join('\n');
+if (/https:\/\//.test(scriptCompleto)) {
+  throw new Error('URL https:// literal dentro do JavaScript inline. Use https:\\u002f\\u002f para evitar que o Apps Script remova o restante da linha.');
+}
 const funcoes = new Set([...scriptCompleto.matchAll(/\bfunction\s+([\w$]+)\s*\(/g)].map(match => match[1]));
 const onclicks = [...html.matchAll(/\bonclick="([^"]+)"/g)].map(match => match[1]);
 const chamadasDiretas = onclicks

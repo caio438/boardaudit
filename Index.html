@@ -6257,7 +6257,7 @@
         ${item.circleErro ? `<div class="status danger">${escapeHtml(item.circleErro)}</div>` : ''}
         ${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}
         <div class="toolbar" style="align-items:end;margin-top:12px">
-          <div class="field" style="flex:1;min-width:260px"><label for="auditCircleLink_${escapeAtributo(item.idAuditoria)}">Link do post no Circle</label><input id="auditCircleLink_${escapeAtributo(item.idAuditoria)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div>
+          <div class="field" style="flex:1;min-width:260px"><label for="auditCircleLink_${escapeAtributo(item.idAuditoria)}">Link do post no Circle</label><input id="auditCircleLink_${escapeAtributo(item.idAuditoria)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div>
           <button id="btnAuditCircleLink_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarLinkCircleAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">${circlePublicado ? 'Atualizar link' : 'Registrar link'}</button>
         </div>
         <div class="actions">
@@ -6330,7 +6330,7 @@
       const ajuda = document.getElementById('integracaoConfigAjuda');
       if (config) {
         config.placeholder = tipo === 'CIRCLE'
-          ? 'Cole a URL do espaço. Ex.: https://comunidade.rdigitalconsultoria.com.br/c/feed-volum'
+          ? 'Cole a URL do espaço. Ex.: https:\u002f\u002fcomunidade.rdigitalconsultoria.com.br/c/feed-volum'
           : 'Ex.: {"modo":"RESUMIDO_DIARIO"}';
       }
       if (ajuda) {
@@ -6600,7 +6600,7 @@
       const contaLabel = document.getElementById('formalFonteContaLabel');
       const conta = document.getElementById('formalFonteConta');
       if (label) label.textContent = tipo === 'AGENDA' ? 'E-mail ou ID da agenda' : 'Link da pasta no Google Drive';
-      if (campo) campo.placeholder = tipo === 'AGENDA' ? 'nome@govolum.com' : 'https://drive.google.com/drive/folders/...';
+      if (campo) campo.placeholder = tipo === 'AGENDA' ? 'nome@govolum.com' : 'https:\u002f\u002fdrive.google.com/drive/folders/...';
       if (contaLabel) contaLabel.textContent = tipo === 'AGENDA' ? 'Conta responsável pela agenda' : 'Conta responsável pela pasta';
       if (conta) conta.placeholder = proprietario === 'CLIENTE' ? 'nome@cliente.com' : 'nome@govolum.com';
     }
@@ -7108,7 +7108,7 @@
         const avisoPreAprovada = item.preAprovada
           ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
           : '';
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       }).join('');
       salvarCacheFormalizacoesFront_();
     }
