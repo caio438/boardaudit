@@ -1822,7 +1822,7 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   resultado.metadados.data_hora = audV3DataTexto_(interacao.DATA_INTERACAO);
   resultado.metadados.pitch = String(pitch.NOME_VERSAO || '');
   resultado.metadados.versao_pitch = String(pitch.NUMERO_VERSAO || '');
-  resultado.schema_versao = '4.0';
+  resultado.schema_versao = '4.1';
 
   const dimensoesOficiais = (criterios.dimensoes || []).map(item => String(item.id));
   const recebidas = Array.isArray(resultado.pontuacao) ? resultado.pontuacao : [];
@@ -1875,8 +1875,78 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
         throw new Error('A IA não devolveu a análise detalhada da etapa obrigatória: ' + nomeItem + '.');
       }
     });
+    audV3NormalizarLeiturasSdr_(resultado, criterios);
   }
   return resultado;
+}
+
+function audV3NormalizarLeiturasSdr_(resultado, criterios) {
+  const etapas = Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : [];
+  const statusTexto = valor => String(valor || '').trim().toUpperCase();
+  const naoAplicavel = valor => {
+    const status = statusTexto(valor);
+    return status === 'NAO_APLICAVEL' || status === 'NÃO APLICÁVEL' || status === 'LACUNA_PROCESSO';
+  };
+  const naoExecutada = valor => {
+    const status = statusTexto(valor);
+    return !status || status === 'NAO_EVIDENCIADO' || status === 'NÃO EVIDENCIADO' ||
+      status === 'NAO_EXECUTADA' || status === 'NÃO EXECUTADA' || status === 'AUSENTE';
+  };
+  const conforme = valor => statusTexto(valor) === 'CONFORME';
+  const aplicaveis = etapas.filter(item => !naoAplicavel(item.status));
+  const executadas = aplicaveis.filter(item => !naoExecutada(item.status));
+  const conformes = aplicaveis.filter(item => conforme(item.status));
+  const percentual = (parte, total) => total ? Math.round((parte / total) * 1000) / 10 : 0;
+  const recebida = resultado.aderencia_script || {};
+  const introducaoEtapa = etapas.find(item => String(item.etapa || '').trim().toLowerCase() === 'introdução') || {};
+  const introducaoRecebida = recebida.introducao || {};
+  resultado.aderencia_script = {
+    status_geral: aplicaveis.length ? (conformes.length === aplicaveis.length ? 'CONFORME' : (executadas.length ? 'PARCIAL' : 'NAO_EVIDENCIADO')) : 'NAO_EVIDENCIADO',
+    etapas_previstas: aplicaveis.length,
+    etapas_executadas: executadas.length,
+    etapas_conformes: conformes.length,
+    cobertura_pitch_percentual: percentual(executadas.length, aplicaveis.length),
+    aderencia_pitch_percentual: percentual(conformes.length, aplicaveis.length),
+    resumo_aderencia: String(recebida.resumo_aderencia || recebida.desvio || recebida.classificacao || 'Não evidenciado'),
+    introducao: {
+      status: String(introducaoEtapa.status || introducaoRecebida.status || 'NAO_EVIDENCIADO'),
+      elementos_esperados: audV3ListaTexto_(introducaoRecebida.elementos_esperados, 8),
+      elementos_identificados: audV3ListaTexto_(introducaoRecebida.elementos_identificados, 8),
+      elementos_ausentes: audV3ListaTexto_(introducaoRecebida.elementos_ausentes, 8),
+      evidencia: String(introducaoEtapa.fato_transcricao || introducaoRecebida.evidencia || recebida.o_que_foi_dito || 'Não evidenciado'),
+      regra_pitch: String(introducaoEtapa.regra_pitch || introducaoRecebida.regra_pitch || recebida.o_que_deveria || 'Não evidenciado'),
+      desvio: String(introducaoEtapa.desvio || introducaoRecebida.desvio || ''),
+      correcao_pratica: String(introducaoEtapa.correcao_pratica || introducaoRecebida.correcao_pratica || '')
+    },
+    etapas_nao_executadas: aplicaveis.filter(item => naoExecutada(item.status)).map(item => String(item.etapa || '')).filter(Boolean),
+    principais_desvios: aplicaveis.filter(item => !conforme(item.status)).map(item => String(item.etapa || '')).filter(Boolean)
+  };
+
+  const perguntas = resultado.perguntas_qualificacao || {};
+  const corretas = audV3ListaObjetos_(perguntas.corretas, 12);
+  const comDesvio = audV3ListaObjetos_(perguntas.com_desvio, 12);
+  const ausentes = audV3ListaObjetos_(perguntas.ausentes, 12);
+  let statusPerguntas = 'NAO_EVIDENCIADO';
+  if (comDesvio.length || ausentes.length) statusPerguntas = corretas.length ? 'PARCIAL' : 'DESVIO_EXECUCAO';
+  else if (corretas.length) statusPerguntas = 'CONFORME';
+  resultado.perguntas_qualificacao = {
+    status_geral: statusPerguntas,
+    resumo: String(perguntas.resumo || perguntas.desvio || perguntas.classificacao || 'Não evidenciado'),
+    corretas: corretas,
+    com_desvio: comDesvio,
+    ausentes: ausentes,
+    total_corretas: corretas.length,
+    total_com_desvio: comDesvio.length,
+    total_ausentes: ausentes.length
+  };
+}
+
+function audV3ListaTexto_(valor, limite) {
+  return (Array.isArray(valor) ? valor : []).map(String).map(item => item.trim()).filter(Boolean).slice(0, limite || 12);
+}
+
+function audV3ListaObjetos_(valor, limite) {
+  return (Array.isArray(valor) ? valor : []).filter(item => item && typeof item === 'object').slice(0, limite || 12);
 }
 
 function audV3NormalizarMomentosCloser_(resultado, criterios) {
@@ -2162,6 +2232,21 @@ function audV3SchemaRespostaSdr_() {
     },
     required: ['status', 'o_que_foi_dito', 'o_que_deveria', 'classificacao', 'desvio', 'correcao_pratica']
   };
+  const perguntaCorreta = {
+    type: 'OBJECT',
+    properties: { pergunta: texto, evidencia: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
+    required: ['pergunta', 'evidencia', 'regra_pitch', 'por_que_esta_correta']
+  };
+  const perguntaComDesvio = {
+    type: 'OBJECT',
+    properties: { pergunta: texto, evidencia: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
+    required: ['pergunta', 'evidencia', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
+  };
+  const perguntaAusente = {
+    type: 'OBJECT',
+    properties: { pergunta_esperada: texto, regra_pitch: evidencia, impacto_ausencia: texto, como_perguntar: texto },
+    required: ['pergunta_esperada', 'regra_pitch', 'impacto_ausencia', 'como_perguntar']
+  };
   return {
     type: 'OBJECT',
     properties: {
@@ -2192,8 +2277,37 @@ function audV3SchemaRespostaSdr_() {
           required: ['etapa', 'status', 'fato_transcricao', 'regra_pitch', 'desvio', 'correcao_pratica', 'impacto_resultado', 'prioridade']
         }
       },
-      aderencia_script: comparacao,
-      perguntas_qualificacao: comparacao,
+      aderencia_script: {
+        type: 'OBJECT',
+        properties: {
+          resumo_aderencia: texto,
+          introducao: {
+            type: 'OBJECT',
+            properties: {
+              status: texto,
+              elementos_esperados: { type: 'ARRAY', maxItems: 8, items: texto },
+              elementos_identificados: { type: 'ARRAY', maxItems: 8, items: texto },
+              elementos_ausentes: { type: 'ARRAY', maxItems: 8, items: texto },
+              evidencia: evidencia,
+              regra_pitch: evidencia,
+              desvio: texto,
+              correcao_pratica: texto
+            },
+            required: ['status', 'elementos_esperados', 'elementos_identificados', 'elementos_ausentes', 'evidencia', 'regra_pitch', 'desvio', 'correcao_pratica']
+          }
+        },
+        required: ['resumo_aderencia', 'introducao']
+      },
+      perguntas_qualificacao: {
+        type: 'OBJECT',
+        properties: {
+          resumo: texto,
+          corretas: { type: 'ARRAY', maxItems: 12, items: perguntaCorreta },
+          com_desvio: { type: 'ARRAY', maxItems: 12, items: perguntaComDesvio },
+          ausentes: { type: 'ARRAY', maxItems: 12, items: perguntaAusente }
+        },
+        required: ['resumo', 'corretas', 'com_desvio', 'ausentes']
+      },
       manejo_objecoes: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', properties: { objecao: texto, o_que_foi_dito: evidencia, o_que_deveria: evidencia, classificacao: texto, desvio: texto, correcao_pratica: texto } } },
       objecoes_fora_pitch: {
         type: 'ARRAY',
@@ -2355,10 +2469,10 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
     item.etapa || '', audV3RotuloStatus_(item.status), item.fato_transcricao || '', item.regra_pitch || '', item.correcao_pratica || '', item.impacto_resultado || ''
   ])));
 
-  audV3Titulo_(body, '1. Aderência ao Script de Pitch', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Comparacao_(body, r.aderencia_script || {});
+  audV3Titulo_(body, '1. Aderência ao pitch completo e à introdução', DocumentApp.ParagraphHeading.HEADING1);
+  audV3AderenciaSdr_(body, r.aderencia_script || {});
   audV3Titulo_(body, '2. Perguntas de Qualificação', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Comparacao_(body, r.perguntas_qualificacao || {});
+  audV3PerguntasSdr_(body, r.perguntas_qualificacao || {});
   audV3Titulo_(body, '3. Manejo de Objeções', DocumentApp.ParagraphHeading.HEADING1);
   const objecoes = Array.isArray(r.manejo_objecoes) ? r.manejo_objecoes : [];
   if (!objecoes.length) body.appendParagraph('Nenhuma objeção aplicável foi evidenciada.');
@@ -2562,6 +2676,47 @@ function audV3Comparacao_(body, item) {
     audV3Titulo_(body, '💡 Como fazer na prática — Forma Correta', DocumentApp.ParagraphHeading.HEADING3);
     body.appendParagraph(String(item.correcao_pratica));
   }
+}
+
+function audV3AderenciaSdr_(body, item) {
+  if (item.cobertura_pitch_percentual === undefined) {
+    audV3Comparacao_(body, item);
+    return;
+  }
+  audV3RotuloTexto_(body, 'Status geral', audV3RotuloStatus_(item.status_geral || 'Não evidenciado'));
+  audV3RotuloTexto_(body, 'Cobertura do pitch', item.cobertura_pitch_percentual + '% (' + (item.etapas_executadas || 0) + ' de ' + (item.etapas_previstas || 0) + ' etapas executadas)');
+  audV3RotuloTexto_(body, 'Aderência ao pitch', item.aderencia_pitch_percentual + '% (' + (item.etapas_conformes || 0) + ' de ' + (item.etapas_previstas || 0) + ' etapas conformes)');
+  audV3RotuloTexto_(body, 'Leitura geral', item.resumo_aderencia || 'Não evidenciado');
+  const intro = item.introducao || {};
+  audV3Titulo_(body, 'Introdução', DocumentApp.ParagraphHeading.HEADING2);
+  audV3RotuloTexto_(body, 'Status', audV3RotuloStatus_(intro.status || 'Não evidenciado'));
+  audV3RotuloTexto_(body, 'Elementos esperados', (intro.elementos_esperados || []).join(' • ') || 'Não evidenciado');
+  audV3RotuloTexto_(body, 'Elementos identificados', (intro.elementos_identificados || []).join(' • ') || 'Nenhum evidenciado');
+  audV3RotuloTexto_(body, 'Elementos ausentes', (intro.elementos_ausentes || []).join(' • ') || 'Nenhum');
+  audV3RotuloTexto_(body, 'Evidência', intro.evidencia || 'Não evidenciado');
+  if (intro.desvio) audV3RotuloTexto_(body, 'Desvio', intro.desvio);
+  if (intro.correcao_pratica) audV3RotuloTexto_(body, 'Como corrigir', intro.correcao_pratica);
+}
+
+function audV3PerguntasSdr_(body, item) {
+  if (!Array.isArray(item.corretas) && !Array.isArray(item.com_desvio) && !Array.isArray(item.ausentes)) {
+    audV3Comparacao_(body, item);
+    return;
+  }
+  audV3RotuloTexto_(body, 'Status geral', audV3RotuloStatus_(item.status_geral || 'Não evidenciado'));
+  audV3RotuloTexto_(body, 'Resumo', item.resumo || 'Não evidenciado');
+  const corretas = item.corretas || [];
+  const desvios = item.com_desvio || [];
+  const ausentes = item.ausentes || [];
+  audV3Titulo_(body, 'Perguntas feitas corretamente (' + corretas.length + ')', DocumentApp.ParagraphHeading.HEADING2);
+  if (corretas.length) audV3Tabela_(body, [['Pergunta', 'Evidência', 'Regra do pitch', 'Por que está correta']].concat(corretas.map(p => [p.pergunta || '', p.evidencia || '', p.regra_pitch || '', p.por_que_esta_correta || ''])));
+  else body.appendParagraph('Nenhuma pergunta correta foi evidenciada.');
+  audV3Titulo_(body, 'Perguntas feitas com erro ou desvio (' + desvios.length + ')', DocumentApp.ParagraphHeading.HEADING2);
+  if (desvios.length) audV3Tabela_(body, [['Pergunta', 'Evidência', 'Erro ou desvio', 'Como corrigir', 'Impacto']].concat(desvios.map(p => [p.pergunta || '', p.evidencia || '', p.erro_ou_desvio || '', p.correcao_pratica || '', p.impacto || ''])));
+  else body.appendParagraph('Nenhuma pergunta com desvio foi evidenciada.');
+  audV3Titulo_(body, 'Perguntas obrigatórias ausentes (' + ausentes.length + ')', DocumentApp.ParagraphHeading.HEADING2);
+  if (ausentes.length) audV3Tabela_(body, [['Pergunta esperada', 'Regra do pitch', 'Impacto da ausência', 'Como perguntar']].concat(ausentes.map(p => [p.pergunta_esperada || '', p.regra_pitch || '', p.impacto_ausencia || '', p.como_perguntar || ''])));
+  else body.appendParagraph('Nenhuma pergunta obrigatória ausente foi identificada.');
 }
 
 function audV3Titulo_(body, texto, nivel) {
@@ -3078,6 +3233,11 @@ function audV3PromptSistemaSdr_() {
     'Não invente falas, timestamps, intenções, objeções, resultados, métricas, pesos ou classificações.',
     'Abra a análise com um resumo factual da conversa, a motivação declarada pelo lead para o contato, a necessidade principal e o resultado da ligação. Se a motivação não estiver explícita, marque NAO_EVIDENCIADO.',
     'O SDR deve seguir o pitch vigente com alta fidelidade. Avalie cada etapa obrigatória separadamente e não compense uma etapa ausente com boa execução em outra.',
+    'ADERENCIA AO PITCH não é a comparação de uma única frase. Ela representa a cobertura do pitch completo e a conformidade de todas as etapas obrigatórias. O sistema calculará os percentuais a partir de etapas_pitch; não estime percentuais.',
+    'Dentro de aderencia_script, avalie a INTRODUCAO separadamente: liste os elementos exigidos pelo pitch, os identificados, os ausentes, uma evidência curta, o desvio e a correção prática. Não use uma pergunta de segmento como evidência da introdução.',
+    'Em perguntas_qualificacao, classifique individualmente: corretas para perguntas feitas conforme o pitch; com_desvio para perguntas feitas de forma errada, incompleta, fora de ordem ou induzida; ausentes para perguntas obrigatórias do pitch que não foram feitas. Não repita a mesma pergunta em mais de uma lista.',
+    'Para cada pergunta, confronte a fala real com a regra exata do pitch. Não considere pequenas diferenças de redação como erro quando preservarem o objetivo e a sequência da pergunta.',
+    'Nunca devolva status parcial ou com desvio junto de frases como nenhum desvio. Se não houver evidência suficiente para avaliar perguntas, mantenha as três listas vazias e explique no resumo que não foi possível avaliar.',
     'Em etapas_pitch, devolva exatamente um item para cada nome do checklist oficial, preservando o nome da etapa sem abreviar.',
     'Toda avaliação precisa distinguir FATO_TRANSCRICAO, REGRA_PITCH e SUGESTAO_ENABLEMENT.',
     'Diferencie reunião efetivamente agendada de tentativa de agendamento ou follow-up combinado.',

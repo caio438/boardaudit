@@ -5769,11 +5769,11 @@
       <p><strong>Necessidade principal:</strong> ${escapeHtml(contexto.necessidade_principal || 'Não evidenciado')}</p>
       <p><strong>Resultado do contato:</strong> ${escapeHtml(contexto.resultado_contato || 'Não evidenciado')}</p>
       <h3>Aderência por etapa do pitch</h3>
-      ${tabelaAuditoriaV3(['Etapa','Status','Evidência','Regra do pitch','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.fato_transcricao, item.regra_pitch, item.correcao_pratica, item.impacto_resultado]))}
-      <h3>1. Aderência ao Script de Pitch</h3>
-      ${renderizarComparacaoAuditoriaV3(r.aderencia_script || {})}
+      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Evidência','Regra do pitch','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.fato_transcricao, item.regra_pitch, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
+      <h3>1. Aderência ao pitch completo e à introdução</h3>
+      ${renderizarAderenciaSdrV3(r.aderencia_script || {})}
       <h3>2. Perguntas de Qualificação</h3>
-      ${renderizarComparacaoAuditoriaV3(r.perguntas_qualificacao || {})}
+      ${renderizarPerguntasSdrV3(r.perguntas_qualificacao || {})}
       <h3>3. Manejo de Objeções</h3>
       ${objecoes.length ? objecoes.map((item, indice) => `<h4>Objeção ${indice + 1}: ${escapeHtml(item.objecao || 'Não identificada')}</h4>${renderizarComparacaoAuditoriaV3(item)}`).join('') : '<p>Nenhuma objeção aplicável foi evidenciada.</p>'}
       ${objecoesForaPitch.length ? `<h4>Objeções não previstas no pitch</h4>${tabelaAuditoriaV3(['Objeção','Evidência','Resposta do SDR','Avaliação','Sugestão de tratamento','Incluir no pitch?'], objecoesForaPitch.map(item => [item.objecao, item.evidencia_lead, item.resposta_sdr, item.avaliacao_resposta, item.sugestao_tratamento, item.recomendar_inclusao_pitch ? 'Sim' : 'Não']))}<p class="muted">As falas sugeridas são recomendações de Sales Enablement e não fazem parte do pitch vigente.</p>` : ''}
@@ -5946,6 +5946,45 @@
       <p>📌 <strong>O que deveria ter sido dito:</strong> ${escapeHtml(item.o_que_deveria || 'Não evidenciado')}</p>
       ${item.desvio ? `<p class="line-danger">❌ <strong>Desvio:</strong> ${escapeHtml(item.desvio)}</p>` : ''}
       ${item.correcao_pratica ? `<p class="line-tip">💡 <strong>Como fazer na prática:</strong> ${escapeHtml(item.correcao_pratica)}</p>` : ''}
+    `;
+  }
+
+  function renderizarAderenciaSdrV3(item) {
+    if (item.cobertura_pitch_percentual === undefined) return renderizarComparacaoAuditoriaV3(item);
+    const intro = item.introducao || {};
+    const lista = valores => Array.isArray(valores) && valores.length
+      ? `<ul>${valores.map(valor => `<li>${escapeHtml(valor)}</li>`).join('')}</ul>`
+      : '<span class="muted">Nenhum.</span>';
+    return `
+      <p><strong>Status geral:</strong> ${escapeHtml(formatarStatusAuditoriaV3(item.status_geral || 'Não evidenciado'))}</p>
+      <p><strong>Cobertura do pitch:</strong> ${escapeHtml(item.cobertura_pitch_percentual)}% (${escapeHtml(item.etapas_executadas || 0)} de ${escapeHtml(item.etapas_previstas || 0)} etapas executadas)</p>
+      <p><strong>Aderência ao pitch:</strong> ${escapeHtml(item.aderencia_pitch_percentual)}% (${escapeHtml(item.etapas_conformes || 0)} de ${escapeHtml(item.etapas_previstas || 0)} etapas conformes)</p>
+      <p><strong>Leitura geral:</strong> ${escapeHtml(item.resumo_aderencia || 'Não evidenciado')}</p>
+      <h4>Introdução</h4>
+      <p><strong>Status:</strong> ${escapeHtml(formatarStatusAuditoriaV3(intro.status || 'Não evidenciado'))}</p>
+      <p><strong>Elementos esperados:</strong></p>${lista(intro.elementos_esperados)}
+      <p><strong>Elementos identificados:</strong></p>${lista(intro.elementos_identificados)}
+      <p><strong>Elementos ausentes:</strong></p>${lista(intro.elementos_ausentes)}
+      <p class="line-evidence"><strong>Evidência:</strong> ${escapeHtml(intro.evidencia || 'Não evidenciado')}</p>
+      ${intro.desvio ? `<p class="line-danger"><strong>Desvio:</strong> ${escapeHtml(intro.desvio)}</p>` : ''}
+      ${intro.correcao_pratica ? `<p class="line-tip"><strong>Como corrigir:</strong> ${escapeHtml(intro.correcao_pratica)}</p>` : ''}
+    `;
+  }
+
+  function renderizarPerguntasSdrV3(item) {
+    if (!Array.isArray(item.corretas) && !Array.isArray(item.com_desvio) && !Array.isArray(item.ausentes)) return renderizarComparacaoAuditoriaV3(item);
+    const corretas = item.corretas || [];
+    const desvios = item.com_desvio || [];
+    const ausentes = item.ausentes || [];
+    return `
+      <p><strong>Status geral:</strong> ${escapeHtml(formatarStatusAuditoriaV3(item.status_geral || 'Não evidenciado'))}</p>
+      <p><strong>Resumo:</strong> ${escapeHtml(item.resumo || 'Não evidenciado')}</p>
+      <h4>Perguntas feitas corretamente (${corretas.length})</h4>
+      ${corretas.length ? tabelaAuditoriaV3(['Pergunta','Evidência','Regra do pitch','Por que está correta'], corretas.map(p => [p.pergunta, p.evidencia, p.regra_pitch, p.por_que_esta_correta])) : '<p class="muted">Nenhuma pergunta correta foi evidenciada.</p>'}
+      <h4>Perguntas feitas com erro ou desvio (${desvios.length})</h4>
+      ${desvios.length ? tabelaAuditoriaV3(['Pergunta','Evidência','Erro ou desvio','Como corrigir','Impacto'], desvios.map(p => [p.pergunta, p.evidencia, p.erro_ou_desvio, p.correcao_pratica, p.impacto])) : '<p class="muted">Nenhuma pergunta com desvio foi evidenciada.</p>'}
+      <h4>Perguntas obrigatórias ausentes (${ausentes.length})</h4>
+      ${ausentes.length ? tabelaAuditoriaV3(['Pergunta esperada','Regra do pitch','Impacto da ausência','Como perguntar'], ausentes.map(p => [p.pergunta_esperada, p.regra_pitch, p.impacto_ausencia, p.como_perguntar])) : '<p class="muted">Nenhuma pergunta obrigatória ausente foi identificada.</p>'}
     `;
   }
 

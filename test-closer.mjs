@@ -56,8 +56,8 @@ if (schemaApi.required.length >= schemaCompleto.required.length) {
   throw new Error('Schema Closer enviado à API não foi efetivamente simplificado.');
 }
 if (!context.api.schema('SDR').properties.aderencia_script) throw new Error('Schema SDR foi afetado.');
-if (!source.includes("if (tipo !== 'CLOSER') generationConfig.responseSchema")) {
-  throw new Error('O Closer ainda tenta enviar o responseSchema recusado pelo Gemini.');
+if (!source.includes("if (tipo === 'PLANO') generationConfig.responseSchema")) {
+  throw new Error('SDR ou Closer ainda podem receber o responseSchema complexo recusado pelo Gemini.');
 }
 const inicioChamada = source.indexOf('function audV3ChamarGemini_');
 const inicioPrompt = source.indexOf('function audV3MontarPrompt_', inicioChamada);
@@ -66,7 +66,7 @@ if (!trechoChamada.includes('const generationConfig') || !trechoChamada.includes
   throw new Error('A configuração condicional não está dentro da chamada de auditoria.');
 }
 const trechoFormalizacao = source.slice(source.indexOf('function formalChamarGemini_'), source.indexOf('function formalMontarPrompt_'));
-if (trechoFormalizacao.includes("tipo !== 'CLOSER'")) {
+if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
   throw new Error('A configuração Closer vazou para a formalização.');
 }
 if (!source.includes('<SCHEMA_SAIDA_OBRIGATORIO>')) {
