@@ -20,7 +20,9 @@ const momentos = criterios.momentos.map((item, index) => ({
   o_que_fazer: 'Aplicar o comportamento esperado.',
   texto_script: 'Exemplo recomendado.',
   como_agir: 'Confirmar e registrar.',
-  aulas_revisar: []
+  aulas_revisar: [],
+  timestamp_inicio: ['00:00', '03:00', '17:00', '46:00'][index],
+  timestamp_fim: ['03:00', '17:00', '46:00', '1:03:50'][index]
 }));
 const pontuacao = criterios.dimensoes.map(item => ({
   id: item.id,
@@ -34,7 +36,7 @@ const resultado = context.api.normalize(
   { momentos, pontuacao, checklist, semaforo_geral: { justificativa: 'Um gatilho não alcançado.' } },
   criterios,
   { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead', empresaArquivo: '', numeroChamada: '' },
-  { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z') },
+  { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
   { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
   'CLOSER'
 );
@@ -44,6 +46,10 @@ if (resultado.semaforo !== 'AMARELO') throw new Error('Semáforo deveria ser AMA
 if (resultado.pontuacao_calculada.score_5 !== 4.5) throw new Error('Score calculado incorretamente.');
 if (resultado.checklist.length !== criterios.checklist.length) throw new Error('Checklist derivado incompleto.');
 if (resultado.metadados.closer !== 'Closer Teste') throw new Error('Closer não identificado.');
+if (!resultado.analise_temporal.mensuravel) throw new Error('Timestamps válidos deveriam produzir análise temporal completa.');
+if (resultado.analise_temporal.duracao_total !== '63 min 50 s') throw new Error('Duração total da reunião não foi normalizada.');
+if (resultado.analise_temporal.diagnostico.duracao_minutos !== 17) throw new Error('Duração do diagnóstico calculada incorretamente.');
+if (resultado.analise_temporal.fechamento.inicio !== '46:00') throw new Error('Timestamp do fechamento não foi preservado.');
 
 const schemaCompleto = context.api.schema('CLOSER');
 const schemaApi = context.api.apiSchema('CLOSER');

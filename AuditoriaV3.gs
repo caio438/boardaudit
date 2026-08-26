@@ -1857,6 +1857,7 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   };
   if (tipo === 'CLOSER') {
     audV3NormalizarMomentosCloser_(resultado, criterios);
+    audV3NormalizarAnaliseTemporalCloser_(resultado, interacao);
     const perguntas = resultado.perguntas_diagnostico || {};
     perguntas.perguntas_realizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
     perguntas.total_realizadas = perguntas.perguntas_realizadas.length;
@@ -1974,7 +1975,9 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
       o_que_fazer: String(item.o_que_fazer || ''),
       texto_script: String(item.texto_script || ''),
       como_agir: String(item.como_agir || ''),
-      aulas_revisar: Array.isArray(item.aulas_revisar) ? item.aulas_revisar.map(String).filter(Boolean).slice(0, 3) : []
+      aulas_revisar: Array.isArray(item.aulas_revisar) ? item.aulas_revisar.map(String).filter(Boolean).slice(0, 3) : [],
+      timestamp_inicio: String(item.timestamp_inicio || ''),
+      timestamp_fim: String(item.timestamp_fim || '')
     };
   });
 
@@ -1999,6 +2002,86 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
     justificativa: String((resultado.semaforo_geral || {}).justificativa || '')
   };
   resultado.semaforo = cor;
+}
+
+function audV3NormalizarAnaliseTemporalCloser_(resultado, interacao) {
+  interacao = interacao || {};
+  const momentos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+  const porId = {};
+  momentos.forEach(item => { porId[String(item.id || '')] = item; });
+  const duracaoTotalSegundos = Math.max(0, Math.floor(Number(interacao.DURACAO_SEGUNDOS || (resultado.duracao || {}).segundos || 0)));
+  const momento0 = porId.momento_0 || {};
+  const momento1 = porId.momento_1 || {};
+  const momento2 = porId.momento_2 || {};
+  const momento3 = porId.momento_3 || {};
+  const etapas = [
+    audV3EtapaTemporalCloser_('Diagnóstico', '0–15 min', momento0.timestamp_inicio || momento1.timestamp_inicio, momento1.timestamp_fim, 0, 15 * 60, [momento0, momento1]),
+    audV3EtapaTemporalCloser_('Apresentação', '15–45 min', momento2.timestamp_inicio, momento2.timestamp_fim, 15 * 60, 45 * 60, [momento2]),
+    audV3EtapaTemporalCloser_('Fechamento', '45–60 min', momento3.timestamp_inicio, momento3.timestamp_fim, 45 * 60, 60 * 60, [momento3])
+  ];
+  const medidas = etapas.filter(item => item.mensuravel).length;
+  const limitacoes = [];
+  if (medidas < etapas.length) limitacoes.push('A transcrição não contém timestamps suficientes para cronometrar todas as etapas. A sequência e a execução continuam avaliadas qualitativamente.');
+  if (!duracaoTotalSegundos) limitacoes.push('A fonte não informou a duração total da reunião.');
+  if (duracaoTotalSegundos > 60 * 60) limitacoes.push('A reunião ultrapassou a referência de 60 minutos em ' + audV3DuracaoCurta_(duracaoTotalSegundos - 60 * 60) + '.');
+  resultado.analise_temporal = {
+    mensuravel: medidas === etapas.length,
+    mensurabilidade: medidas === etapas.length ? 'TOTAL' : (medidas ? 'PARCIAL' : 'NAO_MENSURAVEL'),
+    duracao_total: duracaoTotalSegundos ? audV3DuracaoCurta_(duracaoTotalSegundos) : 'Não informada',
+    duracao_total_segundos: duracaoTotalSegundos,
+    diagnostico: etapas[0],
+    apresentacao: etapas[1],
+    fechamento: etapas[2],
+    limitacoes: limitacoes
+  };
+  resultado.duracao = resultado.duracao || {};
+  if (duracaoTotalSegundos) {
+    resultado.duracao.segundos = duracaoTotalSegundos;
+    resultado.duracao.texto = audV3DuracaoCurta_(duracaoTotalSegundos);
+  }
+}
+
+function audV3EtapaTemporalCloser_(nome, janela, inicioTexto, fimTexto, esperadoInicio, esperadoFim, momentos) {
+  const inicio = audV3TimestampSegundos_(inicioTexto);
+  const fim = audV3TimestampSegundos_(fimTexto);
+  const mensuravel = inicio !== null && fim !== null && fim >= inicio;
+  const desvios = (momentos || []).reduce((lista, item) => lista.concat(Array.isArray(item.pontos_melhorar) ? item.pontos_melhorar : []), []);
+  const cores = (momentos || []).map(item => String(item.cor || item.status || '')).filter(Boolean);
+  const leitura = cores.includes('VERMELHO') ? 'Execução com lacuna relevante' : (cores.includes('AMARELO') ? 'Execução parcial' : (cores.length ? 'Execução aderente' : 'Não evidenciado'));
+  return {
+    nome: nome,
+    janela_esperada: janela,
+    inicio: mensuravel ? audV3FormatarTimestamp_(inicio) : '',
+    fim: mensuravel ? audV3FormatarTimestamp_(fim) : '',
+    duracao_minutos: mensuravel ? Math.round(((fim - inicio) / 60) * 10) / 10 : null,
+    aderencia: mensuravel ? (inicio >= esperadoInicio && fim <= esperadoFim ? 'Dentro da janela' : 'Fora da janela de referência') : 'Leitura qualitativa',
+    observacao: desvios.length ? desvios.slice(0, 2).join(' • ') : leitura,
+    mensuravel: mensuravel
+  };
+}
+
+function audV3TimestampSegundos_(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto || /NAO|NÃO|N\/A|MENSUR/i.test(texto)) return null;
+  const partes = texto.match(/(?:^|\D)(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\D|$)/);
+  if (!partes) return null;
+  if (partes[3] !== undefined) return Number(partes[1]) * 3600 + Number(partes[2]) * 60 + Number(partes[3]);
+  return Number(partes[1]) * 60 + Number(partes[2]);
+}
+
+function audV3FormatarTimestamp_(segundos) {
+  const total = Math.max(0, Math.floor(Number(segundos || 0)));
+  const horas = Math.floor(total / 3600);
+  const minutos = Math.floor((total % 3600) / 60);
+  const restantes = total % 60;
+  return horas ? [horas, String(minutos).padStart(2, '0'), String(restantes).padStart(2, '0')].join(':') : [minutos, String(restantes).padStart(2, '0')].join(':');
+}
+
+function audV3DuracaoCurta_(segundos) {
+  const total = Math.max(0, Math.floor(Number(segundos || 0)));
+  const minutos = Math.floor(total / 60);
+  const restantes = total % 60;
+  return minutos + ' min' + (restantes ? ' ' + restantes + ' s' : '');
 }
 
 function audV3SchemaResposta_(tipoAuditoria) {
@@ -2124,9 +2207,11 @@ function audV3SchemaRespostaCloser_() {
             o_que_fazer: texto,
             texto_script: evidencia,
             como_agir: texto,
-            aulas_revisar: listaTexto
+            aulas_revisar: listaTexto,
+            timestamp_inicio: texto,
+            timestamp_fim: texto
           },
-          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar']
+          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar', 'timestamp_inicio', 'timestamp_fim']
         }
       },
       analise_temporal: {
@@ -2590,17 +2675,26 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
 
   const temporal = r.analise_temporal || {};
   audV3Titulo_(body, 'Análise temporal da reunião', DocumentApp.ParagraphHeading.HEADING1);
-  audV3RotuloTexto_(body, 'Mensurável', temporal.mensuravel ? 'Sim' : 'Não');
-  audV3RotuloTexto_(body, 'Duração total', temporal.duracao_total || 'Não mensurável');
-  audV3Tabela_(body, [['Etapa', 'Janela esperada', 'Início', 'Fim', 'Duração', 'Aderência', 'Observação']].concat([
+  const nivelMensurabilidade = String(temporal.mensurabilidade || (temporal.mensuravel ? 'TOTAL' : 'NAO_MENSURAVEL'));
+  audV3RotuloTexto_(body, 'Mensurabilidade', nivelMensurabilidade === 'TOTAL' ? 'Completa' : (nivelMensurabilidade === 'PARCIAL' ? 'Parcial' : 'Sem timestamps por etapa'));
+  audV3RotuloTexto_(body, 'Duração total da gravação', temporal.duracao_total || (Number(interacao.DURACAO_SEGUNDOS || 0) > 0 ? audV3DuracaoCurta_(interacao.DURACAO_SEGUNDOS) : 'Não informada'));
+  const etapasTemporais = [
     ['Diagnóstico', temporal.diagnostico || {}],
     ['Apresentação', temporal.apresentacao || {}],
     ['Fechamento', temporal.fechamento || {}]
-  ].map(item => [
-    item[0], item[1].janela_esperada || '', item[1].inicio || '', item[1].fim || '',
-    item[1].duracao_minutos === null || item[1].duracao_minutos === undefined ? '' : String(item[1].duracao_minutos) + ' min',
-    item[1].aderencia || '', item[1].observacao || ''
-  ])));
+  ];
+  if (nivelMensurabilidade === 'NAO_MENSURAVEL') {
+    body.appendParagraph('A gravação informa a duração total, mas a transcrição não possui timestamps suficientes para cronometrar cada etapa. A tabela abaixo mostra a cadência recomendada e a leitura qualitativa da execução.');
+    audV3Tabela_(body, [['Etapa', 'Janela de referência', 'Leitura da execução']].concat(etapasTemporais.map(item => [
+      item[0], item[1].janela_esperada || '', item[1].observacao || 'Não evidenciado'
+    ])));
+  } else {
+    audV3Tabela_(body, [['Etapa', 'Janela esperada', 'Início', 'Fim', 'Duração', 'Aderência', 'Observação']].concat(etapasTemporais.map(item => [
+      item[0], item[1].janela_esperada || '', item[1].inicio || 'Não localizado', item[1].fim || 'Não localizado',
+      item[1].duracao_minutos === null || item[1].duracao_minutos === undefined ? 'Não mensurável' : String(item[1].duracao_minutos) + ' min',
+      item[1].aderencia || 'Leitura qualitativa', item[1].observacao || ''
+    ])));
+  }
   audV3Lista_(body, 'Limitações da análise temporal', temporal.limitacoes || []);
 
   const perguntas = r.perguntas_diagnostico || {};
@@ -3294,15 +3388,15 @@ function audV3PromptSistemaCloser_() {
     'Não invente falas, timestamps, intenções, objeções, resultados, notas, aulas ou gatilhos.',
     'Abra a análise com um resumo factual do que foi conversado, motivação do contato, cenário atual, dor principal, impacto declarado, objetivo do lead e resultado da reunião.',
     'Toda avaliação precisa distinguir FATO_TRANSCRICAO, REGRA_PITCH e SUGESTAO_ENABLEMENT.',
-    'Para cada momento, declare se o gatilho foi alcançado, apresente uma evidência curta, pontos fortes, pontos a melhorar e orientação prática.',
+    'Para cada momento, declare se o gatilho foi alcançado, apresente uma evidência curta, pontos fortes, pontos a melhorar e orientação prática. Preencha timestamp_inicio e timestamp_fim somente quando a transcrição fornecer marcações temporais; caso contrário use NAO_MENSURAVEL.',
     'Use VERDE quando o gatilho foi alcançado sem desvio relevante, AMARELO quando foi alcançado com desvio e VERMELHO quando não foi alcançado.',
     'No diagnóstico, avalie separadamente contexto, problema, impacto ou implicação, necessidade de solução, tentativas anteriores, urgência, decisão e qualificação técnica, respeitando o pitch.',
     'Dê atenção especial a impacto e implicação: verifique se o Closer tornou explícitas as consequências operacionais, financeiras ou estratégicas do problema sem inventar valores.',
     'Liste todas as perguntas relevantes efetivamente realizadas pelo Closer, a ordem e o timestamp quando disponível, a resposta do lead, a categoria da pergunta, se houve aprofundamento e o que pode melhorar.',
     'Compare com as perguntas previstas no pitch e destaque perguntas relevantes não feitas e o impacto provável dessa ausência na condução da venda.',
     'Crie um repertório curto de perguntas sugeridas para aumentar a profundidade, indicando quando usar e o objetivo. Quando a pergunta não estiver no pitch, rotule a origem como SUGESTAO_ENABLEMENT.',
-    'Analise a cadência temporal esperada para uma reunião de até 60 minutos: diagnóstico nos primeiros 15 minutos, apresentação conectada ao diagnóstico nos 30 minutos seguintes e fechamento nos 15 minutos finais.',
-    'Só atribua tempos de cada etapa quando houver timestamps ou duração que permitam medição. Sem isso, marque a análise temporal como não mensurável.',
+    'Considere como referência de cadência para uma reunião de até 60 minutos: contexto e diagnóstico entre 0 e 15 minutos, apresentação entre 15 e 45 minutos e fechamento entre 45 e 60 minutos.',
+    'Nunca invente o início ou o fim de uma etapa. O Board calculará duração e aderência temporal a partir dos timestamps dos momentos e da duração real da gravação. Mesmo sem timestamps, mantenha a avaliação qualitativa da sequência.',
     'Na apresentação, avalie a conexão entre dores e solução e as validações de entendimento ou score previstas no pitch.',
     'No fechamento, avalie objeções, negociação, urgência, onboarding, pedidos de teste e próximo passo conforme o pitch, sem criar regras ausentes.',
     'Extraia separadamente o que O LEAD revelou: dores, desafios, consequências, ferramentas ou processos atuais, resultados desejados e expressões úteis para inteligência de mercado.',

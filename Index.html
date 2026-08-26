@@ -5812,7 +5812,7 @@
     const checklist = Array.isArray(r.checklist) ? r.checklist : [];
     const feedback = r.feedback || {};
     const duracao = r.duracao || {};
-    const temporal = r.analise_temporal || {};
+    const temporal = normalizarTemporalCloserFront_(r.analise_temporal || {}, auditoria, momentos);
     const perguntas = r.perguntas_diagnostico || {};
     const mercado = r.inteligencia_mercado || {};
     const contexto = r.resumo_reuniao || {};
@@ -5860,15 +5860,20 @@
       ${semaforo.justificativa ? `<p><strong>Justificativa:</strong> ${escapeHtml(semaforo.justificativa)}</p>` : ''}
       ${htmlMomentos}
       <h3>Análise temporal da reunião</h3>
-      <p><strong>Mensurável:</strong> ${temporal.mensuravel ? 'Sim' : 'Não'} · <strong>Duração:</strong> ${escapeHtml(temporal.duracao_total || 'Não mensurável')}</p>
-      ${tabelaAuditoriaV3(
-        ['Etapa','Janela esperada','Início','Fim','Duração','Aderência','Observação'],
-        [['Diagnóstico', temporal.diagnostico || {}], ['Apresentação', temporal.apresentacao || {}], ['Fechamento', temporal.fechamento || {}]].map(item => [
-          item[0], item[1].janela_esperada, item[1].inicio, item[1].fim,
-          item[1].duracao_minutos === null || item[1].duracao_minutos === undefined ? '-' : item[1].duracao_minutos + ' min',
-          item[1].aderencia, item[1].observacao
-        ])
-      )}
+      <p><strong>Mensurabilidade:</strong> ${escapeHtml(temporal.rotulo_mensurabilidade)} · <strong>Duração total da gravação:</strong> ${escapeHtml(temporal.duracao_total)}</p>
+      ${temporal.mensurabilidade === 'NAO_MENSURAVEL'
+        ? `<p class="muted">A duração total está disponível, mas a transcrição não possui timestamps suficientes para cronometrar cada etapa. Abaixo está a cadência recomendada e a leitura qualitativa.</p>${tabelaAuditoriaV3(
+            ['Etapa','Janela de referência','Leitura da execução'],
+            temporal.etapas.map(item => [item.nome, item.janela_esperada, item.observacao])
+          )}`
+        : tabelaAuditoriaV3(
+            ['Etapa','Janela esperada','Início','Fim','Duração','Aderência','Observação'],
+            temporal.etapas.map(item => [
+              item.nome, item.janela_esperada, item.inicio || 'Não localizado', item.fim || 'Não localizado',
+              item.duracao_minutos === null || item.duracao_minutos === undefined ? 'Não mensurável' : item.duracao_minutos + ' min',
+              item.aderencia || 'Leitura qualitativa', item.observacao
+            ])
+          )}
       ${(temporal.limitacoes || []).length ? `<p><strong>Limitações:</strong> ${escapeHtml(temporal.limitacoes.join(' • '))}</p>` : ''}
       <h3>Perguntas de diagnóstico</h3>
       <p><strong>Total realizado:</strong> ${escapeHtml(perguntas.total_realizadas === null || perguntas.total_realizadas === undefined ? 'Não mensurável' : perguntas.total_realizadas)}</p>
@@ -5910,6 +5915,57 @@
       <p>${escapeHtml(duracaoAuditoriaTexto_(r, auditoria, 'reunião'))}</p>
       ${linkAudioAuditoriaHtml_(auditoria)}
     `;
+  }
+
+  function normalizarTemporalCloserFront_(temporal, auditoria, momentos) {
+    temporal = temporal || {};
+    auditoria = auditoria || {};
+    const duracaoSegundos = Number(temporal.duracao_total_segundos || auditoria.duracaoSegundos || 0);
+    const duracaoTexto = segundos => {
+      if (!(segundos > 0)) return 'Não informada';
+      const total = Math.floor(segundos);
+      const minutos = Math.floor(total / 60);
+      const restantes = total % 60;
+      return minutos + ' min' + (restantes ? ' ' + restantes + ' s' : '');
+    };
+    const porId = {};
+    (momentos || []).forEach(item => { porId[String(item.id || '')] = item; });
+    const textoUtil = valor => {
+      const texto = String(valor || '').trim();
+      return texto && texto !== '-' && !/não mensurável|nao_mensuravel/i.test(texto) ? texto : '';
+    };
+    const timestampUtil = valor => /\d{1,2}:\d{2}/.test(textoUtil(valor));
+    const leitura = ids => {
+      const itens = ids.map(id => porId[id] || {}).filter(item => Object.keys(item).length);
+      const desvios = itens.flatMap(item => Array.isArray(item.pontos_melhorar) ? item.pontos_melhorar : []);
+      if (desvios.length) return desvios.slice(0, 2).join(' • ');
+      const cores = itens.map(item => String(item.cor || item.status || '').toUpperCase());
+      if (cores.includes('VERMELHO')) return 'Execução com lacuna relevante.';
+      if (cores.includes('AMARELO')) return 'Execução parcial.';
+      if (cores.includes('VERDE')) return 'Execução aderente.';
+      return 'Não evidenciado.';
+    };
+    const etapas = [
+      ['Diagnóstico', '0–15 min', temporal.diagnostico || {}, ['momento_0', 'momento_1']],
+      ['Apresentação', '15–45 min', temporal.apresentacao || {}, ['momento_2']],
+      ['Fechamento', '45–60 min', temporal.fechamento || {}, ['momento_3']]
+    ].map(item => ({
+      nome: item[0],
+      janela_esperada: textoUtil(item[2].janela_esperada) || item[1],
+      inicio: timestampUtil(item[2].inicio) ? item[2].inicio : '',
+      fim: timestampUtil(item[2].fim) ? item[2].fim : '',
+      duracao_minutos: Number(item[2].duracao_minutos) > 0 ? Number(item[2].duracao_minutos) : null,
+      aderencia: textoUtil(item[2].aderencia) || 'Leitura qualitativa',
+      observacao: textoUtil(item[2].observacao) || leitura(item[3])
+    }));
+    const medidas = etapas.filter(item => timestampUtil(item.inicio) && timestampUtil(item.fim)).length;
+    const mensurabilidade = String(temporal.mensurabilidade || (medidas === 3 ? 'TOTAL' : (medidas ? 'PARCIAL' : 'NAO_MENSURAVEL'))).toUpperCase();
+    return Object.assign({}, temporal, {
+      mensurabilidade: mensurabilidade,
+      rotulo_mensurabilidade: mensurabilidade === 'TOTAL' ? 'Completa' : (mensurabilidade === 'PARCIAL' ? 'Parcial' : 'Sem timestamps por etapa'),
+      duracao_total: temporal.duracao_total && !/não mensurável/i.test(String(temporal.duracao_total)) ? temporal.duracao_total : duracaoTexto(duracaoSegundos),
+      etapas: etapas
+    });
   }
 
   function duracaoAuditoriaTexto_(resultado, auditoria, tipo) {
