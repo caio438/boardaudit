@@ -4,7 +4,7 @@ Código-fonte do produto de auditorias, formalizações de reuniões e acompanha
 
 ## Versão
 
-- Produto: `4.15.4`
+- Produto: `4.15.5`
 - Runtime: Google Apps Script V8
 - Fuso horário: `America/Sao_Paulo`
 

@@ -2019,6 +2019,70 @@
     };
 
     const OPCAO_TRANSCRICAO_MANUAL = '__MANUAL__';
+    const CACHE_FORMALIZACOES_FRONT = 'board_volum_formalizacoes_v1';
+    const CACHE_FORMALIZACOES_TTL_MS = 10 * 60 * 1000;
+
+    function lerCacheFormalizacoesFront_() {
+      try {
+        const texto = sessionStorage.getItem(CACHE_FORMALIZACOES_FRONT);
+        if (!texto) return null;
+        const cache = JSON.parse(texto);
+        if (!cache || !cache.salvoEm || Date.now() - Number(cache.salvoEm) > CACHE_FORMALIZACOES_TTL_MS) {
+          sessionStorage.removeItem(CACHE_FORMALIZACOES_FRONT);
+          return null;
+        }
+        return cache.dados || null;
+      } catch (erro) {
+        return null;
+      }
+    }
+
+    function salvarCacheFormalizacoesFront_() {
+      try {
+        if (!estado.carregado.formalizacoes) return;
+        const formalizacoesLeves = (estado.formalizacoes || []).map(item => {
+          const copia = Object.assign({}, item);
+          delete copia.resultado;
+          return copia;
+        });
+        sessionStorage.setItem(CACHE_FORMALIZACOES_FRONT, JSON.stringify({
+          salvoEm: Date.now(),
+          dados: {
+            clientes: estado.clientes || [],
+            transcricoes: estado.transcricoesFormalizacao || [],
+            reunioes: estado.reunioesFormalizacao || [],
+            agenda: estado.agendaFormalizacao || {},
+            formalizacoes: formalizacoesLeves
+          }
+        }));
+      } catch (erro) {
+        try { sessionStorage.removeItem(CACHE_FORMALIZACOES_FRONT); } catch (ignorado) {}
+      }
+    }
+
+    function aplicarDadosFormalizacoesFront_(dados, origemCache) {
+      dados = dados || {};
+      estado.clientes = dados.clientes || [];
+      estado.transcricoesFormalizacao = dados.transcricoes || [];
+      estado.reunioesFormalizacao = dados.reunioes || [];
+      estado.agendaFormalizacao = dados.agenda || {};
+      estado.formalizacoes = dados.formalizacoes || [];
+      if (!document.getElementById('formalFiltroData').value) document.getElementById('formalFiltroData').value = periodoAtualArea_();
+      preencherClientesFormalizacao();
+      preencherTranscricoesFormalizacao();
+      renderizarIntegracoesFormalizacao_();
+      renderizarReunioesAgendaFormal_();
+      renderizarHistoricoFormalizacoes();
+      aplicarFormalizacaoJornadaPendente_();
+      aplicarFormalizacaoExistenteJornadaPendente_(0);
+      if (origemCache) {
+        const status = document.getElementById('formalStatusAgendaResumo');
+        if (status && String(status.textContent || '').trim().toUpperCase() === 'VERIFICANDO') {
+          status.textContent = 'Dados recentes';
+          status.className = 'status success';
+        }
+      }
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav button').forEach(botao => {
@@ -2334,26 +2398,27 @@
       }
 
       if (nome === 'formalizacoes') {
-        if (!iniciarCarga_('formalizacoes', forcar)) return;
-        mostrarLoadingLocal('listaFormalizacoes', 'Carregando transcrições...');
+        const cacheLocal = !forcar ? lerCacheFormalizacoesFront_() : null;
+        if (cacheLocal) {
+          aplicarDadosFormalizacoesFront_(cacheLocal, true);
+          concluirCarga_('formalizacoes', true);
+        }
+        if (!iniciarCarga_('formalizacoes', Boolean(forcar || cacheLocal))) return;
+        if (!cacheLocal) mostrarLoadingLocal('listaFormalizacoes', 'Carregando transcrições...');
         google.script.run
           .withSuccessHandler(dados => {
-            estado.clientes = dados.clientes || [];
-            estado.transcricoesFormalizacao = dados.transcricoes || [];
-            estado.reunioesFormalizacao = dados.reunioes || [];
-            estado.agendaFormalizacao = dados.agenda || {};
-            estado.formalizacoes = dados.formalizacoes || [];
-            if (!document.getElementById('formalFiltroData').value) document.getElementById('formalFiltroData').value = periodoAtualArea_();
-            preencherClientesFormalizacao();
-            preencherTranscricoesFormalizacao();
-            renderizarIntegracoesFormalizacao_();
-            renderizarReunioesAgendaFormal_();
-            renderizarHistoricoFormalizacoes();
-            aplicarFormalizacaoJornadaPendente_();
-            aplicarFormalizacaoExistenteJornadaPendente_(0);
+            aplicarDadosFormalizacoesFront_(dados, false);
             concluirCarga_('formalizacoes', true);
+            salvarCacheFormalizacoesFront_();
           })
-          .withFailureHandler(erro => falharCarga_('formalizacoes', 'listaFormalizacoes', erro))
+          .withFailureHandler(erro => {
+            if (cacheLocal) {
+              concluirCarga_('formalizacoes', false);
+              mostrarToast('Os dados recentes foram exibidos, mas a atualização em segundo plano não foi concluída.', 'warning');
+              return;
+            }
+            falharCarga_('formalizacoes', 'listaFormalizacoes', erro);
+          })
           .carregarDadosFormalizacoes();
         return;
       }
@@ -7019,6 +7084,7 @@
       if (!alvo) return;
       if (!(estado.formalizacoes || []).length) {
         alvo.innerHTML = '<div class="empty">Nenhuma formalização gerada.</div>';
+        salvarCacheFormalizacoesFront_();
         return;
       }
       alvo.innerHTML = estado.formalizacoes.map(item => {
@@ -7042,6 +7108,7 @@
           : '';
         return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https://..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       }).join('');
+      salvarCacheFormalizacoesFront_();
     }
 
     function salvarLinkCircleFormalizacaoFront(idFormalizacao) {
