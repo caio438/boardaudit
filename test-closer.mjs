@@ -5,7 +5,7 @@ const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'ut
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
 
 const criterios = context.api.criteria();
 const momentos = criterios.momentos.map((item, index) => ({
@@ -71,6 +71,15 @@ if (trechoFormalizacao.includes("tipo !== 'CLOSER'")) {
 }
 if (!source.includes('<SCHEMA_SAIDA_OBRIGATORIO>')) {
   throw new Error('O contrato JSON Closer não foi preservado no prompt.');
+}
+if (context.api.documentText('', 'Não evidenciado.') !== 'Não evidenciado.') {
+  throw new Error('Campo vazio ainda pode quebrar a geração do Google Docs.');
+}
+if (context.api.documentText('', '') !== '') {
+  throw new Error('A normalização de itens vazios das listas está incorreta.');
+}
+if (!source.includes("linha.map(valor => audV3TextoDocumento_(valor, 'Não evidenciado.'))")) {
+  throw new Error('As células vazias das tabelas não estão protegidas para o Google Docs.');
 }
 
 console.log(`Teste Closer válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise e normalização final.`);

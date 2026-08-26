@@ -2564,16 +2564,32 @@ function audV3Comparacao_(body, item) {
 }
 
 function audV3Titulo_(body, texto, nivel) {
-  const paragrafo = body.appendParagraph(String(texto || '')).setHeading(nivel);
+  const paragrafo = body.appendParagraph(audV3TextoDocumento_(texto, 'Seção')).setHeading(nivel);
   paragrafo.editAsText().setForegroundColor('#111111');
   return paragrafo;
 }
 
 function audV3RotuloTexto_(body, rotulo, texto) {
-  const p = body.appendParagraph('');
-  p.appendText(String(rotulo || '') + ': ').setBold(true);
-  p.appendText(String(texto || ''));
+  const rotuloSeguro = audV3TextoDocumento_(rotulo, 'Informação');
+  const textoSeguro = audV3TextoDocumento_(texto, 'Não evidenciado.');
+  const p = body.appendParagraph(rotuloSeguro + ': ');
+  p.editAsText().setBold(0, rotuloSeguro.length, true);
+  p.appendText(textoSeguro);
   return p;
+}
+
+function audV3TextoDocumento_(valor, fallback) {
+  const padrao = fallback === undefined ? 'Não evidenciado.' : String(fallback);
+  if (valor === null || valor === undefined) return padrao;
+  if (typeof valor === 'object') {
+    try {
+      const json = JSON.stringify(valor);
+      if (json && json !== '{}' && json !== '[]') return json;
+    } catch (e) {}
+    return padrao;
+  }
+  const texto = String(valor).trim();
+  return texto || padrao;
 }
 
 function audV3RotuloStatus_(status) {
@@ -2900,15 +2916,24 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
 
 function audV3Lista_(body, titulo, itens) {
   if (titulo) audV3Titulo_(body, titulo, DocumentApp.ParagraphHeading.HEADING2);
-  if (!Array.isArray(itens) || !itens.length) {
+  const itensValidos = (Array.isArray(itens) ? itens : [])
+    .map(item => audV3TextoDocumento_(item, ''))
+    .filter(Boolean);
+  if (!itensValidos.length) {
     body.appendParagraph('Nenhum item registrado.');
     return;
   }
-  itens.forEach(item => body.appendListItem(String(item || '')).setGlyphType(DocumentApp.GlyphType.BULLET));
+  itensValidos.forEach(item => body.appendListItem(item).setGlyphType(DocumentApp.GlyphType.BULLET));
 }
 
 function audV3Tabela_(body, linhas) {
-  const dados = (linhas || []).map(linha => linha.map(valor => String(valor === null || valor === undefined ? '' : valor)));
+  const dados = (Array.isArray(linhas) ? linhas : [])
+    .filter(linha => Array.isArray(linha) && linha.length)
+    .map(linha => linha.map(valor => audV3TextoDocumento_(valor, 'Não evidenciado.')));
+  if (!dados.length) {
+    body.appendParagraph('Nenhum dado registrado.');
+    return null;
+  }
   const tabela = body.appendTable(dados);
   if (tabela.getNumRows()) {
     const cabecalho = tabela.getRow(0);
