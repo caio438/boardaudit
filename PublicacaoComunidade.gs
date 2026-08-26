@@ -347,9 +347,7 @@ function publicarPlanoComunidadeV3(idAuditoria) {
   try {
     const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
     if (!auditoria) throw new Error('Auditoria não encontrada.');
-    if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'PLANO') {
-      throw new Error('Nesta etapa, o compartilhamento está disponível somente para análises do Plano.');
-    }
+    circleValidarTipoAuditoriaPublicavel_(auditoria);
     if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') {
       throw new Error('Aprove a análise antes de compartilhá-la.');
     }
@@ -380,7 +378,8 @@ function publicarPlanoComunidadeV3(idAuditoria) {
       String(auditoria.RESULTADO_JSON || ''),
       'O resultado da análise não contém um JSON válido.'
     );
-    const publicacao = comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
+    const publicacao = comunidadeMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
+    const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || 'SDR').toUpperCase();
     const espacoConfigurado = String(
       audV3Configuracao_(PUBLICACAO_COMUNIDADE.prefixoEspaco + auditoria.ID_CLIENTE) || ''
     ).trim();
@@ -397,7 +396,9 @@ function publicarPlanoComunidadeV3(idAuditoria) {
         resumo: publicacao.resumo,
         conteudo: publicacao.conteudo,
         tipo: 'AUDITORIA',
-        topicos: 'Plano de Otimização,Sales Ops',
+        topicos: tipoAuditoria === 'PLANO'
+          ? 'Plano de Otimização,Sales Ops'
+          : 'Auditoria ' + tipoAuditoria + ',Feedback Comercial,Sales Ops',
         permiteComentarios: true
       }
     };

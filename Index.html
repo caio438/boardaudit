@@ -5628,7 +5628,7 @@
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
           ? `<span class="status success" style="align-self:center">APROVADA</span><a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>
-             ${tipoAudit === 'PLANO'
+             ${['PLANO', 'SDR', 'CLOSER'].includes(tipoAudit)
                ? `${auditoria.comunidadePostId
                    ? `<a class="btn success" href="${escapeAtributo(auditoria.comunidadePostUrl)}" target="_blank">Abrir Comunidade VOLUM</a>`
                    : `<button id="btnPublicarComunidade" class="btn success" type="button" onclick="publicarPlanoComunidadeFront('${escapeAtributo(auditoria.idAuditoria)}')">Compartilhar na Comunidade VOLUM</button>`}
@@ -5986,8 +5986,8 @@
 
   function publicarPlanoComunidadeFront(idAuditoria) {
     const auditoria = (estado.auditorias || []).find(item => String(item.idAuditoria) === String(idAuditoria)) || estado.auditoriaAtual;
-    if (!auditoria || String(auditoria.tipoAuditoria || '').toUpperCase() !== 'PLANO') {
-      return mostrarToast('Selecione uma análise do Plano aprovada.', 'error');
+    if (!auditoria || !['PLANO', 'SDR', 'CLOSER'].includes(String(auditoria.tipoAuditoria || '').toUpperCase())) {
+      return mostrarToast('Selecione uma auditoria aprovada.', 'error');
     }
     if (!window.confirm('Publicar esta análise no espaço do cliente na Comunidade VOLUM?')) return;
 
@@ -6017,8 +6017,8 @@
 
   function publicarPlanoCircleFront(idAuditoria) {
     const auditoria = (estado.auditorias || []).find(item => String(item.idAuditoria) === String(idAuditoria)) || estado.auditoriaAtual;
-    if (!auditoria || String(auditoria.tipoAuditoria || '').toUpperCase() !== 'PLANO') {
-      return mostrarToast('Selecione uma análise do Plano aprovada.', 'error');
+    if (!auditoria || !['PLANO', 'SDR', 'CLOSER'].includes(String(auditoria.tipoAuditoria || '').toUpperCase())) {
+      return mostrarToast('Selecione uma auditoria aprovada.', 'error');
     }
     if (!window.confirm('Publicar esta análise no espaço do cliente no Circle?')) return;
 
@@ -6264,6 +6264,8 @@
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
           ${item.status === 'EM_REVISAO' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Aprovar e gerar Docs</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
+          ${item.status === 'APROVADA' && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
+          ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
         </div>
       </div>`;
     }).join('');

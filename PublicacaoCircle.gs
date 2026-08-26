@@ -24,9 +24,7 @@ function publicarPlanoCircleV3(idAuditoria) {
   try {
     const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
     if (!auditoria) throw new Error('Auditoria não encontrada.');
-    if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'PLANO') {
-      throw new Error('Nesta etapa, o compartilhamento no Circle está disponível somente para análises do Plano.');
-    }
+    circleValidarTipoAuditoriaPublicavel_(auditoria);
     if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') {
       throw new Error('Aprove a análise antes de compartilhá-la no Circle.');
     }
@@ -61,7 +59,7 @@ function publicarPlanoCircleV3(idAuditoria) {
       String(auditoria.RESULTADO_JSON || ''),
       'O resultado da análise não contém um JSON válido.'
     );
-    const publicacao = circleMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
+    const publicacao = circleMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
     const payload = {
       space_id: destino.spaceId,
       status: 'published',
@@ -128,9 +126,7 @@ function prepararPlanoCircleManualV3(idAuditoria) {
 
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   if (!auditoria) throw new Error('Auditoria não encontrada.');
-  if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'PLANO') {
-    throw new Error('O modo manual do Circle está disponível somente para análises do Plano.');
-  }
+  circleValidarTipoAuditoriaPublicavel_(auditoria);
   if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') {
     throw new Error('Aprove a análise antes de prepará-la para o Circle.');
   }
@@ -142,7 +138,7 @@ function prepararPlanoCircleManualV3(idAuditoria) {
     String(auditoria.RESULTADO_JSON || ''),
     'O resultado da análise não contém um JSON válido.'
   );
-  const publicacao = comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
+  const publicacao = comunidadeMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
   const integracao = obterIntegracaoCliente_(auditoria.ID_CLIENTE, PUBLICACAO_CIRCLE.tipoIntegracao);
   const config = integracao ? circleConfigIntegracao_(integracao) : {};
 
@@ -194,9 +190,9 @@ function registrarPublicacaoCircleManualV3(idAuditoria, spaceUrl, postUrl) {
   if (!id) throw new Error('Informe a auditoria publicada.');
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   if (!auditoria) throw new Error('Auditoria não encontrada.');
-  if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'PLANO' ||
-      String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') {
-    throw new Error('Somente análises do Plano aprovadas podem ser registradas no Circle.');
+  circleValidarTipoAuditoriaPublicavel_(auditoria);
+  if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') {
+    throw new Error('Somente auditorias aprovadas podem ser registradas no Circle.');
   }
 
   const urlPost = circleValidarUrl_(postUrl, 'Cole a URL do post publicado no Circle.');
@@ -395,6 +391,221 @@ function circleRequisicao_(metodo, url, token, payload) {
   return resposta;
 }
 
+function circleValidarTipoAuditoriaPublicavel_(auditoria) {
+  const tipo = String(auditoria && auditoria.TIPO_AUDITORIA || '').trim().toUpperCase();
+  if (['SDR', 'CLOSER', 'PLANO'].indexOf(tipo) < 0) {
+    throw new Error('Esta auditoria não possui um tipo compatível com a publicação no Circle.');
+  }
+  return tipo;
+}
+
+function comunidadeMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado) {
+  const tipo = circleValidarTipoAuditoriaPublicavel_(auditoria);
+  if (tipo === 'PLANO') return comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
+
+  const dados = circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
+  const linhas = [
+    'Boa tarde pessoal, espero que estejam bem.',
+    '',
+    '**Resultado da auditoria**',
+    dados.resumo,
+    dados.score ? 'Aderência geral: ' + dados.score : ''
+  ].filter(function(item, indice) { return item || indice === 1; });
+
+  circleAdicionarSecaoTexto_(linhas, '**Contexto do contato**', dados.contexto);
+  circleAdicionarSecaoTexto_(linhas, '**Principais achados**', dados.achados);
+  circleAdicionarSecaoTexto_(linhas, '**Desvios identificados**', dados.desvios);
+  circleAdicionarSecaoTexto_(linhas, '**O que deve melhorar**', dados.melhorias);
+  circleAdicionarSecaoTexto_(linhas, '**Por que isso importa**', dados.impactos);
+  circleAdicionarSecaoTexto_(linhas, '**Próximos passos**', dados.proximosPassos);
+
+  if (dados.audioUrl) {
+    linhas.push('', '**Áudio auditado**', '[Ouvir gravação](' + dados.audioUrl + ')');
+  }
+  linhas.push('', 'Esta análise foi gerada a partir da transcrição da ligação e deve ser usada como direcionamento prático de melhoria.');
+
+  return {
+    titulo: dados.titulo,
+    resumo: dados.resumo,
+    conteudo: linhas.map(function(linha) {
+      return circleNormalizarTextoPublicacao_(linha);
+    }).join('\n')
+  };
+}
+
+function circleMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado) {
+  const tipo = circleValidarTipoAuditoriaPublicavel_(auditoria);
+  if (tipo === 'PLANO') return circleMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
+
+  const dados = circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
+  const nodes = [];
+  circleParagrafo_(nodes, [{ text: 'Boa tarde pessoal, espero que estejam bem.' }]);
+  circleTitulo_(nodes, 'Resultado da auditoria', 3);
+  circleParagrafo_(nodes, [{ text: dados.resumo }]);
+  if (dados.score) circleParagrafo_(nodes, [{ text: 'Aderência geral: ' + dados.score, bold: true }]);
+  circleAdicionarSecaoNodes_(nodes, 'Contexto do contato', dados.contexto);
+  circleAdicionarSecaoNodes_(nodes, 'Principais achados', dados.achados);
+  circleAdicionarSecaoNodes_(nodes, 'Desvios identificados', dados.desvios);
+  circleAdicionarSecaoNodes_(nodes, 'O que deve melhorar', dados.melhorias);
+  circleAdicionarSecaoNodes_(nodes, 'Por que isso importa', dados.impactos);
+  circleAdicionarSecaoNodes_(nodes, 'Próximos passos', dados.proximosPassos);
+  if (dados.audioUrl) {
+    circleTitulo_(nodes, 'Áudio auditado', 3);
+    circleParagrafo_(nodes, [{ text: 'Ouvir gravação', link: dados.audioUrl }]);
+  }
+  circleParagrafo_(nodes, [{
+    text: 'Esta análise foi gerada a partir da transcrição da ligação e deve ser usada como direcionamento prático de melhoria.'
+  }]);
+  return { titulo: dados.titulo, tiptapBody: { body: { type: 'doc', content: nodes } } };
+}
+
+function circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultado) {
+  const tipo = String(auditoria.TIPO_AUDITORIA || 'SDR').trim().toUpperCase();
+  const publicacao = resultado.resumo_publicacao || {};
+  const meta = resultado.metadados || {};
+  const nomeCliente = String(cliente.NOME_CLIENTE || meta.empresa || 'Cliente').trim();
+  const negociacao = String(
+    interacao.TITULO || interacao.OPORTUNIDADE || meta.lead || meta.empresa || ''
+  ).trim();
+  const tituloPadrao = '[' + nomeCliente + ' + VOLUM] Auditoria ' + tipo +
+    (negociacao ? ' | ' + negociacao : '');
+  const resumoContato = resultado.resumo_contato || resultado.resumo_reuniao || {};
+  const resumoExecutivo = resultado.resumo_executivo || {};
+  const resumo = circlePrimeiroTexto_([
+    publicacao.resumo,
+    resumoContato.resumo_conversa,
+    resumoExecutivo.visao_geral,
+    'Análise da aderência ao pitch e dos principais pontos de melhoria.'
+  ]);
+  const contexto = circleUnicos_([
+    resumoContato.motivacao_contato ? 'Motivação do contato: ' + resumoContato.motivacao_contato : '',
+    resumoContato.necessidade_principal ? 'Necessidade principal: ' + resumoContato.necessidade_principal : '',
+    resumoContato.dor_principal ? 'Dor principal: ' + resumoContato.dor_principal : '',
+    resumoContato.resultado_contato ? 'Resultado do contato: ' + resumoContato.resultado_contato : '',
+    resumoContato.resultado_reuniao ? 'Resultado da reunião: ' + resumoContato.resultado_reuniao : ''
+  ], 4);
+  const achados = circleUnicos_((Array.isArray(publicacao.highlights) ? publicacao.highlights : []).map(function(item) {
+    if (typeof item === 'string') return item;
+    return circleJuntarPartes_([
+      item.ponto,
+      item.evidencia ? 'Evidência: ' + item.evidencia : '',
+      item.impacto ? 'Impacto: ' + item.impacto : ''
+    ]);
+  }).concat((resultado.feedback && resultado.feedback.pontos_fortes) || []), 5);
+  const impactosBase = Array.isArray(resultado.impactos_nao_conformidades)
+    ? resultado.impactos_nao_conformidades : [];
+  let desvios = impactosBase.map(function(item) {
+    return circleJuntarPartes_([
+      item.criterio,
+      item.evidencia ? 'Evidência: ' + item.evidencia : ''
+    ]);
+  });
+  if (!desvios.length && tipo === 'SDR') {
+    desvios = (resultado.etapas_pitch || []).filter(function(item) {
+      return !circleStatusPositivo_(item.status);
+    }).map(function(item) {
+      return circleJuntarPartes_([item.etapa, item.desvio, item.fato_transcricao ? 'Evidência: ' + item.fato_transcricao : '']);
+    });
+  }
+  if (!desvios.length && tipo === 'CLOSER') {
+    desvios = (resultado.momentos || []).filter(function(item) {
+      return item.gatilho_alcancado === false || !circleStatusPositivo_(item.status);
+    }).map(function(item) {
+      const pontosMelhorar = Array.isArray(item.pontos_melhorar)
+        ? item.pontos_melhorar.join('. ')
+        : String(item.pontos_melhorar || '');
+      return circleJuntarPartes_([item.nome || item.id, pontosMelhorar, item.o_que_foi_dito ? 'Evidência: ' + item.o_que_foi_dito : '']);
+    });
+  }
+  const melhorias = circleUnicos_((publicacao.correcoes_prioritarias || []).map(function(item) {
+    return typeof item === 'string' ? item : circleJuntarPartes_([
+      item.acao,
+      item.criterio_conclusao ? 'Critério de conclusão: ' + item.criterio_conclusao : ''
+    ]);
+  }).concat((resultado.feedback && resultado.feedback.areas_melhoria) || []), 5);
+  const impactos = circleUnicos_(impactosBase.map(function(item) {
+    return circleJuntarPartes_([
+      item.criterio,
+      item.impacto_de_nao_executar ? 'Impacto de não corrigir: ' + item.impacto_de_nao_executar : '',
+      item.beneficio_de_corrigir ? 'Benefício da correção: ' + item.beneficio_de_corrigir : ''
+    ]);
+  }), 5);
+  const proximosPassos = circleUnicos_((resultado.proximos_passos || []).map(function(item) {
+    if (typeof item === 'string') return item;
+    return circleJuntarPartes_([
+      item.acao,
+      item.responsavel ? 'Responsável: ' + item.responsavel : '',
+      item.prazo_dias !== undefined && item.prazo_dias !== null ? 'Prazo: ' + item.prazo_dias + ' dia(s)' : '',
+      item.criterio_conclusao ? 'Concluído quando: ' + item.criterio_conclusao : ''
+    ]);
+  }).concat(publicacao.proximos_passos || []), 5);
+  const scoreValor = auditoria.SCORE_GLOBAL !== undefined && auditoria.SCORE_GLOBAL !== ''
+    ? auditoria.SCORE_GLOBAL : auditoria.SCORE;
+  const score = scoreValor === undefined || scoreValor === null || scoreValor === ''
+    ? '' : String(scoreValor).replace('.', ',') + ' de 5';
+
+  return {
+    titulo: circleNormalizarTextoPublicacao_(circlePrimeiroTexto_([publicacao.titulo, tituloPadrao])),
+    resumo: circleNormalizarTextoPublicacao_(resumo),
+    score: score,
+    contexto: contexto,
+    achados: achados,
+    desvios: circleUnicos_(desvios, 5),
+    melhorias: melhorias,
+    impactos: impactos,
+    proximosPassos: proximosPassos,
+    audioUrl: String(interacao.URL_GRAVACAO || interacao.LINK_ORIGINAL || '').trim()
+  };
+}
+
+function circleAdicionarSecaoTexto_(linhas, titulo, itens) {
+  if (!Array.isArray(itens) || !itens.length) return;
+  linhas.push('', titulo);
+  itens.forEach(function(item) { linhas.push('• ' + item); });
+}
+
+function circleAdicionarSecaoNodes_(nodes, titulo, itens) {
+  if (!Array.isArray(itens) || !itens.length) return;
+  circleTitulo_(nodes, titulo, 3);
+  nodes.push({
+    type: 'bulletList',
+    content: itens.map(function(item) {
+      return { type: 'listItem', content: [{ type: 'paragraph', content: [circleTexto_(item)] }] };
+    })
+  });
+}
+
+function circleStatusPositivo_(statusOriginal) {
+  const status = String(statusOriginal || '').trim().toUpperCase();
+  return ['CONFORME', 'COMPLETO', 'CORRETO', 'ATINGIDO', 'VERDE', 'OK', 'NAO_APLICAVEL', 'NÃO_APLICÁVEL'].indexOf(status) >= 0;
+}
+
+function circleJuntarPartes_(partes) {
+  return circleNormalizarTextoPublicacao_((partes || []).filter(Boolean).join('. '));
+}
+
+function circlePrimeiroTexto_(valores) {
+  const encontrado = (valores || []).find(function(valor) { return String(valor || '').trim(); });
+  return String(encontrado || '').trim();
+}
+
+function circleUnicos_(valores, limite) {
+  const vistos = {};
+  return (valores || []).map(circleNormalizarTextoPublicacao_).filter(function(valor) {
+    const chave = valor.toLowerCase();
+    if (!valor || vistos[chave]) return false;
+    vistos[chave] = true;
+    return true;
+  }).slice(0, Number(limite || 5));
+}
+
+function circleNormalizarTextoPublicacao_(texto) {
+  let valor = String(texto || '').replace(/\s+/g, ' ').trim();
+  if (typeof comunidadeRemoverTravoes_ === 'function') valor = comunidadeRemoverTravoes_(valor);
+  if (typeof comunidadeRestaurarAcentosPtBr_ === 'function') valor = comunidadeRestaurarAcentosPtBr_(valor);
+  return valor;
+}
+
 function circleMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado) {
   const base = comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resultado);
   const metadados = resultado.metadados || {};
@@ -490,7 +701,7 @@ function circleTexto_(texto, negrito, link) {
 }
 
 function circleSlugAuditoria_(idAuditoria) {
-  return ('volum-plano-' + String(idAuditoria || ''))
+  return ('volum-auditoria-' + String(idAuditoria || ''))
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
