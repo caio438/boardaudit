@@ -141,13 +141,17 @@ function prepararPlanoCircleManualV3(idAuditoria) {
   const publicacao = comunidadeMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resultado);
   const integracao = obterIntegracaoCliente_(auditoria.ID_CLIENTE, PUBLICACAO_CIRCLE.tipoIntegracao);
   const config = integracao ? circleConfigIntegracao_(integracao) : {};
+  const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || 'SDR').trim().toUpperCase();
+  const nomeInteracao = String(interacao.TITULO || interacao.OPORTUNIDADE || '').trim();
+  const tituloFallback = '[' + String(cliente.NOME_CLIENTE || 'Cliente').trim() + ' + VOLUM] Auditoria ' +
+    tipoAuditoria + (nomeInteracao ? ' | ' + nomeInteracao : '');
 
   return {
     sucesso: true,
     idAuditoria: id,
     idCliente: String(auditoria.ID_CLIENTE || ''),
     cliente: String(cliente.NOME_CLIENTE || ''),
-    titulo: publicacao.titulo,
+    titulo: String(publicacao.titulo || '').trim() || tituloFallback,
     conteudoHtml: publicacao.conteudo,
     spaceUrl: String(config.spaceUrl || config.space_url || ''),
     postUrl: String(auditoria.CIRCLE_POST_URL || ''),
