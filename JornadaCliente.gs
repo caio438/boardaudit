@@ -743,6 +743,7 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
 
 function jornadaEncontrarReuniaoArquivo_(idCliente, arquivo, reunioes) {
   const nomeArquivo = jornadaNormalizarArquivo_(arquivo.getName());
+  const tokensArquivoDistintivos = jornadaTokensDistintivosArquivo_(nomeArquivo);
   const dataArquivo = arquivo.getDateCreated() || arquivo.getLastUpdated() || new Date();
   const horarioArquivo = new Date(dataArquivo).getTime();
   let melhor = null;
@@ -760,7 +761,13 @@ function jornadaEncontrarReuniaoArquivo_(idCliente, arquivo, reunioes) {
       const tokensTitulo = titulo.split(' ').filter(token => token.length >= 4);
       const tokensArquivo = nomeArquivo.split(' ').filter(token => token.length >= 4);
       const comuns = tokensTitulo.filter(token => tokensArquivo.indexOf(token) >= 0).length;
-      if (comuns >= 2) pontosNome = Math.min(65, 30 + comuns * 10);
+      const distintivosTitulo = jornadaTokensDistintivosArquivo_(titulo);
+      const distintivosComuns = distintivosTitulo.filter(token => tokensArquivoDistintivos.indexOf(token) >= 0).length;
+      // Palavras como "VOLUM", "operacional", "SDR" e "Closer" aparecem em
+      // quase todas as reuniões e não identificam o cliente. O pareamento por
+      // tokens só é aceito quando existe ao menos um termo realmente distintivo
+      // (normalmente o nome do cliente), evitando vínculos cruzados.
+      if (comuns >= 2 && distintivosComuns >= 1) pontosNome = Math.min(70, 45 + distintivosComuns * 15);
     }
     const pontosData = diferencaHoras <= 18 ? 35 : (diferencaHoras <= 48 ? 20 : 5);
     const total = pontosNome + pontosData;
@@ -770,6 +777,19 @@ function jornadaEncontrarReuniaoArquivo_(idCliente, arquivo, reunioes) {
     }
   });
   return melhorPontos >= 80 ? melhor : null;
+}
+
+function jornadaTokensDistintivosArquivo_(valor) {
+  const genericos = {
+    volum: true, reuniao: true, operacional: true, executiva: true,
+    performance: true, closer: true, sdr: true, sales: true, follow: true,
+    semanal: true, setup: true, alinhamento: true, alinhamentos: true,
+    anotacoes: true, gemini: true, transcricao: true, transcript: true,
+    gravacao: true, recording: true, google: true, meet: true
+  };
+  return jornadaNormalizarArquivo_(valor).split(' ').filter(token =>
+    token.length >= 4 && !genericos[token] && !/^\d+$/.test(token)
+  );
 }
 
 function jornadaVincularArtefatosPasta_(reuniao, transcricao, gravacao, idInteracao, idTranscricao) {
