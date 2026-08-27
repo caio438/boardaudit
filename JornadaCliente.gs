@@ -822,7 +822,19 @@ function jornadaListarArquivosPasta_(urlPasta, intervalo, limite) {
     pastasVisitadas++;
     const iteradorArquivos = pasta.getFiles();
     while (iteradorArquivos.hasNext() && arquivos.length < maximo) {
-      const arquivo = iteradorArquivos.next();
+      let arquivo = iteradorArquivos.next();
+      // Algumas contas organizam as notas do Meet em subpastas contendo
+      // atalhos. O arquivo real continua acessível, mas o MIME do atalho não é
+      // Google Docs e antes era descartado. Resolve o destino para tratar a
+      // transcrição e a gravação como qualquer outro artefato.
+      if (String(arquivo.getMimeType() || '') === 'application/vnd.google-apps.shortcut') {
+        try {
+          const destinoId = arquivo.getTargetId();
+          if (destinoId) arquivo = DriveApp.getFileById(destinoId);
+        } catch (erroAtalho) {
+          continue;
+        }
+      }
       const atualizado = (arquivo.getLastUpdated() || arquivo.getDateCreated() || new Date(0)).getTime();
       if (!inicio || atualizado >= inicio) arquivos.push(arquivo);
     }
