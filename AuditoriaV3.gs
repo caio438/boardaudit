@@ -618,7 +618,7 @@ function formalMontarPrompt_(ctx) {
     'Se a reunião for OPERACIONAL, transforme cada comando de ajuste efetivamente discutido em um item de ajustes_operacionais e conecte-o ao histórico apenas quando houver correspondência clara.',
     'Acompanhamentos anteriores não mencionados na reunião atual devem ser marcados como NAO_DISCUTIDO, nunca como pendentes ou concluídos por suposição.',
     'O campo publicacao_circle deve ser uma versão pronta para publicação em texto simples, sem HTML, com acentuação correta e sem repetir informações desnecessariamente.',
-    'Em publicacao_circle.resumo, escreva um resumo breve e inclua o bloco "Principais pontos discutidos na reunião:" seguido de uma lista numerada, clara e fiel aos assuntos efetivamente tratados.'
+    'Em publicacao_circle.resumo, consolide o resumo da reunião, o conteúdo principal preparado para o Circle, os principais pontos discutidos e o acompanhamento das auditorias. Não omita esses blocos nem invente acompanhamento sem evidência.'
   ].join('\n\n');
 }
 
@@ -711,15 +711,24 @@ function formalNormalizarResultado_(resultado, metadadosFixos, preservarMetadado
     },
     publicacao_circle: {
       titulo: String(circle.titulo || meta.titulo || 'Formalização de reunião'),
-      resumo: formalMontarResumoCircleComPontos_(circle.resumo, resultado.resumo_reuniao, assuntos),
+      resumo: formalMontarResumoCircleComPontos_(circle.resumo, resultado.resumo_reuniao, assuntos, acompanhamento, circle.conteudo),
       conteudo: String(circle.conteudo || '')
     }
   };
 }
 
-function formalMontarResumoCircleComPontos_(resumoCircle, resumoReuniao, assuntos) {
+function formalMontarResumoCircleComPontos_(resumoCircle, resumoReuniao, assuntos, acompanhamento, conteudoCircle) {
   const resumo = String(resumoCircle || resumoReuniao || '').trim();
-  if (/principais pontos discutidos na reuni[aã]o\s*:/i.test(resumo)) return resumo;
+  const partes = [resumo].filter(Boolean);
+  const normalizarComparacao = function(valor) {
+    return String(valor || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  };
+  const conteudo = String(conteudoCircle || '').trim();
+  const resumoComparacao = normalizarComparacao(resumo);
+  const conteudoComparacao = normalizarComparacao(conteudo);
+  if (conteudo && conteudoComparacao !== resumoComparacao && resumoComparacao.indexOf(conteudoComparacao) < 0) {
+    partes.push(conteudo);
+  }
   const pontos = (Array.isArray(assuntos) ? assuntos : []).map(function(item) {
     item = item || {};
     const assunto = String(item.assunto || '').trim();
@@ -727,11 +736,29 @@ function formalMontarResumoCircleComPontos_(resumoCircle, resumoReuniao, assunto
     if (assunto && detalhamento && assunto.toLowerCase() !== detalhamento.toLowerCase()) return assunto + ': ' + detalhamento;
     return assunto || detalhamento;
   }).filter(Boolean).slice(0, 8);
-  if (!pontos.length) return resumo;
-  const bloco = 'Principais pontos discutidos na reunião:\n\n' + pontos.map(function(ponto, indice) {
-    return (indice + 1) + '. ' + ponto;
-  }).join('\n');
-  return [resumo, bloco].filter(Boolean).join('\n\n');
+  let composto = partes.join('\n\n');
+  if (pontos.length && !/principais pontos discutidos na reuni[aã]o\s*:/i.test(composto)) {
+    composto += (composto ? '\n\n' : '') + 'Principais pontos discutidos na reunião:\n\n' + pontos.map(function(ponto, indice) {
+      return (indice + 1) + '. ' + ponto;
+    }).join('\n');
+  }
+  const auditorias = (Array.isArray(acompanhamento) ? acompanhamento : []).map(function(item) {
+    item = item || {};
+    const origem = String(item.origem || '').trim();
+    const ponto = String(item.ponto || '').trim();
+    const status = String(item.status || '').trim();
+    const evidencia = String(item.evidencia_reuniao || '').trim();
+    if (!ponto) return '';
+    return (origem ? origem + ': ' : '') + ponto +
+      (status ? ' | Status: ' + status : '') +
+      (evidencia ? ' | Evidência: ' + evidencia : '');
+  }).filter(Boolean).slice(0, 8);
+  if (auditorias.length && !/acompanhamento das auditorias\s*:/i.test(composto)) {
+    composto += (composto ? '\n\n' : '') + 'Acompanhamento das auditorias:\n\n' + auditorias.map(function(item, indice) {
+      return (indice + 1) + '. ' + item;
+    }).join('\n');
+  }
+  return composto;
 }
 
 function INSTALAR_AUDITORIA_V3() {

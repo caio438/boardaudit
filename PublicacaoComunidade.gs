@@ -755,7 +755,13 @@ function comunidadeMontarPublicacaoFormalizacao_(formalizacao, cliente, resultad
   const titulo = '[' + nomeCliente + ' + VOLUM] ' + tituloBase;
   const resumoBase = String((resultado.publicacao_circle || {}).resumo || resultado.resumo_reuniao || 'Resumo e próximos passos da reunião.').trim();
   const resumo = typeof formalMontarResumoCircleComPontos_ === 'function'
-    ? formalMontarResumoCircleComPontos_(resumoBase, resultado.resumo_reuniao, resultado.assuntos_discutidos)
+    ? formalMontarResumoCircleComPontos_(
+      resumoBase,
+      resultado.resumo_reuniao,
+      resultado.assuntos_discutidos,
+      resultado.acompanhamento_auditorias,
+      (resultado.publicacao_circle || {}).conteudo
+    )
     : resumoBase;
   const dataReuniao = comunidadeFormatarDataFormalizacao_(meta.data || formalizacao.DATA_REUNIAO);
   const rotuloReuniao = comunidadeRotuloReuniao_(formalizacao, resultado);
@@ -770,7 +776,7 @@ function comunidadeMontarPublicacaoFormalizacao_(formalizacao, cliente, resultad
     : 'A gravação desta reunião ainda não está disponível no Board.');
   linhas.push('');
   linhas.push('**Resumo**');
-  linhas.push(String(resultado.resumo_reuniao || 'Não informado.'));
+  linhas.push(resumo || 'Não informado.');
   comunidadeAdicionarListaFormal_(linhas, '**Assuntos discutidos**', resultado.assuntos_discutidos, function(item) {
     return String(item.assunto || 'Assunto') + ': ' + String(item.detalhamento || '');
   });

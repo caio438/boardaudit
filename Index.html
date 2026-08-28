@@ -7118,12 +7118,11 @@
       const r = resultado || {};
       const circle = r.publicacao_circle || {};
       const resumo = String(circle.resumo || r.resumo_reuniao || '').trim();
-      if (/principais pontos discutidos na reuni[aã]o\s*:/i.test(resumo)) return resumo;
       const conteudo = String(circle.conteudo || '');
-      const marcador = conteudo.search(/principais pontos discutidos na reuni[aã]o\s*:/i);
-      if (marcador >= 0) {
-        const trecho = conteudo.slice(marcador).trim();
-        return [resumo, trecho].filter(Boolean).join('\n\n');
+      const partes = [resumo].filter(Boolean);
+      const normalizarComparacao = texto => String(texto || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (conteudo.trim() && normalizarComparacao(conteudo) !== normalizarComparacao(resumo) && !normalizarComparacao(resumo).includes(normalizarComparacao(conteudo))) {
+        partes.push(conteudo.trim());
       }
       const pontos = (Array.isArray(r.assuntos_discutidos) ? r.assuntos_discutidos : []).map(item => {
         const assunto = String((item || {}).assunto || '').trim();
@@ -7131,9 +7130,22 @@
         if (assunto && detalhamento && assunto.toLowerCase() !== detalhamento.toLowerCase()) return assunto + ': ' + detalhamento;
         return assunto || detalhamento;
       }).filter(Boolean).slice(0, 8);
-      if (!pontos.length) return resumo;
-      const bloco = 'Principais pontos discutidos na reunião:\n\n' + pontos.map((ponto, indice) => `${indice + 1}. ${ponto}`).join('\n');
-      return [resumo, bloco].filter(Boolean).join('\n\n');
+      let composto = partes.join('\n\n');
+      if (pontos.length && !/principais pontos discutidos na reuni[aã]o\s*:/i.test(composto)) {
+        composto += `${composto ? '\n\n' : ''}Principais pontos discutidos na reunião:\n\n${pontos.map((ponto, indice) => `${indice + 1}. ${ponto}`).join('\n')}`;
+      }
+      const auditorias = (Array.isArray(r.acompanhamento_auditorias) ? r.acompanhamento_auditorias : []).map(item => {
+        const origem = String((item || {}).origem || '').trim();
+        const ponto = String((item || {}).ponto || '').trim();
+        const status = String((item || {}).status || '').trim();
+        const evidencia = String((item || {}).evidencia_reuniao || '').trim();
+        if (!ponto) return '';
+        return `${origem ? `${origem}: ` : ''}${ponto}${status ? ` | Status: ${status}` : ''}${evidencia ? ` | Evidência: ${evidencia}` : ''}`;
+      }).filter(Boolean).slice(0, 8);
+      if (auditorias.length && !/acompanhamento das auditorias\s*:/i.test(composto)) {
+        composto += `${composto ? '\n\n' : ''}Acompanhamento das auditorias:\n\n${auditorias.map((item, indice) => `${indice + 1}. ${item}`).join('\n')}`;
+      }
+      return composto;
     }
 
     function lerEditorFormalizacao_() {
