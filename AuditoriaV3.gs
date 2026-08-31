@@ -1361,9 +1361,22 @@ function executarAuditoriaV3(dados) {
   const inicioMs = Date.now();
   const tipo = String(dados.tipoAuditoria || 'SDR').trim().toUpperCase();
   if (!['SDR', 'CLOSER', 'PLANO'].includes(tipo)) throw new Error('Tipo de auditoria inválido. Use SDR, CLOSER ou PLANO.');
+  const equipePlano = String(dados.equipePlano || 'AUTO').trim().toUpperCase();
+  if (tipo === 'PLANO' && !['AUTO', 'SDR', 'CLOSER'].includes(equipePlano)) {
+    throw new Error('No Plano de Otimização, escolha SDR, Closer ou detecção automática.');
+  }
 
   const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', String(dados.idCliente || ''));
-  const pitch = audV3Localizar_('PITCHES', 'ID_PITCH', String(dados.idPitch || ''));
+  const pitchEncontrado = audV3Localizar_('PITCHES', 'ID_PITCH', String(dados.idPitch || ''));
+  const pitch = tipo === 'PLANO' ? {
+    ID_PITCH: 'PLANO-' + equipePlano,
+    ID_CLIENTE: String(dados.idCliente || ''),
+    TIPO_PITCH: 'PLANO',
+    NOME_VERSAO: 'Transcrição da análise do Plano de Otimização',
+    NUMERO_VERSAO: '2.0',
+    CONTEUDO_PITCH: '',
+    STATUS: 'ATIVO'
+  } : pitchEncontrado;
   const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', String(dados.idInteracao || ''));
   const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', String(dados.idInteracao || ''));
   if (!cliente || !pitch || !interacao || !transcricao) {
@@ -1469,9 +1482,12 @@ function executarAuditoriaV3(dados) {
             return String(meta.idCliente) === String(cliente.ID_CLIENTE) && String(meta.periodo) === periodo;
           })
         : [],
-      tipoAuditoria: tipo
+      tipoAuditoria: tipo,
+      equipePlano: equipePlano
     });
-    
+    if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
+      resultadoIa.equipe_analisada = equipePlano;
+    }
     const resultado = audV3NormalizarResultado_(resultadoIa, criterios, identidade, interacao, pitch, tipo);
     const texto = audV3ResultadoTexto_(resultado, tipo);
 
@@ -1615,9 +1631,11 @@ function audV3ConteudoCompletoTranscricao_(transcricao, interacao) {
 
 function audV3ValidarEntradas_(cliente, pitch, interacao, transcricao, tipo) {
   if (String(cliente.STATUS || 'ATIVO').toUpperCase() !== 'ATIVO') throw new Error('O cliente está inativo.');
-  if (String(pitch.STATUS || 'ATIVO').toUpperCase() !== 'ATIVO') throw new Error('O pitch está inativo.');
-  if (String(pitch.ID_CLIENTE) !== String(cliente.ID_CLIENTE)) throw new Error('O pitch não pertence ao cliente selecionado.');
-  if (String(pitch.TIPO_PITCH || '').toUpperCase() !== tipo) throw new Error('O pitch não corresponde ao tipo da auditoria.');
+  if (String(tipo || '').toUpperCase() !== 'PLANO') {
+    if (String(pitch.STATUS || 'ATIVO').toUpperCase() !== 'ATIVO') throw new Error('O pitch está inativo.');
+    if (String(pitch.ID_CLIENTE) !== String(cliente.ID_CLIENTE)) throw new Error('O pitch não pertence ao cliente selecionado.');
+    if (String(pitch.TIPO_PITCH || '').toUpperCase() !== tipo) throw new Error('O pitch não corresponde ao tipo da auditoria.');
+  }
   if (interacao.ID_CLIENTE && String(interacao.ID_CLIENTE) !== String(cliente.ID_CLIENTE)) {
     throw new Error('A interação já está vinculada a outro cliente.');
   }
@@ -1765,10 +1783,11 @@ function audV3ChamarGemini_(ctx) {
 function audV3MontarPrompt_(ctx) {
   const i = ctx.identidade;
   const tipo = String(ctx.tipoAuditoria || ctx.modelo.TIPO_AUDITORIA || 'SDR').toUpperCase();
+  const equipePlano = String(ctx.equipePlano || 'AUTO').toUpperCase();
   const meta = {
     empresa: i.empresa,
     sdr: i.sdr,
-    funcao_auditada: tipo,
+    funcao_auditada: tipo === 'PLANO' ? equipePlano : tipo,
     lead: i.lead,
     data_hora: audV3DataTexto_(ctx.interacao.DATA_INTERACAO),
     duracao_segundos: Number(ctx.interacao.DURACAO_SEGUNDOS || 0),
@@ -1794,7 +1813,9 @@ function audV3MontarPrompt_(ctx) {
       '<METADADOS>\n' + JSON.stringify(meta, null, 2) + '\n</METADADOS>',
       '<TRANSCRICAO_DA_ANALISE>\n' + String(ctx.transcricao.CONTEUDO || '') + '\n</TRANSCRICAO_DA_ANALISE>',
       'A transcrição contém a análise já realizada pelo analista. Organize e aperfeiçoe a redação, sem auditar o analista e sem substituir os achados por critérios genéricos.',
-      'Identifique se a equipe analisada é SDR ou CLOSER exclusivamente pelo conteúdo. Se houver dúvida real, use a função mencionada com maior clareza na análise.',
+      equipePlano === 'AUTO'
+        ? 'Identifique se a equipe analisada é SDR ou CLOSER exclusivamente pelo conteúdo. Se a transcrição misturar as duas equipes sem separação suficiente, sinalize a limitação sem combinar critérios de funções diferentes.'
+        : 'A equipe escolhida pelo usuário é ' + equipePlano + '. Extraia somente os parâmetros, exemplos, ações e links referentes a essa equipe. Ignore trechos exclusivos da outra função.',
       'Crie um item em criterios para cada parâmetro efetivamente analisado. Preserve nomes específicos como Uso da Cadência, Link da gravação, PDF da proposta ou outros citados.',
       'Para cada parâmetro, normalize o status somente como ATINGIDO, PARCIAL ou NAO_EXECUTADO e escreva uma análise substantiva, específica e fiel às evidências e exemplos mencionados.',
       'Use ATINGIDO quando o parâmetro foi executado corretamente; PARCIAL quando houve execução incompleta ou inconsistente; NAO_EXECUTADO quando não houve execução ou houve descumprimento integral.',

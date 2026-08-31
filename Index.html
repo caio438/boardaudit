@@ -1172,6 +1172,17 @@
               </select>
             </div>
 
+            <div id="audEquipePlanoBox" class="field" style="display:none">
+              <label for="audEquipePlano">Equipe analisada no plano</label>
+              <select id="audEquipePlano" onchange="atualizarResumoAuditoria()">
+                <option value="">Selecione a equipe</option>
+                <option value="SDR">SDR</option>
+                <option value="CLOSER">Closer</option>
+                <option value="AUTO">Detectar automaticamente</option>
+              </select>
+              <div class="small muted" style="margin-top:6px">A mesma transcrição pode ser usada uma vez para SDR e outra para Closer.</div>
+            </div>
+
             <div class="field">
               <label for="audFonte">Tipo da interação</label>
               <select id="audFonte" onchange="atualizarSeletoresAuditoria()">
@@ -1207,7 +1218,7 @@
               <div id="audReclassificarAviso" class="small muted" style="margin-top:6px"></div>
             </div>
 
-            <div class="field full">
+            <div id="audPitchBox" class="field full">
               <label for="audPitch">Pitch/Referência</label>
               <select id="audPitch" onchange="atualizarResumoAuditoria()">
                 <option value="">Selecione manualmente</option>
@@ -4582,13 +4593,19 @@
       renderizarPitchesBase();
       const tipo = valor('audTipo');
       const fonte = valor('audFonte');
+      const ehPlano = String(tipo).toUpperCase() === 'PLANO';
       const pitchSelect = document.getElementById('audPitch');
+      const pitchBox = document.getElementById('audPitchBox');
+      const equipePlanoBox = document.getElementById('audEquipePlanoBox');
       const interacaoSelect = document.getElementById('audInteracao');
       const aviso = document.getElementById('avisoAuditoria');
       atualizarRotuloColaboradorV3();
       preencherSugestoesEquipeAuditoria_();
 
-      const pitches = estado.pitches.filter(pitch =>
+      if (pitchBox) pitchBox.style.display = ehPlano ? 'none' : '';
+      if (equipePlanoBox) equipePlanoBox.style.display = ehPlano ? '' : 'none';
+
+      const pitches = ehPlano ? [] : estado.pitches.filter(pitch =>
         String(pitch.idCliente) === String(idCliente) && pitch.tipoPitch === tipo
       );
 
@@ -4626,7 +4643,7 @@
       } else if (!fonte) {
         aviso.textContent = 'Selecione o tipo da interação para listar as transcrições.';
         aviso.style.display = 'block';
-      } else if (!pitches.length) {
+      } else if (!ehPlano && !pitches.length) {
         aviso.textContent = 'Este cliente ainda não possui base cadastrada para ' + tipo + '. Cadastre a versão necessária na Área do cliente ou em Gerenciar pitches.';
         aviso.style.display = 'block';
       } else if (!interacoes.length) {
@@ -4649,6 +4666,8 @@
 
       const idCliente = valor('audCliente');
       const tipo = valor('audTipo');
+      const ehPlano = String(tipo).toUpperCase() === 'PLANO';
+      const equipePlano = valor('audEquipePlano');
       const fonte = valor('audFonte');
       const idPitch = valor('audPitch');
       const idModelo = valor('audModelo');
@@ -4671,7 +4690,7 @@
       if (!clienteDiferente && reclassificarCampo) reclassificarCampo.checked = false;
 
       const reclassificacaoConfirmada = !clienteDiferente || Boolean(reclassificarCampo && reclassificarCampo.checked);
-      const pronto = Boolean(cliente && pitch && modelo && interacoes.length && interacoes.length <= 3 && reclassificacaoConfirmada && !manualSelecionada);
+      const pronto = Boolean(cliente && (ehPlano || pitch) && (!ehPlano || equipePlano) && modelo && interacoes.length && interacoes.length <= 3 && reclassificacaoConfirmada && !manualSelecionada);
       botao.disabled = !pronto;
       botao.textContent = interacoes.length > 1 ? 'Gerar ' + interacoes.length + ' auditorias' : 'Gerar auditoria';
 
@@ -4687,7 +4706,11 @@
         alvo.innerHTML = '<div class="empty" style="padding:14px">3. Selecione o tipo da interação.</div>';
         return;
       }
-      if (!idPitch) {
+      if (ehPlano && !equipePlano) {
+        alvo.innerHTML = '<div class="empty" style="padding:14px">4. Selecione se o plano é de SDR, Closer ou use a detecção automática.</div>';
+        return;
+      }
+      if (!ehPlano && !idPitch) {
         alvo.innerHTML = '<div class="empty" style="padding:14px">4. Selecione manualmente uma versão base para ' + escapeHtml(tipo) + '.</div>';
         return;
       }
@@ -4718,8 +4741,8 @@
         </div>
         <div class="automation">
           <div><small>Cliente</small><strong>${escapeHtml(cliente.nomeCliente || '-')}</strong></div>
-          <div><small>Função</small><strong>${escapeHtml(tipo)}</strong></div>
-          <div><small>Base</small><strong>${escapeHtml(pitch.nomeVersao || '-')}</strong></div>
+          <div><small>Tipo</small><strong>${escapeHtml(tipo)}</strong></div>
+          <div><small>${ehPlano ? 'Equipe analisada' : 'Base'}</small><strong>${escapeHtml(ehPlano ? (equipePlano === 'AUTO' ? 'Detecção automática' : equipePlano) : (pitch.nomeVersao || '-'))}</strong></div>
           <div><small>Modelo</small><strong>${escapeHtml(modelo.nomeModelo || '-')} — v${escapeHtml(modelo.versaoModelo || '-')}</strong></div>
           <div><small>Origem</small><strong>${escapeHtml(fonte === 'TLDV' ? 'Reunião' : (fonte === 'PLANO' ? 'Plano' : 'Ligação'))}</strong></div>
         </div>
@@ -5538,7 +5561,9 @@
     function salvarConfiguracaoAuditoriaFront(){mostrarLoading('Salvando configurações...');google.script.run.withSuccessHandler(r=>{esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarConfiguracaoAuditoria({promptSdr:valor('audPromptSdr'),promptCloser:valor('audPromptCloser'),pastaDriveId:valor('audPastaDrive')});}
   async function executarAuditoriaV3Front() {
     if (!valor('audCliente')) return mostrarToast('Selecione o cliente.', 'error');
-    if (!valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
+    const ehPlano = String(valor('audTipo')).toUpperCase() === 'PLANO';
+    if (ehPlano && !valor('audEquipePlano')) return mostrarToast('Selecione a equipe analisada no Plano de Otimização.', 'error');
+    if (!ehPlano && !valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
     if (!valor('audModelo')) return mostrarToast('Selecione o modelo de auditoria.', 'error');
     const idsInteracoes = idsTranscricoesSelecionadasAuditoria_();
     if (!idsInteracoes.length) return mostrarToast('Selecione pelo menos uma transcrição.', 'error');
@@ -5562,6 +5587,7 @@
         const resposta = await analisarAudioLote_({
           idCliente: valor('audCliente'),
           tipoAuditoria: valor('audTipo'),
+          equipePlano: ehPlano ? valor('audEquipePlano') : '',
           fonte: valor('audFonte'),
           idPitch: valor('audPitch'),
           idModelo: valor('audModelo'),
