@@ -1477,7 +1477,10 @@ function executarAuditoriaV3(dados) {
 
     let scoreValue = '';
     let scorePercentual = '';
-    if (tipo !== 'PLANO') {
+    if (tipo === 'PLANO') {
+      scoreValue = resultado.pontuacao_calculada.score_5;
+      scorePercentual = resultado.pontuacao_calculada.score_percentual;
+    } else {
       scoreValue = resultado.pontuacao_calculada.score_5 === null ? '' : resultado.pontuacao_calculada.score_5;
       scorePercentual = resultado.pontuacao_calculada.score_percentual === null ? '' : resultado.pontuacao_calculada.score_percentual;
     }
@@ -1492,7 +1495,7 @@ function executarAuditoriaV3(dados) {
       ID_DOCUMENTO: '',
       LINK_DOCUMENTO: '',
       ITENS_AVALIADOS: tipo === 'PLANO' ? resultado.criterios.length : resultado.pontuacao_calculada.itens_avaliados,
-      ITENS_NA: tipo === 'PLANO' ? '' : resultado.pontuacao_calculada.itens_na,
+      ITENS_NA: tipo === 'PLANO' ? 0 : resultado.pontuacao_calculada.itens_na,
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
       ERRO: '',
       CONCLUIDO_EM: ''
@@ -1793,7 +1796,9 @@ function audV3MontarPrompt_(ctx) {
       'A transcrição contém a análise já realizada pelo analista. Organize e aperfeiçoe a redação, sem auditar o analista e sem substituir os achados por critérios genéricos.',
       'Identifique se a equipe analisada é SDR ou CLOSER exclusivamente pelo conteúdo. Se houver dúvida real, use a função mencionada com maior clareza na análise.',
       'Crie um item em criterios para cada parâmetro efetivamente analisado. Preserve nomes específicos como Uso da Cadência, Link da gravação, PDF da proposta ou outros citados.',
-      'Para cada parâmetro, normalize o status somente como Correto, Parcial ou Incorreto e escreva uma análise substantiva, específica e fiel às evidências e exemplos mencionados.',
+      'Para cada parâmetro, normalize o status somente como ATINGIDO, PARCIAL ou NAO_EXECUTADO e escreva uma análise substantiva, específica e fiel às evidências e exemplos mencionados.',
+      'Use ATINGIDO quando o parâmetro foi executado corretamente; PARCIAL quando houve execução incompleta ou inconsistente; NAO_EXECUTADO quando não houve execução ou houve descumprimento integral.',
+      'Não crie notas. O Board calculará a régua fixa depois da resposta: Atingido = 1,0; Parcial = 0,5; Não executado = 0,0.',
       'Não invente parâmetros, pessoas, empresas, leads, links, métricas, notas, falhas, resultados ou recomendações ausentes na transcrição.',
       'Converta os direcionamentos do analista em ações necessárias práticas. Cada ação deve ter título curto e descrição com o comportamento esperado.',
       'Inclua em leads_analisados somente nomes ou URLs explicitamente presentes. Se não houver, devolva uma lista vazia.',
@@ -1863,6 +1868,7 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
           id: String(criterio.id || ('parametro_' + (indice + 1))),
           nome: nome,
           status: audV3NormalizarStatusPlano_(criterio.status),
+          nota: audV3NotaStatusPlano_(criterio.status),
           analise: analise,
           comentario: analise
         };
@@ -1883,6 +1889,18 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
       .map(audV3LimparTextoPlano_)
       .filter(Boolean);
     resultado.encerramento = audV3LimparTextoPlano_(resultado.encerramento || '');
+    const somaNotas = resultado.criterios.reduce(function(total, criterio) { return total + criterio.nota; }, 0);
+    const totalCriterios = resultado.criterios.length;
+    const proporcao = totalCriterios ? somaNotas / totalCriterios : 0;
+    resultado.pontuacao_calculada = {
+      itens_avaliados: totalCriterios,
+      itens_na: 0,
+      soma_pontos: Math.round(somaNotas * 10) / 10,
+      maximo_aplicavel: totalCriterios,
+      score_5: Math.round(proporcao * 50) / 10,
+      score_percentual: Math.round(proporcao * 1000) / 10,
+      regra: 'Atingido = 1,0; Parcial = 0,5; Não executado = 0,0'
+    };
     return resultado;
   }
 
@@ -1966,9 +1984,16 @@ function audV3LimparTextoPlano_(valor) {
 function audV3NormalizarStatusPlano_(valor) {
   const status = String(valor || '').toUpperCase();
   if (/PARCIAL/.test(status)) return 'Parcial';
-  if (/INCORRETO|INCOMPLETO|N(?:A|Ã)O CONFORME/.test(status)) return 'Incorreto';
-  if (/CORRETO|COMPLETO|CONFORME/.test(status)) return 'Correto';
+  if (/NAO_EXECUTADO|N(?:A|Ã)O EXECUTADO|INCORRETO|INCOMPLETO|N(?:A|Ã)O CONFORME/.test(status)) return 'Não executado';
+  if (/ATINGIDO|CORRETO|COMPLETO|CONFORME/.test(status)) return 'Atingido';
   return 'Parcial';
+}
+
+function audV3NotaStatusPlano_(valor) {
+  const status = audV3NormalizarStatusPlano_(valor);
+  if (status === 'Atingido') return 1;
+  if (status === 'Parcial') return 0.5;
+  return 0;
 }
 
 function audV3NormalizarLeiturasSdr_(resultado, criterios) {
@@ -2227,7 +2252,7 @@ function audV3SchemaRespostaPlano_() {
           properties: {
             id: { type: 'STRING' },
             nome: { type: 'STRING' },
-            status: { type: 'STRING', enum: ['Correto', 'Parcial', 'Incorreto'] },
+            status: { type: 'STRING', enum: ['ATINGIDO', 'PARCIAL', 'NAO_EXECUTADO'] },
             analise: texto
           },
           required: ['id', 'nome', 'status', 'analise']
@@ -2575,7 +2600,7 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
   criterios.forEach(c => {
     body.appendParagraph(audV3LimparTextoPlano_(c.nome || c.id)).setBold(true);
     const pStatus = body.appendParagraph('');
-    pStatus.appendText(`(${audV3NormalizarStatusPlano_(c.status)}) `).setBold(true);
+    pStatus.appendText(`(${audV3NormalizarStatusPlano_(c.status)} — ${audV3NotaStatusPlano_(c.status).toFixed(1).replace('.', ',')}) `).setBold(true);
     pStatus.appendText(audV3LimparTextoPlano_(c.analise || c.comentario || '')).setBold(false);
     pStatus.setSpacingAfter(12);
   });
@@ -2594,6 +2619,14 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
     body.appendParagraph('Nenhuma ação registrada.');
   }
   body.appendParagraph('').setSpacingAfter(6);
+
+  const pontuacao = r.pontuacao_calculada || {};
+  body.appendParagraph('Resultado consolidado').setBold(true);
+  body.appendParagraph(
+    'Nota: ' + Number(pontuacao.score_5 || 0).toFixed(1).replace('.', ',') + ' de 5,0 | ' +
+    Number(pontuacao.score_percentual || 0).toFixed(1).replace('.', ',') + '% de aderência'
+  ).setSpacingAfter(12);
+  body.appendParagraph('Régua: Atingido = 1,0 | Parcial = 0,5 | Não executado = 0,0').setItalic(true).setSpacingAfter(12);
 
   body.appendParagraph('📌 As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.').setSpacingAfter(12);
 
@@ -3303,6 +3336,7 @@ function audV3ResultadoTexto_(r, tipoAuditoria) {
       return audV3LimparTextoPlano_(item.nome) + ' (' + audV3NormalizarStatusPlano_(item.status) + '): ' +
         audV3LimparTextoPlano_(item.analise || item.comentario);
     });
+    const pontuacao = r.pontuacao_calculada || {};
     const acoes = (r.acoes || []).map(function(item) {
       if (typeof item === 'string') return audV3LimparTextoPlano_(item);
       return [audV3LimparTextoPlano_(item.titulo), audV3LimparTextoPlano_(item.descricao)].filter(Boolean).join(': ');
@@ -3310,7 +3344,8 @@ function audV3ResultadoTexto_(r, tipoAuditoria) {
     return [
       'PLANO DE OTIMIZAÇÃO ' + String(r.equipe_analisada || '').toUpperCase(),
       '', 'PARÂMETROS ANALISADOS', criterios.join('\n'),
-      '', 'AÇÕES NECESSÁRIAS', acoes.join('\n')
+      '', 'AÇÕES NECESSÁRIAS', acoes.join('\n'),
+      '', 'RESULTADO CONSOLIDADO', String(pontuacao.score_5 || 0) + ' / 5 (' + String(pontuacao.score_percentual || 0) + '%)'
     ].join('\n');
   }
 
@@ -3412,7 +3447,7 @@ function audV3PromptSistemaPlano_() {
     'A fonte recebida é a transcrição manual de uma análise de Plano de Otimização já realizada por um analista.',
     'Sua função é estruturar os achados do analista em um relatório claro, construtivo e pronto para publicação no Circle; não é reavaliar o analista nem executar uma auditoria de pitch.',
     'Mantenha fidelidade absoluta ao conteúdo fornecido. Você pode corrigir linguagem, agrupar repetições e tornar recomendações mais práticas, mas não pode inventar fatos ou completar lacunas.',
-    'Use apenas os parâmetros realmente mencionados e classifique cada um como Correto, Parcial ou Incorreto.',
+    'Use apenas os parâmetros realmente mencionados e classifique cada um como ATINGIDO, PARCIAL ou NAO_EXECUTADO.',
     'Nunca exponha nomes técnicos de campos, instruções internas ou marcadores de raciocínio.',
     'Você DEVE retornar estritamente a estrutura JSON solicitada, sem texto adicional nem formatação Markdown extra.'
   ].join('\n');

@@ -5661,10 +5661,10 @@
 
   function statusPlanoFront_(valor) {
     const status = String(valor || '').toUpperCase();
-    if (status.includes('PARCIAL')) return { texto: 'Parcial', cor: '#b54708' };
-    if (/INCORRETO|INCOMPLETO|NÃO CONFORME|NAO CONFORME/.test(status)) return { texto: 'Incorreto', cor: '#b42318' };
-    if (/CORRETO|COMPLETO|CONFORME/.test(status)) return { texto: 'Correto', cor: '#16803a' };
-    return { texto: 'Parcial', cor: '#b54708' };
+    if (status.includes('PARCIAL')) return { texto: 'Parcial', nota: 0.5, cor: '#b54708' };
+    if (/NAO_EXECUTADO|NÃO EXECUTADO|NAO EXECUTADO|INCORRETO|INCOMPLETO|NÃO CONFORME|NAO CONFORME/.test(status)) return { texto: 'Não executado', nota: 0, cor: '#b42318' };
+    if (/ATINGIDO|CORRETO|COMPLETO|CONFORME/.test(status)) return { texto: 'Atingido', nota: 1, cor: '#16803a' };
+    return { texto: 'Parcial', nota: 0.5, cor: '#b54708' };
   }
 
  function renderizarConteudoPlanoV3(r) {
@@ -5695,7 +5695,7 @@
       const status = statusPlanoFront_(c.status);
       html += `<section style="padding:16px 0;border-bottom:1px solid #eaecf0;">`;
       html += `<div style="font-weight:700;margin-bottom:7px;">${escapeHtml(limparTextoPlanoFront_(c.nome || c.id))}</div>`;
-      html += `<div><strong style="color:${status.cor};">(${status.texto})</strong> ${escapeHtml(limparTextoPlanoFront_(c.analise || c.comentario || ''))}</div>`;
+      html += `<div><strong style="color:${status.cor};">(${status.texto} — ${status.nota.toFixed(1).replace('.', ',')})</strong> ${escapeHtml(limparTextoPlanoFront_(c.analise || c.comentario || ''))}</div>`;
       html += `</section>`;
     });
 
@@ -5713,6 +5713,14 @@
     }
 
     html += `<p>📌 As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.</p><br>`;
+
+    const pontuacao = r.pontuacao_calculada || {};
+    html += `<section style="padding:18px 0;border-top:1px solid #d0d5dd;border-bottom:1px solid #d0d5dd;margin-bottom:20px;">`;
+    html += `<div style="font-weight:700;margin-bottom:8px;">Resultado consolidado</div>`;
+    html += `<div>Nota: <strong>${Number(pontuacao.score_5 || 0).toFixed(1).replace('.', ',')} de 5,0</strong></div>`;
+    html += `<div>Aderência: <strong>${Number(pontuacao.score_percentual || 0).toFixed(1).replace('.', ',')}%</strong></div>`;
+    html += `<div class="small" style="margin-top:7px;">Régua: Atingido = 1,0 | Parcial = 0,5 | Não executado = 0,0</div>`;
+    html += `</section>`;
 
     const links = Array.isArray(r.leads_analisados) ? r.leads_analisados : [];
     if (links.length) {

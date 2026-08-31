@@ -525,7 +525,8 @@ function comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resulta
   criterios.forEach(function(criterio) {
     linhas.push('');
     linhas.push('**' + audV3LimparTextoPlano_(criterio.nome || criterio.id || 'Parâmetro') + '**');
-    linhas.push('**(' + audV3NormalizarStatusPlano_(criterio.status) + ')** ' +
+    linhas.push('**(' + audV3NormalizarStatusPlano_(criterio.status) + ' — ' +
+      audV3NotaStatusPlano_(criterio.status).toFixed(1).replace('.', ',') + ')** ' +
       audV3LimparTextoPlano_(criterio.analise || criterio.comentario || ''));
   });
 
@@ -541,6 +542,12 @@ function comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resulta
   } else {
     linhas.push('Nenhuma ação registrada.');
   }
+  linhas.push('');
+  const pontuacao = resultado.pontuacao_calculada || {};
+  linhas.push('**Resultado consolidado**');
+  linhas.push('Nota: ' + Number(pontuacao.score_5 || 0).toFixed(1).replace('.', ',') + ' de 5,0 | ' +
+    Number(pontuacao.score_percentual || 0).toFixed(1).replace('.', ',') + '% de aderência');
+  linhas.push('Régua: Atingido = 1,0 | Parcial = 0,5 | Não executado = 0,0');
   linhas.push('');
   linhas.push('As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.');
 
