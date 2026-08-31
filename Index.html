@@ -5650,6 +5650,23 @@
     return renderizarConteudoSdrV3(r, auditoria);
   }
 
+  function limparTextoPlanoFront_(valor) {
+    return String(valor === null || valor === undefined ? '' : valor)
+      .replace(/\b(?:FATO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|REGRA[_\s-]*PITCH|SUGEST(?:A|Ã)O[_\s-]*ENABLEMENT|FOCO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|FOCO[_\s-]*ENABLEMENT)\s*:\s*/gi, '')
+      .replace(/\s*\((?:INCOMPLETO|N(?:A|Ã)O EVIDENCIADO)\s*[—-]\s*0(?:[.,]0)?\)\s*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([,.;:!?])/g, '$1')
+      .trim();
+  }
+
+  function statusPlanoFront_(valor) {
+    const status = String(valor || '').toUpperCase();
+    if (status.includes('PARCIAL')) return { texto: 'Parcial', cor: '#b54708' };
+    if (/INCORRETO|INCOMPLETO|NÃO CONFORME|NAO CONFORME/.test(status)) return { texto: 'Incorreto', cor: '#b42318' };
+    if (/CORRETO|COMPLETO|CONFORME/.test(status)) return { texto: 'Correto', cor: '#16803a' };
+    return { texto: 'Parcial', cor: '#b54708' };
+  }
+
  function renderizarConteudoPlanoV3(r) {
     if (!r || !Object.keys(r).length) return '<div class="empty">Resultado estruturado indisponível.</div>';
     
@@ -5674,35 +5691,11 @@
     html += `<p>📝 <strong>Os parâmetros foram:</strong></p>`;
     html += `<p><strong>Equipe Analisada: ${escapeHtml(funcaoAuditada.toUpperCase())} &rarr; ${escapeHtml(colaborador)}</strong></p>`;
 
-    let pontosObtidos = 0;
-    let pontosPossiveis = 0;
     criterios.forEach(c => {
-      const s = String(c.status || '').toLowerCase();
-      const naoAplicavel = s.includes('não aplic') || s.includes('nao aplic') || s === 'n/a';
-      let nota = 0;
-      let status = 'Incompleto';
-      let cor = '#b42318';
-      if (naoAplicavel) {
-        nota = null;
-        status = 'Não aplicável';
-        cor = '#667085';
-      } else if ((s.includes('completo') && !s.includes('incompleto')) || (s.includes('correto') && !s.includes('incorreto'))) {
-        nota = 1;
-        status = 'Completo';
-        cor = '#16803a';
-      } else if (s.includes('parcial')) {
-        nota = 0.5;
-        status = 'Parcial';
-        cor = '#b54708';
-      }
-      if (nota !== null) {
-        pontosObtidos += nota;
-        pontosPossiveis += 1;
-      }
-      const notaTexto = nota === null ? 'N/A' : Number(nota).toFixed(1).replace('.', ',');
+      const status = statusPlanoFront_(c.status);
       html += `<section style="padding:16px 0;border-bottom:1px solid #eaecf0;">`;
-      html += `<div style="font-weight:700;margin-bottom:7px;">${escapeHtml(c.nome || c.id)}</div>`;
-      html += `<div>${escapeHtml(c.comentario || 'Sem comentário registrado.')} <strong style="color:${cor};">(${status} — ${notaTexto})</strong></div>`;
+      html += `<div style="font-weight:700;margin-bottom:7px;">${escapeHtml(limparTextoPlanoFront_(c.nome || c.id))}</div>`;
+      html += `<div><strong style="color:${status.cor};">(${status.texto})</strong> ${escapeHtml(limparTextoPlanoFront_(c.analise || c.comentario || ''))}</div>`;
       html += `</section>`;
     });
 
@@ -5710,7 +5703,9 @@
     if (acoes.length) {
       html += `<ol style="padding-left:20px;margin-top:8px;">`;
       acoes.forEach(a => {
-        html += `<li style="margin-bottom:10px;">${escapeHtml(a)}</li>`;
+        const titulo = typeof a === 'string' ? '' : limparTextoPlanoFront_(a.titulo || a.acao || '');
+        const descricao = limparTextoPlanoFront_(typeof a === 'string' ? a : (a.descricao || a.orientacao || ''));
+        html += `<li style="margin-bottom:10px;">${titulo ? '<strong>' + escapeHtml(titulo) + ':</strong> ' : ''}${escapeHtml(descricao)}</li>`;
       });
       html += `</ol><br>`;
     } else {
@@ -5719,24 +5714,21 @@
 
     html += `<p>📌 As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.</p><br>`;
 
-    const aproveitamento = pontosPossiveis ? Math.round((pontosObtidos / pontosPossiveis) * 10000) / 100 : 0;
-    const classificacao = aproveitamento >= 85 ? 'Muito bom' : (aproveitamento >= 70 ? 'Bom' : (aproveitamento >= 50 ? 'Atenção' : 'Crítico'));
-    html += `<section style="padding:18px 0;border-top:1px solid #d0d5dd;border-bottom:1px solid #d0d5dd;margin-bottom:20px;">`;
-    html += `<div style="font-weight:700;margin-bottom:8px;">Resultado da avaliação</div>`;
-    html += `<div>Pontos obtidos: <strong>${String(pontosObtidos).replace('.', ',')} de ${pontosPossiveis}</strong></div>`;
-    html += `<div>Aproveitamento: <strong>${String(aproveitamento).replace('.', ',')}%</strong></div>`;
-    html += `<div>Classificação: <strong>${escapeHtml(classificacao)}</strong></div>`;
-    html += `</section>`;
+    const links = Array.isArray(r.leads_analisados) ? r.leads_analisados : [];
+    if (links.length) {
+      html += `<p><strong>Leads analisados:</strong><br>`;
+      links.forEach(l => {
+        const texto = limparTextoPlanoFront_(l);
+        if(texto.startsWith('http')) html += `<a href="${escapeAtributo(texto)}" target="_blank" style="color: #2563eb; text-decoration: underline;">${escapeHtml(texto)}</a><br>`;
+        else html += `${escapeHtml(texto)}<br>`;
+      });
+      html += `</p><br>`;
+    }
     
-    html += `<p><strong>Leads analisados:</strong><br>`;
-    const links = lead.split(/\s+/);
-    links.forEach(l => {
-      if(l.startsWith('http')) html += `<a href="${escapeAtributo(l)}" target="_blank" style="color: #2563eb; text-decoration: underline;">${escapeHtml(l)}</a><br>`;
-      else html += `${escapeHtml(l)}<br>`;
-    });
-    html += `</p><br>`;
-    
-    html += `<p>🚀 A análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias que acelerem o desempenho comercial de forma escalonável, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil de vendas. O direcionamento aqui apresentado visa tornar a abordagem mais assertiva, garantindo maior previsibilidade nos resultados e contribuindo diretamente para o crescimento da empresa 🚀</p><br>`;
+    const encerramentoPadrao = String(funcaoAuditada).toUpperCase() === 'CLOSER'
+      ? '🚀 Esta análise foi feita para ajudar o Closer a evoluir no processo de fechamento da venda, com observações e sugestões práticas baseadas na metodologia VOLUM. O objetivo é tornar a rotina comercial mais eficiente, previsível e focada na conversão. 🚀'
+      : '🚀 Esta análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias escaláveis, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil. 🚀';
+    html += `<p>${escapeHtml(limparTextoPlanoFront_(r.encerramento) || encerramentoPadrao)}</p><br>`;
     
     html += `<p>FYI<br>No que precisarem, estou à disposição 🧑&zwj;💻</p>`;
     

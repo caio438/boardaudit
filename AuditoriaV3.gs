@@ -1477,10 +1477,7 @@ function executarAuditoriaV3(dados) {
 
     let scoreValue = '';
     let scorePercentual = '';
-    if (tipo === 'PLANO') {
-      scoreValue = resultado.pontuacao_calculada.score_5 === null ? '' : resultado.pontuacao_calculada.score_5;
-      scorePercentual = resultado.pontuacao_calculada.score_percentual === null ? '' : resultado.pontuacao_calculada.score_percentual;
-    } else {
+    if (tipo !== 'PLANO') {
       scoreValue = resultado.pontuacao_calculada.score_5 === null ? '' : resultado.pontuacao_calculada.score_5;
       scorePercentual = resultado.pontuacao_calculada.score_percentual === null ? '' : resultado.pontuacao_calculada.score_percentual;
     }
@@ -1494,8 +1491,8 @@ function executarAuditoriaV3(dados) {
       SEMAFORO: tipo === 'CLOSER' ? String((resultado.semaforo_geral || {}).cor || '') : '',
       ID_DOCUMENTO: '',
       LINK_DOCUMENTO: '',
-      ITENS_AVALIADOS: resultado.pontuacao_calculada.itens_avaliados,
-      ITENS_NA: resultado.pontuacao_calculada.itens_na,
+      ITENS_AVALIADOS: tipo === 'PLANO' ? resultado.criterios.length : resultado.pontuacao_calculada.itens_avaliados,
+      ITENS_NA: tipo === 'PLANO' ? '' : resultado.pontuacao_calculada.itens_na,
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
       ERRO: '',
       CONCLUIDO_EM: ''
@@ -1788,6 +1785,24 @@ function audV3MontarPrompt_(ctx) {
     regraConclusao = 'Diferencie reunião efetivamente agendada de tentativa de agendamento ou follow-up combinado.';
   }
 
+  if (tipo === 'PLANO') {
+    return [
+      'Transforme a transcrição manual da análise em um Plano de Otimização pronto para revisão e publicação no Circle. Responda somente no JSON solicitado.',
+      '<METADADOS>\n' + JSON.stringify(meta, null, 2) + '\n</METADADOS>',
+      '<TRANSCRICAO_DA_ANALISE>\n' + String(ctx.transcricao.CONTEUDO || '') + '\n</TRANSCRICAO_DA_ANALISE>',
+      'A transcrição contém a análise já realizada pelo analista. Organize e aperfeiçoe a redação, sem auditar o analista e sem substituir os achados por critérios genéricos.',
+      'Identifique se a equipe analisada é SDR ou CLOSER exclusivamente pelo conteúdo. Se houver dúvida real, use a função mencionada com maior clareza na análise.',
+      'Crie um item em criterios para cada parâmetro efetivamente analisado. Preserve nomes específicos como Uso da Cadência, Link da gravação, PDF da proposta ou outros citados.',
+      'Para cada parâmetro, normalize o status somente como Correto, Parcial ou Incorreto e escreva uma análise substantiva, específica e fiel às evidências e exemplos mencionados.',
+      'Não invente parâmetros, pessoas, empresas, leads, links, métricas, notas, falhas, resultados ou recomendações ausentes na transcrição.',
+      'Converta os direcionamentos do analista em ações necessárias práticas. Cada ação deve ter título curto e descrição com o comportamento esperado.',
+      'Inclua em leads_analisados somente nomes ou URLs explicitamente presentes. Se não houver, devolva uma lista vazia.',
+      'O encerramento deve ser construtivo e adequado à equipe identificada: evolução do fechamento para CLOSER; aderência ao funil e conversão de leads para SDR.',
+      'É proibido devolver ou exibir rótulos internos como FATO_TRANSCRICAO, REGRA_PITCH, SUGESTAO_ENABLEMENT, FOCO_TRANSCRICAO, FOCO_ENABLEMENT ou variações desses nomes.',
+      'Não inclua pontuação, gráfico, score ou classificação numérica. O resultado deve ser limpo, legível e pronto para compartilhar.'
+    ].join('\n\n');
+  }
+
   return [
     'Produza UMA auditoria individual de ' + tipo + '. Responda somente no JSON solicitado.',
     'REGRA OBRIGATÓRIA DE TAMANHO: o JSON completo deve ter no máximo ' + (tipo === 'CLOSER' ? '30.000' : '20.000') + ' caracteres.',
@@ -1820,24 +1835,54 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   const tipo = String(tipoAuditoria || 'SDR').toUpperCase();
   
   if (tipo === 'PLANO') {
+    const funcaoInformada = String(resultado.equipe_analisada || resultado.funcao_auditada || '').toUpperCase();
+    const funcaoAuditada = funcaoInformada === 'CLOSER' ? 'CLOSER' : 'SDR';
+    const colaboradorInformado = audV3LimparTextoPlano_(identidade.sdr);
+    const colaborador = colaboradorInformado && !/^n(?:a|ã)o evidenciado$/i.test(colaboradorInformado)
+      ? colaboradorInformado
+      : audV3LimparTextoPlano_(resultado.colaborador || 'Não identificado');
+    resultado.schema_versao = '2.0';
+    resultado.equipe_analisada = funcaoAuditada;
+    resultado.colaborador = colaborador;
     resultado.metadados = resultado.metadados || {};
     resultado.metadados.empresa = identidade.empresa;
-    resultado.metadados.sdr = identidade.sdr;
+    resultado.metadados.funcao_auditada = funcaoAuditada;
+    resultado.metadados.colaborador = colaborador;
+    resultado.metadados.sdr = funcaoAuditada === 'SDR' ? colaborador : '';
+    resultado.metadados.closer = funcaoAuditada === 'CLOSER' ? colaborador : '';
     resultado.metadados.lead = identidade.lead;
     resultado.metadados.data_hora = audV3DataTexto_(interacao.DATA_INTERACAO);
-    
-    const media = (resultado.score && resultado.score.media) || 0;
-    const percentual = (resultado.score && resultado.score.percentual) || 0;
-    
-    resultado.pontuacao_calculada = {
-      itens_avaliados: (resultado.criterios || []).length,
-      itens_na: 0,
-      soma_pontos: media,
-      maximo_aplicavel: 5,
-      score_5: media,
-      score_percentual: percentual,
-      regra: 'Score baseado na auditoria de plano de otimização'
-    };
+
+    resultado.criterios = (Array.isArray(resultado.criterios) ? resultado.criterios : [])
+      .map(function(criterio, indice) {
+        criterio = criterio || {};
+        const nome = audV3LimparTextoPlano_(criterio.nome || criterio.id || ('Parâmetro ' + (indice + 1)));
+        const analise = audV3LimparTextoPlano_(criterio.analise || criterio.comentario || criterio.descricao || '');
+        if (!nome || !analise) return null;
+        return {
+          id: String(criterio.id || ('parametro_' + (indice + 1))),
+          nome: nome,
+          status: audV3NormalizarStatusPlano_(criterio.status),
+          analise: analise,
+          comentario: analise
+        };
+      })
+      .filter(Boolean);
+
+    resultado.acoes = (Array.isArray(resultado.acoes) ? resultado.acoes : [])
+      .map(function(acao) {
+        if (typeof acao === 'string') return { titulo: '', descricao: audV3LimparTextoPlano_(acao) };
+        acao = acao || {};
+        return {
+          titulo: audV3LimparTextoPlano_(acao.titulo || acao.acao || ''),
+          descricao: audV3LimparTextoPlano_(acao.descricao || acao.orientacao || acao.detalhamento || '')
+        };
+      })
+      .filter(function(acao) { return acao.titulo || acao.descricao; });
+    resultado.leads_analisados = (Array.isArray(resultado.leads_analisados) ? resultado.leads_analisados : [])
+      .map(audV3LimparTextoPlano_)
+      .filter(Boolean);
+    resultado.encerramento = audV3LimparTextoPlano_(resultado.encerramento || '');
     return resultado;
   }
 
@@ -1906,6 +1951,24 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
     audV3NormalizarLeiturasSdr_(resultado, criterios);
   }
   return resultado;
+}
+
+function audV3LimparTextoPlano_(valor) {
+  return String(valor === null || valor === undefined ? '' : valor)
+    .replace(/\b(?:FATO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|REGRA[_\s-]*PITCH|SUGEST(?:A|Ã)O[_\s-]*ENABLEMENT|FOCO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|FOCO[_\s-]*ENABLEMENT)\s*:\s*/gi, '')
+    .replace(/\s*\((?:INCOMPLETO|N(?:A|Ã)O EVIDENCIADO)\s*[—-]\s*0(?:[.,]0)?\)\s*/gi, ' ')
+    .replace(/[“”"']{2,}/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim();
+}
+
+function audV3NormalizarStatusPlano_(valor) {
+  const status = String(valor || '').toUpperCase();
+  if (/PARCIAL/.test(status)) return 'Parcial';
+  if (/INCORRETO|INCOMPLETO|N(?:A|Ã)O CONFORME/.test(status)) return 'Incorreto';
+  if (/CORRETO|COMPLETO|CONFORME/.test(status)) return 'Correto';
+  return 'Parcial';
 }
 
 function audV3NormalizarLeiturasSdr_(resultado, criterios) {
@@ -2150,18 +2213,13 @@ function audV3SchemaRespostaApi_(tipoAuditoria) {
 }
 
 function audV3SchemaRespostaPlano_() {
+  const texto = { type: 'STRING' };
   return {
     type: 'OBJECT',
     properties: {
-      score: {
-        type: 'OBJECT',
-        properties: {
-          media: { type: 'NUMBER' },
-          percentual: { type: 'NUMBER' },
-          classificacao: { type: 'STRING' }
-        },
-        required: ['media', 'percentual', 'classificacao']
-      },
+      schema_versao: texto,
+      equipe_analisada: { type: 'STRING', enum: ['SDR', 'CLOSER'] },
+      colaborador: texto,
       criterios: {
         type: 'ARRAY',
         items: {
@@ -2169,18 +2227,24 @@ function audV3SchemaRespostaPlano_() {
           properties: {
             id: { type: 'STRING' },
             nome: { type: 'STRING' },
-            status: { type: 'STRING' },
-            nota: { type: 'NUMBER' },
-            comentario: { type: 'STRING' }
+            status: { type: 'STRING', enum: ['Correto', 'Parcial', 'Incorreto'] },
+            analise: texto
           },
-          required: ['id', 'nome', 'status', 'nota', 'comentario']
+          required: ['id', 'nome', 'status', 'analise']
         }
       },
-      pontosFortes: { type: 'ARRAY', items: { type: 'STRING' } },
-      oportunidades: { type: 'ARRAY', items: { type: 'STRING' } },
-      acoes: { type: 'ARRAY', items: { type: 'STRING' } }
+      acoes: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { titulo: texto, descricao: texto },
+          required: ['titulo', 'descricao']
+        }
+      },
+      leads_analisados: { type: 'ARRAY', items: texto },
+      encerramento: texto
     },
-    required: ['score', 'criterios', 'pontosFortes', 'oportunidades', 'acoes']
+    required: ['schema_versao', 'equipe_analisada', 'colaborador', 'criterios', 'acoes', 'leads_analisados', 'encerramento']
   };
 }
 
@@ -2484,8 +2548,8 @@ function audV3CriarDocumento_(cliente, interacao, pitch, modelo, r) {
 
 function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
   const m = r.metadados || {};
-  const funcaoAuditada = m.closer ? 'CLOSER' : (m.sdr ? 'SDR' : 'Consultor');
-  const colaborador = m.closer || m.sdr || 'Não identificado';
+  const funcaoAuditada = String(m.funcao_auditada || r.equipe_analisada || (m.closer ? 'CLOSER' : 'SDR')).toUpperCase() === 'CLOSER' ? 'CLOSER' : 'SDR';
+  const colaborador = m.colaborador || m.closer || m.sdr || r.colaborador || 'Não identificado';
   const data = audV3DataTexto_(interacao.DATA_INTERACAO).replace(/[/:]/g, '-');
   const nome = ['AUDITORIA PLANO DE OTIMIZAÇÃO', m.empresa || cliente.NOME_CLIENTE, colaborador, data].filter(Boolean).join(' - ').slice(0, 220);
   
@@ -2509,10 +2573,10 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
 
   const criterios = Array.isArray(r.criterios) ? r.criterios : [];
   criterios.forEach(c => {
-    body.appendParagraph(c.nome || c.id).setBold(true);
+    body.appendParagraph(audV3LimparTextoPlano_(c.nome || c.id)).setBold(true);
     const pStatus = body.appendParagraph('');
-    pStatus.appendText(`(${c.status || '-'}) `).setBold(true);
-    pStatus.appendText(c.comentario || '-').setBold(false);
+    pStatus.appendText(`(${audV3NormalizarStatusPlano_(c.status)}) `).setBold(true);
+    pStatus.appendText(audV3LimparTextoPlano_(c.analise || c.comentario || '')).setBold(false);
     pStatus.setSpacingAfter(12);
   });
 
@@ -2520,7 +2584,11 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
   const acoes = Array.isArray(r.acoes) ? r.acoes : [];
   if (acoes.length) {
     acoes.forEach(a => {
-      body.appendListItem(a).setGlyphType(DocumentApp.GlyphType.BULLET);
+      const titulo = audV3LimparTextoPlano_(typeof a === 'string' ? '' : a.titulo);
+      const descricao = audV3LimparTextoPlano_(typeof a === 'string' ? a : a.descricao);
+      const item = body.appendListItem('').setGlyphType(DocumentApp.GlyphType.NUMBER);
+      if (titulo) item.appendText(titulo + ': ').setBold(true);
+      if (descricao) item.appendText(descricao).setBold(false);
     });
   } else {
     body.appendParagraph('Nenhuma ação registrada.');
@@ -2528,16 +2596,15 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
   body.appendParagraph('').setSpacingAfter(6);
 
   body.appendParagraph('📌 As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.').setSpacingAfter(12);
-  
-  body.appendParagraph('Leads analisados:').setBold(true);
-  const leadText = m.lead || interacao.LEAD || 'Não evidenciado';
-  const leads = leadText.split(/\s+/);
-  leads.forEach(l => {
-    body.appendParagraph(l);
-  });
-  body.appendParagraph('').setSpacingAfter(6);
 
-  body.appendParagraph('🚀 A análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias que acelerem o desempenho comercial de forma escalonável, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil de vendas. O direcionamento aqui apresentado visa tornar a abordagem mais assertiva, garantindo maior previsibilidade nos resultados e contribuindo diretamente para o crescimento da empresa 🚀').setSpacingAfter(12);
+  const leads = Array.isArray(r.leads_analisados) ? r.leads_analisados : [];
+  if (leads.length) {
+    body.appendParagraph('Leads analisados:').setBold(true);
+    leads.forEach(l => body.appendParagraph(audV3LimparTextoPlano_(l)));
+    body.appendParagraph('').setSpacingAfter(6);
+  }
+
+  body.appendParagraph(audV3LimparTextoPlano_(r.encerramento) || audV3EncerramentoPlanoPadrao_(funcaoAuditada)).setSpacingAfter(12);
   
   body.appendParagraph('FYI\nNo que precisarem, estou à disposição 🧑‍💻');
 
@@ -2545,6 +2612,13 @@ function audV3CriarDocumentoPlano_(cliente, interacao, pitch, modelo, r) {
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
   if (pastaId) DriveApp.getFileById(doc.getId()).moveTo(DriveApp.getFolderById(pastaId));
   return { id: doc.getId(), url: doc.getUrl() };
+}
+
+function audV3EncerramentoPlanoPadrao_(funcaoAuditada) {
+  if (String(funcaoAuditada || '').toUpperCase() === 'CLOSER') {
+    return '🚀 Esta análise foi feita para ajudar o Closer a evoluir no processo de fechamento da venda, com observações e sugestões práticas baseadas na metodologia VOLUM. O objetivo é tornar a rotina comercial mais eficiente, previsível e focada na conversão, apoiando o crescimento consistente da operação e o desenvolvimento de quem conduz as negociações. 🚀';
+  }
+  return '🚀 Esta análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias escaláveis, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil. O direcionamento busca tornar a abordagem do SDR mais assertiva, previsível e consistente. 🚀';
 }
 
 function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
@@ -3225,12 +3299,18 @@ function audV3Tabela_(body, linhas) {
 function audV3ResultadoTexto_(r, tipoAuditoria) {
   const tipo = String(tipoAuditoria || 'SDR').toUpperCase();
   if (tipo === 'PLANO') {
-    const score = r.score || {};
+    const criterios = (r.criterios || []).map(function(item) {
+      return audV3LimparTextoPlano_(item.nome) + ' (' + audV3NormalizarStatusPlano_(item.status) + '): ' +
+        audV3LimparTextoPlano_(item.analise || item.comentario);
+    });
+    const acoes = (r.acoes || []).map(function(item) {
+      if (typeof item === 'string') return audV3LimparTextoPlano_(item);
+      return [audV3LimparTextoPlano_(item.titulo), audV3LimparTextoPlano_(item.descricao)].filter(Boolean).join(': ');
+    });
     return [
-      'AUDITORIA PLANO DE OTIMIZAÇÃO',
-      '', 'SCORE MÉDIA', score.media + ' / 5',
-      '', 'CLASSIFICAÇÃO', score.classificacao || '',
-      '', 'RESULTADO ESTRUTURADO', JSON.stringify(r, null, 2)
+      'PLANO DE OTIMIZAÇÃO ' + String(r.equipe_analisada || '').toUpperCase(),
+      '', 'PARÂMETROS ANALISADOS', criterios.join('\n'),
+      '', 'AÇÕES NECESSÁRIAS', acoes.join('\n')
     ].join('\n');
   }
 
@@ -3328,10 +3408,12 @@ function audV3ListarAuditoriasFront_() {
 
 function audV3PromptSistemaPlano_() {
   return [
-    'Atue como auditor sênior de processos comerciais e CRM da VOLUM.',
-    'Sua função é analisar a transcrição de um áudio/vídeo onde um consultor VOLUM avalia a utilização do CRM e do processo comercial do cliente.',
-    'ESTA NÃO É UMA REUNIÃO DE VENDAS. É uma auditoria operacional de Plano de Otimização.',
-    'Avalie se o diagnóstico do consultor foi preciso, se os pontos de melhoria do CRM foram bem identificados e se as ações recomendadas são claras e exequíveis.',
+    'Atue como editor sênior de Sales Enablement da VOLUM.',
+    'A fonte recebida é a transcrição manual de uma análise de Plano de Otimização já realizada por um analista.',
+    'Sua função é estruturar os achados do analista em um relatório claro, construtivo e pronto para publicação no Circle; não é reavaliar o analista nem executar uma auditoria de pitch.',
+    'Mantenha fidelidade absoluta ao conteúdo fornecido. Você pode corrigir linguagem, agrupar repetições e tornar recomendações mais práticas, mas não pode inventar fatos ou completar lacunas.',
+    'Use apenas os parâmetros realmente mencionados e classifique cada um como Correto, Parcial ou Incorreto.',
+    'Nunca exponha nomes técnicos de campos, instruções internas ou marcadores de raciocínio.',
     'Você DEVE retornar estritamente a estrutura JSON solicitada, sem texto adicional nem formatação Markdown extra.'
   ].join('\n');
 }

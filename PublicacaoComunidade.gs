@@ -523,18 +523,19 @@ function comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resulta
   ];
 
   criterios.forEach(function(criterio) {
-    const avaliacao = comunidadeAvaliacaoCriterio_(criterio.status);
     linhas.push('');
-    linhas.push('**' + String(criterio.nome || criterio.id || 'Critério') + '**');
-    linhas.push(String(criterio.comentario || 'Sem comentário registrado.'));
-    linhas.push('**Resultado: ' + avaliacao.resultado + ' | Nota: ' + avaliacao.nota + '**');
+    linhas.push('**' + audV3LimparTextoPlano_(criterio.nome || criterio.id || 'Parâmetro') + '**');
+    linhas.push('**(' + audV3NormalizarStatusPlano_(criterio.status) + ')** ' +
+      audV3LimparTextoPlano_(criterio.analise || criterio.comentario || ''));
   });
 
   linhas.push('');
   linhas.push('**Ações necessárias**');
   if (acoes.length) {
     acoes.forEach(function(acao) {
-      const texto = typeof acao === 'string' ? acao : (acao.acao || acao.descricao || JSON.stringify(acao));
+      const tituloAcao = typeof acao === 'string' ? '' : audV3LimparTextoPlano_(acao.titulo || acao.acao || '');
+      const descricaoAcao = audV3LimparTextoPlano_(typeof acao === 'string' ? acao : (acao.descricao || acao.orientacao || ''));
+      const texto = (tituloAcao ? '**' + tituloAcao + ':** ' : '') + descricaoAcao;
       linhas.push('• ' + String(texto));
     });
   } else {
@@ -543,7 +544,10 @@ function comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resulta
   linhas.push('');
   linhas.push('As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.');
 
-  const links = comunidadeExtrairLinks_(resultado, metadados, interacao);
+  const links = (Array.isArray(resultado.leads_analisados) ? resultado.leads_analisados : [])
+    .concat(comunidadeExtrairLinks_(resultado, metadados, interacao))
+    .map(audV3LimparTextoPlano_)
+    .filter(function(item, indice, lista) { return item && lista.indexOf(item) === indice; });
   if (links.length) {
     linhas.push('');
     linhas.push('**Leads analisados**');
@@ -553,7 +557,7 @@ function comunidadeMontarPublicacaoPlano_(auditoria, cliente, interacao, resulta
   }
   linhas.push('');
   linhas.push('**Encerramento**');
-  linhas.push('A análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias que acelerem o desempenho comercial de forma escalável, fortalecendo a aderência às melhores práticas do funil de vendas.');
+  linhas.push(audV3LimparTextoPlano_(resultado.encerramento) || audV3EncerramentoPlanoPadrao_(funcao));
   linhas.push('');
   linhas.push('FYI');
   linhas.push('No que precisarem, estou à disposição 🧑‍💻');
