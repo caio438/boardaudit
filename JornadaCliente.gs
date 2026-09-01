@@ -374,13 +374,13 @@ function salvarConfiguracaoJornadaCliente(dados) {
 function instalarAutomacaoJornadaCliente() {
   const funcao = 'SINCRONIZAR_JORNADA_CALENDARIO';
   const existentes = ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === funcao);
-  existentes.slice(1).forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  if (!existentes.length) ScriptApp.newTrigger(funcao).timeBased().everyHours(2).create();
+  existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  instalarAutomacaoCentral19h_();
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM') {
     instalarAutomacaoFormalizacoesAgenda_();
   }
   CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'SIM', 21600);
-  return { sucesso: true, mensagem: 'Sincronização da Agenda configurada para executar a cada duas horas.' };
+  return { sucesso: true, mensagem: 'Agenda incluída na rotina central diária das 19h.' };
 }
 
 function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
@@ -394,8 +394,8 @@ function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
   return {
     sucesso: true,
     inicio: String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave) || ''),
-    horarios: ['13:00', '18:30'],
-    mensagem: 'Formalizações automáticas configuradas para 13:00 e 18:30.'
+    horarios: ['19:00'],
+    mensagem: 'Formalizações automáticas incluídas na rotina central das 19h.'
   };
 }
 
@@ -409,15 +409,15 @@ function instalarAutomacaoFormalizacoesAgenda_() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === funcao)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  ScriptApp.newTrigger(funcao).timeBased().everyDays(1).atHour(13).nearMinute(0).inTimezone(APP.timezone).create();
-  ScriptApp.newTrigger(funcao).timeBased().everyDays(1).atHour(18).nearMinute(30).inTimezone(APP.timezone).create();
+  instalarAutomacaoCentral19h_();
 }
 
 function jornadaAutomacaoFormalizacoesInstalada_() {
-  return ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === 'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA').length >= 2;
+  return automacaoCentralInstalada_();
 }
 
-function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
+function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
+  opcoes = opcoes || {};
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return { sucesso: false, mensagem: 'Outra rotina de formalização já está em andamento.' };
   try {
@@ -432,7 +432,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
 
     // Atualiza primeiro a Agenda e os artefatos. A transcrição é suficiente para
     // formalizar; a ausência da gravação permanece somente como alerta operacional.
-    SINCRONIZAR_JORNADA_CALENDARIO();
+    if (!opcoes.pularSincronizacao) SINCRONIZAR_JORNADA_CALENDARIO();
     const fontesMinhas = jornadaListarFontesReunioes_().filter(item => item.tipo === 'AGENDA' && String(item.proprietario || 'MINHA').toUpperCase() === 'MINHA');
     const calendarios = {};
     fontesMinhas.forEach(fonte => {
@@ -449,7 +449,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
     const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item =>
       String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'
     );
-    const candidatas = lerObjetos_(APP.sheets.reunioesCalendario)
+    const todasCandidatas = lerObjetos_(APP.sheets.reunioesCalendario)
       .filter(item => item.ID_REUNIAO && item.ID_CLIENTE && new Date(item.FIM || item.INICIO).getTime() <= agora.getTime())
       .filter(item => new Date(item.INICIO).getTime() >= limite.getTime())
       .filter(item => calendarios[String(item.CALENDAR_ID || '')])
@@ -459,8 +459,9 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
         (item.ID_TRANSCRICAO && String(formalizacao.ID_TRANSCRICAO || '') === String(item.ID_TRANSCRICAO)) ||
         (item.ID_INTERACAO && String(formalizacao.ID_INTERACAO || '') === String(item.ID_INTERACAO))
       ))
-      .sort((a, b) => new Date(a.INICIO) - new Date(b.INICIO))
-      .slice(0, 4);
+      .sort((a, b) => new Date(a.INICIO) - new Date(b.INICIO));
+    const limiteLote = Math.min(3, Math.max(1, Number(opcoes.limite || 3)));
+    const candidatas = todasCandidatas.slice(0, limiteLote);
 
     const geradas = [];
     const erros = [];
@@ -477,7 +478,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
     });
     registrarLog_('JORNADA', 'FORMALIZACOES_AUTOMATICAS', geradas.length + ' gerada(s); ' + erros.length + ' erro(s).');
     limparCachesDados_();
-    return { sucesso: erros.length === 0, geradas: geradas.length, ids: geradas, erros: erros };
+    return { sucesso: erros.length === 0, geradas: geradas.length, ids: geradas, erros: erros, restantes: Math.max(0, todasCandidatas.length - candidatas.length) };
   } finally {
     lock.releaseLock();
   }
@@ -491,7 +492,7 @@ function jornadaReuniaoDeveFormalizar_(reuniao) {
 }
 
 function jornadaAutomacaoInstalada_() {
-  return ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === 'SINCRONIZAR_JORNADA_CALENDARIO');
+  return automacaoCentralInstalada_();
 }
 
 function jornadaAutomacaoInstaladaCache_() {

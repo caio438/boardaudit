@@ -4,7 +4,7 @@ Código-fonte do produto de auditorias, formalizações de reuniões e acompanha
 
 ## Versão
 
-- Produto: `4.15.5`
+- Produto: `4.19.0`
 - Runtime: Google Apps Script V8
 - Fuso horário: `America/Sao_Paulo`
 
@@ -20,7 +20,7 @@ Código-fonte do produto de auditorias, formalizações de reuniões e acompanha
 - `ConsumoIA.gs`: controle e acompanhamento do consumo de IA.
 - `ReparoBaseV3.gs`: rotinas de reparo, normalização e deduplicação da base.
 - `appsscript.json`: manifesto e permissões do Apps Script.
-- `check-project.mjs` e `test-closer.mjs`: verificações locais do projeto.
+- `check-project.mjs` e arquivos `test-*.mjs`: verificações locais do projeto.
 
 ## Configuração e implantação
 
