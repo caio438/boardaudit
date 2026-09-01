@@ -1259,13 +1259,16 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
     const valor = String(regra.VALOR || '').trim();
     const normal = String(regra.VALOR_NORMALIZADO || jornadaNormalizar_(valor));
     if (!normal) return;
+    const nomeNoTitulo = normal.length >= 4
+      ? tituloNormalizado.includes(normal)
+      : (' ' + tituloNormalizado + ' ').includes(' ' + normal + ' ');
     let pontos = 0;
     let motivo = '';
     if (tipo === 'EMAIL' && emails.some(email => jornadaNormalizar_(email) === normal)) {
       pontos = 100; motivo = 'e-mail exato: ' + valor;
     } else if (tipo === 'DOMINIO' && emails.some(email => jornadaDominio_(email) === jornadaDominio_(valor))) {
       pontos = 85; motivo = 'domínio do participante: ' + valor;
-    } else if ((tipo === 'NOME' || tipo === 'TITULO') && normal.length >= 4 && tituloNormalizado.includes(normal) && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
+    } else if ((tipo === 'NOME' || tipo === 'TITULO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
       pontos = tipo === 'TITULO' ? 80 : 70; motivo = 'nome no título: ' + valor;
     } else if (tipo === 'NOME' && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
       pontos = 45; motivo = 'nome na descrição: ' + valor;
