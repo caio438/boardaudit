@@ -60,20 +60,31 @@ if (resultado.analise_temporal.fechamento.inicio !== '46:00') throw new Error('T
 
 const criteriosContraditorios = JSON.parse(JSON.stringify(criteriosAvaliados));
 criteriosContraditorios[0].divergencia = 'A pergunta obrigatória não foi feita.';
-let contradicaoRejeitada = false;
-try {
-  context.api.normalize(
-    { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosContraditorios, checklist: JSON.parse(JSON.stringify(checklist)) },
-    criterios,
-    { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead' },
-    { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
-    { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
-    'CLOSER'
-  );
-} catch (erro) {
-  contradicaoRejeitada = /contradiz esse status/.test(String(erro.message || erro));
-}
-if (!contradicaoRejeitada) throw new Error('Uma nota CONFORME com divergência deveria ser rejeitada.');
+const resultadoReconciliado = context.api.normalize(
+  { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosContraditorios, checklist: JSON.parse(JSON.stringify(checklist)) },
+  criterios,
+  { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead' },
+  { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
+  { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
+  'CLOSER'
+);
+if (resultadoReconciliado.criterios_avaliados[0].status !== 'DESVIO_EXECUCAO') throw new Error('Contradição real deveria ser reconciliada como desvio.');
+if (resultadoReconciliado.criterios_avaliados[0].pontuacao !== 3.5) throw new Error('Nota contraditória deveria respeitar o teto de desvio.');
+if (!resultadoReconciliado.criterios_avaliados[0].ajuste_validacao) throw new Error('A reconciliação precisa permanecer rastreável no JSON.');
+
+const criteriosSemDivergencia = JSON.parse(JSON.stringify(criteriosAvaliados));
+criteriosSemDivergencia[0].divergencia = 'Não foram identificadas divergências relevantes.';
+criteriosSemDivergencia[0].pontuacao = 3.5;
+const resultadoVariacaoLinguistica = context.api.normalize(
+  { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosSemDivergencia, checklist: JSON.parse(JSON.stringify(checklist)) },
+  criterios,
+  { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead' },
+  { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
+  { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
+  'CLOSER'
+);
+if (resultadoVariacaoLinguistica.criterios_avaliados[0].status !== 'CONFORME') throw new Error('Variação linguística sem divergência foi interpretada como erro.');
+if (resultadoVariacaoLinguistica.criterios_avaliados[0].pontuacao !== 4) throw new Error('Nota conforme deveria ser alinhada à faixa mínima 4,0.');
 
 const schemaCompleto = context.api.schema('CLOSER');
 const schemaApi = context.api.apiSchema('CLOSER');

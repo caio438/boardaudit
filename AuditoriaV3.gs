@@ -2023,8 +2023,12 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
     });
   }
   const semDivergencia = function(valor) {
-    const texto = String(valor || '').trim().replace(/[.!;:]+$/g, '');
-    return /^(?:|n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia|conforme)$/i.test(texto);
+    const texto = String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .trim().toLowerCase().replace(/[.!;:]+$/g, '').replace(/\s+/g, ' ');
+    if (!texto || texto === 'conforme' || texto === 'nao se aplica' || texto === 'nao aplicavel') return true;
+    if (/^(?:sem|nenhum[ao]?) (?:divergencia|desvio)/.test(texto)) return true;
+    if (/^nao (?:foi )?identificad[ao]s?$/.test(texto)) return true;
+    return /nao (?:houve|ha|existe|foi identificad[ao]|foram identificad[ao]s|se identificou|se identificaram) (?:qualquer )?(?:divergencia|desvio)/.test(texto);
   };
   return oficiais.map(function(oficial) {
     const id = String(oficial.id || '');
@@ -2044,20 +2048,43 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
     if (nota !== null) nota = Math.round(nota * 2) / 2;
     const evidencia = String(item.o_que_foi_dito || '').trim();
     const regraPitch = String(item.regra_pitch || '').trim();
-    const divergencia = String(item.divergencia || '').trim();
-    const justificativa = String(item.justificativa_nota || item.observacao || '').trim();
+    let divergencia = String(item.divergencia || '').trim();
+    let justificativa = String(item.justificativa_nota || item.observacao || '').trim();
+    let ajusteValidacao = '';
     if (!evidencia || !regraPitch || !justificativa) {
       throw new Error('O critério ' + id + ' precisa informar evidência, regra do pitch e justificativa da nota.');
     }
-    if (status === 'CONFORME' && (!semDivergencia(divergencia) || nota < 4)) {
-      throw new Error('O critério ' + id + ' está marcado como CONFORME, mas a divergência ou a nota contradiz esse status.');
+    if (status === 'CONFORME' && !semDivergencia(divergencia)) {
+      status = 'DESVIO_EXECUCAO';
+      nota = nota === null ? 3.5 : Math.min(nota, 3.5);
+      ajusteValidacao = 'Status ajustado de CONFORME para DESVIO_EXECUCAO porque a própria análise descreveu uma divergência.';
+    } else if (status === 'CONFORME' && nota < 4) {
+      nota = 4;
+      ajusteValidacao = 'Nota ajustada para 4,0 porque o critério foi marcado como CONFORME e não apresenta divergência.';
     }
-    if (status === 'DESVIO_EXECUCAO' && (semDivergencia(divergencia) || nota === null || nota > 3.5)) {
-      throw new Error('O critério ' + id + ' está com desvio, mas não traz uma divergência válida ou recebeu nota incompatível.');
+    if (status === 'DESVIO_EXECUCAO' && semDivergencia(divergencia)) {
+      if (nota !== null && nota >= 4) {
+        status = 'CONFORME';
+        divergencia = 'Não houve divergência.';
+        ajusteValidacao = 'Status ajustado para CONFORME porque não foi descrita divergência e a nota está na faixa de conformidade.';
+      } else {
+        divergencia = semDivergencia(justificativa) ? 'A execução apresentou desvio em relação ao comportamento esperado no pitch.' : justificativa;
+        ajusteValidacao = 'A divergência foi consolidada a partir da justificativa da nota.';
+      }
     }
-    if (status === 'NAO_EXECUTADO' && (semDivergencia(divergencia) || nota === null || nota > 1)) {
-      throw new Error('O critério ' + id + ' não foi executado, mas a divergência ou a nota não representa essa ausência.');
+    if (status === 'DESVIO_EXECUCAO' && (nota === null || nota > 3.5)) {
+      nota = 3.5;
+      ajusteValidacao = ajusteValidacao || 'Nota limitada a 3,5 pela faixa definida para execução com desvio.';
     }
+    if (status === 'NAO_EXECUTADO' && semDivergencia(divergencia)) {
+      divergencia = 'O comportamento obrigatório não foi evidenciado na transcrição.';
+      ajusteValidacao = 'A ausência foi explicitada com base no status NAO_EXECUTADO.';
+    }
+    if (status === 'NAO_EXECUTADO' && (nota === null || nota > 1)) {
+      nota = 1;
+      ajusteValidacao = ajusteValidacao || 'Nota limitada a 1,0 pela faixa definida para comportamento não executado.';
+    }
+    if (ajusteValidacao) justificativa += ' ' + ajusteValidacao;
     return {
       id: id,
       nome: String(oficial.nome || item.nome || id),
@@ -2069,7 +2096,8 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
       divergencia: semDivergencia(divergencia) ? 'Não houve divergência.' : divergencia,
       correcao_pratica: String(item.correcao_pratica || '').trim(),
       pontuacao: nota,
-      justificativa_nota: justificativa
+      justificativa_nota: justificativa,
+      ajuste_validacao: ajusteValidacao
     };
   });
 }
