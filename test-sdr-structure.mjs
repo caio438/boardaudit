@@ -9,11 +9,11 @@ vm.runInContext(codigo, contexto);
 const resultado = {
   etapas_pitch: [
     { etapa: 'Introdução', status: 'DESVIO_EXECUCAO', fato_transcricao: 'Olá, tudo bem?', regra_pitch: 'Apresentar-se como especialista e validar três minutos.', desvio: 'Não informou o papel nem validou o tempo.', correcao_pratica: 'Apresentar-se e confirmar os três minutos.' },
-    { etapa: 'Primeira Frase de Qualificação', status: 'CONFORME' },
-    { etapa: 'Pergunta de Segmento', status: 'CONFORME' },
-    { etapa: 'Validação de LMV', status: 'NAO_EXECUTADA' },
-    { etapa: 'Manejo de Objeções', status: 'NAO_APLICAVEL' },
-    { etapa: 'Encerramento Profissional', status: 'CONFORME' }
+    { etapa: 'Primeira Frase de Qualificação', status: 'CONFORME', fato_transcricao: 'Quero entender seu cenário.', regra_pitch: 'Qualificar antes de agendar.', desvio: 'Não houve divergência.' },
+    { etapa: 'Pergunta de Segmento', status: 'CONFORME', fato_transcricao: 'Qual é o segmento?', regra_pitch: 'Perguntar o segmento.', desvio: 'Não houve divergência.' },
+    { etapa: 'Validação de LMV', status: 'NAO_EXECUTADA', fato_transcricao: 'Não houve pergunta de LMV.', regra_pitch: 'Validar os critérios de LMV.', desvio: 'A validação obrigatória não foi executada.' },
+    { etapa: 'Manejo de Objeções', status: 'NAO_APLICAVEL', fato_transcricao: 'O lead não apresentou objeção.', regra_pitch: 'Aplicar contorno quando houver objeção.', desvio: '' },
+    { etapa: 'Encerramento Profissional', status: 'CONFORME', fato_transcricao: 'Podemos marcar amanhã às 10h?', regra_pitch: 'Oferecer próximo passo concreto.', desvio: 'Não houve divergência.' }
   ],
   aderencia_script: {
     resumo_aderencia: 'Executou a maior parte do pitch, com desvio na introdução e ausência de LMV.',
@@ -44,4 +44,7 @@ assert.equal(resultado.perguntas_qualificacao.total_corretas, 1);
 assert.equal(resultado.perguntas_qualificacao.total_com_desvio, 1);
 assert.equal(resultado.perguntas_qualificacao.total_ausentes, 1);
 
-console.log('Estrutura SDR v4.1 validada.');
+assert.equal(resultado.etapas_pitch[0].nota, 2.5);
+assert.equal(resultado.etapas_pitch[3].nota, 0);
+assert.equal(resultado.etapas_pitch[4].nota, null);
+console.log('Estrutura SDR v4.2 validada.');

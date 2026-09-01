@@ -2764,7 +2764,13 @@
         }).join(' ');
         const circulos = pontos.split(' ').map(ponto => { const partes = ponto.split(','); return `<circle cx="${partes[0]}" cy="${partes[1]}" r="4" fill="#16803c"></circle>`; }).join('');
         const variacao = anterior === null ? null : Math.round((atual - anterior) * 10) / 10;
-        return `<div class="quality-card"><h4>${escapeHtml(serie.nome)}</h4><svg viewBox="0 0 320 120" role="img" aria-label="Evolução qualitativa ${escapeHtml(serie.nome)}"><line x1="10" y1="15" x2="310" y2="15" stroke="#e4e7ec"></line><line x1="10" y1="60" x2="310" y2="60" stroke="#e4e7ec"></line><line x1="10" y1="105" x2="310" y2="105" stroke="#e4e7ec"></line><polyline points="${pontos}" fill="none" stroke="#16803c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>${circulos}</svg><div class="quality-values"><div><span class="small muted">Atual</span><strong>${atual.toFixed(1)}/5</strong></div><div><span class="small muted">Média</span><strong>${media.toFixed(1)}/5</strong></div><div><span class="small muted">Variação</span><strong>${variacao === null ? '-' : (variacao > 0 ? '+' : '') + variacao.toFixed(1)}</strong></div></div></div>`;
+        const ultimaAuditoria = itens[itens.length - 1] || {};
+        const dimensoes = Array.isArray(ultimaAuditoria.dimensoes) ? ultimaAuditoria.dimensoes : [];
+        const detalheDimensoes = dimensoes.length ? `<div style="margin-top:14px;border-top:1px solid #e4e7ec;padding-top:10px"><strong class="small">Notas por critério na auditoria mais recente</strong>${dimensoes.map(item => {
+          const nota = Math.max(0, Math.min(5, Number(item.nota)));
+          return `<div style="margin-top:9px" title="${escapeHtml(item.justificativa || '')}"><div style="display:flex;justify-content:space-between;gap:8px"><span class="small">${escapeHtml(item.nome || item.id)}</span><strong class="small">${nota.toFixed(1)}/5</strong></div><div style="height:6px;background:#eef1f4;border-radius:6px;overflow:hidden"><div style="width:${nota * 20}%;height:100%;background:${nota >= 4 ? '#16803c' : nota >= 2 ? '#d97706' : '#d92d20'}"></div></div></div>`;
+        }).join('')}</div>` : '<p class="small muted" style="margin-top:12px">A abertura por critério aparecerá nas auditorias geradas com o modelo 4.2.</p>';
+        return `<div class="quality-card"><h4>${escapeHtml(serie.nome)}</h4><svg viewBox="0 0 320 120" role="img" aria-label="Evolução qualitativa ${escapeHtml(serie.nome)}"><line x1="10" y1="15" x2="310" y2="15" stroke="#e4e7ec"></line><line x1="10" y1="60" x2="310" y2="60" stroke="#e4e7ec"></line><line x1="10" y1="105" x2="310" y2="105" stroke="#e4e7ec"></line><polyline points="${pontos}" fill="none" stroke="#16803c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>${circulos}</svg><div class="quality-values"><div><span class="small muted">Atual</span><strong>${atual.toFixed(1)}/5</strong></div><div><span class="small muted">Média</span><strong>${media.toFixed(1)}/5</strong></div><div><span class="small muted">Variação</span><strong>${variacao === null ? '-' : (variacao > 0 ? '+' : '') + variacao.toFixed(1)}</strong></div></div>${detalheDimensoes}</div>`;
       }).join('');
     }
 
@@ -5780,7 +5786,7 @@
     const feedback = r.feedback || {};
     const duracao = r.duracao || {};
     const objecoes = Array.isArray(r.manejo_objecoes) ? r.manejo_objecoes : [];
-    const pontuacao = Array.isArray(r.pontuacao) ? r.pontuacao : [];
+    const criteriosAvaliados = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
     const checklist = Array.isArray(r.checklist) ? r.checklist : [];
     const contexto = r.resumo_contato || {};
     const etapas = Array.isArray(r.etapas_pitch) ? r.etapas_pitch : [];
@@ -5795,7 +5801,7 @@
       <p><strong>Necessidade principal:</strong> ${escapeHtml(contexto.necessidade_principal || 'Não evidenciado')}</p>
       <p><strong>Resultado do contato:</strong> ${escapeHtml(contexto.resultado_contato || 'Não evidenciado')}</p>
       <h3>Aderência por etapa do pitch</h3>
-      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Evidência','Regra do pitch','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.fato_transcricao, item.regra_pitch, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
+      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Nota','O que foi dito','O que consta no pitch','Divergência','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao, item.regra_pitch, item.desvio, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
       <h3>1. Aderência ao pitch completo e à introdução</h3>
       ${renderizarAderenciaSdrV3(r.aderencia_script || {})}
       <h3>2. Perguntas de Qualificação</h3>
@@ -5815,7 +5821,7 @@
       <p><strong>Status:</strong> ${escapeHtml(formatarStatusAuditoriaV3(conclusao.status || 'Não evidenciado'))}</p>
       <p><strong>Ponto de melhoria:</strong> ${escapeHtml(conclusao.ponto_melhoria || '-')}</p>
       <h3>9. Pontuação de Qualidade</h3>
-      ${tabelaAuditoriaV3(['Aspecto','Pontuação','Observações'], pontuacao.map(item => [item.nome || item.id, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.observacao]))}
+      ${tabelaAuditoriaV3(['Critério','Status','Nota','O que foi dito','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
       <h3>10. Feedback Qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>
@@ -5834,7 +5840,7 @@
     const resumo = r.resumo_executivo || {};
     const semaforo = r.semaforo_geral || {};
     const momentos = Array.isArray(r.momentos) ? r.momentos : [];
-    const pontuacao = Array.isArray(r.pontuacao) ? r.pontuacao : [];
+    const criteriosAvaliados = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
     const checklist = Array.isArray(r.checklist) ? r.checklist : [];
     const feedback = r.feedback || {};
     const duracao = r.duracao || {};
@@ -5862,6 +5868,8 @@
         <h3>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Momento')} <span class="status ${classe}">${escapeHtml(cor || 'NÃO EVIDENCIADO')}</span></h3>
         <p><strong>O que se espera:</strong> ${escapeHtml(item.o_que_se_espera || 'Não evidenciado')}</p>
         <p class="line-evidence">📌 <strong>O que foi dito:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
+        <p class="line-danger">❌ <strong>Divergência:</strong> ${escapeHtml(item.divergencia || 'Não houve divergência.')}</p>
+        <p><strong>Nota do momento:</strong> ${escapeHtml(item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5')} · <strong>Justificativa:</strong> ${escapeHtml(item.justificativa_nota || '-')}</p>
         <p class="line-success">✅ <strong>Pontos fortes:</strong> ${escapeHtml((item.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
         <p class="line-danger">❌ <strong>Pontos a melhorar:</strong> ${escapeHtml((item.pontos_melhorar || []).join(' • ') || 'Nenhum desvio relevante.')}</p>
         ${item.o_que_fazer ? `<p><strong>O que fazer:</strong> ${escapeHtml(item.o_que_fazer)}</p>` : ''}
@@ -5929,7 +5937,7 @@
       <h4>Linguagem utilizada pelo lead</h4>${listaCloser(mercado.linguagem_do_lead)}
       <h4>Hipóteses para o time de mídia</h4>${listaCloser(mercado.insights_para_midia)}
       <h3>Pontuação de qualidade</h3>
-      ${tabelaAuditoriaV3(['Critério','Nota','Observação'], pontuacao.map(item => [item.nome || item.id, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.observacao]))}
+      ${tabelaAuditoriaV3(['Critério','Status','Nota','O que foi dito','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
       <h3>Feedback qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>

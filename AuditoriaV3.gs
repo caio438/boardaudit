@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 4.0.0
+ * Versão: 4.2.0
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '4.0.0',
+  versao: '4.2.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -21,7 +21,8 @@ const AUDITORIA_V3 = Object.freeze({
   observacaoProcesso: 'Observação de processo: o time de Sales Ops já está ciente deste ponto e tratará a atualização na próxima reunião operacional. Até lá, o pitch vigente permanece como referência de execução.',
   colunasAuditoria: [
     'ID_MODELO', 'NOME_MODELO_SNAPSHOT', 'VERSAO_MODELO_SNAPSHOT',
-    'CRITERIOS_SNAPSHOT_JSON', 'RESULTADO_JSON', 'SCORE_PERCENTUAL',
+    'CRITERIOS_SNAPSHOT_JSON', 'RESULTADO_JSON', 'SCORES_DIMENSOES_JSON',
+    'SCORES_ETAPAS_JSON', 'SCORE_SCHEMA_VERSAO', 'SCORE_PERCENTUAL',
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
     'COMUNIDADE_PUBLICADO_EM', 'COMUNIDADE_ERRO',
@@ -1505,6 +1506,13 @@ function executarAuditoriaV3(dados) {
       STATUS: 'EM_REVISAO',
       RESULTADO_COMPLETO: texto,
       RESULTADO_JSON: JSON.stringify(resultado),
+      SCORES_DIMENSOES_JSON: JSON.stringify((resultado.criterios_avaliados || []).map(function(item) {
+        return { id: item.id, nome: item.nome, status: item.status, aplicavel: item.aplicavel, nota: item.pontuacao, justificativa: item.justificativa_nota };
+      })),
+      SCORES_ETAPAS_JSON: JSON.stringify((tipo === 'CLOSER' ? resultado.momentos : resultado.etapas_pitch || []).map(function(item) {
+        return { id: item.id || item.etapa, nome: item.nome || item.etapa, status: item.cor || item.status, nota: item.nota, divergencia: item.divergencia || item.desvio || '' };
+      })),
+      SCORE_SCHEMA_VERSAO: '4.2',
       SCORE: scoreValue,
       SCORE_PERCENTUAL: scorePercentual,
       SEMAFORO: tipo === 'CLOSER' ? String((resultado.semaforo_geral || {}).cor || '') : '',
@@ -1843,8 +1851,12 @@ function audV3MontarPrompt_(ctx) {
     '<METAS_CLIENTE>\n' + JSON.stringify(ctx.metas && ctx.metas.length ? ctx.metas : { informado: false }, null, 2) + '\n</METAS_CLIENTE>',
     '<PITCH_VIGENTE>\n' + String(ctx.pitch.CONTEUDO_PITCH || '') + '\n</PITCH_VIGENTE>',
     '<TRANSCRICAO>\n' + String(ctx.transcricao.CONTEUDO || '') + '\n</TRANSCRICAO>',
-    'Para cada feedback, separe obrigatoriamente: FATO_TRANSCRICAO, REGRA_PITCH e SUGESTAO_ENABLEMENT.',
-    'FATO_TRANSCRICAO deve conter evidência literal curta. REGRA_PITCH deve usar texto ou orientação realmente existente no pitch. SUGESTAO_ENABLEMENT deve ser rotulada como sugestão, nunca como fala oficial.',
+    'Em criterios_avaliados, devolva exatamente uma comparação para cada dimensão oficial e use o mesmo id recebido em CRITERIOS_OFICIAIS.',
+    'Cada comparação deve ligar, no mesmo objeto: o_que_foi_dito, regra_pitch, status, divergencia, correcao_pratica, pontuacao e justificativa_nota.',
+    'Use somente os status CONFORME, DESVIO_EXECUCAO, NAO_EXECUTADO, NAO_APLICAVEL, LACUNA_PROCESSO ou NAO_EVIDENCIADO.',
+    'CONFORME exige ausência de divergência e nota entre 4 e 5. DESVIO_EXECUCAO exige divergência explícita e nota entre 0 e 3,5. NAO_EXECUTADO exige ausência comprovada de comportamento obrigatório e nota entre 0 e 1.',
+    'NAO_APLICAVEL, LACUNA_PROCESSO e NAO_EVIDENCIADO não podem punir a nota; envie aplicavel=false e pontuacao=0, pois o Board excluirá o item do cálculo.',
+    'o_que_foi_dito deve conter evidência literal curta. regra_pitch deve usar texto ou orientação realmente existente no pitch. Recomendações adicionais devem ser rotuladas como sugestão, nunca como fala oficial.',
     'Para cada não conformidade, informe evidência curta, texto exato do pitch quando existir, classificação, impacto provável e correção prática observável.',
     'Quando houver metas cadastradas, explique de forma objetiva qual indicador pode ser afetado pelo comportamento observado. Não invente causalidade nem resultado realizado.',
     'Quando não houver metas cadastradas, não crie números e não bloqueie a auditoria.',
@@ -1933,20 +1945,19 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   resultado.metadados.data_hora = audV3DataTexto_(interacao.DATA_INTERACAO);
   resultado.metadados.pitch = String(pitch.NOME_VERSAO || '');
   resultado.metadados.versao_pitch = String(pitch.NUMERO_VERSAO || '');
-  resultado.schema_versao = '4.1';
+  resultado.schema_versao = '4.2';
 
-  const dimensoesOficiais = (criterios.dimensoes || []).map(item => String(item.id));
-  const recebidas = Array.isArray(resultado.pontuacao) ? resultado.pontuacao : [];
-  const normalizadas = dimensoesOficiais.map(id => {
-    const item = recebidas.find(r => String(r.id) === id);
-    if (!item) throw new Error('A IA não devolveu a dimensão obrigatória de pontuação: ' + id + '.');
-    const aplicavel = item.aplicavel !== false;
-    let nota = aplicavel ? Number(item.pontuacao) : null;
-    if (aplicavel && (!isFinite(nota) || nota < 0 || nota > 5)) throw new Error('Pontuação inválida na dimensão ' + id + '.');
-    if (aplicavel) nota = Math.round(nota * 2) / 2;
-    return { id: id, nome: String(item.nome || id), aplicavel: aplicavel, pontuacao: nota, observacao: String(item.observacao || '') };
+  const normalizadas = audV3NormalizarCriteriosComparados_(resultado, criterios);
+  resultado.criterios_avaliados = normalizadas;
+  resultado.pontuacao = normalizadas.map(function(item) {
+    return {
+      id: item.id,
+      nome: item.nome,
+      aplicavel: item.aplicavel,
+      pontuacao: item.pontuacao,
+      observacao: item.justificativa_nota
+    };
   });
-  resultado.pontuacao = normalizadas;
   const checklistOficial = (criterios.checklist || []).map(String);
   const checklistRecebido = Array.isArray(resultado.checklist) ? resultado.checklist : [];
   checklistOficial.forEach(nomeItem => {
@@ -1992,6 +2003,77 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   return resultado;
 }
 
+function audV3NormalizarCriteriosComparados_(resultado, criterios) {
+  const oficiais = Array.isArray(criterios.dimensoes) ? criterios.dimensoes : [];
+  let recebidos = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  if (!recebidos.length && Array.isArray(resultado.pontuacao)) {
+    recebidos = resultado.pontuacao.map(function(item) {
+      return {
+        id: item.id,
+        nome: item.nome,
+        aplicavel: item.aplicavel,
+        status: item.aplicavel === false ? 'NAO_APLICAVEL' : 'DESVIO_EXECUCAO',
+        o_que_foi_dito: item.observacao || 'Não evidenciado',
+        regra_pitch: 'Não informado na resposta legada',
+        divergencia: item.observacao || 'Resposta anterior sem comparação estruturada',
+        correcao_pratica: 'Reavaliar com o schema 4.2',
+        pontuacao: item.pontuacao,
+        justificativa_nota: item.observacao || ''
+      };
+    });
+  }
+  const semDivergencia = function(valor) {
+    const texto = String(valor || '').trim().replace(/[.!;:]+$/g, '');
+    return /^(?:|n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia|conforme)$/i.test(texto);
+  };
+  return oficiais.map(function(oficial) {
+    const id = String(oficial.id || '');
+    const item = recebidos.find(function(registro) { return String(registro.id || '') === id; });
+    if (!item) throw new Error('A IA não devolveu a comparação obrigatória do critério: ' + id + '.');
+    const aplicavel = item.aplicavel !== false;
+    let status = String(item.status || '').trim().toUpperCase()
+      .replace(/NÃO/g, 'NAO').replace(/Ç/g, 'C').replace(/Ã/g, 'A');
+    if (status === 'PARCIAL') status = 'DESVIO_EXECUCAO';
+    if (status === 'AUSENTE') status = 'NAO_EXECUTADO';
+    if (!aplicavel) status = 'NAO_APLICAVEL';
+    if (!['CONFORME', 'DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status)) {
+      throw new Error('Status inválido no critério ' + id + ': ' + (item.status || 'vazio') + '.');
+    }
+    let nota = aplicavel && !['NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status) ? Number(item.pontuacao) : null;
+    if (nota !== null && (!isFinite(nota) || nota < 0 || nota > 5)) throw new Error('Pontuação inválida no critério ' + id + '.');
+    if (nota !== null) nota = Math.round(nota * 2) / 2;
+    const evidencia = String(item.o_que_foi_dito || '').trim();
+    const regraPitch = String(item.regra_pitch || '').trim();
+    const divergencia = String(item.divergencia || '').trim();
+    const justificativa = String(item.justificativa_nota || item.observacao || '').trim();
+    if (!evidencia || !regraPitch || !justificativa) {
+      throw new Error('O critério ' + id + ' precisa informar evidência, regra do pitch e justificativa da nota.');
+    }
+    if (status === 'CONFORME' && (!semDivergencia(divergencia) || nota < 4)) {
+      throw new Error('O critério ' + id + ' está marcado como CONFORME, mas a divergência ou a nota contradiz esse status.');
+    }
+    if (status === 'DESVIO_EXECUCAO' && (semDivergencia(divergencia) || nota === null || nota > 3.5)) {
+      throw new Error('O critério ' + id + ' está com desvio, mas não traz uma divergência válida ou recebeu nota incompatível.');
+    }
+    if (status === 'NAO_EXECUTADO' && (semDivergencia(divergencia) || nota === null || nota > 1)) {
+      throw new Error('O critério ' + id + ' não foi executado, mas a divergência ou a nota não representa essa ausência.');
+    }
+    return {
+      id: id,
+      nome: String(oficial.nome || item.nome || id),
+      aplicavel: aplicavel && !['NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status),
+      status: status,
+      o_que_foi_dito: evidencia,
+      regra_pitch: regraPitch,
+      divergencia_identificada: !semDivergencia(divergencia),
+      divergencia: semDivergencia(divergencia) ? 'Não houve divergência.' : divergencia,
+      correcao_pratica: String(item.correcao_pratica || '').trim(),
+      pontuacao: nota,
+      justificativa_nota: justificativa
+    };
+  });
+}
+
 function audV3LimparTextoPlano_(valor) {
   return String(valor === null || valor === undefined ? '' : valor)
     .replace(/\b(?:FATO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|REGRA[_\s-]*PITCH|SUGEST(?:A|Ã)O[_\s-]*ENABLEMENT|FOCO[_\s-]*TRANSCRI(?:C|Ç)(?:A|Ã)O|FOCO[_\s-]*ENABLEMENT)\s*:\s*/gi, '')
@@ -2018,7 +2100,27 @@ function audV3NotaStatusPlano_(valor) {
 }
 
 function audV3NormalizarLeiturasSdr_(resultado, criterios) {
-  const etapas = Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : [];
+  const etapas = (Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : []).map(function(item) {
+    item = item || {};
+    const status = audV3StatusExecucao_(item.status);
+    const divergencia = String(item.desvio || '').trim();
+    const fato = String(item.fato_transcricao || '').trim();
+    const regra = String(item.regra_pitch || '').trim();
+    if (!fato || !regra) throw new Error('A etapa ' + (item.etapa || 'sem nome') + ' precisa informar o que foi dito e o que consta no pitch.');
+    if (status === 'CONFORME' && divergencia && !/^n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia\.?$/i.test(divergencia)) {
+      throw new Error('A etapa ' + (item.etapa || '') + ' está CONFORME, mas apresenta divergência contraditória.');
+    }
+    if (['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(status) && !divergencia) {
+      throw new Error('A etapa ' + (item.etapa || '') + ' precisa explicar a divergência identificada.');
+    }
+    return Object.assign({}, item, {
+      status: status,
+      desvio: status === 'CONFORME' ? 'Não houve divergência.' : divergencia,
+      divergencia_identificada: ['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(status),
+      nota: audV3NotaStatusExecucao_(status)
+    });
+  });
+  resultado.etapas_pitch = etapas;
   const statusTexto = valor => String(valor || '').trim().toUpperCase();
   const naoAplicavel = valor => {
     const status = statusTexto(valor);
@@ -2027,7 +2129,7 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
   const naoExecutada = valor => {
     const status = statusTexto(valor);
     return !status || status === 'NAO_EVIDENCIADO' || status === 'NÃO EVIDENCIADO' ||
-      status === 'NAO_EXECUTADA' || status === 'NÃO EXECUTADA' || status === 'AUSENTE';
+      status === 'NAO_EXECUTADO' || status === 'NÃO EXECUTADO' || status === 'NAO_EXECUTADA' || status === 'NÃO EXECUTADA' || status === 'AUSENTE';
   };
   const conforme = valor => statusTexto(valor) === 'CONFORME';
   const aplicaveis = etapas.filter(item => !naoAplicavel(item.status));
@@ -2078,6 +2180,24 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
   };
 }
 
+function audV3StatusExecucao_(valor) {
+  const status = String(valor || '').trim().toUpperCase();
+  if (status === 'CONFORME' || status === 'ATINGIDO') return 'CONFORME';
+  if (status === 'PARCIAL' || status === 'DESVIO_EXECUCAO') return 'DESVIO_EXECUCAO';
+  if (['NAO_EXECUTADO', 'NÃO EXECUTADO', 'NAO_EXECUTADA', 'NÃO EXECUTADA', 'AUSENTE'].includes(status)) return 'NAO_EXECUTADO';
+  if (status === 'NAO_APLICAVEL' || status === 'NÃO APLICÁVEL') return 'NAO_APLICAVEL';
+  if (status === 'LACUNA_PROCESSO') return 'LACUNA_PROCESSO';
+  return 'NAO_EVIDENCIADO';
+}
+
+function audV3NotaStatusExecucao_(status) {
+  status = audV3StatusExecucao_(status);
+  if (status === 'CONFORME') return 5;
+  if (status === 'DESVIO_EXECUCAO') return 2.5;
+  if (status === 'NAO_EXECUTADO') return 0;
+  return null;
+}
+
 function audV3ListaTexto_(valor, limite) {
   return (Array.isArray(valor) ? valor : []).map(String).map(item => item.trim()).filter(Boolean).slice(0, limite || 12);
 }
@@ -2098,6 +2218,10 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
     const fortes = Array.isArray(item.pontos_fortes) ? item.pontos_fortes.map(String).filter(Boolean).slice(0, 3) : [];
     const statusRecebido = String(item.status || '').toUpperCase();
     const cor = !gatilho ? 'VERMELHO' : (statusRecebido.includes('AMARELO') || melhorias.length ? 'AMARELO' : 'VERDE');
+    const divergencia = String(item.divergencia || '').trim();
+    if (!String(item.o_que_foi_dito || '').trim()) throw new Error('O momento ' + id + ' não informou o que foi dito.');
+    if (!String(item.o_que_se_espera || oficial.objetivo || '').trim()) throw new Error('O momento ' + id + ' não informou o que consta no pitch.');
+    if (cor !== 'VERDE' && !divergencia) throw new Error('O momento ' + id + ' precisa explicar a divergência identificada.');
     return {
       id: id,
       nome: String(oficial.nome || item.nome || id),
@@ -2106,6 +2230,10 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
       gatilho_alcancado: gatilho,
       o_que_se_espera: String(item.o_que_se_espera || oficial.objetivo || ''),
       o_que_foi_dito: String(item.o_que_foi_dito || ''),
+      divergencia_identificada: cor !== 'VERDE',
+      divergencia: cor === 'VERDE' ? 'Não houve divergência.' : divergencia,
+      nota: cor === 'VERDE' ? 5 : (cor === 'AMARELO' ? 2.5 : 0),
+      justificativa_nota: String(item.justificativa_nota || (cor === 'VERDE' ? 'Gatilho alcançado sem desvio relevante.' : divergencia)),
       pontos_fortes: fortes,
       pontos_melhorar: melhorias,
       o_que_fazer: String(item.o_que_fazer || ''),
@@ -2246,7 +2374,7 @@ function audV3SchemaRespostaApi_(tipoAuditoria) {
     'perguntas_diagnostico',
     'analise_impacto_implicacao',
     'repertorio_perguntas_sugeridas',
-    'pontuacao',
+    'criterios_avaliados',
     'feedback',
     'impactos_nao_conformidades',
     'checklist',
@@ -2303,6 +2431,15 @@ function audV3SchemaRespostaCloser_() {
     properties: { ponto: texto, evidencia: evidencia, impacto: texto },
     required: ['ponto', 'evidencia', 'impacto']
   };
+  const criterioAvaliado = {
+    type: 'OBJECT',
+    properties: {
+      id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, status: texto,
+      o_que_foi_dito: evidencia, regra_pitch: evidencia, divergencia: texto,
+      correcao_pratica: texto, pontuacao: { type: 'NUMBER' }, justificativa_nota: texto
+    },
+    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
+  };
   return {
     type: 'OBJECT',
     properties: {
@@ -2339,6 +2476,8 @@ function audV3SchemaRespostaCloser_() {
             gatilho_alcancado: { type: 'BOOLEAN' },
             o_que_se_espera: texto,
             o_que_foi_dito: evidencia,
+            divergencia: texto,
+            justificativa_nota: texto,
             pontos_fortes: listaTexto,
             pontos_melhorar: listaTexto,
             o_que_fazer: texto,
@@ -2348,7 +2487,7 @@ function audV3SchemaRespostaCloser_() {
             timestamp_inicio: texto,
             timestamp_fim: texto
           },
-          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar', 'timestamp_inicio', 'timestamp_fim']
+          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'divergencia', 'justificativa_nota', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar', 'timestamp_inicio', 'timestamp_fim']
         }
       },
       analise_temporal: {
@@ -2407,7 +2546,7 @@ function audV3SchemaRespostaCloser_() {
         required: ['dores', 'desafios', 'impactos_consequencias', 'ferramentas_processos_atuais', 'resultados_desejados', 'linguagem_do_lead', 'insights_para_midia']
       },
       semaforo_geral: { type: 'OBJECT', properties: { cor: texto, justificativa: texto, orientacao: texto } },
-      pontuacao: { type: 'ARRAY', maxItems: 8, items: { type: 'OBJECT', properties: { id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, pontuacao: { type: 'NUMBER' }, observacao: texto }, required: ['id', 'nome', 'aplicavel', 'pontuacao', 'observacao'] } },
+      criterios_avaliados: { type: 'ARRAY', maxItems: 8, items: criterioAvaliado },
       feedback: { type: 'OBJECT', properties: { pontos_fortes: listaTexto, areas_melhoria: listaTexto } },
       impactos_nao_conformidades: {
         type: 'ARRAY',
@@ -2434,7 +2573,7 @@ function audV3SchemaRespostaCloser_() {
         required: ['titulo', 'resumo', 'highlights', 'correcoes_prioritarias', 'proximos_passos']
       }
     },
-    required: ['schema_versao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'pontuacao', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
+    required: ['schema_versao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
   };
 }
 
@@ -2468,6 +2607,15 @@ function audV3SchemaRespostaSdr_() {
     type: 'OBJECT',
     properties: { pergunta_esperada: texto, regra_pitch: evidencia, impacto_ausencia: texto, como_perguntar: texto },
     required: ['pergunta_esperada', 'regra_pitch', 'impacto_ausencia', 'como_perguntar']
+  };
+  const criterioAvaliado = {
+    type: 'OBJECT',
+    properties: {
+      id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, status: texto,
+      o_que_foi_dito: evidencia, regra_pitch: evidencia, divergencia: texto,
+      correcao_pratica: texto, pontuacao: { type: 'NUMBER' }, justificativa_nota: texto
+    },
+    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
   };
   return {
     type: 'OBJECT',
@@ -2545,7 +2693,7 @@ function audV3SchemaRespostaSdr_() {
       qualidade_perguntas_respostas: { type: 'OBJECT', properties: { clareza_perguntas: texto, pertinencia_respostas: texto, validacao_lmv: texto } },
       gestao_objecoes_duvidas: { type: 'OBJECT', properties: { uso_scripts: texto, efetividade: texto, retorno_script: texto } },
       conclusao_agendamento: { type: 'OBJECT', properties: { status: texto, ponto_melhoria: texto } },
-      pontuacao: { type: 'ARRAY', maxItems: 12, items: { type: 'OBJECT', properties: { id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, pontuacao: { type: 'NUMBER' }, observacao: texto }, required: ['id', 'nome', 'aplicavel', 'pontuacao', 'observacao'] } },
+      criterios_avaliados: { type: 'ARRAY', maxItems: 12, items: criterioAvaliado },
       feedback: { type: 'OBJECT', properties: { pontos_fortes: listaTexto, areas_melhoria: listaTexto } },
       impactos_nao_conformidades: {
         type: 'ARRAY',
@@ -2576,7 +2724,7 @@ function audV3SchemaRespostaSdr_() {
       'schema_versao', 'metadados', 'validacao_entradas', 'resumo_contato', 'resumo_executivo', 'etapas_pitch', 'aderencia_script',
       'perguntas_qualificacao', 'manejo_objecoes', 'objecoes_fora_pitch', 'fechamento', 'analise_conversacao',
       'qualidade_perguntas_respostas', 'gestao_objecoes_duvidas', 'conclusao_agendamento',
-      'pontuacao', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao'
+      'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao'
     ]
   };
 }
@@ -2705,8 +2853,8 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
 
   const etapasPitch = Array.isArray(r.etapas_pitch) ? r.etapas_pitch : [];
   audV3Titulo_(body, 'Aderência por etapa do pitch', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Etapa', 'Status', 'Evidência', 'Regra do pitch', 'Correção prática', 'Impacto provável']].concat(etapasPitch.map(item => [
-    item.etapa || '', audV3RotuloStatus_(item.status), item.fato_transcricao || '', item.regra_pitch || '', item.correcao_pratica || '', item.impacto_resultado || ''
+  audV3Tabela_(body, [['Etapa', 'Status', 'Nota', 'O que foi dito', 'O que consta no pitch', 'Divergência', 'Correção prática', 'Impacto provável']].concat(etapasPitch.map(item => [
+    item.etapa || '', audV3RotuloStatus_(item.status), item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao || '', item.regra_pitch || '', item.desvio || '', item.correcao_pratica || '', item.impacto_resultado || ''
   ])));
 
   audV3Titulo_(body, '1. Aderência ao pitch completo e à introdução', DocumentApp.ParagraphHeading.HEADING1);
@@ -2746,7 +2894,9 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3RotuloTexto_(body, 'Ponto de melhoria', conclusao.ponto_melhoria || '');
 
   audV3Titulo_(body, '9. Pontuação de Qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  const linhasPontuacao = [['Aspecto', 'Pontuação', 'Observações']].concat((r.pontuacao || []).map(item => [item.nome || item.id, item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.observacao || '']));
+  const linhasPontuacao = [['Critério', 'Status', 'Nota', 'O que foi dito', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
+    item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.o_que_foi_dito || '', item.regra_pitch || '', item.divergencia || '', item.justificativa_nota || ''
+  ]));
   audV3Tabela_(body, linhasPontuacao);
   const pc = r.pontuacao_calculada || {};
   audV3RotuloTexto_(body, 'Total Score', pc.score_5 === null ? 'Não calculável' : pc.score_5 + ' / 5 (' + pc.score_percentual + '%)');
@@ -2820,6 +2970,9 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
     audV3RotuloTexto_(body, 'Status', item.cor || item.status || 'Não evidenciado');
     audV3RotuloTexto_(body, 'O que se espera', item.o_que_se_espera || '');
     audV3RotuloTexto_(body, 'O que foi dito', item.o_que_foi_dito || 'Não evidenciado');
+    audV3RotuloTexto_(body, 'Divergência', item.divergencia || 'Não houve divergência.');
+    audV3RotuloTexto_(body, 'Nota do momento', item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5');
+    audV3RotuloTexto_(body, 'Justificativa da nota', item.justificativa_nota || '');
     audV3Lista_(body, 'Pontos fortes', item.pontos_fortes || []);
     audV3Lista_(body, 'Pontos a melhorar', item.pontos_melhorar || []);
     audV3RotuloTexto_(body, 'O que fazer', item.o_que_fazer || '');
@@ -2892,7 +3045,9 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3Lista_(body, 'Hipóteses de comunicação para o time de mídia', mercado.insights_para_midia || []);
 
   audV3Titulo_(body, 'Pontuação de qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Critério', 'Nota', 'Observação']].concat((r.pontuacao || []).map(item => [item.nome || item.id, item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.observacao || ''])));
+  audV3Tabela_(body, [['Critério', 'Status', 'Nota', 'O que foi dito', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
+    item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.o_que_foi_dito || '', item.regra_pitch || '', item.divergencia || '', item.justificativa_nota || ''
+  ])));
   const pc = r.pontuacao_calculada || {};
   audV3RotuloTexto_(body, 'Total Score', pc.score_5 === null ? 'Não calculável' : pc.score_5 + ' / 5 (' + pc.score_percentual + '%)');
 

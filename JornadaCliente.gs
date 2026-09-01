@@ -1916,6 +1916,7 @@ function jornadaListarHistoricoOperacional_(idCliente, contexto) {
   const itens = [];
   (Array.isArray(contexto.auditorias) ? contexto.auditorias : lerObjetos_(APP.sheets.auditorias)).filter(item => String(item.ID_CLIENTE) === String(idCliente)).forEach(item => {
     const score = item.SCORE === '' || item.SCORE === null || item.SCORE === undefined ? null : Number(item.SCORE);
+    const dimensoes = jornadaDimensoesAuditoria_(item);
     itens.push({
       id: item.ID_AUDITORIA,
       tipo: 'AUDITORIA',
@@ -1925,6 +1926,8 @@ function jornadaListarHistoricoOperacional_(idCliente, contexto) {
       status: item.STATUS || '',
       detalhe: isFinite(score) && score !== null ? 'Nota ' + score + '/5' : '',
       score: isFinite(score) ? score : null,
+      dimensoes: dimensoes,
+      scoreSchemaVersao: item.SCORE_SCHEMA_VERSAO || '',
       link: item.LINK_DOCUMENTO || ''
     });
   });
@@ -1942,6 +1945,37 @@ function jornadaListarHistoricoOperacional_(idCliente, contexto) {
     data: serializarData_(item.ATUALIZADO_EM || item.CRIADO_EM), status: item.STATUS || '', detalhe: item.RESULTADO_OBSERVADO || item.ACAO || '', score: null, link: ''
   }));
   return itens.filter(item => item.data).sort((a, b) => new Date(b.data) - new Date(a.data)).slice(0, 120);
+}
+
+function jornadaDimensoesAuditoria_(item) {
+  let dimensoes = [];
+  try { dimensoes = JSON.parse(String(item.SCORES_DIMENSOES_JSON || '[]')); } catch (erroDimensoes) {}
+  if (!Array.isArray(dimensoes) || !dimensoes.length) {
+    try {
+      const resultado = JSON.parse(String(item.RESULTADO_JSON || '{}'));
+      dimensoes = (resultado.criterios_avaliados || resultado.pontuacao || []).map(function(criterio) {
+        return {
+          id: criterio.id,
+          nome: criterio.nome || criterio.id,
+          status: criterio.status || '',
+          aplicavel: criterio.aplicavel !== false,
+          nota: criterio.pontuacao,
+          justificativa: criterio.justificativa_nota || criterio.observacao || ''
+        };
+      });
+    } catch (erroResultado) { dimensoes = []; }
+  }
+  return dimensoes.filter(function(itemDimensao) {
+    return itemDimensao && itemDimensao.aplicavel !== false && isFinite(Number(itemDimensao.nota));
+  }).map(function(itemDimensao) {
+    return {
+      id: String(itemDimensao.id || ''),
+      nome: String(itemDimensao.nome || itemDimensao.id || ''),
+      status: String(itemDimensao.status || ''),
+      nota: Math.max(0, Math.min(5, Number(itemDimensao.nota))),
+      justificativa: String(itemDimensao.justificativa || '')
+    };
+  });
 }
 
 function jornadaListarIdentificadores_(idCliente, itensInformados) {
@@ -2069,6 +2103,7 @@ function jornadaListarOtimizacoes_(idCliente, itensInformados) {
 function jornadaListarAuditorias_(idCliente, periodo, itensInformados) {
   return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.auditorias)).filter(item => String(item.ID_CLIENTE) === String(idCliente) && jornadaPeriodoData_(item.CONCLUIDO_EM || item.SOLICITADO_EM) === periodo).map(item => ({
     idAuditoria: item.ID_AUDITORIA, tipo: item.TIPO_AUDITORIA, status: item.STATUS, score: item.SCORE,
+    dimensoes: jornadaDimensoesAuditoria_(item), scoreSchemaVersao: item.SCORE_SCHEMA_VERSAO || '',
     data: serializarData_(item.CONCLUIDO_EM || item.SOLICITADO_EM), linkDocumento: item.LINK_DOCUMENTO, linkCircle: item.CIRCLE_POST_URL
   }));
 }

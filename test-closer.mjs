@@ -15,6 +15,8 @@ const momentos = criterios.momentos.map((item, index) => ({
   gatilho_alcancado: index !== 2,
   o_que_se_espera: item.objetivo,
   o_que_foi_dito: 'Evidência objetiva da transcrição.',
+  divergencia: index === 2 ? 'A solução não foi conectada ao impacto declarado.' : 'Não houve divergência.',
+  justificativa_nota: index === 2 ? 'Gatilho não alcançado.' : 'Gatilho alcançado sem desvio relevante.',
   pontos_fortes: ['Boa condução'],
   pontos_melhorar: index === 2 ? ['Não confirmou o próximo passo'] : [],
   o_que_fazer: 'Aplicar o comportamento esperado.',
@@ -24,16 +26,21 @@ const momentos = criterios.momentos.map((item, index) => ({
   timestamp_inicio: ['00:00', '03:00', '17:00', '46:00'][index],
   timestamp_fim: ['03:00', '17:00', '46:00', '1:03:50'][index]
 }));
-const pontuacao = criterios.dimensoes.map(item => ({
+const criteriosAvaliados = criterios.dimensoes.map(item => ({
   id: item.id,
   nome: item.nome,
   aplicavel: true,
+  status: 'CONFORME',
+  o_que_foi_dito: 'Evidência objetiva da transcrição.',
+  regra_pitch: 'Comportamento obrigatório descrito no pitch.',
+  divergencia: 'Não houve divergência.',
+  correcao_pratica: 'Manter a execução.',
   pontuacao: 4.5,
-  observacao: 'Execução consistente.'
+  justificativa_nota: 'Execução consistente e aderente.'
 }));
 const checklist = criterios.checklist.map(item => ({ item, resultado: 'SIM', observacao: 'Evidenciado.' }));
 const resultado = context.api.normalize(
-  { momentos, pontuacao, checklist, semaforo_geral: { justificativa: 'Um gatilho não alcançado.' } },
+  { momentos, criterios_avaliados: criteriosAvaliados, checklist, semaforo_geral: { justificativa: 'Um gatilho não alcançado.' } },
   criterios,
   { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead', empresaArquivo: '', numeroChamada: '' },
   { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
@@ -50,6 +57,23 @@ if (!resultado.analise_temporal.mensuravel) throw new Error('Timestamps válidos
 if (resultado.analise_temporal.duracao_total !== '63 min 50 s') throw new Error('Duração total da reunião não foi normalizada.');
 if (resultado.analise_temporal.diagnostico.duracao_minutos !== 17) throw new Error('Duração do diagnóstico calculada incorretamente.');
 if (resultado.analise_temporal.fechamento.inicio !== '46:00') throw new Error('Timestamp do fechamento não foi preservado.');
+
+const criteriosContraditorios = JSON.parse(JSON.stringify(criteriosAvaliados));
+criteriosContraditorios[0].divergencia = 'A pergunta obrigatória não foi feita.';
+let contradicaoRejeitada = false;
+try {
+  context.api.normalize(
+    { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosContraditorios, checklist: JSON.parse(JSON.stringify(checklist)) },
+    criterios,
+    { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead' },
+    { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
+    { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
+    'CLOSER'
+  );
+} catch (erro) {
+  contradicaoRejeitada = /contradiz esse status/.test(String(erro.message || erro));
+}
+if (!contradicaoRejeitada) throw new Error('Uma nota CONFORME com divergência deveria ser rejeitada.');
 
 const schemaCompleto = context.api.schema('CLOSER');
 const schemaApi = context.api.apiSchema('CLOSER');
