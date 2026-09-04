@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import assert from 'node:assert/strict';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
@@ -107,6 +108,9 @@ if (!trechoChamada.includes('const generationConfig') || !trechoChamada.includes
   throw new Error('A configuração condicional não está dentro da chamada de auditoria.');
 }
 const trechoFormalizacao = source.slice(source.indexOf('function formalChamarGemini_'), source.indexOf('function formalMontarPrompt_'));
+assert.match(source, /esperasRetentativaMs:\s*\[0,\s*3000,\s*8000\]/, 'A retentativa gradual do Gemini não está configurada.');
+assert.match(trechoFormalizacao, /AUDITORIA_V3\.esperasRetentativaMs\.slice\(\)/, 'A formalização não usa a política de retentativa.');
+assert.match(source.slice(inicioChamada, source.indexOf('function audV3MontarPrompt_')), /AUDITORIA_V3\.esperasRetentativaMs\.slice\(\)/, 'A auditoria não usa a política de retentativa.');
 if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
   throw new Error('A configuração Closer vazou para a formalização.');
 }

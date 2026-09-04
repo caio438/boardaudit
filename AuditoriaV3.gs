@@ -17,6 +17,7 @@ const AUDITORIA_V3 = Object.freeze({
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
   modeloGeminiPadrao: 'gemini-3.5-flash-lite',
+  esperasRetentativaMs: [0, 3000, 8000],
   maxCaracteresTranscricao: 500000,
   observacaoProcesso: 'Observação de processo: o time de Sales Ops já está ciente deste ponto e tratará a atualização na próxima reunião operacional. Até lá, o pitch vigente permanece como referência de execução.',
   colunasAuditoria: [
@@ -252,10 +253,23 @@ function gerarFormalizacaoReuniao(dados) {
       formalizacao: formalSerializar_(existente)
     };
   }
-  const idFormalizacao = audV3Id_('FOR');
+  const tentativaAnterior = audV3Ler_(FORMALIZACAO_REUNIAO.aba)
+    .filter(item =>
+      String(item.ID_TRANSCRICAO || '') === String(transcricao.ID_TRANSCRICAO || '') &&
+      !String(item.RESULTADO_JSON || '').trim() &&
+      ['ERRO', 'PROCESSANDO'].includes(String(item.STATUS || '').toUpperCase())
+    )
+    .sort((a, b) => new Date(b.ATUALIZADO_EM || b.SOLICITADO_EM || 0) - new Date(a.ATUALIZADO_EM || a.SOLICITADO_EM || 0))[0];
+  if (tentativaAnterior && String(tentativaAnterior.STATUS || '').toUpperCase() === 'PROCESSANDO') {
+    const atualizadoEm = new Date(tentativaAnterior.ATUALIZADO_EM || tentativaAnterior.SOLICITADO_EM || 0).getTime();
+    if (atualizadoEm && Date.now() - atualizadoEm < 10 * 60 * 1000) {
+      throw new Error('Esta formalização já está sendo processada. Aguarde a conclusão antes de tentar novamente.');
+    }
+  }
+  const idFormalizacao = tentativaAnterior ? tentativaAnterior.ID_FORMALIZACAO : audV3Id_('FOR');
   const agora = new Date();
 
-  audV3Adicionar_(FORMALIZACAO_REUNIAO.aba, {
+  const dadosProcessamento = {
     ID_FORMALIZACAO: idFormalizacao,
     ID_INTERACAO: transcricao.ID_INTERACAO || '',
     ID_TRANSCRICAO: transcricao.ID_TRANSCRICAO,
@@ -269,7 +283,12 @@ function gerarFormalizacaoReuniao(dados) {
     ERRO: '',
     SOLICITADO_EM: agora,
     ATUALIZADO_EM: agora
-  });
+  };
+  if (tentativaAnterior) {
+    audV3Atualizar_(FORMALIZACAO_REUNIAO.aba, 'ID_FORMALIZACAO', idFormalizacao, dadosProcessamento);
+  } else {
+    audV3Adicionar_(FORMALIZACAO_REUNIAO.aba, dadosProcessamento);
+  }
 
   try {
     const resultadoIa = formalChamarGemini_({
@@ -529,15 +548,23 @@ function formalChamarGemini_(ctx) {
       maxOutputTokens: 10000
     }
   };
-  const esperas = [0];
+  const esperas = AUDITORIA_V3.esperasRetentativaMs.slice();
   for (let tentativa = 0; tentativa < esperas.length; tentativa++) {
     if (esperas[tentativa]) Utilities.sleep(esperas[tentativa]);
     consumoIaValidarAntes_(modelo);
     const inicioTentativaIa = Date.now();
-    const resposta = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': chave },
-      payload: JSON.stringify(payload), muteHttpExceptions: true
-    });
+    let resposta;
+    try {
+      resposta = UrlFetchApp.fetch(url, {
+        method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': chave },
+        payload: JSON.stringify(payload), muteHttpExceptions: true
+      });
+    } catch (erroRede) {
+      registrarConsumoIa_(modelo, 'FORMALIZACAO', 0, '', String(erroRede), inicioTentativaIa);
+      console.warn('Gemini indisponível na formalização, tentativa ' + (tentativa + 1) + ': ' + String(erroRede));
+      if (tentativa < esperas.length - 1) continue;
+      throw new Error('O serviço de IA continuou indisponível após três tentativas automáticas. Tente novamente mais tarde.');
+    }
     const status = resposta.getResponseCode();
     const corpo = resposta.getContentText();
     registrarConsumoIa_(modelo, 'FORMALIZACAO', status, corpo, '', inicioTentativaIa);
@@ -545,11 +572,20 @@ function formalChamarGemini_(ctx) {
       const json = audV3ParseJson_(corpo, 'A resposta HTTP da IA não é JSON válido.');
       const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
       const texto = partes.map(item => item.text || '').join('').trim();
-      if (texto) return audV3ParseJson_(texto, 'A IA retornou uma formalização que não é JSON válido.');
+      if (texto) {
+        try {
+          return audV3ParseJson_(texto, 'A IA retornou uma formalização que não é JSON válido.');
+        } catch (erroJson) {
+          console.warn('JSON incompleto na formalização, tentativa ' + (tentativa + 1) + '.');
+          if (tentativa < esperas.length - 1) continue;
+          throw erroJson;
+        }
+      }
+      if (tentativa < esperas.length - 1) continue;
     }
     if ([429, 500, 502, 503, 504].indexOf(status) >= 0 && tentativa < esperas.length - 1) continue;
     throw new Error([429, 500, 502, 503, 504].indexOf(status) >= 0
-      ? 'O serviço de IA está temporariamente ocupado. Tente novamente em alguns segundos.'
+      ? 'O serviço de IA continuou ocupado após três tentativas automáticas. Tente novamente mais tarde.'
       : 'Não foi possível acessar o serviço de IA (código ' + status + ').');
   }
   throw new Error('O serviço de IA está temporariamente indisponível.');
@@ -1721,7 +1757,7 @@ function audV3ChamarGemini_(ctx) {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: generationConfig
   };
-  const esperasMs = [0];
+  const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
 
   for (let tentativa = 0; tentativa < esperasMs.length; tentativa++) {
