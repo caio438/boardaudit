@@ -109,8 +109,7 @@ function tarefasFormalizacoesSincronizar_() {
   const existentes = audV3Ler_(TAREFAS_FORMALIZACOES.aba);
   const porId = {};
   existentes.forEach(item => { if (item.ID_TAREFA) porId[String(item.ID_TAREFA)] = item; });
-  const vistos = {};
-  const novas = [];
+  const desejadas = {};
   audV3Ler_(FORMALIZACAO_REUNIAO.aba)
     .filter(item => item.ID_FORMALIZACAO && String(item.RESULTADO_JSON || '').trim())
     .filter(item => !['DESCARTADA', 'ERRO', 'PROCESSANDO'].includes(String(item.STATUS || '').toUpperCase()))
@@ -135,7 +134,6 @@ function tarefasFormalizacoesSincronizar_() {
         if (repetidas[chaveAcao]) return;
         repetidas[chaveAcao] = true;
         const id = tarefasFormalizacoesId_(formalizacao.ID_FORMALIZACAO, chaveAcao);
-        vistos[id] = true;
         const base = {
           ID_TAREFA: id, ID_FORMALIZACAO: formalizacao.ID_FORMALIZACAO,
           ID_CLIENTE: formalizacao.ID_CLIENTE || '', ORIGEM_ITEM: item.origem,
@@ -144,30 +142,30 @@ function tarefasFormalizacoesSincronizar_() {
           RESPONSAVEL: item.responsavel || 'Não definido', PRAZO: item.prazo || 'Não definido',
           CRITERIO_CONCLUSAO: item.criterio || '', TITULO_REUNIAO: formalizacao.TITULO || '',
           DATA_REUNIAO: formalizacao.DATA_REUNIAO || '', LINK_CIRCLE: formalizacao.CIRCLE_POST_URL || '',
-          ATIVA: 'SIM', ATUALIZADO_EM: new Date()
+          ATIVA: 'SIM'
         };
-        if (porId[id]) {
-          if (tarefasFormalizacoesMudou_(porId[id], base)) audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', id, base);
-        } else {
-          base.STATUS = 'PENDENTE'; base.CRIADO_EM = new Date(); base.CONCLUIDO_EM = '';
-          novas.push(base);
-        }
+        const anterior = porId[id] || {};
+        const mudou = !anterior.ID_TAREFA || tarefasFormalizacoesMudou_(anterior, base);
+        base.STATUS = String(anterior.STATUS || 'PENDENTE').toUpperCase();
+        base.CRIADO_EM = anterior.CRIADO_EM || new Date();
+        base.CONCLUIDO_EM = anterior.CONCLUIDO_EM || '';
+        base.ATUALIZADO_EM = mudou ? new Date() : (anterior.ATUALIZADO_EM || new Date());
+        desejadas[id] = base;
       });
     });
-  tarefasFormalizacoesAdicionarMuitas_(novas);
-  existentes.forEach(item => {
-    if (item.ID_TAREFA && !vistos[String(item.ID_TAREFA)] && String(item.ATIVA || 'SIM').toUpperCase() !== 'NAO') {
-      audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', item.ID_TAREFA, { ATIVA: 'NAO', ATUALIZADO_EM: new Date() });
-    }
-  });
+  tarefasFormalizacoesGravarLote_(Object.keys(desejadas).sort().map(id => desejadas[id]), existentes);
 }
 
-function tarefasFormalizacoesAdicionarMuitas_(objetos) {
-  if (!Array.isArray(objetos) || !objetos.length) return;
+function tarefasFormalizacoesGravarLote_(objetos, existentes) {
   const aba = audV3Planilha_().getSheetByName(TAREFAS_FORMALIZACOES.aba);
   const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+  const atuais = (existentes || []).filter(item => item.ID_TAREFA).sort((a, b) => String(a.ID_TAREFA).localeCompare(String(b.ID_TAREFA)));
+  const assinatura = lista => JSON.stringify(lista.map(item => cabecalhos.filter(c => !['ATUALIZADO_EM'].includes(c)).map(c => c === 'DATA_REUNIAO' ? audV3DataIso_(item[c]) : String(item[c] == null ? '' : item[c]))));
+  if (assinatura(atuais) === assinatura(objetos)) return;
   const linhas = objetos.map(objeto => cabecalhos.map(cabecalho => Object.prototype.hasOwnProperty.call(objeto, cabecalho) ? objeto[cabecalho] : ''));
-  aba.getRange(aba.getLastRow() + 1, 1, linhas.length, cabecalhos.length).setValues(linhas);
+  const antigas = Math.max(0, aba.getLastRow() - 1);
+  if (antigas) aba.getRange(2, 1, antigas, cabecalhos.length).clearContent();
+  if (linhas.length) aba.getRange(2, 1, linhas.length, cabecalhos.length).setValues(linhas);
 }
 
 function tarefasFormalizacoesMudou_(atual, novo) {
@@ -179,9 +177,15 @@ function tarefasFormalizacoesMudou_(atual, novo) {
 }
 
 function tarefasFormalizacoesId_(idFormalizacao, acaoNormalizada) {
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(idFormalizacao) + '|' + String(acaoNormalizada), Utilities.Charset.UTF_8);
-  const hash = bytes.map(valor => ('0' + ((valor + 256) % 256).toString(16)).slice(-2)).join('').slice(0, 16).toUpperCase();
-  return 'TF-' + hash;
+  const texto = String(idFormalizacao) + '|' + String(acaoNormalizada);
+  let a = 2166136261;
+  let b = 5381;
+  for (let i = 0; i < texto.length; i += 1) {
+    const codigo = texto.charCodeAt(i);
+    a = Math.imul(a ^ codigo, 16777619);
+    b = Math.imul(b, 33) ^ codigo;
+  }
+  return 'TF-' + ('00000000' + (a >>> 0).toString(16)).slice(-8).toUpperCase() + ('00000000' + (b >>> 0).toString(16)).slice(-8).toUpperCase();
 }
 
 function tarefasFormalizacoesNormalizar_(valor) {
