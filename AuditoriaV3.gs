@@ -1903,6 +1903,9 @@ function audV3MontarPrompt_(ctx) {
     'Quando não houver metas cadastradas, não crie números e não bloqueie a auditoria.',
     'Não invente timestamps, falas, objeções, motivação, notas ou dados. Use Não evidenciado quando necessário.',
     'Não faça afirmação causal sobre meta ou conversão sem dado comprovado. Use pode afetar quando for apenas risco operacional.',
+    'Nos próximos_passos, informe a equipe de cada tarefa. Caio e Thiago pertencem a SALES_OPS; Allafy e Luis pertencem a MIDIA.',
+    'Nunca misture tarefas de SALES_OPS e MIDIA no mesmo próximo passo. Quando uma ação envolver as duas equipes, crie uma tarefa separada para cada equipe, com seu respectivo responsável.',
+    'Use equipe NAO_DEFINIDA quando a transcrição e a análise não indicarem Caio, Thiago, Allafy, Luis ou uma equipe responsável.',
     'O resumo_publicacao deve ser uma síntese fiel dos achados do relatório completo, sem criar fatos novos e sem frases genéricas.',
     regraConclusao,
     'Sem timestamps ou duração informada, tempo de fala, interrupções e duração devem ser marcados como não mensuráveis.'
@@ -2041,7 +2044,62 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
     });
     audV3NormalizarLeiturasSdr_(resultado, criterios);
   }
+  audV3NormalizarProximosPassosEquipes_(resultado);
   return resultado;
+}
+
+function audV3NormalizarEquipeResponsavel_(valor) {
+  const texto = String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[\s-]+/g, '_');
+  if (texto === 'SALES_OPS' || texto === 'SALESOPS') return 'SALES_OPS';
+  if (texto === 'MIDIA' || texto === 'MEDIA') return 'MIDIA';
+  if (texto === 'OUTRA' || texto === 'OUTRA_EQUIPE') return 'OUTRA';
+  return 'NAO_DEFINIDA';
+}
+
+function audV3EquipesDoProximoPasso_(item) {
+  item = item || {};
+  const responsavel = String(item.responsavel || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const temSalesOps = /\b(?:caio|thiago)\b/.test(responsavel);
+  const temMidia = /\b(?:allafy|luis)\b/.test(responsavel);
+  if (temSalesOps && temMidia) return ['SALES_OPS', 'MIDIA'];
+  if (temSalesOps) return ['SALES_OPS'];
+  if (temMidia) return ['MIDIA'];
+  const equipe = audV3NormalizarEquipeResponsavel_(item.equipe);
+  return [equipe];
+}
+
+function audV3NormalizarProximosPassosEquipes_(resultado) {
+  resultado = resultado || {};
+  const recebidos = Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : [];
+  const normalizados = [];
+  recebidos.forEach(function(item) {
+    item = typeof item === 'string' ? { acao: item } : (item || {});
+    const acao = String(item.acao || '').trim();
+    if (!acao) return;
+    audV3EquipesDoProximoPasso_(item).forEach(function(equipe) {
+      normalizados.push({
+        prioridade: String(item.prioridade || ''),
+        acao: acao,
+        equipe: equipe,
+        responsavel: String(item.responsavel || 'Não definido'),
+        prazo_dias: item.prazo_dias === null || item.prazo_dias === undefined || item.prazo_dias === '' ? null : Number(item.prazo_dias),
+        criterio_conclusao: String(item.criterio_conclusao || '')
+      });
+    });
+  });
+  resultado.proximos_passos = normalizados;
+  resultado.proximos_passos_por_equipe = {
+    sales_ops: normalizados.filter(function(item) { return item.equipe === 'SALES_OPS'; }),
+    midia: normalizados.filter(function(item) { return item.equipe === 'MIDIA'; }),
+    outros: normalizados.filter(function(item) { return item.equipe !== 'SALES_OPS' && item.equipe !== 'MIDIA'; })
+  };
+  resultado.resumo_publicacao = resultado.resumo_publicacao || {};
+  const textoPasso = function(item) {
+    return [item.acao, item.responsavel ? 'Responsável: ' + item.responsavel : ''].filter(Boolean).join(' | ');
+  };
+  resultado.resumo_publicacao.proximos_passos_sales_ops = resultado.proximos_passos_por_equipe.sales_ops.map(textoPasso);
+  resultado.resumo_publicacao.proximos_passos_midia = resultado.proximos_passos_por_equipe.midia.map(textoPasso);
+  resultado.resumo_publicacao.proximos_passos_outros = resultado.proximos_passos_por_equipe.outros.map(textoPasso);
 }
 
 function audV3NormalizarCriteriosComparados_(resultado, criterios) {
@@ -2629,7 +2687,7 @@ function audV3SchemaRespostaCloser_() {
       checklist: { type: 'ARRAY', maxItems: 16, items: { type: 'OBJECT', properties: { item: texto, resultado: texto, observacao: texto }, required: ['item', 'resultado', 'observacao'] } },
       duracao: { type: 'OBJECT', properties: { segundos: { type: 'NUMBER' }, texto: texto } },
       lacunas_processo: listaTexto,
-      proximos_passos: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', properties: { prioridade: texto, acao: texto, responsavel: texto, prazo_dias: { type: 'NUMBER' }, criterio_conclusao: texto } } },
+      proximos_passos: { type: 'ARRAY', maxItems: 6, items: { type: 'OBJECT', properties: { prioridade: texto, acao: texto, equipe: { type: 'STRING', enum: ['SALES_OPS', 'MIDIA', 'OUTRA', 'NAO_DEFINIDA'] }, responsavel: texto, prazo_dias: { type: 'NUMBER' }, criterio_conclusao: texto }, required: ['acao', 'equipe', 'responsavel'] } },
       resumo_publicacao: {
         type: 'OBJECT',
         properties: {
@@ -2776,7 +2834,7 @@ function audV3SchemaRespostaSdr_() {
       checklist: { type: 'ARRAY', maxItems: 12, items: { type: 'OBJECT', properties: { item: texto, resultado: texto, observacao: texto } } },
       duracao: { type: 'OBJECT', properties: { segundos: { type: 'NUMBER' }, texto: texto } },
       lacunas_processo: listaTexto,
-      proximos_passos: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', properties: { prioridade: texto, acao: texto, responsavel: texto, prazo_dias: { type: 'NUMBER' }, criterio_conclusao: texto } } },
+      proximos_passos: { type: 'ARRAY', maxItems: 6, items: { type: 'OBJECT', properties: { prioridade: texto, acao: texto, equipe: { type: 'STRING', enum: ['SALES_OPS', 'MIDIA', 'OUTRA', 'NAO_DEFINIDA'] }, responsavel: texto, prazo_dias: { type: 'NUMBER' }, criterio_conclusao: texto }, required: ['acao', 'equipe', 'responsavel'] } },
       resumo_publicacao: {
         type: 'OBJECT',
         properties: {
@@ -2980,7 +3038,8 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   ])));
   audV3Titulo_(body, '11. Checklist de Adesão ao Script', DocumentApp.ParagraphHeading.HEADING1);
   audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
-  audV3Titulo_(body, '12. Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
+  audV3AdicionarProximosPassosEquipes_(body, r);
+  audV3Titulo_(body, '13. Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'chamada'));
   audV3AdicionarLinkGravacao_(body, interacao);
 
@@ -3129,6 +3188,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   ])));
   audV3Titulo_(body, 'Checklist de adesão', DocumentApp.ParagraphHeading.HEADING1);
   audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
+  audV3AdicionarProximosPassosEquipes_(body, r);
   audV3Titulo_(body, 'Duração total da reunião', DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'reunião'));
   audV3AdicionarLinkGravacao_(body, interacao);
@@ -3137,6 +3197,32 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
   if (pastaId) DriveApp.getFileById(doc.getId()).moveTo(DriveApp.getFolderById(pastaId));
   return { id: doc.getId(), url: doc.getUrl() };
+}
+
+function audV3AdicionarProximosPassosEquipes_(body, resultado) {
+  const grupos = (resultado || {}).proximos_passos_por_equipe || {};
+  const secoes = [
+    ['Próximos passos de Sales Ops', grupos.sales_ops || []],
+    ['Próximos passos de Mídia', grupos.midia || []],
+    ['Outros próximos passos', grupos.outros || []]
+  ];
+  audV3Titulo_(body, '12. Próximos passos por equipe', DocumentApp.ParagraphHeading.HEADING1);
+  let possuiItens = false;
+  secoes.forEach(function(secao) {
+    if (!secao[1].length) return;
+    possuiItens = true;
+    audV3Titulo_(body, secao[0], DocumentApp.ParagraphHeading.HEADING2);
+    audV3Tabela_(body, [['Ação', 'Responsável', 'Prioridade', 'Prazo', 'Critério de conclusão']].concat(secao[1].map(function(item) {
+      return [
+        item.acao || '',
+        item.responsavel || 'Não definido',
+        item.prioridade || 'Não definida',
+        item.prazo_dias === null || item.prazo_dias === undefined ? 'Não definido' : item.prazo_dias + ' dia(s)',
+        item.criterio_conclusao || 'Não definido'
+      ];
+    })));
+  });
+  if (!possuiItens) body.appendParagraph('Nenhum próximo passo foi definido na análise.');
 }
 
 function audV3Comparacao_(body, item) {

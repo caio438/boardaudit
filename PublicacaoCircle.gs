@@ -421,7 +421,9 @@ function comunidadeMontarPublicacaoAuditoria_(auditoria, cliente, interacao, res
   circleAdicionarSecaoTexto_(linhas, '**Desvios identificados**', dados.desvios);
   circleAdicionarSecaoTexto_(linhas, '**O que deve melhorar**', dados.melhorias);
   circleAdicionarSecaoTexto_(linhas, '**Por que isso importa**', dados.impactos);
-  circleAdicionarSecaoTexto_(linhas, '**Próximos passos**', dados.proximosPassos);
+  circleAdicionarSecaoTexto_(linhas, '**Próximos passos de Sales Ops**', dados.proximosPassosSalesOps);
+  circleAdicionarSecaoTexto_(linhas, '**Próximos passos de Mídia**', dados.proximosPassosMidia);
+  circleAdicionarSecaoTexto_(linhas, '**Outros próximos passos**', dados.proximosPassosOutros);
 
   if (dados.audioUrl) {
     linhas.push('', '**Áudio auditado**', '[Ouvir gravação](' + dados.audioUrl + ')');
@@ -452,7 +454,9 @@ function circleMontarPublicacaoAuditoria_(auditoria, cliente, interacao, resulta
   circleAdicionarSecaoNodes_(nodes, 'Desvios identificados', dados.desvios);
   circleAdicionarSecaoNodes_(nodes, 'O que deve melhorar', dados.melhorias);
   circleAdicionarSecaoNodes_(nodes, 'Por que isso importa', dados.impactos);
-  circleAdicionarSecaoNodes_(nodes, 'Próximos passos', dados.proximosPassos);
+  circleAdicionarSecaoNodes_(nodes, 'Próximos passos de Sales Ops', dados.proximosPassosSalesOps);
+  circleAdicionarSecaoNodes_(nodes, 'Próximos passos de Mídia', dados.proximosPassosMidia);
+  circleAdicionarSecaoNodes_(nodes, 'Outros próximos passos', dados.proximosPassosOutros);
   if (dados.audioUrl) {
     circleTitulo_(nodes, 'Áudio auditado', 3);
     circleParagrafo_(nodes, [{ text: 'Ouvir gravação', link: dados.audioUrl }]);
@@ -534,7 +538,7 @@ function circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultad
       item.beneficio_de_corrigir ? 'Benefício da correção: ' + item.beneficio_de_corrigir : ''
     ]);
   }), 5);
-  const proximosPassos = circleUnicos_((resultado.proximos_passos || []).map(function(item) {
+  const formatarProximoPasso = function(item) {
     if (typeof item === 'string') return item;
     return circleJuntarPartes_([
       item.acao,
@@ -542,7 +546,19 @@ function circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultad
       item.prazo_dias !== undefined && item.prazo_dias !== null ? 'Prazo: ' + item.prazo_dias + ' dia(s)' : '',
       item.criterio_conclusao ? 'Concluído quando: ' + item.criterio_conclusao : ''
     ]);
-  }).concat(publicacao.proximos_passos || []), 5);
+  };
+  const passosEstruturados = (resultado.proximos_passos || []).map(function(item) {
+    const objeto = typeof item === 'string' ? { acao: item } : (item || {});
+    let equipe = String(objeto.equipe || '').toUpperCase();
+    if (typeof audV3EquipesDoProximoPasso_ === 'function') equipe = audV3EquipesDoProximoPasso_(objeto)[0];
+    return { equipe: equipe, texto: formatarProximoPasso(objeto) };
+  });
+  const proximosPassosSalesOps = circleUnicos_(passosEstruturados.filter(function(item) { return item.equipe === 'SALES_OPS'; }).map(function(item) { return item.texto; })
+    .concat(publicacao.proximos_passos_sales_ops || []), 6);
+  const proximosPassosMidia = circleUnicos_(passosEstruturados.filter(function(item) { return item.equipe === 'MIDIA'; }).map(function(item) { return item.texto; })
+    .concat(publicacao.proximos_passos_midia || []), 6);
+  const proximosPassosOutros = circleUnicos_(passosEstruturados.filter(function(item) { return item.equipe !== 'SALES_OPS' && item.equipe !== 'MIDIA'; }).map(function(item) { return item.texto; })
+    .concat(publicacao.proximos_passos_outros || []).concat(publicacao.proximos_passos || []), 6);
   const scoreValor = auditoria.SCORE_GLOBAL !== undefined && auditoria.SCORE_GLOBAL !== ''
     ? auditoria.SCORE_GLOBAL : auditoria.SCORE;
   const score = scoreValor === undefined || scoreValor === null || scoreValor === ''
@@ -557,7 +573,10 @@ function circleDadosPublicacaoAuditoria_(auditoria, cliente, interacao, resultad
     desvios: circleUnicos_(desvios, 5),
     melhorias: melhorias,
     impactos: impactos,
-    proximosPassos: proximosPassos,
+    proximosPassos: proximosPassosSalesOps.concat(proximosPassosMidia, proximosPassosOutros),
+    proximosPassosSalesOps: proximosPassosSalesOps,
+    proximosPassosMidia: proximosPassosMidia,
+    proximosPassosOutros: proximosPassosOutros,
     audioUrl: String(interacao.URL_GRAVACAO || interacao.LINK_ORIGINAL || '').trim()
   };
 }

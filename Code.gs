@@ -1,6 +1,6 @@
 const APP = {
   nome: 'Board de Auditorias VOLUM',
-  versao: '4.19.2',
+  versao: '4.19.3',
   spreadsheetId: '1s1HWCfqEunoq-iToJMO9mWaZQoYd0FgdT3YqmYrUgck',
   timezone: 'America/Sao_Paulo',
   rdBaseUrl: 'https://crm.rdstation.com/api/v1',

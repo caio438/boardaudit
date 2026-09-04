@@ -42,7 +42,16 @@ const criteriosAvaliados = criterios.dimensoes.map(item => ({
 }));
 const checklist = criterios.checklist.map(item => ({ item, resultado: 'SIM', observacao: 'Evidenciado.' }));
 const resultado = context.api.normalize(
-  { momentos, criterios_avaliados: criteriosAvaliados, checklist, semaforo_geral: { justificativa: 'Um gatilho não alcançado.' } },
+  {
+    momentos,
+    criterios_avaliados: criteriosAvaliados,
+    checklist,
+    semaforo_geral: { justificativa: 'Um gatilho não alcançado.' },
+    proximos_passos: [
+      { acao: 'Revisar o processo', responsavel: 'Caio', equipe: 'NAO_DEFINIDA' },
+      { acao: 'Ajustar a campanha', responsavel: 'Allafy', equipe: 'NAO_DEFINIDA' }
+    ]
+  },
   criterios,
   { empresa: 'Cliente', sdr: 'Closer Teste', lead: 'Lead', empresaArquivo: '', numeroChamada: '' },
   { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
@@ -59,6 +68,9 @@ if (!resultado.analise_temporal.mensuravel) throw new Error('Timestamps válidos
 if (resultado.analise_temporal.duracao_total !== '63 min 50 s') throw new Error('Duração total da reunião não foi normalizada.');
 if (resultado.analise_temporal.diagnostico.duracao_minutos !== 17) throw new Error('Duração do diagnóstico calculada incorretamente.');
 if (resultado.analise_temporal.fechamento.inicio !== '46:00') throw new Error('Timestamp do fechamento não foi preservado.');
+if (resultado.proximos_passos_por_equipe.sales_ops.length !== 1) throw new Error('Tarefa do Caio não foi classificada em Sales Ops.');
+if (resultado.proximos_passos_por_equipe.midia.length !== 1) throw new Error('Tarefa do Allafy não foi classificada em Mídia.');
+if (!resultado.resumo_publicacao.proximos_passos_sales_ops.length || !resultado.resumo_publicacao.proximos_passos_midia.length) throw new Error('Resumo não separou próximos passos por equipe.');
 
 const criteriosContraditorios = JSON.parse(JSON.stringify(criteriosAvaliados));
 criteriosContraditorios[0].divergencia = 'A pergunta obrigatória não foi feita.';

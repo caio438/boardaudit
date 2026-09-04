@@ -5829,7 +5829,8 @@
       ${tabelaAuditoriaV3(['Critério não atingido','Impacto de não executar corretamente','Benefício da correção','Indicador que pode ser afetado'], impactos.map(item => [item.criterio, item.impacto_de_nao_executar, item.beneficio_de_corrigir, item.indicador_que_pode_ser_afetado]))}
       <h3>11. Checklist de Adesão ao Script</h3>
       ${tabelaAuditoriaV3(['Item','Resultado','Observações'], checklist.map(item => [item.item, item.resultado, item.observacao]))}
-      <h3>12. Duração Total da Chamada</h3>
+      ${renderizarProximosPassosEquipesV3_(r, '12. ')}
+      <h3>13. Duração Total da Chamada</h3>
       <p>${escapeHtml(duracaoAuditoriaTexto_(r, auditoria, 'chamada'))}</p>
       ${linkAudioAuditoriaHtml_(auditoria)}
     `;
@@ -5945,10 +5946,37 @@
       ${tabelaAuditoriaV3(['Critério não atingido','Impacto de não executar corretamente','Benefício da correção','Indicador que pode ser afetado'], impactos.map(item => [item.criterio, item.impacto_de_nao_executar, item.beneficio_de_corrigir, item.indicador_que_pode_ser_afetado]))}
       <h3>Checklist de adesão</h3>
       ${tabelaAuditoriaV3(['Item','Resultado','Observações'], checklist.map(item => [item.item, item.resultado, item.observacao]))}
+      ${renderizarProximosPassosEquipesV3_(r, '')}
       <h3>Duração total da reunião</h3>
       <p>${escapeHtml(duracaoAuditoriaTexto_(r, auditoria, 'reunião'))}</p>
       ${linkAudioAuditoriaHtml_(auditoria)}
     `;
+  }
+
+  function renderizarProximosPassosEquipesV3_(resultado, prefixo) {
+    resultado = resultado || {};
+    const gruposJson = resultado.proximos_passos_por_equipe || {};
+    const passos = Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : [];
+    const normalizar = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const equipeDoItem = item => {
+      const responsavel = normalizar(item.responsavel);
+      if (/\b(caio|thiago)\b/.test(responsavel)) return 'SALES_OPS';
+      if (/\b(allafy|luis)\b/.test(responsavel)) return 'MIDIA';
+      return String(item.equipe || 'NAO_DEFINIDA').toUpperCase();
+    };
+    const grupos = {
+      sales_ops: Array.isArray(gruposJson.sales_ops) ? gruposJson.sales_ops : passos.filter(item => equipeDoItem(item) === 'SALES_OPS'),
+      midia: Array.isArray(gruposJson.midia) ? gruposJson.midia : passos.filter(item => equipeDoItem(item) === 'MIDIA'),
+      outros: Array.isArray(gruposJson.outros) ? gruposJson.outros : passos.filter(item => !['SALES_OPS', 'MIDIA'].includes(equipeDoItem(item)))
+    };
+    const bloco = (titulo, itens) => itens.length
+      ? `<h4>${escapeHtml(titulo)}</h4>${tabelaAuditoriaV3(['Ação','Responsável','Prioridade','Prazo','Critério de conclusão'], itens.map(item => [item.acao, item.responsavel || 'Não definido', item.prioridade || 'Não definida', item.prazo_dias === null || item.prazo_dias === undefined ? 'Não definido' : item.prazo_dias + ' dia(s)', item.criterio_conclusao || 'Não definido']))}`
+      : '';
+    return `<h3>${escapeHtml(prefixo || '')}Próximos passos por equipe</h3>` +
+      bloco('Sales Ops', grupos.sales_ops) +
+      bloco('Mídia', grupos.midia) +
+      bloco('Outros ou sem responsável definido', grupos.outros) +
+      (!grupos.sales_ops.length && !grupos.midia.length && !grupos.outros.length ? '<p class="muted">Nenhum próximo passo foi definido na análise.</p>' : '');
   }
 
   function normalizarTemporalCloserFront_(temporal, auditoria, momentos) {

@@ -34,13 +34,20 @@ const resultado = {
     impacto_de_nao_executar: 'Pode encaminhar oportunidades sem aderência.',
     beneficio_de_corrigir: 'Aumenta a qualidade dos agendamentos.'
   }],
-  proximos_passos: [{ acao: 'Treinar validação de LMV', responsavel: 'SDR', prazo_dias: 2, criterio_conclusao: 'Simulação aprovada' }]
+  proximos_passos: [
+    { acao: 'Revisar a automação', equipe: 'SALES_OPS', responsavel: 'Thiago', prazo_dias: 2, criterio_conclusao: 'Fluxo validado' },
+    { acao: 'Ajustar a campanha', equipe: 'MIDIA', responsavel: 'Luis', prazo_dias: 3, criterio_conclusao: 'Campanha revisada' }
+  ]
 };
 
 const manual = vm.runInContext('comunidadeMontarPublicacaoAuditoria_', contexto)(auditoria, cliente, interacao, resultado);
 assert.match(manual.conteudo, /Desvios identificados/);
 assert.match(manual.conteudo, /O que deve melhorar/);
 assert.match(manual.conteudo, /Por que isso importa/);
+assert.match(manual.conteudo, /Próximos passos de Sales Ops/);
+assert.match(manual.conteudo, /Próximos passos de Mídia/);
+assert.match(manual.conteudo, /Thiago/);
+assert.match(manual.conteudo, /Luis/);
 assert.match(manual.conteudo, /Ouvir gravação/);
 assert.doesNotMatch(manual.conteudo, /—/);
 assert.ok(manual.conteudo.split('\n').length > 10, 'A versão manual deve preservar a estrutura em blocos.');
