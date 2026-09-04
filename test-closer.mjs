@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
@@ -111,6 +112,9 @@ const trechoFormalizacao = source.slice(source.indexOf('function formalChamarGem
 assert.match(source, /esperasRetentativaMs:\s*\[0,\s*3000,\s*8000\]/, 'A retentativa gradual do Gemini não está configurada.');
 assert.match(trechoFormalizacao, /AUDITORIA_V3\.esperasRetentativaMs\.slice\(\)/, 'A formalização não usa a política de retentativa.');
 assert.match(source.slice(inicioChamada, source.indexOf('function audV3MontarPrompt_')), /AUDITORIA_V3\.esperasRetentativaMs\.slice\(\)/, 'A auditoria não usa a política de retentativa.');
+assert.match(consumoSource, /function consumoIaModelosTextoDisponiveis_\(\)/, 'A lista de modelos alternativos não está disponível.');
+assert.match(trechoFormalizacao, /consumoIaModelosTextoDisponiveis_\(\)/, 'A formalização não troca de modelo após indisponibilidade temporária.');
+assert.match(trechoChamada, /consumoIaModelosTextoDisponiveis_\(\)/, 'A auditoria não troca de modelo após indisponibilidade temporária.');
 if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
   throw new Error('A configuração Closer vazou para a formalização.');
 }

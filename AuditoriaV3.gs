@@ -536,8 +536,7 @@ function formalData_(valor) {
 function formalChamarGemini_(ctx) {
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Configure GEMINI_API_KEY nas propriedades do script.');
-  const modelo = consumoIaModeloTextoGratuito_();
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent';
+  const modelos = consumoIaModelosTextoDisponiveis_();
   const payload = {
     systemInstruction: { parts: [{ text: formalPromptSistema_() }] },
     contents: [{ role: 'user', parts: [{ text: formalMontarPrompt_(ctx) }] }],
@@ -549,7 +548,10 @@ function formalChamarGemini_(ctx) {
     }
   };
   const esperas = AUDITORIA_V3.esperasRetentativaMs.slice();
-  for (let tentativa = 0; tentativa < esperas.length; tentativa++) {
+  for (let indiceModelo = 0; indiceModelo < modelos.length; indiceModelo++) {
+    const modelo = modelos[indiceModelo];
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent';
+    for (let tentativa = 0; tentativa < esperas.length; tentativa++) {
     if (esperas[tentativa]) Utilities.sleep(esperas[tentativa]);
     consumoIaValidarAntes_(modelo);
     const inicioTentativaIa = Date.now();
@@ -563,7 +565,7 @@ function formalChamarGemini_(ctx) {
       registrarConsumoIa_(modelo, 'FORMALIZACAO', 0, '', String(erroRede), inicioTentativaIa);
       console.warn('Gemini indisponível na formalização, tentativa ' + (tentativa + 1) + ': ' + String(erroRede));
       if (tentativa < esperas.length - 1) continue;
-      throw new Error('O serviço de IA continuou indisponível após três tentativas automáticas. Tente novamente mais tarde.');
+      break;
     }
     const status = resposta.getResponseCode();
     const corpo = resposta.getContentText();
@@ -584,11 +586,13 @@ function formalChamarGemini_(ctx) {
       if (tentativa < esperas.length - 1) continue;
     }
     if ([429, 500, 502, 503, 504].indexOf(status) >= 0 && tentativa < esperas.length - 1) continue;
+    if ([429, 500, 502, 503, 504].indexOf(status) >= 0) break;
     throw new Error([429, 500, 502, 503, 504].indexOf(status) >= 0
       ? 'O serviço de IA continuou ocupado após três tentativas automáticas. Tente novamente mais tarde.'
       : 'Não foi possível acessar o serviço de IA (código ' + status + ').');
+    }
   }
-  throw new Error('O serviço de IA está temporariamente indisponível.');
+  throw new Error('Todos os modelos gratuitos de IA disponíveis estão temporariamente ocupados. Tente novamente mais tarde.');
 }
 
 function formalPromptSistema_() {
@@ -1729,8 +1733,7 @@ function audV3Identidade_(dados, cliente, interacao) {
 function audV3ChamarGemini_(ctx) {
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Configure GEMINI_API_KEY nas propriedades do script.');
-  const modeloApi = consumoIaModeloTextoGratuito_();
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modeloApi) + ':generateContent';
+  const modelosApi = consumoIaModelosTextoDisponiveis_();
   const prompt = audV3MontarPrompt_(ctx);
   const tipo = String(ctx.tipoAuditoria || ctx.modelo.TIPO_AUDITORIA || 'SDR').toUpperCase();
   
@@ -1760,7 +1763,10 @@ function audV3ChamarGemini_(ctx) {
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
 
-  for (let tentativa = 0; tentativa < esperasMs.length; tentativa++) {
+  for (let indiceModelo = 0; indiceModelo < modelosApi.length; indiceModelo++) {
+    const modeloApi = modelosApi[indiceModelo];
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modeloApi) + ':generateContent';
+    for (let tentativa = 0; tentativa < esperasMs.length; tentativa++) {
     if (esperasMs[tentativa]) Utilities.sleep(esperasMs[tentativa]);
     consumoIaValidarAntes_(modeloApi);
 
@@ -1778,7 +1784,7 @@ function audV3ChamarGemini_(ctx) {
       registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, 0, '', String(erroRede), inicioTentativaIa);
       console.warn('Gemini indisponível na tentativa ' + (tentativa + 1) + ': ' + String(erroRede));
       if (tentativa < esperasMs.length - 1) continue;
-      throw new Error('O serviço de IA está temporariamente indisponível. Aguarde alguns segundos e clique em Gerar auditoria novamente.');
+      break;
     }
 
     const status = resposta.getResponseCode();
@@ -1807,9 +1813,7 @@ function audV3ChamarGemini_(ctx) {
     const temporario = statusTemporarios.indexOf(status) >= 0;
     console.warn('Gemini HTTP ' + status + ' na tentativa ' + (tentativa + 1) + '.');
     if (temporario && tentativa < esperasMs.length - 1) continue;
-    if (temporario) {
-      throw new Error('O serviço de IA está temporariamente ocupado. Aguarde alguns segundos e clique em Gerar auditoria novamente.');
-    }
+    if (temporario) break;
     let detalheIa = '';
     try {
       const erroIa = JSON.parse(corpo || '{}').error || {};
@@ -1819,9 +1823,10 @@ function audV3ChamarGemini_(ctx) {
       throw new Error('O Gemini recusou a estrutura desta auditoria. O Board não consumiu tokens. Atualize a página e tente novamente.' + (detalheIa ? ' Detalhe: ' + detalheIa : ''));
     }
     throw new Error('Não foi possível acessar o serviço de IA (código ' + status + ').' + (detalheIa ? ' ' + detalheIa : ' Confira a configuração do Gemini.'));
+    }
   }
 
-  throw new Error('O serviço de IA está temporariamente indisponível. Tente novamente em alguns segundos.');
+  throw new Error('Todos os modelos gratuitos de IA disponíveis estão temporariamente ocupados. Tente novamente mais tarde.');
 }
 
 function audV3MontarPrompt_(ctx) {

@@ -46,6 +46,19 @@ function consumoIaModeloTextoGratuito_() {
   return consumoIaSelecionarModeloGratuito_(CONSUMO_IA.modelosTextoGratuitos, 'texto');
 }
 
+function consumoIaModelosTextoDisponiveis_() {
+  const disponiveis = CONSUMO_IA.modelosTextoGratuitos.filter(function(modelo) {
+    const limite = CONSUMO_IA.limites[modelo];
+    if (!limite || !limite.rpd) return false;
+    const usadas = consumoIaContarHojeModelo_(modelo);
+    const tetoSeguro = Math.max(1, Math.floor(limite.rpd * CONSUMO_IA.percentualMaximo / 100));
+    return usadas < tetoSeguro;
+  });
+  if (disponiveis.length) return disponiveis;
+  consumoIaSelecionarModeloGratuito_(CONSUMO_IA.modelosTextoGratuitos, 'texto');
+  return [];
+}
+
 function consumoIaModeloAudioGratuito_() {
   return consumoIaSelecionarModeloGratuito_(CONSUMO_IA.modelosAudioGratuitos, 'áudio');
 }
