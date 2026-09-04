@@ -1,6 +1,6 @@
 const APP = {
   nome: 'Board de Auditorias VOLUM',
-  versao: '4.19.3',
+  versao: '4.20.0',
   spreadsheetId: '1s1HWCfqEunoq-iToJMO9mWaZQoYd0FgdT3YqmYrUgck',
   timezone: 'America/Sao_Paulo',
   rdBaseUrl: 'https://crm.rdstation.com/api/v1',
@@ -23,6 +23,7 @@ const APP = {
     transcricoes: 'TRANSCRICOES',
     auditorias: 'AUDITORIAS',
     formalizacoes: 'FORMALIZACOES_REUNIAO',
+    tarefasFormalizacoes: 'TAREFAS_FORMALIZACOES',
     identificadoresClientes: 'CLIENTE_IDENTIFICADORES',
     reunioesCalendario: 'REUNIOES_CALENDARIO',
     regrasEntregas: 'REGRAS_ENTREGAS_CLIENTE',
@@ -479,6 +480,13 @@ function obterCabecalhosOficiais_() {
     'CIRCLE_PUBLICADO_EM', 'CIRCLE_ERRO', 'COMUNIDADE_STATUS',
     'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL', 'COMUNIDADE_PUBLICADO_EM',
     'COMUNIDADE_ERRO'
+  ];
+
+  estruturas[APP.sheets.tarefasFormalizacoes] = [
+    'ID_TAREFA', 'ID_FORMALIZACAO', 'ID_CLIENTE', 'ORIGEM_ITEM',
+    'INDICE_ORIGEM', 'ACAO', 'EQUIPE', 'RESPONSAVEL', 'PRAZO', 'STATUS',
+    'CRITERIO_CONCLUSAO', 'TITULO_REUNIAO', 'DATA_REUNIAO',
+    'LINK_CIRCLE', 'ATIVA', 'CRIADO_EM', 'ATUALIZADO_EM', 'CONCLUIDO_EM'
   ];
 
   estruturas[APP.sheets.identificadoresClientes] = [

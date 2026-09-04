@@ -747,7 +747,7 @@
     .pagination-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .pagination select { width:auto; min-width:72px; }
 
-    .guide-flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+    .guide-flow { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }
     .guide-step { border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface-2); }
     .guide-step-number { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--primary); color:#fff; font-weight:800; margin-bottom:10px; }
     .guide-step h4 { margin:0 0 6px; }
@@ -778,6 +778,7 @@
       <nav class="nav">
         <button class="active" data-page="auditorias">Audit</button>
         <button data-page="formalizacoes">Formalizar</button>
+        <button data-page="tarefasFormalizacoes">Tarefas das formalizações</button>
         <button data-page="areaCliente">Área do cliente</button>
         <button data-page="integracoes">Configurações</button>
         <button data-page="guia">Guia e roadmap</button>
@@ -1130,6 +1131,39 @@
         </div>
       </section>
 
+      <section id="page-tarefasFormalizacoes" class="page">
+        <div class="grid cards" id="tarefasFormalizacoesResumo"></div>
+        <div class="card" style="margin-top:18px">
+          <div class="section-title">
+            <div>
+              <h3>Tarefas das formalizações</h3>
+              <p>Próximos passos e ajustes operacionais extraídos somente das formalizações. Auditorias não entram nesta lista.</p>
+            </div>
+            <button class="btn secondary" type="button" onclick="carregarPagina('tarefasFormalizacoes', true)">Atualizar tarefas</button>
+          </div>
+          <div class="toolbar">
+            <div class="filters" style="width:100%">
+              <input id="tarefasFormalizacoesBusca" type="search" placeholder="Buscar tarefa, responsável ou reunião" oninput="renderizarTarefasFormalizacoes()">
+              <select id="tarefasFormalizacoesCliente" onchange="renderizarTarefasFormalizacoes()"><option value="">Todos os clientes</option></select>
+              <select id="tarefasFormalizacoesEquipe" onchange="renderizarTarefasFormalizacoes()">
+                <option value="">Todas as equipes</option>
+                <option value="SALES_OPS">Sales Ops</option>
+                <option value="MIDIA">Mídia</option>
+                <option value="CLIENTE_OUTRO">Cliente / outro</option>
+                <option value="SEM_RESPONSAVEL">Sem responsável</option>
+              </select>
+              <select id="tarefasFormalizacoesStatus" onchange="renderizarTarefasFormalizacoes()">
+                <option value="">Todas as situações</option>
+                <option value="PENDENTE">Pendente</option>
+                <option value="EM_ANDAMENTO">Em andamento</option>
+                <option value="CONCLUIDA">Concluída</option>
+              </select>
+            </div>
+          </div>
+          <div id="tarefasFormalizacoesLista"><div class="empty">Abra esta área para carregar as tarefas.</div></div>
+        </div>
+      </section>
+
       <section id="page-ligacoes" class="page">
         <div class="card">
           <div class="empty">
@@ -1420,7 +1454,8 @@
             <div class="guide-step"><span class="guide-step-number">2</span><h4>Sincronizar</h4><p>Atualize reuniões e ligações. Confirme se a transcrição foi encontrada.</p></div>
             <div class="guide-step"><span class="guide-step-number">3</span><h4>Auditar</h4><p>Compare a conversa com o pitch correto e revise as evidências.</p></div>
             <div class="guide-step"><span class="guide-step-number">4</span><h4>Formalizar</h4><p>Use a aba Transcrição, revise os próximos passos e prepare o post.</p></div>
-            <div class="guide-step"><span class="guide-step-number">5</span><h4>Acompanhar</h4><p>Valide entregas e evolução na Área do cliente.</p></div>
+            <div class="guide-step"><span class="guide-step-number">5</span><h4>Distribuir tarefas</h4><p>Confira responsáveis, prazos e andamento em Tarefas das formalizações.</p></div>
+            <div class="guide-step"><span class="guide-step-number">6</span><h4>Acompanhar</h4><p>Valide entregas e evolução na Área do cliente.</p></div>
           </div>
         </div>
 
@@ -1448,7 +1483,7 @@
               <div class="guide-check"><span>✓</span><div><strong>Abra a prévia da Comunidade.</strong><div class="small muted">Escolha o espaço, confira a capa e copie ou publique o conteúdo.</div></div></div>
               <div class="guide-check"><span>✓</span><div><strong>Confirme o status publicado.</strong><div class="small muted">O histórico deve mostrar a publicação e o link final.</div></div></div>
             </div>
-            <div class="actions"><button class="btn success" type="button" onclick="abrirPagina('formalizacoes')">Ir para Formalizar</button></div>
+            <div class="actions"><button class="btn success" type="button" onclick="abrirPagina('formalizacoes')">Ir para Formalizar</button><button class="btn secondary" type="button" onclick="abrirPagina('tarefasFormalizacoes')">Ver tarefas das formalizações</button></div>
           </div>
         </div>
 
@@ -1980,6 +2015,7 @@
       conexoesClientes: [],
       transcricoesFormalizacao: [],
       formalizacoes: [],
+      tarefasFormalizacoes: [],
       formalizacoesResumoClientes: [],
       formalizacaoAtual: null,
       formalComunidadeAtual: null,
@@ -2006,6 +2042,7 @@
         ligacoes: false,
         auditorias: false,
         formalizacoes: false,
+        tarefasFormalizacoes: false,
         clientes: false,
         pitches: false,
         consumoIa: false,
@@ -2021,6 +2058,7 @@
       ligacoes: ['Ligações API4COM', 'Ligações comerciais e gravações.'],
       auditorias: ['Audit', 'Auditorias, reuniões, transcrições, tarefas e ligações em um único fluxo.'],
       formalizacoes: ['Formalizar', 'Transforme qualquer transcrição em uma formalização objetiva.'],
+      tarefasFormalizacoes: ['Tarefas das formalizações', 'Acompanhe os combinados das formalizações sem misturá-los com as auditorias.'],
       areaCliente: ['Área do cliente', 'Acompanhe a jornada, a saúde operacional e as entregas mensais por cliente.'],
       clientes: ['Clientes', 'Regras e integrações por cliente.'],
       pitches: ['Pitches', 'Scripts e prompts das auditorias.'],
@@ -2431,6 +2469,22 @@
             falharCarga_('formalizacoes', 'listaFormalizacoes', erro);
           })
           .carregarDadosFormalizacoes();
+        return;
+      }
+
+      if (nome === 'tarefasFormalizacoes') {
+        if (!iniciarCarga_('tarefasFormalizacoes', forcar)) return;
+        mostrarLoadingLocal('tarefasFormalizacoesLista', 'Organizando tarefas das formalizações...');
+        google.script.run
+          .withSuccessHandler(dados => {
+            estado.tarefasFormalizacoes = dados.tarefas || [];
+            estado.resumoTarefasFormalizacoes = dados.resumo || {};
+            preencherFiltrosTarefasFormalizacoes_(dados.clientes || []);
+            renderizarTarefasFormalizacoes();
+            concluirCarga_('tarefasFormalizacoes', true);
+          })
+          .withFailureHandler(erro => falharCarga_('tarefasFormalizacoes', 'tarefasFormalizacoesLista', erro))
+          .carregarDadosTarefasFormalizacoes();
         return;
       }
 
@@ -7644,6 +7698,68 @@
         erro && erro.message ? erro.message : String(erro),
         'error'
       );
+    }
+
+    function preencherFiltrosTarefasFormalizacoes_(clientes) {
+      const seletor = document.getElementById('tarefasFormalizacoesCliente');
+      if (!seletor) return;
+      const atual = seletor.value;
+      seletor.innerHTML = '<option value="">Todos os clientes</option>' + (clientes || []).map(item =>
+        `<option value="${escapeAtributo(item.idCliente)}">${escapeHtml(item.nomeCliente)}</option>`
+      ).join('');
+      if ([...seletor.options].some(opcao => opcao.value === atual)) seletor.value = atual;
+    }
+
+    function renderizarTarefasFormalizacoes() {
+      const tarefas = estado.tarefasFormalizacoes || [];
+      const busca = normalizarComparacaoFront(valor('tarefasFormalizacoesBusca'));
+      const cliente = valor('tarefasFormalizacoesCliente');
+      const equipe = valor('tarefasFormalizacoesEquipe');
+      const status = valor('tarefasFormalizacoesStatus');
+      const filtradas = tarefas.filter(item => {
+        if (cliente && String(item.idCliente) !== cliente) return false;
+        if (equipe && String(item.equipe) !== equipe) return false;
+        if (status && String(item.status) !== status) return false;
+        if (!busca) return true;
+        return normalizarComparacaoFront([item.acao, item.responsavel, item.tituloReuniao, item.cliente].join(' ')).includes(busca);
+      });
+      const resumo = estado.resumoTarefasFormalizacoes || {};
+      const metricas = [['Total', resumo.total || 0], ['Pendentes', resumo.pendentes || 0], ['Em andamento', resumo.emAndamento || 0], ['Concluídas', resumo.concluidas || 0]];
+      document.getElementById('tarefasFormalizacoesResumo').innerHTML = metricas.map(item =>
+        `<div class="card metric"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span></div>`
+      ).join('');
+      const alvo = document.getElementById('tarefasFormalizacoesLista');
+      if (!filtradas.length) {
+        alvo.innerHTML = `<div class="empty">${tarefas.length ? 'Nenhuma tarefa corresponde aos filtros.' : 'Nenhuma tarefa foi encontrada nas formalizações.'}</div>`;
+        return;
+      }
+      const rotuloEquipe = { SALES_OPS: 'Sales Ops', MIDIA: 'Mídia', CLIENTE_OUTRO: 'Cliente / outro', SEM_RESPONSAVEL: 'Sem responsável' };
+      const classeStatus = { PENDENTE: 'warning', EM_ANDAMENTO: '', CONCLUIDA: 'success' };
+      alvo.innerHTML = `<div class="table-wrap"><table style="min-width:1120px"><thead><tr><th>Cliente</th><th>Tarefa</th><th>Equipe</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Origem</th><th>Ações</th></tr></thead><tbody>${filtradas.map(item => `<tr>
+        <td><strong>${escapeHtml(item.cliente || 'Sem cliente')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></td>
+        <td style="min-width:300px"><strong>${escapeHtml(item.acao)}</strong>${item.criterioConclusao ? `<div class="small muted" style="margin-top:5px"><strong>Concluído quando:</strong> ${escapeHtml(item.criterioConclusao)}</div>` : ''}</td>
+        <td><span class="status">${escapeHtml(rotuloEquipe[item.equipe] || item.equipe)}</span></td><td>${escapeHtml(item.responsavel || 'Não definido')}</td><td>${escapeHtml(item.prazo || 'Não definido')}</td>
+        <td><span class="status ${classeStatus[item.status] || ''}">${escapeHtml(rotuloStatusTarefaFormalizacao_(item.status))}</span></td>
+        <td><div>${escapeHtml(item.tituloReuniao || 'Formalização')}</div><div class="small muted">${item.origem === 'AJUSTE_OPERACIONAL' ? 'Ajuste operacional' : 'Próximo passo'}</div></td>
+        <td><div class="actions" style="margin:0;min-width:240px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
+      </tr>`).join('')}</tbody></table></div>`;
+    }
+
+    function rotuloStatusTarefaFormalizacao_(status) {
+      return { PENDENTE: 'Pendente', EM_ANDAMENTO: 'Em andamento', CONCLUIDA: 'Concluída' }[String(status || '').toUpperCase()] || status;
+    }
+
+    function atualizarStatusTarefaFormalizacaoFront(idTarefa, status, seletor) {
+      if (seletor) seletor.disabled = true;
+      google.script.run.withSuccessHandler(dados => {
+        estado.tarefasFormalizacoes = dados.tarefas || [];
+        estado.resumoTarefasFormalizacoes = dados.resumo || {};
+        renderizarTarefasFormalizacoes();
+        mostrarToast('Situação da tarefa atualizada.', 'success');
+      }).withFailureHandler(erro => {
+        if (seletor) seletor.disabled = false;
+        mostrarToast(erro && erro.message ? erro.message : String(erro), 'error');
+      }).atualizarStatusTarefaFormalizacao({ idTarefa: idTarefa, status: status });
     }
 
     function formatarData(valor) {

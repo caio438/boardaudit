@@ -51,6 +51,163 @@ const FORMALIZACAO_REUNIAO = Object.freeze({
   maxCaracteresTranscricao: 500000
 });
 
+const TAREFAS_FORMALIZACOES = Object.freeze({
+  aba: 'TAREFAS_FORMALIZACOES',
+  colunas: [
+    'ID_TAREFA', 'ID_FORMALIZACAO', 'ID_CLIENTE', 'ORIGEM_ITEM',
+    'INDICE_ORIGEM', 'ACAO', 'EQUIPE', 'RESPONSAVEL', 'PRAZO', 'STATUS',
+    'CRITERIO_CONCLUSAO', 'TITULO_REUNIAO', 'DATA_REUNIAO',
+    'LINK_CIRCLE', 'ATIVA', 'CRIADO_EM', 'ATUALIZADO_EM', 'CONCLUIDO_EM'
+  ]
+});
+
+/**
+ * Painel operacional separado das auditorias. As tarefas são derivadas somente
+ * de formalizações válidas, mas o andamento informado pelo operador é preservado.
+ */
+function carregarDadosTarefasFormalizacoes() {
+  tarefasFormalizacoesSincronizar_();
+  const clientes = audV3Ler_('CLIENTES')
+    .filter(item => item.ID_CLIENTE)
+    .map(item => ({ idCliente: String(item.ID_CLIENTE), nomeCliente: String(item.NOME_CLIENTE || item.ID_CLIENTE) }));
+  const nomes = {};
+  clientes.forEach(item => { nomes[item.idCliente] = item.nomeCliente; });
+  const tarefas = audV3Ler_(TAREFAS_FORMALIZACOES.aba)
+    .filter(item => item.ID_TAREFA && String(item.ATIVA || 'SIM').toUpperCase() !== 'NAO')
+    .map(item => tarefasFormalizacoesSerializar_(item, nomes))
+    .sort((a, b) => {
+      const peso = { PENDENTE: 0, EM_ANDAMENTO: 1, CONCLUIDA: 2 };
+      return (peso[a.status] || 0) - (peso[b.status] || 0) || String(b.dataReuniao || '').localeCompare(String(a.dataReuniao || ''));
+    });
+  return { clientes: clientes, tarefas: tarefas, resumo: tarefasFormalizacoesResumo_(tarefas) };
+}
+
+function atualizarStatusTarefaFormalizacao(dados) {
+  dados = dados || {};
+  const id = String(dados.idTarefa || '').trim();
+  const status = String(dados.status || '').trim().toUpperCase();
+  if (!id) throw new Error('Tarefa da formalização não informada.');
+  if (!['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'].includes(status)) throw new Error('Situação da tarefa inválida.');
+  tarefasFormalizacoesGarantirEstrutura_();
+  const atual = audV3Localizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', id);
+  if (!atual) throw new Error('Tarefa da formalização não encontrada.');
+  audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', id, {
+    STATUS: status,
+    ATUALIZADO_EM: new Date(),
+    CONCLUIDO_EM: status === 'CONCLUIDA' ? (atual.CONCLUIDO_EM || new Date()) : ''
+  });
+  return carregarDadosTarefasFormalizacoes();
+}
+
+function tarefasFormalizacoesGarantirEstrutura_() {
+  audV3GarantirCabecalhos_(audV3Planilha_(), TAREFAS_FORMALIZACOES.aba, TAREFAS_FORMALIZACOES.colunas);
+}
+
+function tarefasFormalizacoesSincronizar_() {
+  tarefasFormalizacoesGarantirEstrutura_();
+  formalGarantirEstrutura_();
+  const existentes = audV3Ler_(TAREFAS_FORMALIZACOES.aba);
+  const porId = {};
+  existentes.forEach(item => { if (item.ID_TAREFA) porId[String(item.ID_TAREFA)] = item; });
+  const vistos = {};
+  audV3Ler_(FORMALIZACAO_REUNIAO.aba)
+    .filter(item => item.ID_FORMALIZACAO && String(item.RESULTADO_JSON || '').trim())
+    .filter(item => !['DESCARTADA', 'ERRO', 'PROCESSANDO'].includes(String(item.STATUS || '').toUpperCase()))
+    .forEach(formalizacao => {
+      let resultado = {};
+      try { resultado = JSON.parse(String(formalizacao.RESULTADO_JSON || '{}')); } catch (erro) { return; }
+      const candidatos = [];
+      (Array.isArray(resultado.ajustes_operacionais) ? resultado.ajustes_operacionais : []).forEach((item, indice) => candidatos.push({
+        origem: 'AJUSTE_OPERACIONAL', indice: indice + 1,
+        acao: String((item || {}).o_que_fazer || (item || {}).comportamento || '').trim(),
+        responsavel: String((item || {}).responsavel || '').trim(), prazo: String((item || {}).prazo || '').trim(),
+        criterio: String((item || {}).indicador || (item || {}).como_executar || '').trim()
+      }));
+      (Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : []).forEach((item, indice) => candidatos.push({
+        origem: 'PROXIMO_PASSO', indice: indice + 1,
+        acao: String((item || {}).acao || '').trim(), responsavel: String((item || {}).responsavel || '').trim(),
+        prazo: String((item || {}).prazo || '').trim(), criterio: String((item || {}).criterio_conclusao || '').trim()
+      }));
+      const repetidas = {};
+      candidatos.filter(item => item.acao).forEach(item => {
+        const chaveAcao = tarefasFormalizacoesNormalizar_(item.acao);
+        if (repetidas[chaveAcao]) return;
+        repetidas[chaveAcao] = true;
+        const id = tarefasFormalizacoesId_(formalizacao.ID_FORMALIZACAO, chaveAcao);
+        vistos[id] = true;
+        const base = {
+          ID_TAREFA: id, ID_FORMALIZACAO: formalizacao.ID_FORMALIZACAO,
+          ID_CLIENTE: formalizacao.ID_CLIENTE || '', ORIGEM_ITEM: item.origem,
+          INDICE_ORIGEM: item.indice, ACAO: item.acao,
+          EQUIPE: tarefasFormalizacoesEquipe_(item.responsavel),
+          RESPONSAVEL: item.responsavel || 'Não definido', PRAZO: item.prazo || 'Não definido',
+          CRITERIO_CONCLUSAO: item.criterio || '', TITULO_REUNIAO: formalizacao.TITULO || '',
+          DATA_REUNIAO: formalizacao.DATA_REUNIAO || '', LINK_CIRCLE: formalizacao.CIRCLE_POST_URL || '',
+          ATIVA: 'SIM', ATUALIZADO_EM: new Date()
+        };
+        if (porId[id]) {
+          if (tarefasFormalizacoesMudou_(porId[id], base)) audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', id, base);
+        } else {
+          base.STATUS = 'PENDENTE'; base.CRIADO_EM = new Date(); base.CONCLUIDO_EM = '';
+          audV3Adicionar_(TAREFAS_FORMALIZACOES.aba, base);
+        }
+      });
+    });
+  existentes.forEach(item => {
+    if (item.ID_TAREFA && !vistos[String(item.ID_TAREFA)] && String(item.ATIVA || 'SIM').toUpperCase() !== 'NAO') {
+      audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', item.ID_TAREFA, { ATIVA: 'NAO', ATUALIZADO_EM: new Date() });
+    }
+  });
+}
+
+function tarefasFormalizacoesMudou_(atual, novo) {
+  return Object.keys(novo || {}).some(chave => {
+    if (chave === 'ATUALIZADO_EM') return false;
+    if (chave === 'DATA_REUNIAO') return audV3DataIso_(atual[chave]) !== audV3DataIso_(novo[chave]);
+    return String(atual[chave] == null ? '' : atual[chave]) !== String(novo[chave] == null ? '' : novo[chave]);
+  });
+}
+
+function tarefasFormalizacoesId_(idFormalizacao, acaoNormalizada) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(idFormalizacao) + '|' + String(acaoNormalizada), Utilities.Charset.UTF_8);
+  const hash = bytes.map(valor => ('0' + ((valor + 256) % 256).toString(16)).slice(-2)).join('').slice(0, 16).toUpperCase();
+  return 'TF-' + hash;
+}
+
+function tarefasFormalizacoesNormalizar_(valor) {
+  return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function tarefasFormalizacoesEquipe_(responsavel) {
+  const valor = tarefasFormalizacoesNormalizar_(responsavel);
+  if (!valor || valor === 'nao definido' || valor === 'nao definido na reuniao') return 'SEM_RESPONSAVEL';
+  if (/\b(caio|thiago)\b/.test(valor)) return 'SALES_OPS';
+  if (/\b(allafy|alafy|luis|luiz)\b/.test(valor)) return 'MIDIA';
+  return 'CLIENTE_OUTRO';
+}
+
+function tarefasFormalizacoesSerializar_(item, nomes) {
+  return {
+    idTarefa: String(item.ID_TAREFA || ''), idFormalizacao: String(item.ID_FORMALIZACAO || ''),
+    idCliente: String(item.ID_CLIENTE || ''), cliente: nomes[String(item.ID_CLIENTE || '')] || String(item.ID_CLIENTE || 'Sem cliente'),
+    origem: String(item.ORIGEM_ITEM || ''), acao: String(item.ACAO || ''), equipe: String(item.EQUIPE || 'SEM_RESPONSAVEL'),
+    responsavel: String(item.RESPONSAVEL || 'Não definido'), prazo: String(item.PRAZO || 'Não definido'),
+    status: String(item.STATUS || 'PENDENTE').toUpperCase(), criterioConclusao: String(item.CRITERIO_CONCLUSAO || ''),
+    tituloReuniao: String(item.TITULO_REUNIAO || ''), dataReuniao: audV3DataIso_(item.DATA_REUNIAO),
+    linkCircle: String(item.LINK_CIRCLE || ''), atualizadoEm: audV3DataIso_(item.ATUALIZADO_EM)
+  };
+}
+
+function tarefasFormalizacoesResumo_(tarefas) {
+  return (tarefas || []).reduce((resumo, item) => {
+    resumo.total += 1;
+    if (item.status === 'CONCLUIDA') resumo.concluidas += 1;
+    else if (item.status === 'EM_ANDAMENTO') resumo.emAndamento += 1;
+    else resumo.pendentes += 1;
+    return resumo;
+  }, { total: 0, pendentes: 0, emAndamento: 0, concluidas: 0 });
+}
+
 /**
  * Módulo independente de formalização. Não usa função, tipo, pitch ou modelo
  * de auditoria para listar e processar uma transcrição.
