@@ -110,6 +110,7 @@ function tarefasFormalizacoesSincronizar_() {
   const porId = {};
   existentes.forEach(item => { if (item.ID_TAREFA) porId[String(item.ID_TAREFA)] = item; });
   const vistos = {};
+  const novas = [];
   audV3Ler_(FORMALIZACAO_REUNIAO.aba)
     .filter(item => item.ID_FORMALIZACAO && String(item.RESULTADO_JSON || '').trim())
     .filter(item => !['DESCARTADA', 'ERRO', 'PROCESSANDO'].includes(String(item.STATUS || '').toUpperCase()))
@@ -149,15 +150,24 @@ function tarefasFormalizacoesSincronizar_() {
           if (tarefasFormalizacoesMudou_(porId[id], base)) audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', id, base);
         } else {
           base.STATUS = 'PENDENTE'; base.CRIADO_EM = new Date(); base.CONCLUIDO_EM = '';
-          audV3Adicionar_(TAREFAS_FORMALIZACOES.aba, base);
+          novas.push(base);
         }
       });
     });
+  tarefasFormalizacoesAdicionarMuitas_(novas);
   existentes.forEach(item => {
     if (item.ID_TAREFA && !vistos[String(item.ID_TAREFA)] && String(item.ATIVA || 'SIM').toUpperCase() !== 'NAO') {
       audV3Atualizar_(TAREFAS_FORMALIZACOES.aba, 'ID_TAREFA', item.ID_TAREFA, { ATIVA: 'NAO', ATUALIZADO_EM: new Date() });
     }
   });
+}
+
+function tarefasFormalizacoesAdicionarMuitas_(objetos) {
+  if (!Array.isArray(objetos) || !objetos.length) return;
+  const aba = audV3Planilha_().getSheetByName(TAREFAS_FORMALIZACOES.aba);
+  const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+  const linhas = objetos.map(objeto => cabecalhos.map(cabecalho => Object.prototype.hasOwnProperty.call(objeto, cabecalho) ? objeto[cabecalho] : ''));
+  aba.getRange(aba.getLastRow() + 1, 1, linhas.length, cabecalhos.length).setValues(linhas);
 }
 
 function tarefasFormalizacoesMudou_(atual, novo) {
