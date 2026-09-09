@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.1',
+  versao: '1.9.2',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -50,6 +50,17 @@ const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
 
 function jornadaChaveFilaFormalizacao_(reuniao) {
   return String(reuniao.ID_TRANSCRICAO || reuniao.ID_INTERACAO || reuniao.ID_REUNIAO || '').trim();
+}
+
+function jornadaDataRegistro_(valor) {
+  if (valor instanceof Date && !isNaN(valor.getTime())) return valor;
+  const texto = String(valor || '').trim();
+  const br = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (br) {
+    return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]), Number(br[4] || 0), Number(br[5] || 0), Number(br[6] || 0));
+  }
+  const data = new Date(valor);
+  return isNaN(data.getTime()) ? null : data;
 }
 
 function jornadaLerFalhasFilaFormalizacao_() {
@@ -532,7 +543,10 @@ function iniciarRecuperacaoFormalizacoesAtrasadas() {
     erros: resultado.erros || [],
     mensagem: resultado.geradas
       ? 'A primeira formalização atrasada foi preparada. A fila seguirá uma por hora até zerar.'
-      : (resultado.restantes ? 'A regularização foi iniciada e seguirá uma por hora.' : 'Não há formalizações atrasadas elegíveis na fila.')
+      : ((resultado.erros || []).length
+        ? 'A fila foi encontrada, mas a primeira formalização falhou: ' + String(resultado.erros[0] || '')
+        : (resultado.restantes ? 'A regularização foi iniciada e seguirá uma por hora.' : 'Não há formalizações atrasadas elegíveis na fila.')),
+    diagnostico: resultado.diagnostico || {}
   };
 }
 
@@ -568,8 +582,8 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
       if (id === 'primary') {
         try { id = CalendarApp.getDefaultCalendar().getId(); } catch (erro) { id = 'primary'; }
       }
-      calendarios[id] = true;
-      calendarios[String(fonte.endereco || '')] = true;
+      calendarios[String(id || '').trim().toLowerCase()] = true;
+      calendarios[String(fonte.endereco || '').trim().toLowerCase()] = true;
     });
 
     const agora = new Date();
@@ -580,10 +594,27 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     );
     const falhasFila = jornadaLerFalhasFilaFormalizacao_();
     const agoraMs = agora.getTime();
-    const todasCandidatas = lerObjetos_(APP.sheets.reunioesCalendario)
-      .filter(item => item.ID_REUNIAO && item.ID_CLIENTE && new Date(item.FIM || item.INICIO).getTime() <= agora.getTime())
-      .filter(item => new Date(item.INICIO).getTime() >= limite.getTime())
-      .filter(item => calendarios[String(item.CALENDAR_ID || '')])
+    const diagnosticoFila = { registros: 0, realizadas: 0, periodo: 0, agendas: 0, transcritas: 0, formalizaveis: 0, pendentes: 0 };
+    const todasReunioes = lerObjetos_(APP.sheets.reunioesCalendario);
+    diagnosticoFila.registros = todasReunioes.length;
+    const todasCandidatas = todasReunioes
+      .filter(item => {
+        const fim = jornadaDataRegistro_(item.FIM || item.INICIO);
+        const valido = item.ID_REUNIAO && item.ID_CLIENTE && fim && fim.getTime() <= agora.getTime();
+        if (valido) diagnosticoFila.realizadas++;
+        return valido;
+      })
+      .filter(item => {
+        const inicio = jornadaDataRegistro_(item.INICIO);
+        const valido = inicio && inicio.getTime() >= limite.getTime();
+        if (valido) diagnosticoFila.periodo++;
+        return valido;
+      })
+      .filter(item => {
+        const valido = Boolean(calendarios[String(item.CALENDAR_ID || '').trim().toLowerCase()]);
+        if (valido) diagnosticoFila.agendas++;
+        return valido;
+      })
       .filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim()))
       .filter(jornadaReuniaoDeveFormalizar_)
       .filter(item => !formalizacoes.some(formalizacao =>
@@ -595,8 +626,11 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         const falhaB = falhasFila[jornadaChaveFilaFormalizacao_(b)];
         const aguardandoA = falhaA && agoraMs - Number(falhaA.ultimaTentativa || 0) < FORMALIZACAO_NOTURNA_CONFIG.esperaAposErroMs ? 1 : 0;
         const aguardandoB = falhaB && agoraMs - Number(falhaB.ultimaTentativa || 0) < FORMALIZACAO_NOTURNA_CONFIG.esperaAposErroMs ? 1 : 0;
-        return aguardandoA - aguardandoB || new Date(a.INICIO) - new Date(b.INICIO);
+        return aguardandoA - aguardandoB || jornadaDataRegistro_(a.INICIO) - jornadaDataRegistro_(b.INICIO);
       });
+    diagnosticoFila.transcritas = todasReunioes.filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim())).length;
+    diagnosticoFila.formalizaveis = todasReunioes.filter(jornadaReuniaoDeveFormalizar_).length;
+    diagnosticoFila.pendentes = todasCandidatas.length;
     const limiteLote = Math.min(3, Math.max(1, Number(opcoes.limite || 3)));
     const candidatas = todasCandidatas.slice(0, limiteLote);
 
@@ -627,7 +661,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     jornadaSalvarFalhasFilaFormalizacao_(falhasFila);
     registrarLog_('JORNADA', 'FORMALIZACOES_AUTOMATICAS', geradas.length + ' gerada(s); ' + erros.length + ' erro(s).');
     limparCachesDados_();
-    return { sucesso: erros.length === 0, geradas: geradas.length, ids: geradas, erros: erros, restantes: Math.max(0, todasCandidatas.length - candidatas.length) };
+    return { sucesso: erros.length === 0, geradas: geradas.length, ids: geradas, erros: erros, restantes: Math.max(0, todasCandidatas.length - geradas.length), diagnostico: diagnosticoFila };
   } finally {
     lock.releaseLock();
   }
