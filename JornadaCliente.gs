@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.3',
+  versao: '1.9.4',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -535,7 +535,9 @@ function iniciarRecuperacaoFormalizacoesAtrasadas() {
     Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd')
   );
   PropertiesService.getScriptProperties().setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveRecuperacaoAtiva, 'SIM');
-  const resultado = jornadaExecutarFormalizacaoNoturna_(true);
+  // A regularização usa os registros já sincronizados. A rotina noturna continua
+  // atualizando a Agenda antes do primeiro processamento do dia.
+  const resultado = jornadaExecutarFormalizacaoNoturna_(false);
   return {
     sucesso: resultado.sucesso !== false,
     geradas: Number(resultado.geradas || 0),
