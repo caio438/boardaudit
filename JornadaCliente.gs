@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.8.0',
+  versao: '1.8.1',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -41,9 +41,31 @@ const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
   intervaloMs: 60 * 60 * 1000,
   limitePorHora: 1,
   diasBusca: 30,
+  esperaAposErroMs: 6 * 60 * 60 * 1000,
   chaveUltimaExecucao: 'FORMALIZACAO_NOTURNA_ULTIMA_EXECUCAO',
-  chaveUltimoResultado: 'FORMALIZACAO_NOTURNA_ULTIMO_RESULTADO'
+  chaveUltimoResultado: 'FORMALIZACAO_NOTURNA_ULTIMO_RESULTADO',
+  chaveFalhasFila: 'FORMALIZACAO_NOTURNA_FALHAS_FILA'
 });
+
+function jornadaChaveFilaFormalizacao_(reuniao) {
+  return String(reuniao.ID_TRANSCRICAO || reuniao.ID_INTERACAO || reuniao.ID_REUNIAO || '').trim();
+}
+
+function jornadaLerFalhasFilaFormalizacao_() {
+  try {
+    const valor = JSON.parse(PropertiesService.getScriptProperties().getProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveFalhasFila) || '{}');
+    return valor && typeof valor === 'object' && !Array.isArray(valor) ? valor : {};
+  } catch (erro) {
+    return {};
+  }
+}
+
+function jornadaSalvarFalhasFilaFormalizacao_(falhas) {
+  PropertiesService.getScriptProperties().setProperty(
+    FORMALIZACAO_NOTURNA_CONFIG.chaveFalhasFila,
+    JSON.stringify(falhas || {})
+  );
+}
 
 function jornadaListarFontesReunioes_() {
   let fontes = [];
@@ -532,6 +554,8 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item =>
       String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'
     );
+    const falhasFila = jornadaLerFalhasFilaFormalizacao_();
+    const agoraMs = agora.getTime();
     const todasCandidatas = lerObjetos_(APP.sheets.reunioesCalendario)
       .filter(item => item.ID_REUNIAO && item.ID_CLIENTE && new Date(item.FIM || item.INICIO).getTime() <= agora.getTime())
       .filter(item => new Date(item.INICIO).getTime() >= limite.getTime())
@@ -542,7 +566,13 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         (item.ID_TRANSCRICAO && String(formalizacao.ID_TRANSCRICAO || '') === String(item.ID_TRANSCRICAO)) ||
         (item.ID_INTERACAO && String(formalizacao.ID_INTERACAO || '') === String(item.ID_INTERACAO))
       ))
-      .sort((a, b) => new Date(a.INICIO) - new Date(b.INICIO));
+      .sort((a, b) => {
+        const falhaA = falhasFila[jornadaChaveFilaFormalizacao_(a)];
+        const falhaB = falhasFila[jornadaChaveFilaFormalizacao_(b)];
+        const aguardandoA = falhaA && agoraMs - Number(falhaA.ultimaTentativa || 0) < FORMALIZACAO_NOTURNA_CONFIG.esperaAposErroMs ? 1 : 0;
+        const aguardandoB = falhaB && agoraMs - Number(falhaB.ultimaTentativa || 0) < FORMALIZACAO_NOTURNA_CONFIG.esperaAposErroMs ? 1 : 0;
+        return aguardandoA - aguardandoB || new Date(a.INICIO) - new Date(b.INICIO);
+      });
     const limiteLote = Math.min(3, Math.max(1, Number(opcoes.limite || 3)));
     const candidatas = todasCandidatas.slice(0, limiteLote);
 
@@ -554,11 +584,23 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
           idInteracao: reuniao.ID_INTERACAO,
           idTranscricao: reuniao.ID_TRANSCRICAO
         });
-        if (id) geradas.push(id);
+        if (id) {
+          geradas.push(id);
+          delete falhasFila[jornadaChaveFilaFormalizacao_(reuniao)];
+        }
       } catch (erro) {
         erros.push(String(reuniao.TITULO || reuniao.ID_REUNIAO) + ': ' + String(erro.message || erro));
+        const chaveFalha = jornadaChaveFilaFormalizacao_(reuniao);
+        if (chaveFalha) {
+          falhasFila[chaveFalha] = {
+            ultimaTentativa: agoraMs,
+            tentativas: Number(falhasFila[chaveFalha] && falhasFila[chaveFalha].tentativas || 0) + 1,
+            erro: String(erro.message || erro).slice(0, 500)
+          };
+        }
       }
     });
+    jornadaSalvarFalhasFilaFormalizacao_(falhasFila);
     registrarLog_('JORNADA', 'FORMALIZACOES_AUTOMATICAS', geradas.length + ' gerada(s); ' + erros.length + ' erro(s).');
     limparCachesDados_();
     return { sucesso: erros.length === 0, geradas: geradas.length, ids: geradas, erros: erros, restantes: Math.max(0, todasCandidatas.length - candidatas.length) };
