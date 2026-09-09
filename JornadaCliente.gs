@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.7.3',
+  versao: '1.8.0',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -32,6 +32,19 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
   ]
 });
 
+const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
+  handlerDiario: 'EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA',
+  handlerContinuacao: 'EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO',
+  horaInicio: 0,
+  horaFim: 7,
+  minutoInicio: 15,
+  intervaloMs: 60 * 60 * 1000,
+  limitePorHora: 1,
+  diasBusca: 30,
+  chaveUltimaExecucao: 'FORMALIZACAO_NOTURNA_ULTIMA_EXECUCAO',
+  chaveUltimoResultado: 'FORMALIZACAO_NOTURNA_ULTIMO_RESULTADO'
+});
+
 function jornadaListarFontesReunioes_() {
   let fontes = [];
   try { fontes = JSON.parse(String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.fontesReunioesChave) || '[]')); } catch (erro) { fontes = []; }
@@ -46,12 +59,15 @@ function jornadaListarFontesReunioes_() {
 function jornadaStatusFontesReunioes_() {
   jornadaGarantirFontesPadrao_();
   const formalizacaoAutomatica = String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM';
+  const props = PropertiesService.getScriptProperties();
   return {
     fontes: jornadaListarFontesReunioes_(),
     calendarioId: String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.calendarioIdChave) || ''),
     formalizacaoAutomatica: formalizacaoAutomatica,
     formalizacaoAutomaticaInstalada: formalizacaoAutomatica && jornadaAutomacaoFormalizacoesInstalada_(),
-    horariosFormalizacao: ['13:00', '18:30'],
+    horariosFormalizacao: jornadaHorariosFormalizacaoNoturna_(),
+    formalizacaoUltimaExecucao: props.getProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimaExecucao) || '',
+    formalizacaoUltimoResultado: props.getProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimoResultado) || '',
     contaExecucao: jornadaEmailExecucao_(),
     ultimaSincronizacao: serializarData_(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.sincronizacaoChave)),
     automacaoAtiva: jornadaAutomacaoInstaladaCache_()
@@ -394,26 +410,92 @@ function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
   return {
     sucesso: true,
     inicio: String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave) || ''),
-    horarios: ['19:00'],
-    mensagem: 'Formalizações automáticas incluídas na rotina central das 19h.'
+    horarios: jornadaHorariosFormalizacaoNoturna_(),
+    mensagem: 'Fila noturna instalada: uma formalização por hora, entre 00:15 e 07:15.'
   };
 }
 
 function instalarAutomacaoFormalizacoesAgenda_() {
-  const funcao = 'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA';
   if (!obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave)) {
     const hoje = new Date();
     const amanha = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
     salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave, Utilities.formatDate(amanha, APP.timezone, 'yyyy-MM-dd'));
   }
+  jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
   ScriptApp.getProjectTriggers()
-    .filter(trigger => trigger.getHandlerFunction() === funcao)
+    .filter(trigger => trigger.getHandlerFunction() === 'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA')
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
   instalarAutomacaoCentral19h_();
+  ScriptApp.newTrigger(FORMALIZACAO_NOTURNA_CONFIG.handlerDiario)
+    .timeBased()
+    .everyDays(1)
+    .atHour(FORMALIZACAO_NOTURNA_CONFIG.horaInicio)
+    .nearMinute(FORMALIZACAO_NOTURNA_CONFIG.minutoInicio)
+    .inTimezone(APP.timezone)
+    .create();
+  registrarLog_('JORNADA', 'INSTALAR_FORMALIZACAO_NOTURNA', 'Fila noturna instalada entre 00:15 e 07:15, com uma formalização por hora.');
 }
 
 function jornadaAutomacaoFormalizacoesInstalada_() {
-  return automacaoCentralInstalada_();
+  return ScriptApp.getProjectTriggers().some(trigger =>
+    trigger.getHandlerFunction() === FORMALIZACAO_NOTURNA_CONFIG.handlerDiario
+  );
+}
+
+function jornadaHorariosFormalizacaoNoturna_() {
+  const horarios = [];
+  for (let hora = FORMALIZACAO_NOTURNA_CONFIG.horaInicio; hora <= FORMALIZACAO_NOTURNA_CONFIG.horaFim; hora++) {
+    horarios.push(String(hora).padStart(2, '0') + ':' + String(FORMALIZACAO_NOTURNA_CONFIG.minutoInicio).padStart(2, '0'));
+  }
+  return horarios;
+}
+
+function jornadaRemoverAcionadoresFormalizacaoNoturna_(incluirDiario) {
+  const handlers = {};
+  handlers[FORMALIZACAO_NOTURNA_CONFIG.handlerContinuacao] = true;
+  if (incluirDiario) handlers[FORMALIZACAO_NOTURNA_CONFIG.handlerDiario] = true;
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (handlers[trigger.getHandlerFunction()]) ScriptApp.deleteTrigger(trigger);
+  });
+}
+
+function jornadaAgendarProximaFormalizacaoNoturna_() {
+  jornadaRemoverAcionadoresFormalizacaoNoturna_(false);
+  ScriptApp.newTrigger(FORMALIZACAO_NOTURNA_CONFIG.handlerContinuacao)
+    .timeBased()
+    .after(FORMALIZACAO_NOTURNA_CONFIG.intervaloMs)
+    .create();
+}
+
+function jornadaExecutarFormalizacaoNoturna_(sincronizarPrimeiro) {
+  jornadaRemoverAcionadoresFormalizacaoNoturna_(false);
+  const resultado = EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA({
+    pularSincronizacao: !sincronizarPrimeiro,
+    limite: FORMALIZACAO_NOTURNA_CONFIG.limitePorHora,
+    diasBusca: FORMALIZACAO_NOTURNA_CONFIG.diasBusca
+  });
+  const agora = new Date();
+  const horaAtual = Number(Utilities.formatDate(agora, APP.timezone, 'H'));
+  const haFila = Number(resultado.restantes || 0) > 0 || (resultado.erros || []).length > 0;
+  const podeContinuar = horaAtual < FORMALIZACAO_NOTURNA_CONFIG.horaFim;
+  if (haFila && podeContinuar) jornadaAgendarProximaFormalizacaoNoturna_();
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimaExecucao, agora.toISOString());
+  props.setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimoResultado, JSON.stringify({
+    geradas: Number(resultado.geradas || 0),
+    restantes: Number(resultado.restantes || 0),
+    erros: (resultado.erros || []).slice(0, 3),
+    continuacaoAgendada: haFila && podeContinuar
+  }));
+  return Object.assign({}, resultado, { continuacaoAgendada: haFila && podeContinuar });
+}
+
+function EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA() {
+  return jornadaExecutarFormalizacaoNoturna_(true);
+}
+
+function EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO() {
+  return jornadaExecutarFormalizacaoNoturna_(false);
 }
 
 function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
@@ -433,9 +515,9 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     // Atualiza primeiro a Agenda e os artefatos. A transcrição é suficiente para
     // formalizar; a ausência da gravação permanece somente como alerta operacional.
     if (!opcoes.pularSincronizacao) SINCRONIZAR_JORNADA_CALENDARIO();
-    const fontesMinhas = jornadaListarFontesReunioes_().filter(item => item.tipo === 'AGENDA' && String(item.proprietario || 'MINHA').toUpperCase() === 'MINHA');
+    const fontesAgenda = jornadaListarFontesReunioes_().filter(item => item.tipo === 'AGENDA');
     const calendarios = {};
-    fontesMinhas.forEach(fonte => {
+    fontesAgenda.forEach(fonte => {
       let id = String(fonte.endereco || '');
       if (id === 'primary') {
         try { id = CalendarApp.getDefaultCalendar().getId(); } catch (erro) { id = 'primary'; }
@@ -445,7 +527,8 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     });
 
     const agora = new Date();
-    const limite = new Date(agora.getTime() - 7 * 86400000);
+    const diasBusca = Math.min(90, Math.max(7, Number(opcoes.diasBusca || FORMALIZACAO_NOTURNA_CONFIG.diasBusca)));
+    const limite = new Date(agora.getTime() - diasBusca * 86400000);
     const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item =>
       String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'
     );

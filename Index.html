@@ -395,6 +395,23 @@
       min-width: 180px;
     }
 
+    .history-date-group + .history-date-group {
+      margin-top: 22px;
+    }
+
+    .history-date-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 4px 0 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+      color: #344054;
+    }
+
     .table-wrap {
       overflow: auto;
       border: 1px solid var(--border);
@@ -1127,6 +1144,18 @@
 
         <div class="card" style="margin-top:18px">
           <div class="section-title"><div><h3>Histórico de formalizações</h3><p>Rascunhos, reuniões aprovadas e conferência de publicação no Circle.</p></div></div>
+          <div class="toolbar">
+            <div class="filters">
+              <input id="formalHistoricoMes" type="month" aria-label="Filtrar formalizações por mês" onchange="renderizarHistoricoFormalizacoes()">
+              <select id="formalHistoricoStatus" aria-label="Filtrar formalizações por situação" onchange="renderizarHistoricoFormalizacoes()">
+                <option value="">Todas as situações</option>
+                <option value="APROVADA">Aprovadas</option>
+                <option value="EM_REVISAO">Em revisão</option>
+                <option value="ERRO">Com erro</option>
+              </select>
+              <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoFormalizacoes_()">Mostrar todas as datas</button>
+            </div>
+          </div>
           <div id="listaFormalizacoes"></div>
         </div>
       </section>
@@ -1358,6 +1387,18 @@
 
         <div class="card" style="margin-top:18px">
           <div class="section-title"><div><h3>Auditorias realizadas</h3></div></div>
+          <div class="toolbar">
+            <div class="filters">
+              <input id="audHistoricoMes" type="month" aria-label="Filtrar auditorias por mês" onchange="renderizarAuditorias()">
+              <select id="audHistoricoStatus" aria-label="Filtrar auditorias por situação" onchange="renderizarAuditorias()">
+                <option value="">Todas as situações</option>
+                <option value="APROVADA">Aprovadas</option>
+                <option value="EM_REVISAO">Em revisão</option>
+                <option value="ERRO">Com erro</option>
+              </select>
+              <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoAuditorias_()">Mostrar todas as datas</button>
+            </div>
+          </div>
           <div id="listaAuditorias"></div>
         </div>
       </section>
@@ -6447,14 +6488,57 @@
     document.getElementById('resultadoAuditoriaAtual').scrollIntoView({ behavior: 'smooth' });
   }
 
+  function chaveDataHistorico_(valor) {
+    if (!valor) return '';
+    const texto = String(valor).trim();
+    const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+    const data = new Date(valor);
+    if (isNaN(data.getTime())) return '';
+    return [data.getFullYear(), String(data.getMonth() + 1).padStart(2, '0'), String(data.getDate()).padStart(2, '0')].join('-');
+  }
+
+  function historicoAgrupadoPorData_(itens, obterData, renderizarItem) {
+    const grupos = {};
+    (itens || []).forEach(item => {
+      const chave = chaveDataHistorico_(obterData(item)) || 'SEM_DATA';
+      (grupos[chave] = grupos[chave] || []).push(item);
+    });
+    return Object.keys(grupos).sort((a, b) => {
+      if (a === 'SEM_DATA') return 1;
+      if (b === 'SEM_DATA') return -1;
+      return b.localeCompare(a);
+    }).map(chave => {
+      const titulo = chave === 'SEM_DATA' ? 'Sem data identificada' : formatarDataDia(chave);
+      const registros = grupos[chave];
+      return `<section class="history-date-group"><div class="history-date-heading"><strong>${escapeHtml(titulo)}</strong><span class="status">${registros.length} ${registros.length === 1 ? 'registro' : 'registros'}</span></div>${registros.map(renderizarItem).join('')}</section>`;
+    }).join('');
+  }
+
+  function limparFiltrosHistoricoAuditorias_() {
+    const mes = document.getElementById('audHistoricoMes');
+    const status = document.getElementById('audHistoricoStatus');
+    if (mes) mes.value = '';
+    if (status) status.value = '';
+    renderizarAuditorias();
+  }
+
   function renderizarAuditorias() {
     const alvo = document.getElementById('listaAuditorias');
-    if (!estado.auditorias.length) {
-      alvo.innerHTML = '<div class="empty">Nenhuma auditoria executada.</div>';
+    const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
+    const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
+    const auditorias = (estado.auditorias || []).filter(item => {
+      const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
+      return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+    });
+    if (!auditorias.length) {
+      alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhuma auditoria encontrada para os filtros selecionados.' : 'Nenhuma auditoria executada.'}</div>`;
       return;
     }
 
-    alvo.innerHTML = estado.auditorias.map(item => {
+    alvo.innerHTML = historicoAgrupadoPorData_(auditorias, item => item.dataInteracao || item.concluidoEm || item.solicitadoEm, item => {
       const classe = item.status === 'APROVADA' ? 'status success' : item.status === 'ERRO' ? 'status danger' : 'status warning';
       const circlePublicado = Boolean(item.circlePostUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(item.circleStatus || '').toUpperCase());
       const comunidadePublicada = Boolean(item.comunidadePostUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(String(item.comunidadeStatus || '').toUpperCase());
@@ -6485,7 +6569,7 @@
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
         </div>
       </div>`;
-    }).join('');
+    });
   }
 
   function salvarLinkCircleAuditoriaFront(idAuditoria) {
@@ -6798,7 +6882,7 @@
         <div class="meeting-connection"><div class="meeting-connection-head"><h4>Conta do Board</h4><span class="status ${calendarioConectado ? 'success' : 'warning'}">${calendarioConectado ? 'CONECTADA' : 'NÃO AUTORIZADA'}</span></div><p class="small muted">${escapeHtml(calendarioConectado ? agenda.contaExecucao : 'Autorize Google Calendar e Drive para localizar as reuniões.')}</p>${agenda.ultimaSincronizacao ? `<p class="small muted" style="margin-top:6px">Última sincronização: ${escapeHtml(formatarDataHoraArea_(agenda.ultimaSincronizacao))}</p>` : ''}</div>
         <div class="meeting-connection"><div class="meeting-connection-head"><h4>Agendas cadastradas</h4><span class="status ${agendas.length ? 'success' : 'warning'}">${agendas.length ? agendas.length + ' ATIVA(S)' : 'NENHUMA'}</span></div><p class="small muted">Minha agenda, time e clientes com acesso compartilhado.</p></div>
         <div class="meeting-connection"><div class="meeting-connection-head"><h4>Pastas cadastradas</h4><span class="status ${pastas.length ? 'success' : 'warning'}">${pastas.length ? pastas.length + ' ATIVA(S)' : 'NENHUMA'}</span></div><p class="small muted">Pastas gerais ou vinculadas a um cliente.</p></div>
-        <div class="meeting-connection"><div class="meeting-connection-head"><h4>Pré-formalização automática</h4><span class="status ${preFormalizacaoAtiva ? 'success' : 'warning'}">${preFormalizacaoAtiva ? 'ATIVA' : 'PENDENTE'}</span></div><p class="small muted">Reuniões com a aba Transcrição são preparadas às ${(agenda.horariosFormalizacao || ['13:00', '18:30']).join(' e ')} e ficam em revisão.</p></div>`;
+        <div class="meeting-connection"><div class="meeting-connection-head"><h4>Pré-formalização automática</h4><span class="status ${preFormalizacaoAtiva ? 'success' : 'warning'}">${preFormalizacaoAtiva ? 'ATIVA' : 'PENDENTE'}</span></div><p class="small muted">Reuniões com a aba Transcrição entram na fila noturna, com uma formalização por hora: ${(agenda.horariosFormalizacao || ['00:15', '01:15', '02:15', '03:15', '04:15', '05:15', '06:15', '07:15']).join(', ')}. Cada resultado fica em revisão.</p>${agenda.formalizacaoUltimaExecucao ? `<p class="small muted" style="margin-top:6px">Última execução: ${escapeHtml(formatarData(agenda.formalizacaoUltimaExecucao))}</p>` : ''}</div>`;
       ['formalConexoesReunioes', 'formalConexoesReunioesResumo'].forEach(id => {
         const alvo = document.getElementById(id);
         if (alvo) alvo.innerHTML = conexoesHtml;
@@ -7310,15 +7394,29 @@
         .salvarFormalizacaoReuniao({ idFormalizacao: estado.formalizacaoAtual.idFormalizacao, idCliente: valor('formalCliente') || estado.formalizacaoAtual.idCliente || '', status: status, resultado: lerEditorFormalizacao_() });
     }
 
+    function limparFiltrosHistoricoFormalizacoes_() {
+      const mes = document.getElementById('formalHistoricoMes');
+      const status = document.getElementById('formalHistoricoStatus');
+      if (mes) mes.value = '';
+      if (status) status.value = '';
+      renderizarHistoricoFormalizacoes();
+    }
+
     function renderizarHistoricoFormalizacoes() {
       const alvo = document.getElementById('listaFormalizacoes');
       if (!alvo) return;
-      if (!(estado.formalizacoes || []).length) {
-        alvo.innerHTML = '<div class="empty">Nenhuma formalização gerada.</div>';
+      const mes = String((document.getElementById('formalHistoricoMes') || {}).value || '');
+      const statusFiltro = String((document.getElementById('formalHistoricoStatus') || {}).value || '').toUpperCase();
+      const formalizacoes = (estado.formalizacoes || []).filter(item => {
+        const chave = chaveDataHistorico_(item.dataReuniao || item.atualizadoEm || item.solicitadoEm);
+        return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+      });
+      if (!formalizacoes.length) {
+        alvo.innerHTML = `<div class="empty">${(estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.'}</div>`;
         salvarCacheFormalizacoesFront_();
         return;
       }
-      alvo.innerHTML = estado.formalizacoes.map(item => {
+      alvo.innerHTML = historicoAgrupadoPorData_(formalizacoes, item => item.dataReuniao || item.atualizadoEm || item.solicitadoEm, item => {
         const classe = item.status === 'APROVADA' ? 'success' : item.status === 'ERRO' ? 'danger' : 'warning';
         const podeDescartar = ['EM_REVISAO', 'RASCUNHO', 'ERRO', 'PROCESSANDO'].includes(String(item.status || '').toUpperCase());
         const circlePublicado = Boolean(item.circlePostUrl) || String(item.circleStatus || '').toUpperCase() === 'PUBLICADA';
@@ -7338,7 +7436,7 @@
           ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
           : '';
         return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
-      }).join('');
+      });
       salvarCacheFormalizacoesFront_();
     }
 

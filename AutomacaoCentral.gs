@@ -8,7 +8,6 @@ const AUTOMACAO_CENTRAL_19H = Object.freeze({
   handlerDiario: 'EXECUTAR_AUTOMACAO_CENTRAL_19H',
   handlerContinuacao: 'EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO',
   hora: 19,
-  loteFormalizacoes: 3,
   atrasoEntreFasesMs: 5 * 60 * 1000,
   atrasoEntreLotesMs: 10 * 60 * 1000,
   atrasoErroMs: 30 * 60 * 1000,
@@ -153,19 +152,10 @@ function automacaoCentralExecutarFase_() {
         return { sucesso: true, fase: fase, resultado: auditorias, restante: statusAuditorias.elegiveis };
       }
       props.setProperty(AUTOMACAO_CENTRAL_19H.chaveTentativas, '0');
-      automacaoCentralAgendarContinuacao_('FORMALIZACOES', AUTOMACAO_CENTRAL_19H.atrasoEntreFasesMs);
-      return { sucesso: true, fase: fase, resultado: auditorias, proximaFase: 'FORMALIZACOES' };
+      return automacaoCentralConcluir_('Agenda, fontes e ligações processadas. Formalizações mantidas na fila noturna, com uma execução por hora.');
     }
     if (fase === 'FORMALIZACOES') {
-      const formalizacoes = EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA({
-        pularSincronizacao: true,
-        limite: AUTOMACAO_CENTRAL_19H.loteFormalizacoes
-      });
-      if (Number(formalizacoes.geradas || 0) > 0 && Number(formalizacoes.restantes || 0) > 0) {
-        automacaoCentralAgendarContinuacao_('FORMALIZACOES', AUTOMACAO_CENTRAL_19H.atrasoEntreLotesMs);
-        return { sucesso: true, fase: fase, resultado: formalizacoes };
-      }
-      return automacaoCentralConcluir_('Agenda, fontes, ligações e formalizações processadas.');
+      return automacaoCentralConcluir_('Fase antiga de formalizações encerrada. A fila segue na rotina noturna por hora.');
     }
     return automacaoCentralConcluir_('Fase desconhecida descartada com segurança.');
   } catch (erro) {
