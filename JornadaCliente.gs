@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.8.1',
+  versao: '1.9.0',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -44,7 +44,8 @@ const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
   esperaAposErroMs: 6 * 60 * 60 * 1000,
   chaveUltimaExecucao: 'FORMALIZACAO_NOTURNA_ULTIMA_EXECUCAO',
   chaveUltimoResultado: 'FORMALIZACAO_NOTURNA_ULTIMO_RESULTADO',
-  chaveFalhasFila: 'FORMALIZACAO_NOTURNA_FALHAS_FILA'
+  chaveFalhasFila: 'FORMALIZACAO_NOTURNA_FALHAS_FILA',
+  chaveRecuperacaoAtiva: 'FORMALIZACAO_RECUPERACAO_ATIVA'
 });
 
 function jornadaChaveFilaFormalizacao_(reuniao) {
@@ -498,10 +499,12 @@ function jornadaExecutarFormalizacaoNoturna_(sincronizarPrimeiro) {
   });
   const agora = new Date();
   const horaAtual = Number(Utilities.formatDate(agora, APP.timezone, 'H'));
-  const haFila = Number(resultado.restantes || 0) > 0 || (resultado.erros || []).length > 0;
-  const podeContinuar = horaAtual < FORMALIZACAO_NOTURNA_CONFIG.horaFim;
-  if (haFila && podeContinuar) jornadaAgendarProximaFormalizacaoNoturna_();
   const props = PropertiesService.getScriptProperties();
+  const recuperacaoAtiva = props.getProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveRecuperacaoAtiva) === 'SIM';
+  const haFila = Number(resultado.restantes || 0) > 0 || (resultado.erros || []).length > 0;
+  const podeContinuar = recuperacaoAtiva || horaAtual < FORMALIZACAO_NOTURNA_CONFIG.horaFim;
+  if (haFila && podeContinuar) jornadaAgendarProximaFormalizacaoNoturna_();
+  if (!haFila && recuperacaoAtiva) props.deleteProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveRecuperacaoAtiva);
   props.setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimaExecucao, agora.toISOString());
   props.setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveUltimoResultado, JSON.stringify({
     geradas: Number(resultado.geradas || 0),
@@ -510,6 +513,23 @@ function jornadaExecutarFormalizacaoNoturna_(sincronizarPrimeiro) {
     continuacaoAgendada: haFila && podeContinuar
   }));
   return Object.assign({}, resultado, { continuacaoAgendada: haFila && podeContinuar });
+}
+
+function iniciarRecuperacaoFormalizacoesAtrasadas() {
+  if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() !== 'SIM') {
+    throw new Error('Ative a pré-formalização automática antes de iniciar a regularização.');
+  }
+  PropertiesService.getScriptProperties().setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveRecuperacaoAtiva, 'SIM');
+  const resultado = jornadaExecutarFormalizacaoNoturna_(true);
+  return {
+    sucesso: resultado.sucesso !== false,
+    geradas: Number(resultado.geradas || 0),
+    restantes: Number(resultado.restantes || 0),
+    erros: resultado.erros || [],
+    mensagem: resultado.geradas
+      ? 'A primeira formalização atrasada foi preparada. A fila seguirá uma por hora até zerar.'
+      : (resultado.restantes ? 'A regularização foi iniciada e seguirá uma por hora.' : 'Não há formalizações atrasadas elegíveis na fila.')
+  };
 }
 
 function EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA() {

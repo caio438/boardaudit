@@ -411,6 +411,14 @@
       background: var(--surface-2);
       color: #344054;
     }
+    .task-client-group {
+      margin: 12px 0 20px;
+    }
+    .task-client-heading {
+      background: #f8fafc;
+      border-left: 4px solid var(--primary);
+      border-radius: 8px 8px 0 0;
+    }
 
     .table-wrap {
       overflow: auto;
@@ -1168,7 +1176,7 @@
               <h3>Tarefas das formalizações</h3>
               <p>Próximos passos e ajustes operacionais extraídos somente das formalizações. Auditorias não entram nesta lista.</p>
             </div>
-            <button class="btn secondary" type="button" onclick="carregarPagina('tarefasFormalizacoes', true)">Atualizar tarefas</button>
+            <div class="actions" style="margin:0"><button class="btn success" id="btnRegularizarFormalizacoes" type="button" onclick="iniciarRecuperacaoFormalizacoesFront()">Regularizar atrasadas agora</button><button class="btn secondary" type="button" onclick="carregarPagina('tarefasFormalizacoes', true)">Atualizar tarefas</button></div>
           </div>
           <div class="toolbar">
             <div class="filters" style="width:100%">
@@ -7833,14 +7841,44 @@
       }
       const rotuloEquipe = { SALES_OPS: 'Sales Ops', MIDIA: 'Mídia', CLIENTE_OUTRO: 'Cliente / outro', SEM_RESPONSAVEL: 'Sem responsável' };
       const classeStatus = { PENDENTE: 'warning', EM_ANDAMENTO: '', CONCLUIDA: 'success' };
-      alvo.innerHTML = `<div class="table-wrap"><table style="min-width:1120px"><thead><tr><th>Cliente</th><th>Tarefa</th><th>Equipe</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Origem</th><th>Ações</th></tr></thead><tbody>${filtradas.map(item => `<tr>
-        <td><strong>${escapeHtml(item.cliente || 'Sem cliente')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></td>
+      const renderizarTabela = itens => `<div class="table-wrap"><table style="min-width:1040px"><thead><tr><th>Tarefa</th><th>Equipe</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Origem</th><th>Ações</th></tr></thead><tbody>${itens.map(item => `<tr>
         <td style="min-width:300px"><strong>${escapeHtml(item.acao)}</strong>${item.criterioConclusao ? `<div class="small muted" style="margin-top:5px"><strong>Concluído quando:</strong> ${escapeHtml(item.criterioConclusao)}</div>` : ''}</td>
         <td><span class="status">${escapeHtml(rotuloEquipe[item.equipe] || item.equipe)}</span></td><td>${escapeHtml(item.responsavel || 'Não definido')}</td><td>${escapeHtml(item.prazo || 'Não definido')}</td>
         <td><span class="status ${classeStatus[item.status] || ''}">${escapeHtml(rotuloStatusTarefaFormalizacao_(item.status))}</span></td>
         <td><div>${escapeHtml(item.tituloReuniao || 'Formalização')}</div><div class="small muted">${item.origem === 'AJUSTE_OPERACIONAL' ? 'Ajuste operacional' : 'Próximo passo'}</div></td>
         <td><div class="actions" style="margin:0;min-width:240px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
       </tr>`).join('')}</tbody></table></div>`;
+      const porData = {};
+      filtradas.forEach(item => {
+        const data = chaveDataHistorico_(item.dataReuniao) || 'SEM_DATA';
+        (porData[data] = porData[data] || []).push(item);
+      });
+      alvo.innerHTML = Object.keys(porData).sort((a, b) => a === 'SEM_DATA' ? 1 : b === 'SEM_DATA' ? -1 : b.localeCompare(a)).map(data => {
+        const itensData = porData[data];
+        const porCliente = {};
+        itensData.forEach(item => {
+          const chaveCliente = String(item.idCliente || item.cliente || 'SEM_CLIENTE');
+          (porCliente[chaveCliente] = porCliente[chaveCliente] || []).push(item);
+        });
+        const clientesHtml = Object.keys(porCliente).sort((a, b) => String(porCliente[a][0].cliente || '').localeCompare(String(porCliente[b][0].cliente || ''))).map(chaveCliente => {
+          const itensCliente = porCliente[chaveCliente];
+          return `<div class="task-client-group"><div class="history-date-heading task-client-heading"><strong>${escapeHtml(itensCliente[0].cliente || 'Sem cliente')}</strong><span class="status">${itensCliente.length} ${itensCliente.length === 1 ? 'tarefa' : 'tarefas'}</span></div>${renderizarTabela(itensCliente)}</div>`;
+        }).join('');
+        return `<section class="history-date-group"><div class="history-date-heading"><strong>${escapeHtml(data === 'SEM_DATA' ? 'Sem data identificada' : formatarDataDia(data))}</strong><span class="status">${itensData.length} ${itensData.length === 1 ? 'tarefa' : 'tarefas'}</span></div>${clientesHtml}</section>`;
+      }).join('');
+    }
+
+    function iniciarRecuperacaoFormalizacoesFront() {
+      const botao = document.getElementById('btnRegularizarFormalizacoes');
+      if (botao) { botao.disabled = true; botao.textContent = 'Iniciando fila...'; }
+      google.script.run.withSuccessHandler(resultado => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Regularizar atrasadas agora'; }
+        mostrarToast(resultado.mensagem || 'Regularização iniciada.', 'success');
+        carregarPagina('tarefasFormalizacoes', true);
+      }).withFailureHandler(erro => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Regularizar atrasadas agora'; }
+        tratarErro(erro);
+      }).iniciarRecuperacaoFormalizacoesAtrasadas();
     }
 
     function rotuloStatusTarefaFormalizacao_(status) {
