@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.2',
+  versao: '1.9.3',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -567,7 +567,11 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
       return { sucesso: true, ignorada: true, mensagem: 'Formalização automática desativada.' };
     }
     const hojeTexto = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
-    const inicioTexto = String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave) || '').trim();
+    const inicioValor = obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave);
+    const inicioData = jornadaDataRegistro_(inicioValor);
+    const inicioTexto = inicioData
+      ? Utilities.formatDate(inicioData, APP.timezone, 'yyyy-MM-dd')
+      : String(inicioValor || '').trim();
     if (inicioTexto && hojeTexto < inicioTexto) {
       return { sucesso: true, ignorada: true, mensagem: 'A rotina automática começa em ' + inicioTexto + '.' };
     }
