@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.0',
+  versao: '1.9.1',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -519,6 +519,10 @@ function iniciarRecuperacaoFormalizacoesAtrasadas() {
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() !== 'SIM') {
     throw new Error('Ative a pré-formalização automática antes de iniciar a regularização.');
   }
+  salvarConfiguracao_(
+    JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave,
+    Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd')
+  );
   PropertiesService.getScriptProperties().setProperty(FORMALIZACAO_NOTURNA_CONFIG.chaveRecuperacaoAtiva, 'SIM');
   const resultado = jornadaExecutarFormalizacaoNoturna_(true);
   return {
