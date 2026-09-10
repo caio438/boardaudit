@@ -693,6 +693,10 @@
     .audit-report .line-danger { color: #9b1c1c; font-weight: 700; }
     .audit-report .line-tip { background: #fffaeb; padding: 10px 12px; border-radius: 8px; }
     .audit-report .line-evidence { font-style: italic; }
+    .audit-json-panel { margin-top: 24px; border: 1px solid #d0d5dd; border-radius: 12px; overflow: hidden; background: #f8fafc; }
+    .audit-json-panel summary { cursor: pointer; padding: 14px 16px; font-weight: 700; background: #f2f4f7; }
+    .audit-json-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 0; }
+    .audit-json-code { margin: 12px 16px 16px; padding: 16px; max-height: 520px; overflow: auto; border-radius: 10px; background: #101828; color: #e4e7ec; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; tab-size: 2; }
 
     .audit-report table {
       width: 100%;
@@ -5759,6 +5763,7 @@
       <div class="audit-sheet">
         ${cabecalhoPreview}
         <div class="audit-report">${renderizarConteudoAuditoriaV3(r, tipoAudit, auditoria)}</div>
+        ${renderizarJsonFormatadoAuditoria_(r)}
       </div>
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
@@ -5783,6 +5788,28 @@
     if (tipo === 'PLANO') return renderizarConteudoPlanoV3(r);
     if (tipo === 'CLOSER') return renderizarConteudoCloserV3(r, auditoria);
     return renderizarConteudoSdrV3(r, auditoria);
+  }
+
+  function renderizarJsonFormatadoAuditoria_(resultado) {
+    if (!resultado || !Object.keys(resultado).length) return '';
+    const json = JSON.stringify(resultado, null, 2);
+    return `<details class="audit-json-panel">
+      <summary>JSON estruturado da auditoria</summary>
+      <div class="audit-json-toolbar"><span class="small muted">Dados completos usados no relatório e nos gráficos.</span><button class="btn secondary" type="button" onclick="copiarJsonAuditoriaAtual_()">Copiar JSON</button></div>
+      <pre class="audit-json-code">${escapeHtml(json)}</pre>
+    </details>`;
+  }
+
+  async function copiarJsonAuditoriaAtual_() {
+    const resultado = ((estado.auditoriaAtual || {}).resultado) || {};
+    const json = JSON.stringify(resultado, null, 2);
+    if (!json || json === '{}') return mostrarToast('Não há JSON disponível nesta auditoria.', 'warning');
+    try {
+      await navigator.clipboard.writeText(json);
+      mostrarToast('JSON copiado com formatação.', 'success');
+    } catch (erro) {
+      mostrarToast('Não foi possível copiar automaticamente. Selecione o conteúdo do bloco JSON.', 'warning');
+    }
   }
 
   function limparTextoPlanoFront_(valor) {
