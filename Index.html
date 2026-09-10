@@ -5904,7 +5904,7 @@
       <p><strong>Necessidade principal:</strong> ${escapeHtml(contexto.necessidade_principal || 'Não evidenciado')}</p>
       <p><strong>Resultado do contato:</strong> ${escapeHtml(contexto.resultado_contato || 'Não evidenciado')}</p>
       <h3>Aderência por etapa do pitch</h3>
-      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Nota','O que foi dito','O que consta no pitch','Divergência','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao, item.regra_pitch, item.desvio, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
+      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Nota','Fala do SDR','O que consta no pitch','Divergência','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao, item.regra_pitch, item.desvio, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
       <h3>1. Aderência ao pitch completo e à introdução</h3>
       ${renderizarAderenciaSdrV3(r.aderencia_script || {})}
       <h3>2. Perguntas de Qualificação</h3>
@@ -5924,7 +5924,7 @@
       <p><strong>Status:</strong> ${escapeHtml(formatarStatusAuditoriaV3(conclusao.status || 'Não evidenciado'))}</p>
       <p><strong>Ponto de melhoria:</strong> ${escapeHtml(conclusao.ponto_melhoria || '-')}</p>
       <h3>9. Pontuação de Qualidade</h3>
-      ${tabelaAuditoriaV3(['Critério','Status','Nota','O que foi dito','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
+      ${tabelaAuditoriaV3(['Critério','Status','Nota','Fala do SDR','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
       <h3>10. Feedback Qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>
@@ -5971,7 +5971,7 @@
       return `
         <h3>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Momento')} <span class="status ${classe}">${escapeHtml(cor || 'NÃO EVIDENCIADO')}</span></h3>
         <p><strong>O que se espera:</strong> ${escapeHtml(item.o_que_se_espera || 'Não evidenciado')}</p>
-        <p class="line-evidence">📌 <strong>O que foi dito:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
+        <p class="line-evidence">📌 <strong>Evidência da fala do Closer:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
         <p class="line-danger">❌ <strong>Divergência:</strong> ${escapeHtml(item.divergencia || 'Não houve divergência.')}</p>
         <p><strong>Nota do momento:</strong> ${escapeHtml(item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5')} · <strong>Justificativa:</strong> ${escapeHtml(item.justificativa_nota || '-')}</p>
         <p class="line-success">✅ <strong>Pontos fortes:</strong> ${escapeHtml((item.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
@@ -6041,7 +6041,7 @@
       <h4>Linguagem utilizada pelo lead</h4>${listaCloser(mercado.linguagem_do_lead)}
       <h4>Hipóteses para o time de mídia</h4>${listaCloser(mercado.insights_para_midia)}
       <h3>Pontuação de qualidade</h3>
-      ${tabelaAuditoriaV3(['Critério','Status','Nota','O que foi dito','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
+      ${tabelaAuditoriaV3(['Critério','Status','Nota','Fala do Closer','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
       <h3>Feedback qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>
@@ -6163,7 +6163,7 @@
     const icone = classe === 'line-success' ? '✅' : classe === 'line-danger' ? '❌' : '⚠️';
     return `
       <p class="${classe}">${icone} ${escapeHtml(formatarStatusAuditoriaV3(item.status || classificacao))}</p>
-      <p class="line-evidence">📌 <strong>O que foi dito:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
+      <p class="line-evidence">📌 <strong>Fala do SDR:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
       <p>📌 <strong>O que deveria ter sido dito:</strong> ${escapeHtml(item.o_que_deveria || 'Não evidenciado')}</p>
       ${item.desvio ? `<p class="line-danger">❌ <strong>Desvio:</strong> ${escapeHtml(item.desvio)}</p>` : ''}
       ${item.correcao_pratica ? `<p class="line-tip">💡 <strong>Como fazer na prática:</strong> ${escapeHtml(item.correcao_pratica)}</p>` : ''}

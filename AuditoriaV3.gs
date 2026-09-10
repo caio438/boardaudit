@@ -2068,7 +2068,9 @@ function audV3MontarPrompt_(ctx) {
     'Use somente os status CONFORME, DESVIO_EXECUCAO, NAO_EXECUTADO, NAO_APLICAVEL, LACUNA_PROCESSO ou NAO_EVIDENCIADO.',
     'CONFORME exige ausência de divergência e nota entre 4 e 5. DESVIO_EXECUCAO exige divergência explícita e nota entre 0 e 3,5. NAO_EXECUTADO exige ausência comprovada de comportamento obrigatório e nota entre 0 e 1.',
     'NAO_APLICAVEL, LACUNA_PROCESSO e NAO_EVIDENCIADO não podem punir a nota; envie aplicavel=false e pontuacao=0, pois o Board excluirá o item do cálculo.',
-    'o_que_foi_dito deve conter evidência literal curta. regra_pitch deve usar texto ou orientação realmente existente no pitch. Recomendações adicionais devem ser rotuladas como sugestão, nunca como fala oficial.',
+    'REGRA CRÍTICA DE EVIDÊNCIA: o_que_foi_dito deve conter exclusivamente uma fala literal do profissional auditado (' + tipo + '). Nunca use nesse campo uma resposta, pergunta ou fala do lead, de outro participante ou do analista.',
+    'Em locutor_evidencia, informe ' + tipo + ' quando houver fala literal do profissional. Se não existir fala do profissional que comprove o item, use o_que_foi_dito="Não evidenciado na fala do ' + tipo + '" e locutor_evidencia="NAO_IDENTIFICADO". Falas do lead pertencem apenas aos campos resposta_lead, evidencia_lead, resumo e inteligência de mercado.',
+    'regra_pitch deve usar texto ou orientação realmente existente no pitch. Recomendações adicionais devem ser rotuladas como sugestão, nunca como fala oficial.',
     'Para cada não conformidade, informe evidência curta, texto exato do pitch quando existir, classificação, impacto provável e correção prática observável.',
     'Quando houver metas cadastradas, explique de forma objetiva qual indicador pode ser afetado pelo comportamento observado. Não invente causalidade nem resultado realizado.',
     'Quando não houver metas cadastradas, não crie números e não bloqueie a auditoria.',
@@ -2160,9 +2162,9 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   resultado.metadados.data_hora = audV3DataTexto_(interacao.DATA_INTERACAO);
   resultado.metadados.pitch = String(pitch.NOME_VERSAO || '');
   resultado.metadados.versao_pitch = String(pitch.NUMERO_VERSAO || '');
-  resultado.schema_versao = '4.2';
+  resultado.schema_versao = '4.3';
 
-  const normalizadas = audV3NormalizarCriteriosComparados_(resultado, criterios);
+  const normalizadas = audV3NormalizarCriteriosComparados_(resultado, criterios, tipo);
   resultado.criterios_avaliados = normalizadas;
   resultado.pontuacao = normalizadas.map(function(item) {
     return {
@@ -2196,7 +2198,12 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
     audV3NormalizarMomentosCloser_(resultado, criterios);
     audV3NormalizarAnaliseTemporalCloser_(resultado, interacao);
     const perguntas = resultado.perguntas_diagnostico || {};
-    perguntas.perguntas_realizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
+    perguntas.perguntas_realizadas = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : []).map(function(item) {
+      item = item || {};
+      if (audV3LocutorEvidencia_(item.locutor) !== 'CLOSER') throw new Error('Uma pergunta de diagnóstico foi atribuída a outro locutor. Registre somente perguntas pronunciadas pelo Closer.');
+      if (!String(item.pergunta || '').trim()) throw new Error('Uma pergunta de diagnóstico não trouxe a fala literal do Closer.');
+      return Object.assign({}, item, { locutor: 'CLOSER' });
+    });
     perguntas.total_realizadas = perguntas.perguntas_realizadas.length;
     resultado.perguntas_diagnostico = perguntas;
     resultado.repertorio_perguntas_sugeridas = (resultado.repertorio_perguntas_sugeridas || []).map(item => {
@@ -2273,7 +2280,33 @@ function audV3NormalizarProximosPassosEquipes_(resultado) {
   resultado.resumo_publicacao.proximos_passos_outros = resultado.proximos_passos_por_equipe.outros.map(textoPasso);
 }
 
-function audV3NormalizarCriteriosComparados_(resultado, criterios) {
+function audV3LocutorEvidencia_(valor) {
+  const texto = String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  if (texto === 'SDR' || texto === 'CLOSER' || texto === 'LEAD') return texto;
+  return 'NAO_IDENTIFICADO';
+}
+
+function audV3ValidarFalaProfissional_(evidencia, locutor, tipo, contexto) {
+  const fala = String(evidencia || '').trim();
+  const papel = audV3LocutorEvidencia_(locutor);
+  const naoEvidenciada = !fala || /^(?:n[aã]o evidenciado|sem evid[eê]ncia)/i.test(fala);
+  if (naoEvidenciada) return { texto: 'Não evidenciado na fala do ' + tipo + '.', locutor: 'NAO_IDENTIFICADO' };
+  if (papel !== tipo) {
+    throw new Error((contexto || 'A evidência') + ' usou fala de ' + papel + ' em vez de fala do ' + tipo + '. Gere novamente usando somente a fala do profissional auditado.');
+  }
+  return { texto: fala, locutor: papel };
+}
+
+function audV3ExigirEvidenciaPorStatus_(status, evidenciaValidada, contexto) {
+  const normalizado = audV3StatusExecucao_(status);
+  const semFala = !evidenciaValidada || evidenciaValidada.locutor === 'NAO_IDENTIFICADO';
+  if (['CONFORME', 'DESVIO_EXECUCAO'].includes(normalizado) && semFala) {
+    throw new Error((contexto || 'O item') + ' recebeu avaliação sem uma fala comprovada do profissional auditado. Gere novamente com a evidência literal correta.');
+  }
+}
+
+function audV3NormalizarCriteriosComparados_(resultado, criterios, tipoAuditoria) {
+  const tipo = String(tipoAuditoria || 'SDR').toUpperCase() === 'CLOSER' ? 'CLOSER' : 'SDR';
   const oficiais = Array.isArray(criterios.dimensoes) ? criterios.dimensoes : [];
   let recebidos = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
   if (!recebidos.length && Array.isArray(resultado.pontuacao)) {
@@ -2284,6 +2317,7 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
         aplicavel: item.aplicavel,
         status: item.aplicavel === false ? 'NAO_APLICAVEL' : 'DESVIO_EXECUCAO',
         o_que_foi_dito: item.observacao || 'Não evidenciado',
+        locutor_evidencia: 'NAO_IDENTIFICADO',
         regra_pitch: 'Não informado na resposta legada',
         divergencia: item.observacao || 'Resposta anterior sem comparação estruturada',
         correcao_pratica: 'Reavaliar com o schema 4.2',
@@ -2316,7 +2350,9 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
     let nota = aplicavel && !['NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status) ? Number(item.pontuacao) : null;
     if (nota !== null && (!isFinite(nota) || nota < 0 || nota > 5)) throw new Error('Pontuação inválida no critério ' + id + '.');
     if (nota !== null) nota = Math.round(nota * 2) / 2;
-    const evidencia = String(item.o_que_foi_dito || '').trim();
+    const evidenciaValidada = audV3ValidarFalaProfissional_(item.o_que_foi_dito, item.locutor_evidencia, tipo, 'O critério ' + id);
+    audV3ExigirEvidenciaPorStatus_(status, evidenciaValidada, 'O critério ' + id);
+    const evidencia = evidenciaValidada.texto;
     const regraPitch = String(item.regra_pitch || '').trim();
     let divergencia = String(item.divergencia || '').trim();
     let justificativa = String(item.justificativa_nota || item.observacao || '').trim();
@@ -2361,6 +2397,7 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios) {
       aplicavel: aplicavel && !['NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status),
       status: status,
       o_que_foi_dito: evidencia,
+      locutor_evidencia: evidenciaValidada.locutor,
       regra_pitch: regraPitch,
       divergencia_identificada: !semDivergencia(divergencia),
       divergencia: semDivergencia(divergencia) ? 'Não houve divergência.' : divergencia,
@@ -2402,7 +2439,9 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
     item = item || {};
     const status = audV3StatusExecucao_(item.status);
     const divergencia = String(item.desvio || '').trim();
-    const fato = String(item.fato_transcricao || '').trim();
+    const falaValidada = audV3ValidarFalaProfissional_(item.fato_transcricao, item.locutor_evidencia, 'SDR', 'A etapa ' + (item.etapa || 'sem nome'));
+    audV3ExigirEvidenciaPorStatus_(status, falaValidada, 'A etapa ' + (item.etapa || 'sem nome'));
+    const fato = falaValidada.texto;
     const regra = String(item.regra_pitch || '').trim();
     if (!fato || !regra) throw new Error('A etapa ' + (item.etapa || 'sem nome') + ' precisa informar o que foi dito e o que consta no pitch.');
     if (status === 'CONFORME' && divergencia && !/^n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia\.?$/i.test(divergencia)) {
@@ -2413,6 +2452,8 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
     }
     return Object.assign({}, item, {
       status: status,
+      fato_transcricao: fato,
+      locutor_evidencia: falaValidada.locutor,
       desvio: status === 'CONFORME' ? 'Não houve divergência.' : divergencia,
       divergencia_identificada: ['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(status),
       nota: audV3NotaStatusExecucao_(status)
@@ -2451,6 +2492,7 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
       elementos_identificados: audV3ListaTexto_(introducaoRecebida.elementos_identificados, 8),
       elementos_ausentes: audV3ListaTexto_(introducaoRecebida.elementos_ausentes, 8),
       evidencia: String(introducaoEtapa.fato_transcricao || introducaoRecebida.evidencia || recebida.o_que_foi_dito || 'Não evidenciado'),
+      locutor_evidencia: String(introducaoEtapa.locutor_evidencia || introducaoRecebida.locutor_evidencia || 'NAO_IDENTIFICADO'),
       regra_pitch: String(introducaoEtapa.regra_pitch || introducaoRecebida.regra_pitch || recebida.o_que_deveria || 'Não evidenciado'),
       desvio: String(introducaoEtapa.desvio || introducaoRecebida.desvio || ''),
       correcao_pratica: String(introducaoEtapa.correcao_pratica || introducaoRecebida.correcao_pratica || '')
@@ -2460,8 +2502,13 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
   };
 
   const perguntas = resultado.perguntas_qualificacao || {};
-  const corretas = audV3ListaObjetos_(perguntas.corretas, 12);
-  const comDesvio = audV3ListaObjetos_(perguntas.com_desvio, 12);
+  const validarPerguntaSdr = function(item, contexto) {
+    if (audV3LocutorEvidencia_(item.locutor) !== 'SDR') throw new Error(contexto + ' foi atribuída a outro locutor.');
+    if (!String(item.pergunta || item.evidencia || '').trim()) throw new Error(contexto + ' não trouxe a fala literal do SDR.');
+    return Object.assign({}, item, { locutor: 'SDR' });
+  };
+  const corretas = audV3ListaObjetos_(perguntas.corretas, 12).map(function(item) { return validarPerguntaSdr(item, 'Uma pergunta correta'); });
+  const comDesvio = audV3ListaObjetos_(perguntas.com_desvio, 12).map(function(item) { return validarPerguntaSdr(item, 'Uma pergunta com desvio'); });
   const ausentes = audV3ListaObjetos_(perguntas.ausentes, 12);
   let statusPerguntas = 'NAO_EVIDENCIADO';
   if (comDesvio.length || ausentes.length) statusPerguntas = corretas.length ? 'PARCIAL' : 'DESVIO_EXECUCAO';
@@ -2476,6 +2523,17 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
     total_com_desvio: comDesvio.length,
     total_ausentes: ausentes.length
   };
+  resultado.manejo_objecoes = audV3ListaObjetos_(resultado.manejo_objecoes, 3).map(function(item) {
+    const fala = audV3ValidarFalaProfissional_(item.o_que_foi_dito, item.locutor_evidencia, 'SDR', 'O manejo de objeção');
+    audV3ExigirEvidenciaPorStatus_(item.classificacao || item.status, fala, 'O manejo de objeção');
+    return Object.assign({}, item, { o_que_foi_dito: fala.texto, locutor_evidencia: fala.locutor });
+  });
+  if (resultado.fechamento) {
+    const falaFechamento = audV3ValidarFalaProfissional_(resultado.fechamento.o_que_foi_dito, resultado.fechamento.locutor_evidencia, 'SDR', 'O fechamento');
+    audV3ExigirEvidenciaPorStatus_(resultado.fechamento.status, falaFechamento, 'O fechamento');
+    resultado.fechamento.o_que_foi_dito = falaFechamento.texto;
+    resultado.fechamento.locutor_evidencia = falaFechamento.locutor;
+  }
 }
 
 function audV3StatusExecucao_(valor) {
@@ -2517,7 +2575,8 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
     const statusRecebido = String(item.status || '').toUpperCase();
     const cor = !gatilho ? 'VERMELHO' : (statusRecebido.includes('AMARELO') || melhorias.length ? 'AMARELO' : 'VERDE');
     const divergencia = String(item.divergencia || '').trim();
-    if (!String(item.o_que_foi_dito || '').trim()) throw new Error('O momento ' + id + ' não informou o que foi dito.');
+    const falaValidada = audV3ValidarFalaProfissional_(item.o_que_foi_dito, item.locutor_evidencia, 'CLOSER', 'O momento ' + id);
+    audV3ExigirEvidenciaPorStatus_(cor === 'VERDE' ? 'CONFORME' : (cor === 'AMARELO' ? 'DESVIO_EXECUCAO' : 'NAO_EXECUTADO'), falaValidada, 'O momento ' + id);
     if (!String(item.o_que_se_espera || oficial.objetivo || '').trim()) throw new Error('O momento ' + id + ' não informou o que consta no pitch.');
     if (cor !== 'VERDE' && !divergencia) throw new Error('O momento ' + id + ' precisa explicar a divergência identificada.');
     return {
@@ -2527,7 +2586,8 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
       status: cor,
       gatilho_alcancado: gatilho,
       o_que_se_espera: String(item.o_que_se_espera || oficial.objetivo || ''),
-      o_que_foi_dito: String(item.o_que_foi_dito || ''),
+      o_que_foi_dito: falaValidada.texto,
+      locutor_evidencia: falaValidada.locutor,
       divergencia_identificada: cor !== 'VERDE',
       divergencia: cor === 'VERDE' ? 'Não houve divergência.' : divergencia,
       nota: cor === 'VERDE' ? 5 : (cor === 'AMARELO' ? 2.5 : 0),
@@ -2723,6 +2783,7 @@ function audV3SchemaRespostaPlano_() {
 function audV3SchemaRespostaCloser_() {
   const texto = { type: 'STRING', description: 'Texto objetivo, específico e sem repetição.' };
   const evidencia = { type: 'STRING', description: 'Uma evidência curta extraída da transcrição.' };
+  const locutorEvidencia = { type: 'STRING', enum: ['CLOSER', 'NAO_IDENTIFICADO'], description: 'CLOSER somente quando a evidência for uma fala literal do Closer; caso contrário NAO_IDENTIFICADO.' };
   const listaTexto = { type: 'ARRAY', maxItems: 3, items: texto };
   const achadoPublicacao = {
     type: 'OBJECT',
@@ -2733,10 +2794,10 @@ function audV3SchemaRespostaCloser_() {
     type: 'OBJECT',
     properties: {
       id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, status: texto,
-      o_que_foi_dito: evidencia, regra_pitch: evidencia, divergencia: texto,
+      o_que_foi_dito: evidencia, locutor_evidencia: locutorEvidencia, regra_pitch: evidencia, divergencia: texto,
       correcao_pratica: texto, pontuacao: { type: 'NUMBER' }, justificativa_nota: texto
     },
-    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
+    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'locutor_evidencia', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
   };
   return {
     type: 'OBJECT',
@@ -2774,6 +2835,7 @@ function audV3SchemaRespostaCloser_() {
             gatilho_alcancado: { type: 'BOOLEAN' },
             o_que_se_espera: texto,
             o_que_foi_dito: evidencia,
+            locutor_evidencia: locutorEvidencia,
             divergencia: texto,
             justificativa_nota: texto,
             pontos_fortes: listaTexto,
@@ -2785,7 +2847,7 @@ function audV3SchemaRespostaCloser_() {
             timestamp_inicio: texto,
             timestamp_fim: texto
           },
-          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'divergencia', 'justificativa_nota', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar', 'timestamp_inicio', 'timestamp_fim']
+          required: ['id', 'nome', 'status', 'gatilho_alcancado', 'o_que_se_espera', 'o_que_foi_dito', 'locutor_evidencia', 'divergencia', 'justificativa_nota', 'pontos_fortes', 'pontos_melhorar', 'o_que_fazer', 'texto_script', 'como_agir', 'aulas_revisar', 'timestamp_inicio', 'timestamp_fim']
         }
       },
       analise_temporal: {
@@ -2804,7 +2866,7 @@ function audV3SchemaRespostaCloser_() {
         type: 'OBJECT',
         properties: {
           total_realizadas: { type: 'NUMBER' },
-          perguntas_realizadas: { type: 'ARRAY', maxItems: 30, items: { type: 'OBJECT', properties: { sequencia: { type: 'NUMBER' }, timestamp: texto, pergunta: texto, categoria: texto, resposta_lead: evidencia, objetivo: texto, aprofundou: { type: 'BOOLEAN' }, avaliacao: texto, o_que_melhorar: texto }, required: ['sequencia', 'timestamp', 'pergunta', 'categoria', 'resposta_lead', 'objetivo', 'aprofundou', 'avaliacao', 'o_que_melhorar'] } },
+          perguntas_realizadas: { type: 'ARRAY', maxItems: 30, items: { type: 'OBJECT', properties: { sequencia: { type: 'NUMBER' }, timestamp: texto, locutor: { type: 'STRING', enum: ['CLOSER'] }, pergunta: texto, categoria: texto, resposta_lead: evidencia, objetivo: texto, aprofundou: { type: 'BOOLEAN' }, avaliacao: texto, o_que_melhorar: texto }, required: ['sequencia', 'timestamp', 'locutor', 'pergunta', 'categoria', 'resposta_lead', 'objetivo', 'aprofundou', 'avaliacao', 'o_que_melhorar'] } },
           perguntas_esperadas_nao_realizadas: { type: 'ARRAY', maxItems: 15, items: { type: 'OBJECT', properties: { categoria: texto, pergunta: texto, base_pitch: texto, motivo_importancia: texto, impacto_da_ausencia: texto, sugestao_aplicacao: texto }, required: ['categoria', 'pergunta', 'base_pitch', 'motivo_importancia', 'impacto_da_ausencia', 'sugestao_aplicacao'] } }
         },
         required: ['total_realizadas', 'perguntas_realizadas', 'perguntas_esperadas_nao_realizadas']
@@ -2878,28 +2940,30 @@ function audV3SchemaRespostaCloser_() {
 function audV3SchemaRespostaSdr_() {
   const texto = { type: 'STRING', description: 'Texto objetivo, específico e sem repetição.' };
   const evidencia = { type: 'STRING', description: 'Uma única evidência curta, sem reproduzir parágrafos inteiros.' };
+  const locutorEvidencia = { type: 'STRING', enum: ['SDR', 'NAO_IDENTIFICADO'], description: 'SDR somente quando a evidência for uma fala literal do SDR; caso contrário NAO_IDENTIFICADO.' };
   const listaTexto = { type: 'ARRAY', maxItems: 3, items: texto };
   const comparacao = {
     type: 'OBJECT',
     properties: {
       status: texto,
       o_que_foi_dito: evidencia,
+      locutor_evidencia: locutorEvidencia,
       o_que_deveria: evidencia,
       classificacao: texto,
       desvio: texto,
       correcao_pratica: texto
     },
-    required: ['status', 'o_que_foi_dito', 'o_que_deveria', 'classificacao', 'desvio', 'correcao_pratica']
+    required: ['status', 'o_que_foi_dito', 'locutor_evidencia', 'o_que_deveria', 'classificacao', 'desvio', 'correcao_pratica']
   };
   const perguntaCorreta = {
     type: 'OBJECT',
-    properties: { pergunta: texto, evidencia: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
-    required: ['pergunta', 'evidencia', 'regra_pitch', 'por_que_esta_correta']
+    properties: { pergunta: texto, locutor: { type: 'STRING', enum: ['SDR'] }, evidencia: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'por_que_esta_correta']
   };
   const perguntaComDesvio = {
     type: 'OBJECT',
-    properties: { pergunta: texto, evidencia: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
-    required: ['pergunta', 'evidencia', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
+    properties: { pergunta: texto, locutor: { type: 'STRING', enum: ['SDR'] }, evidencia: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
   };
   const perguntaAusente = {
     type: 'OBJECT',
@@ -2910,10 +2974,10 @@ function audV3SchemaRespostaSdr_() {
     type: 'OBJECT',
     properties: {
       id: texto, nome: texto, aplicavel: { type: 'BOOLEAN' }, status: texto,
-      o_que_foi_dito: evidencia, regra_pitch: evidencia, divergencia: texto,
+      o_que_foi_dito: evidencia, locutor_evidencia: locutorEvidencia, regra_pitch: evidencia, divergencia: texto,
       correcao_pratica: texto, pontuacao: { type: 'NUMBER' }, justificativa_nota: texto
     },
-    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
+    required: ['id', 'nome', 'aplicavel', 'status', 'o_que_foi_dito', 'locutor_evidencia', 'regra_pitch', 'divergencia', 'correcao_pratica', 'pontuacao', 'justificativa_nota']
   };
   return {
     type: 'OBJECT',
@@ -2941,8 +3005,8 @@ function audV3SchemaRespostaSdr_() {
         maxItems: 12,
         items: {
           type: 'OBJECT',
-          properties: { etapa: texto, status: texto, fato_transcricao: evidencia, regra_pitch: evidencia, desvio: texto, correcao_pratica: texto, impacto_resultado: texto, prioridade: texto },
-          required: ['etapa', 'status', 'fato_transcricao', 'regra_pitch', 'desvio', 'correcao_pratica', 'impacto_resultado', 'prioridade']
+          properties: { etapa: texto, status: texto, fato_transcricao: evidencia, locutor_evidencia: locutorEvidencia, regra_pitch: evidencia, desvio: texto, correcao_pratica: texto, impacto_resultado: texto, prioridade: texto },
+          required: ['etapa', 'status', 'fato_transcricao', 'locutor_evidencia', 'regra_pitch', 'desvio', 'correcao_pratica', 'impacto_resultado', 'prioridade']
         }
       },
       aderencia_script: {
@@ -2957,11 +3021,12 @@ function audV3SchemaRespostaSdr_() {
               elementos_identificados: { type: 'ARRAY', maxItems: 8, items: texto },
               elementos_ausentes: { type: 'ARRAY', maxItems: 8, items: texto },
               evidencia: evidencia,
+              locutor_evidencia: locutorEvidencia,
               regra_pitch: evidencia,
               desvio: texto,
               correcao_pratica: texto
             },
-            required: ['status', 'elementos_esperados', 'elementos_identificados', 'elementos_ausentes', 'evidencia', 'regra_pitch', 'desvio', 'correcao_pratica']
+            required: ['status', 'elementos_esperados', 'elementos_identificados', 'elementos_ausentes', 'evidencia', 'locutor_evidencia', 'regra_pitch', 'desvio', 'correcao_pratica']
           }
         },
         required: ['resumo_aderencia', 'introducao']
@@ -2976,7 +3041,7 @@ function audV3SchemaRespostaSdr_() {
         },
         required: ['resumo', 'corretas', 'com_desvio', 'ausentes']
       },
-      manejo_objecoes: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', properties: { objecao: texto, o_que_foi_dito: evidencia, o_que_deveria: evidencia, classificacao: texto, desvio: texto, correcao_pratica: texto } } },
+      manejo_objecoes: { type: 'ARRAY', maxItems: 3, items: { type: 'OBJECT', properties: { objecao: texto, o_que_foi_dito: evidencia, locutor_evidencia: locutorEvidencia, o_que_deveria: evidencia, classificacao: texto, desvio: texto, correcao_pratica: texto }, required: ['objecao', 'o_que_foi_dito', 'locutor_evidencia', 'o_que_deveria', 'classificacao', 'desvio', 'correcao_pratica'] } },
       objecoes_fora_pitch: {
         type: 'ARRAY',
         maxItems: 5,
@@ -3151,7 +3216,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
 
   const etapasPitch = Array.isArray(r.etapas_pitch) ? r.etapas_pitch : [];
   audV3Titulo_(body, 'Aderência por etapa do pitch', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Etapa', 'Status', 'Nota', 'O que foi dito', 'O que consta no pitch', 'Divergência', 'Correção prática', 'Impacto provável']].concat(etapasPitch.map(item => [
+  audV3Tabela_(body, [['Etapa', 'Status', 'Nota', 'Fala do SDR', 'O que consta no pitch', 'Divergência', 'Correção prática', 'Impacto provável']].concat(etapasPitch.map(item => [
     item.etapa || '', audV3RotuloStatus_(item.status), item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao || '', item.regra_pitch || '', item.desvio || '', item.correcao_pratica || '', item.impacto_resultado || ''
   ])));
 
@@ -3192,7 +3257,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3RotuloTexto_(body, 'Ponto de melhoria', conclusao.ponto_melhoria || '');
 
   audV3Titulo_(body, '9. Pontuação de Qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  const linhasPontuacao = [['Critério', 'Status', 'Nota', 'O que foi dito', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
+  const linhasPontuacao = [['Critério', 'Status', 'Nota', 'Fala do SDR', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
     item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.o_que_foi_dito || '', item.regra_pitch || '', item.divergencia || '', item.justificativa_nota || ''
   ]));
   audV3Tabela_(body, linhasPontuacao);
@@ -3268,7 +3333,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
     audV3Titulo_(body, (indice + 1) + '. ' + (item.nome || item.id || 'Momento'), DocumentApp.ParagraphHeading.HEADING1);
     audV3RotuloTexto_(body, 'Status', item.cor || item.status || 'Não evidenciado');
     audV3RotuloTexto_(body, 'O que se espera', item.o_que_se_espera || '');
-    audV3RotuloTexto_(body, 'O que foi dito', item.o_que_foi_dito || 'Não evidenciado');
+    audV3RotuloTexto_(body, 'Evidência da fala do Closer', item.o_que_foi_dito || 'Não evidenciado');
     audV3RotuloTexto_(body, 'Divergência', item.divergencia || 'Não houve divergência.');
     audV3RotuloTexto_(body, 'Nota do momento', item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5');
     audV3RotuloTexto_(body, 'Justificativa da nota', item.justificativa_nota || '');
@@ -3344,7 +3409,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3Lista_(body, 'Hipóteses de comunicação para o time de mídia', mercado.insights_para_midia || []);
 
   audV3Titulo_(body, 'Pontuação de qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Critério', 'Status', 'Nota', 'O que foi dito', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
+  audV3Tabela_(body, [['Critério', 'Status', 'Nota', 'Fala do Closer', 'Regra do pitch', 'Divergência', 'Justificativa da nota']].concat((r.criterios_avaliados || []).map(item => [
     item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', item.o_que_foi_dito || '', item.regra_pitch || '', item.divergencia || '', item.justificativa_nota || ''
   ])));
   const pc = r.pontuacao_calculada || {};
@@ -3398,7 +3463,7 @@ function audV3AdicionarProximosPassosEquipes_(body, resultado) {
 
 function audV3Comparacao_(body, item) {
   audV3RotuloTexto_(body, 'Status', audV3RotuloStatus_(item.status || 'Não evidenciado'));
-  audV3RotuloTexto_(body, 'O que foi dito', item.o_que_foi_dito || 'Não evidenciado');
+  audV3RotuloTexto_(body, 'Fala do SDR', item.o_que_foi_dito || 'Não evidenciado');
   audV3RotuloTexto_(body, 'O que deveria ter sido dito', item.o_que_deveria || 'Não evidenciado');
   audV3RotuloTexto_(body, 'Classificação', item.classificacao || 'Não evidenciado');
   audV3RotuloTexto_(body, 'Desvio', item.desvio || '');
@@ -3966,6 +4031,9 @@ function audV3PromptSistemaSdr_() {
   return [
     'Atue como especialista em Sales Enablement e auditoria de qualidade de vendas, utilizando rigorosamente a metodologia VOLUM.',
     'A transcrição é a única fonte de evidência do que aconteceu. O pitch é somente a referência do comportamento esperado.',
+    'Em todo campo o_que_foi_dito, fato_transcricao, evidência da introdução ou evidência de pergunta, registre somente palavras efetivamente pronunciadas pelo SDR auditado. Nunca use a fala do lead como evidência da execução do SDR.',
+    'Identifique o locutor antes de extrair a evidência. Respostas e objeções do lead devem ficar exclusivamente em resposta_lead ou evidencia_lead. Se não houver fala do SDR para comprovar um item, escreva Não evidenciado na fala do SDR e use locutor_evidencia=NAO_IDENTIFICADO.',
+    'Nenhum status, nota, ponto forte ou desvio pode existir sem evidência rastreável. Para CONFORME ou DESVIO_EXECUCAO, cite uma fala literal do SDR. Para comportamento ausente, descreva a regra esperada e marque explicitamente que não foi evidenciado na fala.',
     'Não invente falas, timestamps, intenções, objeções, resultados, métricas, pesos ou classificações.',
     'Abra a análise com um resumo factual da conversa, a motivação declarada pelo lead para o contato, a necessidade principal e o resultado da ligação. Se a motivação não estiver explícita, marque NAO_EVIDENCIADO.',
     'O SDR deve seguir o pitch vigente com alta fidelidade. Avalie cada etapa obrigatória separadamente e não compense uma etapa ausente com boa execução em outra.',
@@ -4027,6 +4095,9 @@ function audV3PromptSistemaCloser_() {
     'Atue como especialista em Sales Enablement e auditoria de reuniões comerciais de Closer, utilizando rigorosamente a metodologia VOLUM e o processo Venda Perfeita.',
     'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento.',
     'A transcrição é a única fonte de evidência do que aconteceu. O pitch vigente é a referência do comportamento esperado.',
+    'Em todo campo o_que_foi_dito, fato_transcricao ou evidência de execução, registre somente palavras efetivamente pronunciadas pelo Closer auditado. Nunca use a resposta do lead como se fosse uma fala do Closer.',
+    'Identifique o locutor antes de extrair cada evidência. A pergunta deve ser fala literal do Closer e a resposta deve permanecer separada em resposta_lead. Se não houver fala do Closer para comprovar um item, escreva Não evidenciado na fala do CLOSER e use locutor_evidencia=NAO_IDENTIFICADO.',
+    'Nenhum status, nota, ponto forte ou desvio pode existir sem evidência rastreável. Para CONFORME ou DESVIO_EXECUCAO, cite uma fala literal do Closer. Para comportamento ausente, descreva a regra esperada e marque explicitamente que não foi evidenciado na fala.',
     'Não invente falas, timestamps, intenções, objeções, resultados, notas, aulas ou gatilhos.',
     'Abra a análise com um resumo factual do que foi conversado, motivação do contato, cenário atual, dor principal, impacto declarado, objetivo do lead e resultado da reunião.',
     'Toda avaliação precisa distinguir FATO_TRANSCRICAO, REGRA_PITCH e SUGESTAO_ENABLEMENT.',
@@ -4042,6 +4113,7 @@ function audV3PromptSistemaCloser_() {
     'Na apresentação, avalie a conexão entre dores e solução e as validações de entendimento ou score previstas no pitch.',
     'No fechamento, avalie objeções, negociação, urgência, onboarding, pedidos de teste e próximo passo conforme o pitch, sem criar regras ausentes.',
     'Extraia separadamente o que O LEAD revelou: dores, desafios, consequências, ferramentas ou processos atuais, resultados desejados e expressões úteis para inteligência de mercado.',
+    'Não deixe inteligência de mercado vazia quando o resumo ou as respostas do lead já contiverem evidência desses temas. Cada conclusão sobre o lead deve manter a respectiva fala em evidencia_lead; ausência real deve ser marcada como não evidenciada, sem inferência.',
     'Os insights para mídia devem ser hipóteses fundamentadas na linguagem do lead, nunca alegações de frequência de mercado baseadas em uma única reunião.',
     'As correções e próximos passos devem ser observáveis, treináveis e ligados ao momento da reunião em que devem ocorrer.',
     'Para cada critério não atingido, explique o impacto provável de não executar corretamente e o benefício comercial de corrigir. Não prometa resultado nem invente causalidade.',
