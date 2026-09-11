@@ -47,4 +47,19 @@ assert.equal(resultado.perguntas_qualificacao.total_ausentes, 1);
 assert.equal(resultado.etapas_pitch[0].nota, 2.5);
 assert.equal(resultado.etapas_pitch[3].nota, 0);
 assert.equal(resultado.etapas_pitch[4].nota, null);
+
+const contraditorio = {
+  etapas_pitch: [{
+    etapa: 'Primeira Frase de Qualificação',
+    status: 'CONFORME',
+    fato_transcricao: 'Quero entender melhor o seu cenário.',
+    locutor_evidencia: 'SDR',
+    regra_pitch: 'Qualificar antes de propor o agendamento.',
+    desvio: 'A qualificação ocorreu depois da tentativa de agendamento.'
+  }]
+};
+contexto.audV3NormalizarLeiturasSdr_(contraditorio, { checklist: [] });
+assert.equal(contraditorio.etapas_pitch[0].status, 'DESVIO_EXECUCAO');
+assert.equal(contraditorio.etapas_pitch[0].nota, 2.5);
+assert.match(contraditorio.etapas_pitch[0].ajuste_validacao, /Status ajustado/);
 console.log('Estrutura SDR v4.3 validada.');

@@ -2438,18 +2438,23 @@ function audV3NotaStatusPlano_(valor) {
 function audV3NormalizarLeiturasSdr_(resultado, criterios) {
   const etapas = (Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : []).map(function(item) {
     item = item || {};
-    const status = audV3StatusExecucao_(item.status);
-    const divergencia = String(item.desvio || '').trim();
+    let status = audV3StatusExecucao_(item.status);
+    let divergencia = String(item.desvio || '').trim();
+    let ajusteValidacao = '';
     const falaValidada = audV3ValidarFalaProfissional_(item.fato_transcricao, item.locutor_evidencia, 'SDR', 'A etapa ' + (item.etapa || 'sem nome'));
     audV3ExigirEvidenciaPorStatus_(status, falaValidada, 'A etapa ' + (item.etapa || 'sem nome'));
     const fato = falaValidada.texto;
     const regra = String(item.regra_pitch || '').trim();
     if (!fato || !regra) throw new Error('A etapa ' + (item.etapa || 'sem nome') + ' precisa informar o que foi dito e o que consta no pitch.');
-    if (status === 'CONFORME' && divergencia && !/^n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia\.?$/i.test(divergencia)) {
-      throw new Error('A etapa ' + (item.etapa || '') + ' está CONFORME, mas apresenta divergência contraditória.');
+    if (status === 'CONFORME' && divergencia && !/^(?:n[aã]o houve diverg[eê]ncia|sem diverg[eê]ncia)\.?$/i.test(divergencia)) {
+      status = 'DESVIO_EXECUCAO';
+      ajusteValidacao = 'Status ajustado de CONFORME para DESVIO_EXECUCAO porque a própria análise descreveu uma divergência.';
     }
     if (['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(status) && !divergencia) {
-      throw new Error('A etapa ' + (item.etapa || '') + ' precisa explicar a divergência identificada.');
+      divergencia = status === 'NAO_EXECUTADO'
+        ? 'O comportamento obrigatório não foi evidenciado na transcrição.'
+        : String(item.correcao_pratica || item.observacao || 'A execução apresentou desvio em relação ao comportamento esperado no pitch.').trim();
+      ajusteValidacao = ajusteValidacao || 'A divergência foi consolidada automaticamente a partir do status e das evidências disponíveis.';
     }
     return Object.assign({}, item, {
       status: status,
@@ -2457,7 +2462,8 @@ function audV3NormalizarLeiturasSdr_(resultado, criterios) {
       locutor_evidencia: falaValidada.locutor,
       desvio: status === 'CONFORME' ? 'Não houve divergência.' : divergencia,
       divergencia_identificada: ['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(status),
-      nota: audV3NotaStatusExecucao_(status)
+      nota: audV3NotaStatusExecucao_(status),
+      ajuste_validacao: ajusteValidacao
     });
   });
   resultado.etapas_pitch = etapas;
