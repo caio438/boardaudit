@@ -2035,7 +2035,10 @@
   </div>
 
   <div id="loading" class="loading">
-    <div id="loadingTexto" class="loading-box">Processando...</div>
+    <div class="loading-box">
+      <div id="loadingTexto">Processando...</div>
+      <button id="loadingDestravar" class="btn secondary" type="button" onclick="esconderLoading()" style="display:none;margin-top:14px;width:100%">Destravar tela</button>
+    </div>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -7809,7 +7812,7 @@
       mostrarToast(mensagem, 'error');
     }
 
-    function mostrarLoading(texto) {
+    function mostrarLoading(texto, timeoutMs) {
       const ativo = document.activeElement;
       if (ativo && ativo.tagName === 'BUTTON' && !ativo.disabled) {
         window.__loadingButton = ativo;
@@ -7820,10 +7823,32 @@
       document.getElementById('loadingTexto').textContent =
         texto || 'Processando...';
       document.getElementById('loading').classList.add('active');
+
+      const botaoDestravar = document.getElementById('loadingDestravar');
+      if (botaoDestravar) botaoDestravar.style.display = 'none';
+      clearTimeout(window.__loadingUnlockTimer);
+      clearTimeout(window.__loadingWatchdog);
+      window.__loadingUnlockTimer = setTimeout(() => {
+        if (botaoDestravar) botaoDestravar.style.display = 'block';
+      }, 30000);
+      window.__loadingWatchdog = setTimeout(() => {
+        esconderLoading();
+        mostrarToast(
+          'A operação demorou mais que o esperado. A tela foi liberada automaticamente.',
+          'warning'
+        );
+      }, Math.max(30000, Number(timeoutMs || 180000)));
     }
 
     function esconderLoading() {
-      document.getElementById('loading').classList.remove('active');
+      clearTimeout(window.__loadingUnlockTimer);
+      clearTimeout(window.__loadingWatchdog);
+      window.__loadingUnlockTimer = null;
+      window.__loadingWatchdog = null;
+      const loading = document.getElementById('loading');
+      if (loading) loading.classList.remove('active');
+      const botaoDestravar = document.getElementById('loadingDestravar');
+      if (botaoDestravar) botaoDestravar.style.display = 'none';
       if (window.__loadingButton && document.body.contains(window.__loadingButton)) {
         window.__loadingButton.disabled = false;
         window.__loadingButton.removeAttribute('aria-busy');
@@ -7832,6 +7857,9 @@
       window.__loadingButton = null;
       window.__loadingButtonText = '';
     }
+
+    window.addEventListener('error', esconderLoading);
+    window.addEventListener('unhandledrejection', esconderLoading);
 
     function mostrarToast(mensagem, tipo) {
       const toast = document.getElementById('toast');
