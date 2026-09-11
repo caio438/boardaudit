@@ -1,6 +1,6 @@
 const APP = {
   nome: 'Board de Auditorias VOLUM',
-  versao: '4.23.1',
+  versao: '4.23.5',
   spreadsheetId: '1s1HWCfqEunoq-iToJMO9mWaZQoYd0FgdT3YqmYrUgck',
   timezone: 'America/Sao_Paulo',
   rdBaseUrl: 'https://crm.rdstation.com/api/v1',
@@ -11,6 +11,7 @@ const APP = {
   rdMaxPages: 100,
   rdBatchSize: 3,
   rdContinuationMinutes: 1,
+  rdQueueStaleMinutes: 45,
   sheets: {
     configuracoes: 'CONFIGURACOES',
     clientes: 'CLIENTES',
@@ -2435,9 +2436,16 @@ function criarFilaRd_(dataInicio, dataFim, origem, apenasIdCliente) {
   try {
     const filaAtual = obterFilaRd_();
     if (filaAtual && ['PENDENTE', 'PROCESSANDO'].includes(filaAtual.status)) {
-      throw new Error(
-        'Já existe uma sincronização do RD em andamento. Aguarde a conclusão antes de iniciar outra.'
-      );
+      if (filaRdEstaAbandonada_(filaAtual)) {
+        abandonarFilaRd_(filaAtual, 'Fila sem acionador de continuação por mais de ' + APP.rdQueueStaleMinutes + ' minutos.');
+      } else {
+        // Se o estado ainda é recente, garante que uma continuação exista antes
+        // de bloquear a criação de outra fila.
+        agendarProcessamentoRd_();
+        throw new Error(
+          'Já existe uma sincronização do RD em andamento. Aguarde a conclusão antes de iniciar outra.'
+        );
+      }
     }
 
     const clientes = listarClientes()
@@ -2674,6 +2682,47 @@ function resumirFilaRd_(fila) {
     concluidaEm: fila.concluidaEm || '',
     erros: (fila.erros || []).slice(-10)
   };
+}
+
+function existeAcionadorProcessamentoRd_() {
+  return ScriptApp.getProjectTriggers().some(function(trigger) {
+    return trigger.getHandlerFunction() === 'PROCESSAR_FILA_RD';
+  });
+}
+
+function filaRdIdadeMinutos_(fila) {
+  if (!fila) return 0;
+  const referencia = new Date(fila.atualizadaEm || fila.iniciadaEm || fila.criadaEm || '').getTime();
+  if (!referencia || isNaN(referencia)) return Number.MAX_SAFE_INTEGER;
+  return Math.max(0, Math.floor((Date.now() - referencia) / 60000));
+}
+
+function filaRdEstaAbandonada_(fila) {
+  if (!fila || ['PENDENTE', 'PROCESSANDO'].indexOf(String(fila.status || '')) < 0) return false;
+  return filaRdIdadeMinutos_(fila) >= APP.rdQueueStaleMinutes && !existeAcionadorProcessamentoRd_();
+}
+
+function abandonarFilaRd_(fila, motivo) {
+  if (!fila) return false;
+  fila.status = 'ABANDONADA';
+  fila.atualizadaEm = new Date().toISOString();
+  fila.concluidaEm = fila.atualizadaEm;
+  fila.erros = fila.erros || [];
+  fila.erros.push(String(motivo || 'Fila abandonada e liberada automaticamente.'));
+  salvarFilaRd_(fila);
+  registrarLog_('RD', 'LIBERAR_FILA_ABANDONADA', 'Fila ' + String(fila.idFila || '') + ': ' + String(motivo || 'sem continuação ativa.'));
+  return true;
+}
+
+function REPARAR_FILA_RD_E_SINCRONIZAR_MES_ATUAL() {
+  removerAcionadoresProcessamentoRd_();
+  const fila = obterFilaRd_();
+  if (fila && ['PENDENTE', 'PROCESSANDO'].includes(String(fila.status || ''))) {
+    abandonarFilaRd_(fila, 'Fila anterior liberada pela rotina de reparo.');
+  }
+  const retorno = sincronizarRdAgora();
+  registrarLog_('RD', 'REPARAR_E_REINICIAR', 'Fila do RD reparada e mês atual enfileirado.');
+  return retorno;
 }
 
 function agendarProcessamentoRd_() {

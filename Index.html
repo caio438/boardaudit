@@ -1401,6 +1401,9 @@
           <div class="section-title"><div><h3>Auditorias realizadas</h3></div></div>
           <div class="toolbar">
             <div class="filters">
+              <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
+                <option value="">Todos os clientes</option>
+              </select>
               <input id="audHistoricoMes" type="month" aria-label="Filtrar auditorias por mês" onchange="renderizarAuditorias()">
               <select id="audHistoricoStatus" aria-label="Filtrar auditorias por situação" onchange="renderizarAuditorias()">
                 <option value="">Todas as situações</option>
@@ -4263,6 +4266,14 @@
       select.innerHTML = '<option value="">Todos os clientes</option>' +
         clientes.map(cliente => `<option value="${escapeAtributo(cliente.idCliente)}">${escapeHtml(cliente.nomeCliente)}</option>`).join('');
       if (clientes.some(cliente => String(cliente.idCliente) === String(atual))) select.value = atual;
+      const filtroHistorico = document.getElementById('audHistoricoCliente');
+      if (filtroHistorico) {
+        const filtroAtual = filtroHistorico.value;
+        filtroHistorico.replaceChildren();
+        filtroHistorico.add(new Option('Todos os clientes', ''));
+        clientes.forEach(cliente => filtroHistorico.add(new Option(cliente.nomeCliente, cliente.idCliente)));
+        if (clientes.some(cliente => String(cliente.idCliente) === String(filtroAtual))) filtroHistorico.value = filtroAtual;
+      }
       preencherClientesImportacaoManualV3();
     }
 
@@ -4494,7 +4505,10 @@
           idInteracao: transcrita.idInteracao,
           nomeSdr: valor('manualColaborador') || valor('audNomeSdr'),
           reclassificarInteracao: false,
-          evitarDuplicidade: true
+          // A geração manual sempre cria uma nova versão para permitir
+          // recalibrar o prompt e comparar resultados. A automação continua
+          // protegida contra duplicidade no servidor.
+          evitarDuplicidade: false
         });
         estado.auditorias = analisada.auditorias || estado.auditorias || [];
         estado.auditoriaAtual = analisada.auditoria || estado.auditoriaAtual;
@@ -6553,8 +6567,10 @@
   }
 
   function limparFiltrosHistoricoAuditorias_() {
+    const cliente = document.getElementById('audHistoricoCliente');
     const mes = document.getElementById('audHistoricoMes');
     const status = document.getElementById('audHistoricoStatus');
+    if (cliente) cliente.value = '';
     if (mes) mes.value = '';
     if (status) status.value = '';
     renderizarAuditorias();
@@ -6562,11 +6578,14 @@
 
   function renderizarAuditorias() {
     const alvo = document.getElementById('listaAuditorias');
+    const idCliente = String((document.getElementById('audHistoricoCliente') || {}).value || '');
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
     const auditorias = (estado.auditorias || []).filter(item => {
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
-      return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+      return (!idCliente || String(item.idCliente || '') === idCliente) &&
+        (!mes || chave.slice(0, 7) === mes) &&
+        (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
     });
     if (!auditorias.length) {
       alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhuma auditoria encontrada para os filtros selecionados.' : 'Nenhuma auditoria executada.'}</div>`;

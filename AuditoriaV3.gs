@@ -2341,8 +2341,9 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios, tipoAuditoria
     const aplicavel = item.aplicavel !== false;
     let status = String(item.status || '').trim().toUpperCase()
       .replace(/NÃO/g, 'NAO').replace(/Ç/g, 'C').replace(/Ã/g, 'A');
-    if (status === 'PARCIAL') status = 'DESVIO_EXECUCAO';
-    if (status === 'AUSENTE') status = 'NAO_EXECUTADO';
+    if (['VERDE', 'ATINGIDO', 'CORRETO', 'COMPLETO', 'OK'].includes(status)) status = 'CONFORME';
+    if (['AMARELO', 'PARCIAL', 'INCOMPLETO'].includes(status)) status = 'DESVIO_EXECUCAO';
+    if (['VERMELHO', 'AUSENTE', 'INCORRETO', 'NAO CONFORME'].includes(status)) status = 'NAO_EXECUTADO';
     if (!aplicavel) status = 'NAO_APLICAVEL';
     if (!['CONFORME', 'DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status)) {
       throw new Error('Status inválido no critério ' + id + ': ' + (item.status || 'vazio') + '.');
