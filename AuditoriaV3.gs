@@ -1607,7 +1607,9 @@ function executarAuditoriaV3(dados) {
   audV3ValidarEntradas_(cliente, pitch, interacao, transcricao, tipo);
 
   const modelo = audV3SelecionarModelo_(dados.idModelo, cliente.ID_CLIENTE, tipo);
-  if (dados.evitarDuplicidade) {
+  const hashFonte = audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo);
+  const evitarDuplicidade = dados.evitarDuplicidade !== false;
+  if (evitarDuplicidade) {
     const auditoriaExistente = audV3Ler_('AUDITORIAS')
       .filter(item =>
         String(item.ID_INTERACAO || '') === String(interacao.ID_INTERACAO || '') &&
@@ -1615,6 +1617,8 @@ function executarAuditoriaV3(dados) {
         String(item.ID_PITCH || '') === String(pitch.ID_PITCH || '') &&
         String(item.ID_MODELO || '') === String(modelo.ID_MODELO || '') &&
         String(item.TIPO_AUDITORIA || '').toUpperCase() === tipo &&
+        String(item.HASH_FONTE || '') === hashFonte &&
+        String(item.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
         ['EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase()) &&
         String(item.RESULTADO_JSON || '').trim()
       )
@@ -1630,6 +1634,7 @@ function executarAuditoriaV3(dados) {
     }
   }
   const criterios = audV3ParseJson_(modelo.CRITERIOS_JSON, 'Os critérios do modelo não contêm um JSON válido.');
+  const promptOficial = audV3PromptOficial_(modelo, tipo);
   const identidade = audV3Identidade_(dados, cliente, interacao);
   const idAuditoria = audV3Id_('AUD');
   const agora = new Date();
@@ -1644,7 +1649,7 @@ function executarAuditoriaV3(dados) {
     NOME_PITCH_SNAPSHOT: pitch.NOME_VERSAO,
     VERSAO_PITCH_SNAPSHOT: pitch.NUMERO_VERSAO,
     CONTEUDO_PITCH_SNAPSHOT: pitch.CONTEUDO_PITCH,
-    PROMPT_SNAPSHOT: modelo.PROMPT_AUDITORIA,
+    PROMPT_SNAPSHOT: promptOficial,
     STATUS: 'PROCESSANDO',
     RESULTADO_COMPLETO: '',
     SCORE: '',
@@ -1658,6 +1663,11 @@ function executarAuditoriaV3(dados) {
     NOME_MODELO_SNAPSHOT: modelo.NOME_MODELO,
     VERSAO_MODELO_SNAPSHOT: modelo.VERSAO_MODELO,
     CRITERIOS_SNAPSHOT_JSON: modelo.CRITERIOS_JSON,
+    HASH_FONTE: hashFonte,
+    MODELO_IA: '',
+    ENGINE_VERSAO: AUDITORIA_V3.versao,
+    VALIDACAO_STATUS: 'PENDENTE',
+    VALIDADA_EM: '',
     RESULTADO_JSON: '',
     SCORE_PERCENTUAL: '',
     ITENS_AVALIADOS: '',
@@ -1695,10 +1705,15 @@ function executarAuditoriaV3(dados) {
       tipoAuditoria: tipo,
       equipePlano: equipePlano
     });
+    const modeloIaUsado = String(resultadoIa.__modelo_ia || '');
+    delete resultadoIa.__modelo_ia;
     if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
       resultadoIa.equipe_analisada = equipePlano;
     }
     const resultado = audV3NormalizarResultado_(resultadoIa, criterios, identidade, interacao, pitch, tipo);
+    resultado.metadados = resultado.metadados || {};
+    resultado.metadados.modelo_ia = modeloIaUsado;
+    audV3ValidarResultadoOficial_(resultado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
     const texto = audV3ResultadoTexto_(resultado, tipo);
 
     let scoreValue = '';
@@ -1714,6 +1729,10 @@ function executarAuditoriaV3(dados) {
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'EM_REVISAO',
       RESULTADO_COMPLETO: texto,
+      MODELO_IA: modeloIaUsado,
+      ENGINE_VERSAO: AUDITORIA_V3.versao,
+      VALIDACAO_STATUS: 'VALIDADA',
+      VALIDADA_EM: new Date(),
       RESULTADO_JSON: JSON.stringify(resultado),
       SCORES_DIMENSOES_JSON: JSON.stringify((resultado.criterios_avaliados || []).map(function(item) {
         return { id: item.id, nome: item.nome, status: item.status, aplicavel: item.aplicavel, nota: item.pontuacao, justificativa: item.justificativa_nota };
@@ -1721,7 +1740,7 @@ function executarAuditoriaV3(dados) {
       SCORES_ETAPAS_JSON: JSON.stringify((tipo === 'CLOSER' ? resultado.momentos : resultado.etapas_pitch || []).map(function(item) {
         return { id: item.id || item.etapa, nome: item.nome || item.etapa, status: item.cor || item.status, nota: item.nota, divergencia: item.divergencia || item.desvio || '' };
       })),
-      SCORE_SCHEMA_VERSAO: '4.2',
+      SCORE_SCHEMA_VERSAO: '5.0',
       SCORE: scoreValue,
       SCORE_PERCENTUAL: scorePercentual,
       SEMAFORO: tipo === 'CLOSER' ? String((resultado.semaforo_geral || {}).cor || '') : '',
@@ -1748,6 +1767,7 @@ function executarAuditoriaV3(dados) {
   } catch (erro) {
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'ERRO',
+      VALIDACAO_STATUS: 'ERRO',
       ERRO: erro && erro.message ? erro.message : String(erro),
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
       CONCLUIDO_EM: new Date()
@@ -1782,18 +1802,41 @@ function aprovarAuditoriaV3(idAuditoria) {
     'O resultado estruturado da auditoria não contém um JSON válido.'
   );
   const pitch = {
+    ID_PITCH: auditoria.ID_PITCH || '',
+    ID_CLIENTE: auditoria.ID_CLIENTE || '',
+    TIPO_PITCH: auditoria.TIPO_AUDITORIA || 'SDR',
     NOME_VERSAO: auditoria.NOME_PITCH_SNAPSHOT || 'Pitch utilizado',
-    NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT || ''
+    NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT || '',
+    CONTEUDO_PITCH: auditoria.CONTEUDO_PITCH_SNAPSHOT || ''
   };
   const modelo = {
+    ID_MODELO: auditoria.ID_MODELO || '',
     NOME_MODELO: auditoria.NOME_MODELO_SNAPSHOT || 'Auditoria SDR VOLUM',
     VERSAO_MODELO: auditoria.VERSAO_MODELO_SNAPSHOT || '',
-    TIPO_AUDITORIA: auditoria.TIPO_AUDITORIA || 'SDR'
+    TIPO_AUDITORIA: auditoria.TIPO_AUDITORIA || 'SDR',
+    CRITERIOS_JSON: auditoria.CRITERIOS_SNAPSHOT_JSON || '',
+    PROMPT_AUDITORIA: auditoria.PROMPT_SNAPSHOT || ''
   };
+  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
+  if (!transcricao) throw new Error('A transcrição original desta auditoria não está disponível.');
+  transcricao.CONTEUDO = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  if (!String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
+  const hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, auditoria.TIPO_AUDITORIA);
+  if (!String(auditoria.HASH_FONTE || '').trim()) {
+    throw new Error('Esta auditoria foi gerada antes das travas de integridade. Gere uma nova análise antes de aprovar.');
+  }
+  if (String(auditoria.HASH_FONTE) !== hashAtual) {
+    throw new Error('A fonte desta auditoria mudou após a geração. Gere uma nova análise antes de aprovar.');
+  }
+  const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
+  audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     STATUS: 'APROVADA',
+    VALIDACAO_STATUS: 'VALIDADA',
+    VALIDADA_EM: new Date(),
+    ENGINE_VERSAO: AUDITORIA_V3.versao,
     ID_DOCUMENTO: documento.id,
     LINK_DOCUMENTO: documento.url,
     CONCLUIDO_EM: new Date(),
@@ -1942,13 +1985,12 @@ function audV3ChamarGemini_(ctx) {
   const prompt = audV3MontarPrompt_(ctx);
   const tipo = String(ctx.tipoAuditoria || ctx.modelo.TIPO_AUDITORIA || 'SDR').toUpperCase();
   
-  // O motor vigente é a fonte canônica. Assim, modelos antigos gravados na
-  // planilha não mantêm regras obsoletas depois de uma atualização do Board.
-  let instrucaoSistema = tipo === 'PLANO'
-    ? audV3PromptSistemaPlano_()
-    : (tipo === 'CLOSER' ? audV3PromptSistemaCloser_() : audV3PromptSistemaSdr_());
+  // O prompt selecionado no modelo é a fonte oficial da auditoria.
+  // O fallback canônico só é usado quando o modelo não possui prompt salvo.
+  const instrucaoSistema = audV3PromptOficial_(ctx.modelo, tipo);
 
   const generationConfig = {
+    temperature: 0,
     responseMimeType: 'application/json',
     maxOutputTokens: 12000
   };
@@ -2004,7 +2046,9 @@ function audV3ChamarGemini_(ctx) {
         throw new Error('A IA não conseguiu concluir o relatório. Tente gerar a auditoria novamente.');
       }
       try {
-        return audV3ParseJson_(texto, 'O Gemini retornou um relatório que não é JSON válido.');
+        const resultadoParseado = audV3ParseJson_(texto, 'O Gemini retornou um relatório que não é JSON válido.');
+        resultadoParseado.__modelo_ia = modeloApi;
+        return resultadoParseado;
       } catch (erroJson) {
         console.warn('JSON incompleto do Gemini na tentativa ' + (tentativa + 1) + '.');
         if (tentativa < esperasMs.length - 1) {
