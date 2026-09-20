@@ -22,7 +22,8 @@ const AUDITORIA_V3 = Object.freeze({
   observacaoProcesso: 'Observação de processo: o time de Sales Ops já está ciente deste ponto e tratará a atualização na próxima reunião operacional. Até lá, o pitch vigente permanece como referência de execução.',
   colunasAuditoria: [
     'ID_MODELO', 'NOME_MODELO_SNAPSHOT', 'VERSAO_MODELO_SNAPSHOT',
-    'CRITERIOS_SNAPSHOT_JSON', 'RESULTADO_JSON', 'SCORES_DIMENSOES_JSON',
+    'CRITERIOS_SNAPSHOT_JSON', 'HASH_FONTE', 'MODELO_IA',
+    'RESULTADO_JSON', 'SCORES_DIMENSOES_JSON',
     'SCORES_ETAPAS_JSON', 'SCORE_SCHEMA_VERSAO', 'SCORE_PERCENTUAL',
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
@@ -1609,7 +1610,9 @@ function executarAuditoriaV3(dados) {
   audV3ValidarEntradas_(cliente, pitch, interacao, transcricao, tipo);
 
   const modelo = audV3SelecionarModelo_(dados.idModelo, cliente.ID_CLIENTE, tipo);
-  if (dados.evitarDuplicidade) {
+  const hashFonte = audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo);
+  const evitarDuplicidade = dados.evitarDuplicidade !== false;
+  if (evitarDuplicidade) {
     const auditoriaExistente = audV3Ler_('AUDITORIAS')
       .filter(item =>
         String(item.ID_INTERACAO || '') === String(interacao.ID_INTERACAO || '') &&
@@ -1617,6 +1620,7 @@ function executarAuditoriaV3(dados) {
         String(item.ID_PITCH || '') === String(pitch.ID_PITCH || '') &&
         String(item.ID_MODELO || '') === String(modelo.ID_MODELO || '') &&
         String(item.TIPO_AUDITORIA || '').toUpperCase() === tipo &&
+        String(item.HASH_FONTE || '') === hashFonte &&
         ['EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase()) &&
         String(item.RESULTADO_JSON || '').trim()
       )
@@ -1660,6 +1664,8 @@ function executarAuditoriaV3(dados) {
     NOME_MODELO_SNAPSHOT: modelo.NOME_MODELO,
     VERSAO_MODELO_SNAPSHOT: modelo.VERSAO_MODELO,
     CRITERIOS_SNAPSHOT_JSON: modelo.CRITERIOS_JSON,
+    HASH_FONTE: hashFonte,
+    MODELO_IA: '',
     RESULTADO_JSON: '',
     SCORE_PERCENTUAL: '',
     ITENS_AVALIADOS: '',
@@ -1697,10 +1703,15 @@ function executarAuditoriaV3(dados) {
       tipoAuditoria: tipo,
       equipePlano: equipePlano
     });
+    const modeloIaUsado = String(resultadoIa.__modelo_ia || '');
+    delete resultadoIa.__modelo_ia;
     if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
       resultadoIa.equipe_analisada = equipePlano;
     }
     const resultado = audV3NormalizarResultado_(resultadoIa, criterios, identidade, interacao, pitch, tipo);
+    resultado.metadados = resultado.metadados || {};
+    resultado.metadados.modelo_ia = modeloIaUsado;
+    audV3ValidarResultadoOficial_(resultado, tipo, criterios, transcricao.CONTEUDO);
     const texto = audV3ResultadoTexto_(resultado, tipo);
 
     let scoreValue = '';
@@ -1716,6 +1727,7 @@ function executarAuditoriaV3(dados) {
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'EM_REVISAO',
       RESULTADO_COMPLETO: texto,
+      MODELO_IA: modeloIaUsado,
       RESULTADO_JSON: JSON.stringify(resultado),
       SCORES_DIMENSOES_JSON: JSON.stringify((resultado.criterios_avaliados || []).map(function(item) {
         return { id: item.id, nome: item.nome, status: item.status, aplicavel: item.aplicavel, nota: item.pontuacao, justificativa: item.justificativa_nota };
@@ -1784,14 +1796,31 @@ function aprovarAuditoriaV3(idAuditoria) {
     'O resultado estruturado da auditoria não contém um JSON válido.'
   );
   const pitch = {
+    ID_PITCH: auditoria.ID_PITCH || '',
+    ID_CLIENTE: auditoria.ID_CLIENTE || '',
+    TIPO_PITCH: auditoria.TIPO_AUDITORIA || 'SDR',
     NOME_VERSAO: auditoria.NOME_PITCH_SNAPSHOT || 'Pitch utilizado',
-    NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT || ''
+    NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT || '',
+    CONTEUDO_PITCH: auditoria.CONTEUDO_PITCH_SNAPSHOT || ''
   };
   const modelo = {
+    ID_MODELO: auditoria.ID_MODELO || '',
     NOME_MODELO: auditoria.NOME_MODELO_SNAPSHOT || 'Auditoria SDR VOLUM',
     VERSAO_MODELO: auditoria.VERSAO_MODELO_SNAPSHOT || '',
-    TIPO_AUDITORIA: auditoria.TIPO_AUDITORIA || 'SDR'
+    TIPO_AUDITORIA: auditoria.TIPO_AUDITORIA || 'SDR',
+    CRITERIOS_JSON: auditoria.CRITERIOS_SNAPSHOT_JSON || ''
   };
+  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
+  if (!transcricao || !String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
+  const hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, auditoria.TIPO_AUDITORIA);
+  if (!String(auditoria.HASH_FONTE || '').trim()) {
+    throw new Error('Esta auditoria foi gerada antes das travas de integridade. Gere uma nova análise antes de aprovar.');
+  }
+  if (String(auditoria.HASH_FONTE) !== hashAtual) {
+    throw new Error('A fonte desta auditoria mudou após a geração. Gere uma nova análise antes de aprovar.');
+  }
+  const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
+  audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO);
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -1915,6 +1944,7 @@ function audV3ChamarGemini_(ctx) {
     : (tipo === 'CLOSER' ? audV3PromptSistemaCloser_() : audV3PromptSistemaSdr_());
 
   const generationConfig = {
+    temperature: 0,
     responseMimeType: 'application/json',
     maxOutputTokens: 12000
   };
@@ -1970,7 +2000,9 @@ function audV3ChamarGemini_(ctx) {
         throw new Error('A IA não conseguiu concluir o relatório. Tente gerar a auditoria novamente.');
       }
       try {
-        return audV3ParseJson_(texto, 'O Gemini retornou um relatório que não é JSON válido.');
+        const resultadoParseado = audV3ParseJson_(texto, 'O Gemini retornou um relatório que não é JSON válido.');
+        resultadoParseado.__modelo_ia = modeloApi;
+        return resultadoParseado;
       } catch (erroJson) {
         console.warn('JSON incompleto do Gemini na tentativa ' + (tentativa + 1) + '.');
         if (tentativa < esperasMs.length - 1) {
@@ -2083,6 +2115,133 @@ function audV3MontarPrompt_(ctx) {
     regraConclusao,
     'Sem timestamps ou duração informada, tempo de fala, interrupções e duração devem ser marcados como não mensuráveis.'
   ].filter(Boolean).join('\n\n');
+}
+
+
+function audV3NormalizarTrechoRastreavel_(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function audV3TrechoExisteNaTranscricao_(trecho, transcricao) {
+  const evidencia = audV3NormalizarTrechoRastreavel_(trecho);
+  if (!evidencia || /^nao evidenciado(?: na fala do (?:sdr|closer))?$/.test(evidencia)) return true;
+  const fonte = audV3NormalizarTrechoRastreavel_(transcricao);
+  return Boolean(fonte && fonte.indexOf(evidencia) >= 0);
+}
+
+function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
+  const base = JSON.stringify({
+    tipo: String(tipo || '').toUpperCase(),
+    idCliente: String((cliente || {}).ID_CLIENTE || ''),
+    idTranscricao: String((transcricao || {}).ID_TRANSCRICAO || ''),
+    transcricao: String((transcricao || {}).CONTEUDO || ''),
+    idPitch: String((pitch || {}).ID_PITCH || ''),
+    versaoPitch: String((pitch || {}).NUMERO_VERSAO || ''),
+    conteudoPitch: String((pitch || {}).CONTEUDO_PITCH || ''),
+    idModelo: String((modelo || {}).ID_MODELO || ''),
+    versaoModelo: String((modelo || {}).VERSAO_MODELO || ''),
+    criterios: String((modelo || {}).CRITERIOS_JSON || '')
+  });
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    base,
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(function(byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+}
+
+function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, transcricao) {
+  resultado = resultado || {};
+  criterios = criterios || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  if (!['SDR', 'CLOSER', 'PLANO'].includes(tipo)) throw new Error('Tipo de resultado oficial inválido.');
+
+  if (tipo === 'PLANO') {
+    const itens = Array.isArray(resultado.criterios) ? resultado.criterios : [];
+    if (!itens.length) throw new Error('Plano de Otimização sem critérios estruturados.');
+    const equipe = String(resultado.equipe_analisada || '').toUpperCase();
+    if (!['SDR', 'CLOSER'].includes(equipe)) throw new Error('Plano de Otimização sem equipe analisada válida.');
+    const scorePlano = Number(((resultado.pontuacao_calculada || {}).score_5));
+    if (!isFinite(scorePlano) || scorePlano < 0 || scorePlano > 5) throw new Error('Plano de Otimização com score inválido.');
+    return true;
+  }
+
+  const dimensoes = Array.isArray(criterios.dimensoes) ? criterios.dimensoes : [];
+  const avaliados = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  if (!dimensoes.length || avaliados.length !== dimensoes.length) {
+    throw new Error('Resultado ' + tipo + ' não contém todas as dimensões oficiais.');
+  }
+  dimensoes.forEach(function(oficial) {
+    if (!avaliados.some(function(item) { return String(item.id || '') === String(oficial.id || ''); })) {
+      throw new Error('Resultado ' + tipo + ' sem a dimensão oficial ' + oficial.id + '.');
+    }
+  });
+
+  const score = Number(((resultado.pontuacao_calculada || {}).score_5));
+  if (!isFinite(score) || score < 0 || score > 5) throw new Error('Resultado ' + tipo + ' com score oficial inválido.');
+
+  const validarEvidencia = function(trecho, locutor, contexto) {
+    const fala = String(trecho || '').trim();
+    const papel = String(locutor || '').trim().toUpperCase();
+    if (!fala || papel === 'NAO_IDENTIFICADO' || /^n[aã]o evidenciado/i.test(fala)) return;
+    if (papel !== tipo) throw new Error(contexto + ' está associado ao locutor errado.');
+    if (!audV3TrechoExisteNaTranscricao_(fala, transcricao)) {
+      throw new Error(contexto + ' contém uma evidência que não foi localizada na transcrição original.');
+    }
+  };
+
+  avaliados.forEach(function(item) {
+    validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia, 'O critério ' + String(item.id || 'sem id'));
+  });
+
+  if (tipo === 'SDR') {
+    const checklist = Array.isArray(criterios.checklist) ? criterios.checklist : [];
+    const etapas = Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : [];
+    if (etapas.length !== checklist.length) throw new Error('Auditoria SDR não contém todas as etapas oficiais.');
+    checklist.forEach(function(nome) {
+      if (!etapas.some(function(item) { return String(item.etapa || '').toLowerCase() === String(nome).toLowerCase(); })) {
+        throw new Error('Auditoria SDR sem a etapa oficial ' + nome + '.');
+      }
+    });
+    etapas.forEach(function(item) {
+      validarEvidencia(item.fato_transcricao, item.locutor_evidencia, 'A etapa SDR ' + String(item.etapa || 'sem nome'));
+    });
+    const perguntas = resultado.perguntas_qualificacao || {};
+    ['corretas', 'com_desvio'].forEach(function(chave) {
+      (Array.isArray(perguntas[chave]) ? perguntas[chave] : []).forEach(function(item) {
+        validarEvidencia(item.pergunta || item.evidencia, item.locutor || item.locutor_evidencia, 'Uma pergunta de qualificação SDR');
+      });
+    });
+  }
+
+  if (tipo === 'CLOSER') {
+    const momentosOficiais = Array.isArray(criterios.momentos) ? criterios.momentos : [];
+    const momentos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+    if (momentos.length !== momentosOficiais.length || momentos.length !== 4) {
+      throw new Error('Auditoria CLOSER precisa conter exatamente os quatro momentos oficiais.');
+    }
+    momentosOficiais.forEach(function(oficial) {
+      if (!momentos.some(function(item) { return String(item.id || '') === String(oficial.id || ''); })) {
+        throw new Error('Auditoria CLOSER sem o momento oficial ' + oficial.id + '.');
+      }
+    });
+    momentos.forEach(function(item) {
+      validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia, 'O momento CLOSER ' + String(item.id || 'sem id'));
+    });
+    const perguntas = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
+    (Array.isArray(perguntas) ? perguntas : []).forEach(function(item) {
+      validarEvidencia(item.pergunta, item.locutor || 'CLOSER', 'Uma pergunta de diagnóstico CLOSER');
+    });
+  }
+  return true;
 }
 
 function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, pitch, tipoAuditoria) {
