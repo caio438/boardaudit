@@ -8,6 +8,10 @@ function audRdCtx_(id) {
   audRdEstr_();
   var a = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', String(id || '').trim());
   if (!a) throw new Error('Auditoria não encontrada.');
+  var tipoAuditoria = String(a.TIPO_AUDITORIA || '').toUpperCase();
+  if (['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0) {
+    throw new Error('Somente auditorias de SDR ou Closer podem ser enviadas ao RD CRM.');
+  }
   if (String(a.STATUS || '').toUpperCase() !== 'APROVADA') {
     throw new Error('Somente auditorias aprovadas podem ser enviadas ao RD CRM.');
   }
@@ -88,6 +92,7 @@ function audRdCategoriaSpin_(valor){var original=String(valor||'').trim(),t=orig
 function audRdTexto_(c){
   var r=c.r||{},tipo=String(c.a.TIPO_AUDITORIA||'').toUpperCase(),co=r.resumo_contato||r.resumo_reuniao||{},p=r.resumo_publicacao||{},pc=r.pontuacao_calculada||{};
   if(tipo==='SDR')return audRdTextoSdr_(c);
+  if(tipo==='CLOSER')return audRdTextoCloser_(c);
   var score=pc.score_5!=null?pc.score_5:c.a.SCORE,pct=pc.score_percentual!=null?pc.score_percentual:c.a.SCORE_PERCENTUAL;
   var ds=tipo==='CLOSER'?(r.momentos||[]).filter(function(x){return String((x||{}).cor||(x||{}).status||'').toUpperCase()!=='VERDE';}).slice(0,5).map(function(x){return'- '+(x.nome||x.id||'Momento')+': '+(x.divergencia||'Execução não evidenciada.')+(x.justificativa_nota?' Impacto: '+x.justificativa_nota:'');}):(r.etapas_pitch||[]).filter(function(x){return['DESVIO_EXECUCAO','NAO_EXECUTADO'].indexOf(String((x||{}).status||'').toUpperCase())>=0;}).slice(0,5).map(function(x){return'- '+x.etapa+': '+(x.desvio||'Execução não evidenciada.')+(x.impacto_resultado?' Impacto: '+x.impacto_resultado:'');});
   var ms=(p.correcoes_prioritarias||[]).slice(0,5).map(function(x){return'- '+(x.acao||'')+(x.criterio_conclusao?' Concluído quando: '+x.criterio_conclusao:'');});
@@ -100,6 +105,102 @@ function audRdTexto_(c){
   linhas=linhas.concat(['','Próximos passos operacionais:',operacionais.length?operacionais.join('\n'):'- Nenhum próximo passo operacional adicional.',c.i.URL_GRAVACAO?'Gravação: '+c.i.URL_GRAVACAO:'',c.a.LINK_DOCUMENTO?'Auditoria completa: '+c.a.LINK_DOCUMENTO:'']);
   return linhas.join('\n').replace(/\n{3,}/g,'\n\n').trim();
 }
+function audRdTextoCloser_(c) {
+  var r = c.r || {};
+  var n = String.fromCharCode(10);
+  var momentos = Array.isArray(r.momentos) ? r.momentos : [];
+  var co = r.resumo_reuniao || {};
+  var pc = r.pontuacao_calculada || {};
+  var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+
+  function normCloser(v) {
+    return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  }
+  function curtoCloser(v, max) {
+    var t = String(v || '').replace(/\s+/g, ' ').trim();
+    max = max || 220;
+    return t.length > max ? t.slice(0, max - 1).trim() + '…' : t;
+  }
+  function fraseMinCloser(v) {
+    var t = String(v || '').trim().replace(/[.;]+$/g, '');
+    return t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
+  }
+  function conforme(x) {
+    var s = normCloser((x || {}).cor || (x || {}).status);
+    return s === 'VERDE' || s === 'CONFORME';
+  }
+
+  var aderentes = momentos.filter(conforme);
+  var desvios = momentos.filter(function(x) { return !conforme(x); });
+
+  var acertos = aderentes.slice(0, 4).map(function(x) {
+    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 190);
+  });
+  var erros = desvios.slice(0, 4).map(function(x) {
+    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.divergencia || 'Gatilho não alcançado.', 190) +
+      (x.o_que_se_espera ? ' | Esperado: ' + curtoCloser(x.o_que_se_espera, 150) : '');
+  });
+  var principal = desvios[0] || {};
+  var proximos = passos.filter(function(x) {
+    return x && String(x.acao || '').trim();
+  }).slice(0, 5).map(function(x) {
+    return '- ' + curtoCloser(x.acao, 190) +
+      (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 150) : '');
+  });
+
+  var nomesAderentes = aderentes.slice(0, 3).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
+  var nomesDesvios = desvios.slice(0, 2).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
+  var primeiroPasso = passos.find(function(x) { return x && String(x.acao || '').trim(); }) || {};
+
+  var p1 = nomesAderentes.length
+    ? 'O Closer executou corretamente ' + nomesAderentes.join(', ') + '.'
+    : 'A auditoria não identificou momento plenamente conforme para destacar nesta conclusão.';
+  var p2 = nomesDesvios.length
+    ? 'O principal ajuste está em ' + nomesDesvios.join(' e ') + '.'
+    : 'Não foi identificado desvio prioritário nesta auditoria.';
+  var p3 = primeiroPasso.acao
+    ? 'Na prática, ' + fraseMinCloser(primeiroPasso.acao) + '.'
+    : 'Na prática, a próxima reunião deve manter os momentos conformes e corrigir os desvios indicados acima.';
+
+  var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
+  var pct = pc.score_percentual != null ? pc.score_percentual : c.a.SCORE_PERCENTUAL;
+
+  var linhas = [
+    'AUDITORIA CLOSER — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
+    'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
+    'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
+    '',
+    'CENÁRIO DA REUNIÃO',
+    curtoCloser(co.resumo_conversa || 'Não evidenciado', 450),
+    co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 250) : '',
+    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 260) : '',
+    '',
+    'EXECUÇÕES ADERENTES AO PROCESSO',
+    acertos.length ? acertos.join(n) : '- Nenhum momento foi classificado como plenamente conforme.',
+    '',
+    'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO',
+    erros.length ? erros.join(n) : '- Nenhum desvio de execução foi identificado.',
+    principal.o_que_foi_dito ? 'Evidência do principal desvio: "' + curtoCloser(principal.o_que_foi_dito, 220) + '"' : '',
+    '',
+    'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
+    proximos.length ? proximos.join(n) : '- Manter a execução conforme e acompanhar os critérios da próxima reunião.',
+    '',
+    'CONCLUSÃO',
+    p1,
+    '',
+    p2,
+    '',
+    p3,
+    '',
+    c.i.URL_GRAVACAO ? 'Gravação: ' + c.i.URL_GRAVACAO : '',
+    c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : ''
+  ];
+
+  return linhas.filter(function(x, i, a) {
+    return x !== '' || (i > 0 && a[i - 1] !== '');
+  }).join(n).trim();
+}
+
 function audRdTextoSdr_(c) {
   var r = c.r || {};
   var n = String.fromCharCode(10);
