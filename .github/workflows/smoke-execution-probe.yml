@@ -1,0 +1,44 @@
+name: Probe Apps Script function execution
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: "${{ startsWith(github.event.head_commit.message, 'Smoke:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: apps-script-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Probe read-only Apps Script execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run-function obterVersaoFrontend --params '[]'
+
+      - name: Cleanup auth
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
