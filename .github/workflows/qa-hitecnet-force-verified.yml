@@ -1,0 +1,66 @@
+name: QA Hitecnet force verified
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet verify:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Execute and verify forced audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx clasp run-function QA_HITECNET_STEC_FORCAR_AUDITORIA --params '[]' > /tmp/hitecnet-verified.txt 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "HITECNET_VERIFY=CLI_FAILURE"
+            exit 1
+          fi
+          if grep -qiE '^Exception:|function.*not found|unexpected end of json|script error' /tmp/hitecnet-verified.txt; then
+            echo "HITECNET_VERIFY=REMOTE_FAILURE"
+            exit 1
+          fi
+          if ! grep -Eq '"sucesso"[[:space:]]*:[[:space:]]*true' /tmp/hitecnet-verified.txt; then
+            echo "HITECNET_VERIFY=NO_SUCCESS_MARKER"
+            wc -c < /tmp/hitecnet-verified.txt | awk '{print "OUTPUT_BYTES=" $1}'
+            exit 1
+          fi
+          echo "HITECNET_VERIFY=SUCCESS"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/hitecnet-verified.txt
