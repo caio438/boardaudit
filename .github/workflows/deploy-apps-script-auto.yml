@@ -175,7 +175,13 @@ jobs:
           compare_pair "/tmp/boardaudit-deploy/AuditoriaV3.gs" "/tmp/boardaudit-live-after/AuditoriaV3.js"
           compare_pair "/tmp/boardaudit-deploy/RdAuditorias.gs" "/tmp/boardaudit-live-after/RdAuditorias.js"
           compare_pair "/tmp/boardaudit-deploy/AutomacaoCentral.gs" "/tmp/boardaudit-live-after/AutomacaoCentral.js"
-          compare_pair "/tmp/boardaudit-deploy/Code.gs" "/tmp/boardaudit-live-after/Código.js"
+
+          LIVE_CODE="/tmp/boardaudit-live-after/Code.js"
+          if [ ! -f "$LIVE_CODE" ] && [ -f "/tmp/boardaudit-live-after/Código.js" ]; then
+            LIVE_CODE="/tmp/boardaudit-live-after/Código.js"
+          fi
+          compare_pair "/tmp/boardaudit-deploy/Code.gs" "$LIVE_CODE"
+
           compare_pair "/tmp/boardaudit-deploy/Index.html" "/tmp/boardaudit-live-after/Index.html"
           compare_pair "/tmp/boardaudit-deploy/appsscript.json" "/tmp/boardaudit-live-after/appsscript.json"
 
