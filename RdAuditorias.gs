@@ -1,5 +1,106 @@
 var RD_AUDITORIA_EMAIL_VOLUM='crm@govolum.com';
-function salvarIdRdAuditoriaV3(d){d=d||{};var id=String(d.idAuditoria||'').trim(),a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id);if(!a)throw new Error('Auditoria não encontrada.');if(String(a.RD_STATUS||'').toUpperCase()==='PUBLICADA')throw new Error('Esta auditoria já foi enviada ao RD e o vínculo não pode ser alterado por aqui.');var deal=audRdNormalizarDeal_(d.rdDealId||d.linkCrm||''),link=deal?audV3RdLinkNegociacao_(deal):'';audV3Atualizar_('INTERACOES','ID_INTERACAO',a.ID_INTERACAO,{LINK_CRM:link,ATUALIZADO_EM:new Date()});if(typeof limparCachesDados_==='function')limparCachesDados_();return{sucesso:true,mensagem:deal?'Negociação do RD vinculada à auditoria.':'Vínculo com o RD removido.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id)),auditorias:audV3ListarAuditoriasFront_()};}
+function audRdPublicarAutomaticamente_(idAuditoria) {
+  audRdEstr_();
+  var id = String(idAuditoria || '').trim();
+  var a = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!a) throw new Error('Auditoria não encontrada.');
+  var tipo = String(a.TIPO_AUDITORIA || '').toUpperCase();
+  if (['SDR', 'CLOSER'].indexOf(tipo) < 0) {
+    return { aplicavel: false, publicada: false, status: 'NAO_APLICAVEL', mensagem: 'Publicação no RD não se aplica a este tipo de auditoria.' };
+  }
+
+  var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
+  var dealId = audRdDeal_(i);
+  if (!dealId) {
+    audRdStatus_(id, 'AGUARDANDO_VINCULO', '', 'Negociação do RD ainda não vinculada.');
+    return {
+      aplicavel: true,
+      publicada: false,
+      status: 'AGUARDANDO_VINCULO',
+      mensagem: 'Aguardando vínculo da negociação no RD CRM.'
+    };
+  }
+
+  var integracao = typeof obterIntegracaoCliente_ === 'function'
+    ? obterIntegracaoCliente_(a.ID_CLIENTE, 'RD_STATION')
+    : null;
+  if (!integracao || String(integracao.ATIVO || '').toUpperCase() !== 'SIM') {
+    audRdStatus_(id, 'AGUARDANDO_INTEGRACAO', '', 'Integração RD deste cliente não está ativa.');
+    return {
+      aplicavel: true,
+      publicada: false,
+      status: 'AGUARDANDO_INTEGRACAO',
+      mensagem: 'Aguardando ativação da integração RD do cliente.'
+    };
+  }
+
+  try {
+    var resposta = enviarAuditoriaParaRd({ idAuditoria: id });
+    return {
+      aplicavel: true,
+      publicada: true,
+      status: 'PUBLICADA',
+      mensagem: resposta.mensagem || 'Resultado registrado automaticamente no RD CRM.',
+      duplicada: Boolean(resposta.duplicada)
+    };
+  } catch (erro) {
+    var mensagem = String(erro && erro.message ? erro.message : erro);
+    audRdStatus_(id, 'ERRO', '', mensagem);
+    return {
+      aplicavel: true,
+      publicada: false,
+      status: 'ERRO',
+      mensagem: 'Falha na publicação automática no RD CRM.',
+      erro: mensagem
+    };
+  }
+}
+
+function salvarIdRdAuditoriaV3(d) {
+  d = d || {};
+  var id = String(d.idAuditoria || '').trim();
+  var a = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!a) throw new Error('Auditoria não encontrada.');
+  if (String(a.RD_STATUS || '').toUpperCase() === 'PUBLICADA') {
+    throw new Error('Esta auditoria já foi enviada ao RD e o vínculo não pode ser alterado por aqui.');
+  }
+
+  var deal = audRdNormalizarDeal_(d.rdDealId || d.linkCrm || '');
+  var link = deal ? audV3RdLinkNegociacao_(deal) : '';
+  audV3Atualizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO, {
+    LINK_CRM: link,
+    ATUALIZADO_EM: new Date()
+  });
+
+  var publicacao = null;
+  if (deal &&
+      String(a.STATUS || '').toUpperCase() === 'APROVADA' &&
+      String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA') {
+    publicacao = audRdPublicarAutomaticamente_(id);
+    if (typeof audV3Atualizar_ === 'function') {
+      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+        AUTOMACAO_STATUS: publicacao.publicada
+          ? 'CONCLUIDA'
+          : (publicacao.status === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD'),
+        AUTOMACAO_ERRO: publicacao.erro || '',
+        AUTOMACAO_ATUALIZADO_EM: new Date()
+      });
+    }
+  }
+
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  return {
+    sucesso: true,
+    mensagem: deal
+      ? (publicacao && publicacao.publicada
+          ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
+          : 'Negociação do RD vinculada. O envio automático foi processado.')
+      : 'Vínculo com o RD removido.',
+    publicacaoRd: publicacao,
+    auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id)),
+    auditorias: audV3ListarAuditoriasFront_()
+  };
+}
 function prepararEnvioAuditoriaRd(id){var c=audRdCtx_(id);return{idAuditoria:c.a.ID_AUDITORIA,dealId:c.dealId,oportunidade:c.i.OPORTUNIDADE||c.i.TITULO||'',responsavel:c.sdr.nome||'',usuarioPublicacao:c.volum.email,texto:audRdTexto_(c),aviso:'A anotação ficará no histórico da negociação e não poderá ser editada nem excluída pelo RD CRM.'};}
 function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),texto=String(d.texto||audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
 if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}

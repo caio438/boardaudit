@@ -1527,7 +1527,7 @@
           </div>
 
           <div class="actions">
-            <button id="btnExecutarAuditoria" class="btn success" onclick="executarAuditoriaV3Front()" disabled>Gerar auditoria</button>
+            <button id="btnExecutarAuditoria" class="btn success" onclick="executarAuditoriaV3Front()" disabled>Gerar e concluir auditoria</button>
           </div>
 
           <div id="resultadoAuditoriaAtual" style="display:none;margin-top:18px"></div>
@@ -6051,7 +6051,7 @@
     for (let indice = 0; indice < idsInteracoes.length; indice++) {
       const idInteracao = idsInteracoes[indice];
       const interacao = (estado.interacoesAuditoria || []).find(item => String(item.idInteracao) === String(idInteracao));
-      resultado.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Processando ' + (indice + 1) + ' de ' + idsInteracoes.length + ': ' + escapeHtml(tituloInteracaoAuditoria_(interacao || {})) + '. O Google Docs será criado somente após sua aprovação.</div></div>';
+      resultado.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Processando ' + (indice + 1) + ' de ' + idsInteracoes.length + ': ' + escapeHtml(tituloInteracaoAuditoria_(interacao || {})) + '. A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.</div></div>';
       try {
         const resposta = await analisarAudioLote_({
           idCliente: valor('audCliente'),
@@ -6079,10 +6079,10 @@
     estado.auditoriaAtual = ultimaAuditoria;
     renderizarAuditorias();
     botao.disabled = false;
-    botao.textContent = idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' auditorias' : 'Gerar auditoria';
+    botao.textContent = idsInteracoes.length > 1 ? 'Gerar e concluir ' + idsInteracoes.length + ' auditorias' : 'Gerar e concluir auditoria';
     if (ultimaAuditoria) renderizarPreviewAuditoriaV3(ultimaAuditoria);
     else resultado.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível concluir</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagensErro.join(' | ')) + '</div></div>';
-    mostrarToast(concluidas + ' auditoria(s) pronta(s) para revisão' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
+    mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
   }
 
   function renderizarPreviewAuditoriaV3(auditoria) {
@@ -6122,7 +6122,11 @@
       </div>
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
-          ? `<span class="status success" style="align-self:center">APROVADA</span><a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>
+          ? `<span class="status success" style="align-self:center">CONCLUÍDA AUTOMATICAMENTE</span>
+             ${auditoria.linkDocumento ? `<a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
+             ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.rdStatus || '').toUpperCase() === 'ERRO'
+               ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Reprocessar RD</button>`
+               : ''}
              ${['PLANO', 'SDR', 'CLOSER'].includes(tipoAudit)
                ? `${auditoria.comunidadePostId
                    ? `<a class="btn success" href="${escapeAtributo(auditoria.comunidadePostUrl)}" target="_blank">Abrir Comunidade VOLUM</a>`
@@ -6131,9 +6135,9 @@
                    ? `<a class="btn success" href="${escapeAtributo(auditoria.circlePostUrl)}" target="_blank">Abrir Circle</a>`
                    : `<button id="btnPrepararCircle" class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(auditoria.idAuditoria)}')">Preparar para o Circle</button>`}`
                : ''}`
-          : `<button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Voltar e corrigir dados</button>
-             <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>
-             <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e gerar Google Docs</button>`}
+          : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
+             <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
+             <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`}
       </div>
     `;
   }
@@ -6935,7 +6939,7 @@
       const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
       const indicadorRd = item.linkCrm
         ? `<span class="status ${rdPublicado ? 'success' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'danger' : 'warning'}">RD: ${rdPublicado ? 'enviado' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'erro' : 'não enviado'}</span>`
-        : `<span class="status">RD: sem vínculo</span>`;
+        : `<span class="status">RD: aguardando vínculo</span>`;
       const indicadorCircle = item.circlePostUrl
         ? `<a class="status success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Circle: publicado</a>`
         : `<span class="status warning">Circle: não publicado</span>`;
@@ -6961,12 +6965,12 @@
         </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
-          ${item.status === 'EM_REVISAO' ? `<span class="actions" style="margin:0;gap:8px"><button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Aprovar e gerar Docs</button><button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar</button></span>` : ''}
+          ${item.status === 'EM_REVISAO' ? `<span class="status warning">Aguardando finalização automática</span>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado && !comunidadePublicada && !rdPublicado ? `<button class="btn danger" type="button" onclick="excluirAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Excluir auditoria</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
-          ${item.resultado && item.linkCrm && !rdPublicado ? `<button class="btn secondary" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar resultado ao RD</button>` : ''}
+          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() === 'ERRO' ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Reprocessar RD</button>` : ''}
           ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>` : ''}
         </div>
       </div>`;
@@ -6984,7 +6988,7 @@
     if (!campo || !botao || botao.disabled) return;
     const rdDealId = String(campo.value || '').trim();
     if (rdDealId && !extrairIdRdFront_(rdDealId)) return mostrarToast('Informe o ID de 24 caracteres ou o link completo da negociação do RD.', 'error');
-    const textoOriginal = botao.textContent; botao.disabled = true; botao.textContent = 'Salvando...';
+    const textoOriginal = botao.textContent; botao.disabled = true; botao.textContent = 'Salvando e publicando...';
     google.script.run.withSuccessHandler(resposta => {
       estado.auditorias = resposta.auditorias || [];
       if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = resposta.auditoria;
@@ -7004,10 +7008,10 @@
     const metricas = [
       ['Elegíveis para CRM', auditorias.length, 'Auditorias com resultado e negociação vinculada.'],
       ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas registradas no RD.'],
-      ['Pendentes de envio', pendentes.length, 'Aguardando revisão e confirmação de envio.'],
+      ['Pendentes de envio', pendentes.length, 'Aguardando vínculo ou pré-requisito para envio automático.'],
       ['Erros de envio', erros.length, 'Precisam de conferência antes de tentar novamente.'],
       ['SDR vinculadas', porFuncao('SDR').length, 'Auditorias SDR elegíveis ao CRM.'],
-      ['Closer vinculadas', porFuncao('CLOSER').length, 'Auditorias Closer prontas para revisão e envio manual.']
+      ['Closer vinculadas', porFuncao('CLOSER').length, 'Auditorias Closer processadas pelo fluxo automático.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
   }
@@ -7044,6 +7048,21 @@
       })
       .withFailureHandler(erro => { esconderLoading(); tratarErro(erro); })
       .excluirAuditoriaV3({ idAuditoria: idAuditoria });
+  }
+
+  function reprocessarAutomacaoAuditoriaFront(idAuditoria) {
+    mostrarLoading('Reprocessando publicação automática...');
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || estado.auditorias;
+        estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
+        renderizarAuditorias();
+        if (estado.auditoriaAtual) renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
+        esconderLoading();
+        mostrarToast(resposta.mensagem, String((resposta.auditoria || {}).rdStatus || '').toUpperCase() === 'ERRO' ? 'warning' : 'success');
+      })
+      .withFailureHandler(erro => { esconderLoading(); tratarErro(erro); })
+      .reprocessarAutomacaoAuditoriaV3(idAuditoria);
   }
 
   function prepararEnvioAuditoriaRdFront(idAuditoria, botao) {

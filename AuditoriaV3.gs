@@ -26,6 +26,7 @@ const AUDITORIA_V3 = Object.freeze({
     'SCORES_ETAPAS_JSON', 'SCORE_SCHEMA_VERSAO', 'SCORE_PERCENTUAL',
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
     'HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM',
+    'AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
     'COMUNIDADE_PUBLICADO_EM', 'COMUNIDADE_ERRO',
     'CIRCLE_STATUS', 'CIRCLE_POST_ID', 'CIRCLE_POST_URL',
@@ -1668,6 +1669,9 @@ function executarAuditoriaV3(dados) {
     ENGINE_VERSAO: AUDITORIA_V3.versao,
     VALIDACAO_STATUS: 'PENDENTE',
     VALIDADA_EM: '',
+    AUTOMACAO_STATUS: 'PROCESSANDO',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: agora,
     RESULTADO_JSON: '',
     SCORE_PERCENTUAL: '',
     ITENS_AVALIADOS: '',
@@ -1754,26 +1758,95 @@ function executarAuditoriaV3(dados) {
     });
     
     audV3Atualizar_('INTERACOES', 'ID_INTERACAO', interacao.ID_INTERACAO, {
-      STATUS_AUDITORIA: 'EM_REVISAO',
+      STATUS_AUDITORIA: 'VALIDADA',
       ATUALIZADO_EM: new Date()
     });
 
+    const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
+    const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
     return {
       sucesso: true,
-      mensagem: 'Auditoria gerada. Confira o resultado antes de aprovar.',
-      auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria)),
+      automatica: true,
+      mensagem: finalizacao.mensagem,
+      publicacaoRd: finalizacao.rd || null,
+      auditoria: audV3AuditoriaFront_(atualizada),
       auditorias: audV3ListarAuditoriasFront_()
     };
   } catch (erro) {
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'ERRO',
       VALIDACAO_STATUS: 'ERRO',
+      AUTOMACAO_STATUS: 'ERRO',
+      AUTOMACAO_ERRO: erro && erro.message ? erro.message : String(erro),
+      AUTOMACAO_ATUALIZADO_EM: new Date(),
       ERRO: erro && erro.message ? erro.message : String(erro),
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
       CONCLUIDO_EM: new Date()
     });
     throw erro;
   }
+}
+
+function audV3FinalizarAutomaticamente_(idAuditoria) {
+  const id = String(idAuditoria || '').trim();
+  const aprovacao = aprovarAuditoriaV3(id);
+  let rd = { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'Publicação no RD não se aplica.' };
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
+  const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+
+  if (['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_ === 'function') {
+    rd = audRdPublicarAutomaticamente_(id);
+  }
+
+  const statusAutomacao = rd && rd.aplicavel && !rd.publicada
+    ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
+    : 'CONCLUIDA';
+
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    AUTOMACAO_STATUS: statusAutomacao,
+    AUTOMACAO_ERRO: rd && rd.erro ? String(rd.erro) : '',
+    AUTOMACAO_ATUALIZADO_EM: new Date()
+  });
+
+  const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
+  if (rd && rd.aplicavel) {
+    if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
+    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
+    else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push('RD aguardando a integração do cliente.');
+    else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no RD precisa ser reprocessada.');
+  }
+
+  return {
+    sucesso: true,
+    mensagem: partes.join(' '),
+    aprovacao: aprovacao,
+    rd: rd
+  };
+}
+
+function reprocessarAutomacaoAuditoriaV3(idAuditoria) {
+  const id = String(idAuditoria || '').trim();
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+  if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA' || String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA') {
+    throw new Error('Somente auditorias aprovadas e validadas podem ser reprocessadas.');
+  }
+  const rd = typeof audRdPublicarAutomaticamente_ === 'function'
+    ? audRdPublicarAutomaticamente_(id)
+    : { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'RD não disponível.' };
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    AUTOMACAO_STATUS: rd.aplicavel && !rd.publicada
+      ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
+      : 'CONCLUIDA',
+    AUTOMACAO_ERRO: rd.erro || '',
+    AUTOMACAO_ATUALIZADO_EM: new Date()
+  });
+  return {
+    sucesso: true,
+    mensagem: rd.mensagem || 'Automação reprocessada.',
+    auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id)),
+    auditorias: audV3ListarAuditoriasFront_()
+  };
 }
 
 function aprovarAuditoriaV3(idAuditoria) {
@@ -1835,6 +1908,9 @@ function aprovarAuditoriaV3(idAuditoria) {
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     STATUS: 'APROVADA',
     VALIDACAO_STATUS: 'VALIDADA',
+    AUTOMACAO_STATUS: 'FINALIZANDO',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: new Date(),
     VALIDADA_EM: new Date(),
     ENGINE_VERSAO: AUDITORIA_V3.versao,
     ID_DOCUMENTO: documento.id,
@@ -4354,6 +4430,14 @@ function audV3AuditoriaFront_(a, contexto) {
     pitchVersao: a.VERSAO_PITCH_SNAPSHOT || '',
     concluidoEm: audV3DataIso_(a.CONCLUIDO_EM),
     erro: audV3MensagemErroOperador_(a.ERRO || ''),
+    validacaoStatus: a.VALIDACAO_STATUS || '',
+    automacaoStatus: a.AUTOMACAO_STATUS || '',
+    automacaoErro: a.AUTOMACAO_ERRO || '',
+    automacaoAtualizadoEm: audV3DataIso_(a.AUTOMACAO_ATUALIZADO_EM),
+    rdStatus: a.RD_STATUS || '',
+    rdActivityId: a.RD_ACTIVITY_ID || '',
+    rdPublicadoEm: audV3DataIso_(a.RD_PUBLICADO_EM),
+    rdErro: a.RD_ERRO || '',
     comunidadeStatus: a.COMUNIDADE_STATUS || '',
     comunidadePostId: a.COMUNIDADE_POST_ID || '',
     comunidadePostUrl: a.COMUNIDADE_POST_URL || '',
