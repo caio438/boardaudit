@@ -1,0 +1,35 @@
+name: Validate audit reliability
+
+on:
+  push:
+    branches:
+      - refactor/auditorias-sdr-closer
+  pull_request:
+    paths:
+      - 'AuditoriaV3.gs'
+      - 'test-*.mjs'
+      - 'check-project.mjs'
+      - 'Index.html'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate project
+        run: |
+          node check-project.mjs
+          node test-automacao-central.mjs
+          node test-circle-auditoria.mjs
+          node test-closer.mjs
+          node test-sdr-structure.mjs
+          node test-tarefas-formalizacoes.mjs
