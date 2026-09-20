@@ -1,0 +1,50 @@
+name: QA Hitecnet force once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet force:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Execute forced Hitecnet audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run-function QA_HITECNET_STEC_FORCAR_AUDITORIA --params '[]' > /tmp/hitecnet-force.txt 2>&1
+          echo "HITECNET_FORCE_OK=1"
+
+      - name: Cleanup auth and output
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/hitecnet-force.txt
