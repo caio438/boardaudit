@@ -4,6 +4,11 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="audit-build" content="<?= AUDIT_BUILD_ID ?>">
+  <meta name="audit-version" content="<?= AUDIT_BUILD_VERSAO ?>">
 
   <style>
     :root {
@@ -2190,6 +2195,31 @@
   <div id="toast" class="toast"></div>
 
   <script>
+    const AUDIT_BUILD_ATUAL = String(document.querySelector('meta[name="audit-build"]')?.content || '');
+    let auditBuildRecarregando = false;
+
+    function verificarNovaVersaoAudit_() {
+      if (auditBuildRecarregando || !AUDIT_BUILD_ATUAL || !window.google || !google.script || !google.script.run) return;
+      google.script.run
+        .withSuccessHandler(function(build) {
+          const idServidor = String((build || {}).id || '');
+          if (!idServidor || idServidor === AUDIT_BUILD_ATUAL || auditBuildRecarregando) return;
+          auditBuildRecarregando = true;
+          const url = new URL(window.location.href);
+          url.searchParams.set('build', idServidor);
+          window.location.replace(url.toString());
+        })
+        .withFailureHandler(function() {})
+        .obterVersaoFrontend();
+    }
+
+    setInterval(verificarNovaVersaoAudit_, 60000);
+    window.addEventListener('focus', verificarNovaVersaoAudit_);
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) verificarNovaVersaoAudit_();
+    });
+
+
     const CAPAS_FORMALIZACAO = Object.freeze({
       OPERACIONAL: {
         nome: 'Capa - Sales Ops.png',
