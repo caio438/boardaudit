@@ -43,6 +43,12 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
+      - name: Show authorized clasp user
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp show-authorized-user --json | tee /tmp/clasp-user.json
+
       - name: Diagnose remote execution context
         shell: bash
         run: |
