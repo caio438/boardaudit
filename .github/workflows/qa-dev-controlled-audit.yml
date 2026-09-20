@@ -1,0 +1,97 @@
+name: QA dev controlled audit
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA dev: run controlled audit') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Extract Google access token
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const p = process.env.HOME + '/.clasprc.json';
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Wait for HEAD and execute synthetic audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/dev?qa_auditoria_e2e=1"
+          : > /tmp/qa-audit-result.txt
+
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            echo "Tentativa $attempt/12"
+            code="$(curl -L -sS -H "Authorization: Bearer $TOKEN" -o /tmp/qa-audit-result.txt -w '%{http_code}' "$URL" || true)"
+            echo "HTTP $code"
+            if [ "$code" = "200" ] && grep -q '"sucesso"[[:space:]]*:[[:space:]]*true' /tmp/qa-audit-result.txt; then
+              cat /tmp/qa-audit-result.txt
+              grep -q 'AGUARDANDO_VINCULO' /tmp/qa-audit-result.txt
+              grep -q 'VALIDADA' /tmp/qa-audit-result.txt
+              grep -q 'APROVADA' /tmp/qa-audit-result.txt
+              grep -q '"documentoCriado"[[:space:]]*:[[:space:]]*true' /tmp/qa-audit-result.txt
+              grep -q '"hashFonte"[[:space:]]*:[[:space:]]*true' /tmp/qa-audit-result.txt
+              echo "QA_AUDITORIA_E2E_OK=1"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Resposta final do endpoint:"
+          cat /tmp/qa-audit-result.txt || true
+          exit 1
+
+      - name: Save QA result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-dev-controlled-audit-${{ github.run_id }}
+          path: /tmp/qa-audit-result.txt
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Cleanup auth
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token

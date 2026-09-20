@@ -283,6 +283,20 @@ function audBuildAtual_() {
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
+  if (String(parametros.qa_auditoria_e2e || '') === '1') {
+    const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativo || !efetivo || ativo !== efetivo) {
+      throw new Error('QA controlado permitido somente para a conta proprietária da execução.');
+    }
+    if (typeof EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5 !== 'function') {
+      throw new Error('Helper de QA não está disponível no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.debug || '') === '1') {
     return ContentService
       .createTextOutput(JSON.stringify(obterDiagnosticoSistema_(), null, 2))
