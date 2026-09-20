@@ -73,12 +73,12 @@ const resultadoOficialSdr = {
   perguntas_qualificacao: { corretas: [], com_desvio: [], ausentes: [] },
   pontuacao_calculada: { score_5: 5 }
 };
-contexto.api.validateOfficial(resultadoOficialSdr, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?');
+contexto.api.validateOfficial(resultadoOficialSdr, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?', 'Comportamento obrigatório do pitch.');
 
 const sdrComEvidenciaInventada = JSON.parse(JSON.stringify(resultadoOficialSdr));
 sdrComEvidenciaInventada.etapas_pitch[0].fato_transcricao = 'Frase inventada pelo modelo.';
 assert.throws(
-  () => contexto.api.validateOfficial(sdrComEvidenciaInventada, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?'),
+  () => contexto.api.validateOfficial(sdrComEvidenciaInventada, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?', 'Comportamento obrigatório do pitch.'),
   /não foi localizada na transcrição original/,
   'Evidência não presente na transcrição precisa bloquear a auditoria SDR.'
 );
@@ -86,7 +86,7 @@ assert.throws(
 const sdrSemEtapa = JSON.parse(JSON.stringify(resultadoOficialSdr));
 sdrSemEtapa.etapas_pitch.pop();
 assert.throws(
-  () => contexto.api.validateOfficial(sdrSemEtapa, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?'),
+  () => contexto.api.validateOfficial(sdrSemEtapa, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?', 'Comportamento obrigatório do pitch.'),
   /todas as etapas oficiais/,
   'SDR incompleto não pode virar resultado oficial.'
 );
