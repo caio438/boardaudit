@@ -7,7 +7,7 @@ const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url)
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,validateOfficial:audV3ValidarResultadoOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
 
 const criterios = context.api.criteria();
 const momentos = criterios.momentos.map((item, index) => ({
@@ -63,7 +63,7 @@ const resultado = context.api.normalize(
 
 if (resultado.momentos.length !== 4) throw new Error('Quantidade de momentos inválida.');
 if (resultado.semaforo !== 'AMARELO') throw new Error('Semáforo deveria ser AMARELO.');
-if (resultado.pontuacao_calculada.score_5 !== 4.5) throw new Error('Score calculado incorretamente.');
+if (resultado.pontuacao_calculada.score_5 !== 5) throw new Error('Score oficial deve ser calculado deterministicamente pelo status.');
 if (resultado.checklist.length !== criterios.checklist.length) throw new Error('Checklist derivado incompleto.');
 if (resultado.metadados.closer !== 'Closer Teste') throw new Error('Closer não identificado.');
 if (!resultado.analise_temporal.mensuravel) throw new Error('Timestamps válidos deveriam produzir análise temporal completa.');
@@ -85,7 +85,7 @@ const resultadoReconciliado = context.api.normalize(
   'CLOSER'
 );
 if (resultadoReconciliado.criterios_avaliados[0].status !== 'DESVIO_EXECUCAO') throw new Error('Contradição real deveria ser reconciliada como desvio.');
-if (resultadoReconciliado.criterios_avaliados[0].pontuacao !== 3.5) throw new Error('Nota contraditória deveria respeitar o teto de desvio.');
+if (resultadoReconciliado.criterios_avaliados[0].pontuacao !== 2.5) throw new Error('Desvio deve receber a nota oficial fixa de 2,5.');
 if (!resultadoReconciliado.criterios_avaliados[0].ajuste_validacao) throw new Error('A reconciliação precisa permanecer rastreável no JSON.');
 
 const criteriosSemDivergencia = JSON.parse(JSON.stringify(criteriosAvaliados));
@@ -100,7 +100,30 @@ const resultadoVariacaoLinguistica = context.api.normalize(
   'CLOSER'
 );
 if (resultadoVariacaoLinguistica.criterios_avaliados[0].status !== 'CONFORME') throw new Error('Variação linguística sem divergência foi interpretada como erro.');
-if (resultadoVariacaoLinguistica.criterios_avaliados[0].pontuacao !== 4) throw new Error('Nota conforme deveria ser alinhada à faixa mínima 4,0.');
+if (resultadoVariacaoLinguistica.criterios_avaliados[0].pontuacao !== 5) throw new Error('Conforme deve receber a nota oficial fixa de 5,0.');
+
+context.api.validateOfficial(
+  resultado,
+  'CLOSER',
+  criterios,
+  'Evidência objetiva da transcrição.'
+);
+
+const resultadoComEvidenciaInventada = JSON.parse(JSON.stringify(resultado));
+resultadoComEvidenciaInventada.criterios_avaliados[0].o_que_foi_dito = 'Frase que não existe na transcrição.';
+assert.throws(
+  () => context.api.validateOfficial(resultadoComEvidenciaInventada, 'CLOSER', criterios, 'Evidência objetiva da transcrição.'),
+  /não foi localizada na transcrição original/,
+  'Uma evidência inventada precisa bloquear a auditoria oficial.'
+);
+
+const resultadoSemMomento = JSON.parse(JSON.stringify(resultado));
+resultadoSemMomento.momentos.pop();
+assert.throws(
+  () => context.api.validateOfficial(resultadoSemMomento, 'CLOSER', criterios, 'Evidência objetiva da transcrição.'),
+  /quatro momentos oficiais/,
+  'Closer sem os quatro momentos não pode virar auditoria oficial.'
+);
 
 const schemaCompleto = context.api.schema('CLOSER');
 const schemaApi = context.api.apiSchema('CLOSER');
