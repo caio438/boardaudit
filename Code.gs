@@ -283,6 +283,20 @@ function audBuildAtual_() {
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
+  if (String(parametros.qa_hitecnet_stec || '') === '1') {
+    const ativoHitecnet = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoHitecnet = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoHitecnet || !efetivoHitecnet || ativoHitecnet !== efetivoHitecnet) {
+      throw new Error('QA Hitecnet permitido somente para a conta proprietaria da execucao.');
+    }
+    if (typeof QA_HITECNET_STEC_FORCAR_AUDITORIA !== 'function') {
+      throw new Error('Runner temporario Hitecnet nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(QA_HITECNET_STEC_FORCAR_AUDITORIA(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.qa_auditoria_e2e || '') === '1') {
     const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
