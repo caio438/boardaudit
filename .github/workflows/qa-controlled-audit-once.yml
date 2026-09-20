@@ -1,30 +1,22 @@
-name: Run controlled audit E2E once
+name: Run controlled audit E2E direct
 
 on:
-  workflow_run:
-    workflows:
-      - Deploy Apps Script automatically
-    types:
-      - completed
+  push:
+    branches:
+      - qa/run-controlled-audit-once
 
 permissions:
   contents: read
 
 jobs:
   qa:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          startsWith(github.event.workflow_run.head_commit.message, 'QA: executa teste controlado') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     environment: apps-script-production
 
     steps:
-      - name: Checkout exact deployed revision
+      - name: Checkout QA branch
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -44,10 +36,6 @@ jobs:
           test -n "$CLASPRC_JSON"
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
-
-      - name: Configure Apps Script project
-        shell: bash
-        run: |
           cat > .clasp.json <<'JSON'
           {
             "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
@@ -55,24 +43,29 @@ jobs:
           }
           JSON
 
-      - name: Execute controlled audit test
+      - name: Execute controlled audit against Apps Script HEAD
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          OUTPUT="$(npx clasp run EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5 --dev 2>&1)"
-          STATUS=$?
-          set -e
-          echo "$OUTPUT"
-          if [ "$STATUS" -ne 0 ]; then
-            exit "$STATUS"
+          npx clasp run-function EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5 --params '[]' 2>&1 | tee /tmp/qa-audit-result.txt
+          if grep -q '^Exception:' /tmp/qa-audit-result.txt; then
+            exit 1
           fi
-          echo "$OUTPUT" | grep -q '"sucesso":true\|"sucesso": true'
-          echo "$OUTPUT" | grep -q 'AGUARDANDO_VINCULO'
-          echo "$OUTPUT" | grep -q 'VALIDADA'
-          echo "$OUTPUT" | grep -q 'APROVADA'
+          grep -q '"sucesso":true\|"sucesso": true' /tmp/qa-audit-result.txt
+          grep -q 'AGUARDANDO_VINCULO' /tmp/qa-audit-result.txt
+          grep -q 'VALIDADA' /tmp/qa-audit-result.txt
+          grep -q 'APROVADA' /tmp/qa-audit-result.txt
           echo "QA_AUDITORIA_E2E_OK=1"
 
-      - name: Remove local authentication file
+      - name: Save QA result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-audit-e2e-${{ github.run_id }}
+          path: /tmp/qa-audit-result.txt
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Cleanup auth
         if: always()
         run: rm -f "$HOME/.clasprc.json"
