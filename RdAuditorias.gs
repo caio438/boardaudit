@@ -113,20 +113,20 @@ function audRdTextoCloser_(c) {
   var pc = r.pontuacao_calculada || {};
   var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
 
-  function norm(v) {
+  function normCloser(v) {
     return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   }
-  function curto(v, max) {
+  function curtoCloser(v, max) {
     var t = String(v || '').replace(/\s+/g, ' ').trim();
     max = max || 220;
     return t.length > max ? t.slice(0, max - 1).trim() + '…' : t;
   }
-  function fraseMin(v) {
+  function fraseMinCloser(v) {
     var t = String(v || '').trim().replace(/[.;]+$/g, '');
     return t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
   }
   function conforme(x) {
-    var s = norm((x || {}).cor || (x || {}).status);
+    var s = normCloser((x || {}).cor || (x || {}).status);
     return s === 'VERDE' || s === 'CONFORME';
   }
 
@@ -134,18 +134,18 @@ function audRdTextoCloser_(c) {
   var desvios = momentos.filter(function(x) { return !conforme(x); });
 
   var acertos = aderentes.slice(0, 4).map(function(x) {
-    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curto(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 190);
+    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 190);
   });
   var erros = desvios.slice(0, 4).map(function(x) {
-    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curto(x.divergencia || 'Gatilho não alcançado.', 190) +
-      (x.o_que_se_espera ? ' | Esperado: ' + curto(x.o_que_se_espera, 150) : '');
+    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.divergencia || 'Gatilho não alcançado.', 190) +
+      (x.o_que_se_espera ? ' | Esperado: ' + curtoCloser(x.o_que_se_espera, 150) : '');
   });
   var principal = desvios[0] || {};
   var proximos = passos.filter(function(x) {
     return x && String(x.acao || '').trim();
   }).slice(0, 5).map(function(x) {
-    return '- ' + curto(x.acao, 190) +
-      (x.criterio_conclusao ? ' | Concluído quando: ' + curto(x.criterio_conclusao, 150) : '');
+    return '- ' + curtoCloser(x.acao, 190) +
+      (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 150) : '');
   });
 
   var nomesAderentes = aderentes.slice(0, 3).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
@@ -159,7 +159,7 @@ function audRdTextoCloser_(c) {
     ? 'O principal ajuste está em ' + nomesDesvios.join(' e ') + '.'
     : 'Não foi identificado desvio prioritário nesta auditoria.';
   var p3 = primeiroPasso.acao
-    ? 'Na prática, ' + fraseMin(primeiroPasso.acao) + '.'
+    ? 'Na prática, ' + fraseMinCloser(primeiroPasso.acao) + '.'
     : 'Na prática, a próxima reunião deve manter os momentos conformes e corrigir os desvios indicados acima.';
 
   var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
@@ -171,16 +171,16 @@ function audRdTextoCloser_(c) {
     'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     '',
     'CENÁRIO DA REUNIÃO',
-    curto(co.resumo_conversa || 'Não evidenciado', 450),
-    co.dor_principal ? 'Dor principal: ' + curto(co.dor_principal, 250) : '',
-    co.resultado_reuniao ? 'Resultado da reunião: ' + curto(co.resultado_reuniao, 260) : '',
+    curtoCloser(co.resumo_conversa || 'Não evidenciado', 450),
+    co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 250) : '',
+    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 260) : '',
     '',
     'EXECUÇÕES ADERENTES AO PROCESSO',
     acertos.length ? acertos.join(n) : '- Nenhum momento foi classificado como plenamente conforme.',
     '',
     'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO',
     erros.length ? erros.join(n) : '- Nenhum desvio de execução foi identificado.',
-    principal.o_que_foi_dito ? 'Evidência do principal desvio: "' + curto(principal.o_que_foi_dito, 220) + '"' : '',
+    principal.o_que_foi_dito ? 'Evidência do principal desvio: "' + curtoCloser(principal.o_que_foi_dito, 220) + '"' : '',
     '',
     'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
     proximos.length ? proximos.join(n) : '- Manter a execução conforme e acompanhar os critérios da próxima reunião.',
