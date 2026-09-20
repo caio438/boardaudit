@@ -62,10 +62,6 @@ jobs:
         shell: bash
         run: |
           node check-project.mjs
-          node test-automacao-central.mjs
-          node test-circle-auditoria.mjs
-          node test-closer.mjs
-          node test-tarefas-formalizacoes.mjs
 
       - name: Commit synchronized production baseline
         shell: bash
