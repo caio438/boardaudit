@@ -1,0 +1,64 @@
+name: QA Hitecnet Elaine read only
+
+on:
+  push:
+    branches:
+      - qa/hitecnet-elaine-live
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          cat > .clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+
+      - name: Read current audit data
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run-function carregarDadosAuditoriasV3 --params '[]' 2>&1 | tee /tmp/hitecnet-audits.txt
+          if grep -q '^Exception:' /tmp/hitecnet-audits.txt; then
+            exit 1
+          fi
+
+      - name: Save current state
+        uses: actions/upload-artifact@v4
+        with:
+          name: hitecnet-audits-readonly-${{ github.run_id }}
+          path: /tmp/hitecnet-audits.txt
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Cleanup auth
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
