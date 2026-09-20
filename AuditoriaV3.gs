@@ -3423,6 +3423,87 @@ function audV3EncerramentoPlanoPadrao_(funcaoAuditada, totalCriterios) {
   return '🚀 A análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias que acelerem o desempenho comercial de forma escalonável, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil de vendas. O direcionamento aqui apresentado visa tornar a abordagem mais assertiva, garantindo maior previsibilidade nos resultados e contribuindo diretamente para o crescimento da empresa. 🚀';
 }
 
+function audV3EspacoDocumento_(body, pontos) {
+  const p = body.appendParagraph('');
+  p.setSpacingAfter(Number(pontos || 8));
+  return p;
+}
+
+function audV3TabelaResultadoInicial_(body, resultado, tipo) {
+  resultado = resultado || {};
+  tipo = String(tipo || 'SDR').toUpperCase();
+  const criterios = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const pc = resultado.pontuacao_calculada || {};
+  audV3Titulo_(body, 'Resultado da Auditoria', DocumentApp.ParagraphHeading.HEADING1);
+  const linhas = [['Critério', 'Status', 'Score']].concat(criterios.map(function(item) {
+    return [
+      item.nome || item.id || '',
+      audV3RotuloStatus_(item.status || ''),
+      item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A'
+    ];
+  }));
+  linhas.push([
+    'Score consolidado',
+    tipo === 'CLOSER' ? String(((resultado.semaforo_geral || {}).cor) || '') : '',
+    pc.score_5 === null || pc.score_5 === undefined ? 'Não calculável' : String(pc.score_5) + '/5 (' + String(pc.score_percentual || 0) + '%)'
+  ]);
+  audV3Tabela_(body, linhas, [250, 140, 130]);
+}
+
+function audV3ChecklistInicial_(body, resultado, titulo) {
+  const checklist = Array.isArray((resultado || {}).checklist) ? resultado.checklist : [];
+  audV3Titulo_(body, titulo || 'Checklist do Processo', DocumentApp.ParagraphHeading.HEADING1);
+  audV3Tabela_(body, [['Etapa', 'Resultado', 'Observação']].concat(checklist.map(function(item) {
+    return [item.item || '', audV3RotuloStatus_(item.resultado || ''), item.observacao || ''];
+  })), [220, 120, 280]);
+}
+
+function audV3ConclusaoDocumento_(body, resultado, tipo) {
+  resultado = resultado || {};
+  const feedback = resultado.feedback || {};
+  const resumo = resultado.resumo_executivo || {};
+  const fortes = (Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes : (resumo.pontos_fortes || []))
+    .map(String).map(function(item) { return item.trim().replace(/[.;]+$/g, ''); }).filter(Boolean);
+  const melhorias = (Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria : (resumo.riscos || []))
+    .map(String).map(function(item) { return item.trim().replace(/[.;]+$/g, ''); }).filter(Boolean);
+  const passos = Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : [];
+  const primeiroPasso = passos.find(function(item) { return item && String(item.acao || '').trim(); }) || {};
+  const sujeito = String(tipo || '').toUpperCase() === 'CLOSER' ? 'O Closer' : 'A SDR';
+
+  let p1 = '';
+  if (fortes.length) {
+    p1 = sujeito + ' executou corretamente ' + fortes.slice(0, 3).join('; ') + '.';
+  } else {
+    p1 = String(resumo.visao_geral || 'A execução foi analisada com base na transcrição e no processo vigente.');
+  }
+
+  let p2 = '';
+  if (melhorias.length) {
+    p2 = 'O principal ajuste está em ' + melhorias.slice(0, 2).join(' e ') + '.';
+  } else {
+    p2 = String(resumo.recomendacao_central || 'Os ajustes necessários estão descritos nos desvios identificados nesta auditoria.');
+  }
+
+  let p3 = '';
+  if (primeiroPasso.acao) {
+    let acao = String(primeiroPasso.acao).trim().replace(/[.;]+$/g, '');
+    acao = acao.charAt(0).toLowerCase() + acao.slice(1);
+    p3 = 'Na prática, ' + acao + '.';
+    if (primeiroPasso.criterio_conclusao) {
+      let criterio = String(primeiroPasso.criterio_conclusao).trim().replace(/[.;]+$/g, '');
+      criterio = criterio.charAt(0).toLowerCase() + criterio.slice(1);
+      p3 += ' O ajuste será considerado aplicado quando ' + criterio + '.';
+    }
+  } else {
+    p3 = 'Na prática, a próxima interação deve incorporar as correções indicadas nesta auditoria e manter os pontos já executados de forma aderente.';
+  }
+
+  audV3Titulo_(body, 'Conclusão', DocumentApp.ParagraphHeading.HEADING1);
+  [p1, p2, p3].forEach(function(texto) {
+    body.appendParagraph(audV3TextoDocumento_(texto, '')).setSpacingAfter(12).setLineSpacing(1.15);
+  });
+}
+
 function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const m = r.metadados || {};
   const data = audV3DataTexto_(interacao.DATA_INTERACAO).replace(/[/:]/g, '-');
@@ -3442,6 +3523,10 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
     ['Data e horário', m.data_hora || 'Não evidenciado'],
     ['Pitch', (pitch.NOME_VERSAO || '') + ' — v' + (pitch.NUMERO_VERSAO || '-')]
   ]);
+  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3EspacoDocumento_(body, 8);
+  audV3TabelaResultadoInicial_(body, r, 'SDR');
+  audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Script');
 
   const contexto = r.resumo_contato || {};
   audV3Titulo_(body, 'Resumo do contato com o lead', DocumentApp.ParagraphHeading.HEADING1);
@@ -3459,6 +3544,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
     'Fala do SDR: ' + (item.fato_transcricao || 'Não evidenciado') + String.fromCharCode(10) + String.fromCharCode(10) + 'Pitch: ' + (item.regra_pitch || 'Não evidenciado'),
     'Divergência: ' + (item.desvio || 'Não houve divergência.') + String.fromCharCode(10) + String.fromCharCode(10) + 'Correção: ' + (item.correcao_pratica || 'Não se aplica') + String.fromCharCode(10) + String.fromCharCode(10) + 'Impacto: ' + (item.impacto_resultado || 'Não evidenciado')
   ])), [92, 72, 176, 176]);
+  const objecoes = Array.isArray(r.manejo_objecoes) ? r.manejo_objecoes : [];
   objecoes.forEach((item, indice) => {
     audV3Titulo_(body, 'Objeção ' + (indice + 1) + ': ' + (item.objecao || 'Não identificada'), DocumentApp.ParagraphHeading.HEADING2);
     audV3Comparacao_(body, item);
@@ -3504,12 +3590,10 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3Tabela_(body, [['Critério não atingido', 'Impacto de não executar corretamente', 'Benefício da correção', 'Indicador que pode ser afetado']].concat((r.impactos_nao_conformidades || []).map(item => [
     item.criterio || '', item.impacto_de_nao_executar || '', item.beneficio_de_corrigir || '', item.indicador_que_pode_ser_afetado || ''
   ])));
-  audV3Titulo_(body, '11. Checklist de Adesão ao Script', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
   audV3AdicionarProximosPassosEquipes_(body, r);
-  audV3Titulo_(body, '13. Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'chamada'));
-  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3ConclusaoDocumento_(body, r, 'SDR');
+  audV3Titulo_(body, 'Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'chamada')).setSpacingAfter(12);
 
   doc.saveAndClose();
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
@@ -3535,6 +3619,10 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
     ['Data e horário', m.data_hora || 'Não evidenciado'],
     ['Pitch', (pitch.NOME_VERSAO || '') + ' — v' + (pitch.NUMERO_VERSAO || '-')]
   ]);
+  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3EspacoDocumento_(body, 8);
+  audV3TabelaResultadoInicial_(body, r, 'CLOSER');
+  audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Processo');
 
   const contexto = r.resumo_reuniao || {};
   audV3Titulo_(body, 'Resumo do que foi conversado com o lead', DocumentApp.ParagraphHeading.HEADING1);
@@ -3659,12 +3747,10 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3Tabela_(body, [['Critério não atingido', 'Impacto de não executar corretamente', 'Benefício da correção', 'Indicador que pode ser afetado']].concat((r.impactos_nao_conformidades || []).map(item => [
     item.criterio || '', item.impacto_de_nao_executar || '', item.beneficio_de_corrigir || '', item.indicador_que_pode_ser_afetado || ''
   ])));
-  audV3Titulo_(body, 'Checklist de adesão', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
   audV3AdicionarProximosPassosEquipes_(body, r);
+  audV3ConclusaoDocumento_(body, r, 'CLOSER');
   audV3Titulo_(body, 'Duração total da reunião', DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'reunião'));
-  audV3AdicionarLinkGravacao_(body, interacao);
+  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'reunião')).setSpacingAfter(12);
 
   doc.saveAndClose();
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
@@ -3754,6 +3840,7 @@ function audV3PerguntasSdr_(body, item) {
 function audV3Titulo_(body, texto, nivel) {
   const paragrafo = body.appendParagraph(audV3TextoDocumento_(texto, 'Seção')).setHeading(nivel);
   paragrafo.editAsText().setForegroundColor('#111111');
+  paragrafo.setSpacingBefore(nivel === DocumentApp.ParagraphHeading.TITLE ? 0 : 14).setSpacingAfter(8);
   return paragrafo;
 }
 
@@ -3763,6 +3850,7 @@ function audV3RotuloTexto_(body, rotulo, texto) {
   const p = body.appendParagraph(rotuloSeguro + ': ');
   p.editAsText().setBold(0, rotuloSeguro.length, true);
   p.appendText(textoSeguro);
+  p.setSpacingAfter(8).setLineSpacing(1.15);
   return p;
 }
 
@@ -4156,6 +4244,7 @@ function audV3Tabela_(body, linhas, larguras) {
       cabecalho.getCell(i).editAsText().setForegroundColor('#ffffff').setBold(true);
     }
   }
+  body.appendParagraph('').setSpacingAfter(8);
   return tabela;
 }
 
@@ -4542,6 +4631,7 @@ function audV3AdicionarLinkGravacao_(body, interacao) {
   const paragrafo = body.appendParagraph('');
   paragrafo.appendText('Áudio auditado: ').setBold(true);
   paragrafo.appendText('ouvir gravação').setLinkUrl(url).setForegroundColor('#1155CC').setUnderline(true);
+  paragrafo.setSpacingAfter(12);
 }
 
 function audV3Planilha_() {
