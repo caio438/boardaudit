@@ -58,6 +58,15 @@ jobs:
           JSON
           cd /tmp/boardaudit-apps-current
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          rm -f .clasp.json
+
+      - name: Save current Apps Script snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: apps-script-production-before-dark-mode
+          path: /tmp/boardaudit-apps-current
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Compare production before push
         shell: bash
@@ -66,15 +75,30 @@ jobs:
           BASE_BEFORE_UI="a0939ea2a5c982814262c394d864a04e5f6e6177"
           CURRENT="/tmp/boardaudit-apps-current"
 
+          production_file_for_repo() {
+            case "$1" in
+              Code.gs) printf '%s\n' "$CURRENT/Código.js" ;;
+              *.gs) printf '%s\n' "$CURRENT/${1%.gs}.js" ;;
+              *) printf '%s\n' "$CURRENT/$1" ;;
+            esac
+          }
+
+          echo "Arquivos atuais no Apps Script:"
+          find "$CURRENT" -maxdepth 1 -type f -printf '%f\n' | sort
+
           echo "Comparando arquivos funcionais que nao deveriam mudar..."
           for file in *.gs appsscript.json; do
             if [ "$file" = "Code.gs" ]; then
               continue
             fi
-            test -f "$CURRENT/$file"
-            cmp -s "$file" "$CURRENT/$file" || {
+            pulled="$(production_file_for_repo "$file")"
+            test -f "$pulled" || {
+              echo "Arquivo esperado nao encontrado no Apps Script: $file -> $pulled"
+              exit 1
+            }
+            cmp -s "$file" "$pulled" || {
               echo "Divergencia inesperada em $file"
-              diff -u "$CURRENT/$file" "$file" || true
+              diff -u "$pulled" "$file" || true
               exit 1
             }
           done
@@ -82,9 +106,9 @@ jobs:
           echo "Comparando Code.gs e Index.html contra o main anterior ao ajuste visual..."
           git show "$BASE_BEFORE_UI:Code.gs" > /tmp/expected-Code.gs
           git show "$BASE_BEFORE_UI:Index.html" > /tmp/expected-Index.html
-          cmp -s /tmp/expected-Code.gs "$CURRENT/Code.gs" || {
+          cmp -s /tmp/expected-Code.gs "$CURRENT/Código.js" || {
             echo "Divergencia inesperada no Code.gs de producao."
-            diff -u "$CURRENT/Code.gs" /tmp/expected-Code.gs || true
+            diff -u "$CURRENT/Código.js" /tmp/expected-Code.gs || true
             exit 1
           }
           cmp -s /tmp/expected-Index.html "$CURRENT/Index.html" || {
@@ -92,6 +116,28 @@ jobs:
             diff -u "$CURRENT/Index.html" /tmp/expected-Index.html || true
             exit 1
           }
+
+          echo "Checando arquivos extras presentes apenas no Apps Script..."
+          extras=0
+          while IFS= read -r prod; do
+            case "$prod" in
+              Código.js|Index.html|appsscript.json)
+                continue
+                ;;
+              *.js)
+                repo_name="${prod%.js}.gs"
+                if [ ! -f "$repo_name" ]; then
+                  echo "Arquivo extra em producao sem equivalente no repositorio: $prod"
+                  extras=1
+                fi
+                ;;
+            esac
+          done < <(find "$CURRENT" -maxdepth 1 -type f -printf '%f\n' | sort)
+
+          if [ "$extras" -ne 0 ]; then
+            echo "Preflight bloqueado: existem arquivos extras em producao que precisam ser preservados ou reconciliados."
+            exit 1
+          fi
 
           echo "Preflight aprovado: apenas Code.gs e Index.html mudarao conforme planejado."
 
