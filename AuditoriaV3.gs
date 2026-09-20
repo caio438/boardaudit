@@ -2507,9 +2507,6 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios, tipoAuditoria
     if (!['CONFORME', 'DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status)) {
       throw new Error('Status inválido no critério ' + id + ': ' + (item.status || 'vazio') + '.');
     }
-    let nota = aplicavel && !['NAO_APLICAVEL', 'LACUNA_PROCESSO', 'NAO_EVIDENCIADO'].includes(status) ? Number(item.pontuacao) : null;
-    if (nota !== null && (!isFinite(nota) || nota < 0 || nota > 5)) throw new Error('Pontuação inválida no critério ' + id + '.');
-    if (nota !== null) nota = Math.round(nota * 2) / 2;
     const evidenciaValidada = audV3ValidarFalaProfissional_(item.o_que_foi_dito, item.locutor_evidencia, tipo, 'O critério ' + id);
     audV3ExigirEvidenciaPorStatus_(status, evidenciaValidada, 'O critério ' + id);
     const evidencia = evidenciaValidada.texto;
@@ -2518,38 +2515,27 @@ function audV3NormalizarCriteriosComparados_(resultado, criterios, tipoAuditoria
     let justificativa = String(item.justificativa_nota || item.observacao || '').trim();
     let ajusteValidacao = '';
     if (!evidencia || !regraPitch || !justificativa) {
-      throw new Error('O critério ' + id + ' precisa informar evidência, regra do pitch e justificativa da nota.');
+      throw new Error('O critério ' + id + ' precisa informar evidência, regra do pitch e justificativa.');
     }
     if (status === 'CONFORME' && !semDivergencia(divergencia)) {
       status = 'DESVIO_EXECUCAO';
-      nota = nota === null ? 3.5 : Math.min(nota, 3.5);
       ajusteValidacao = 'Status ajustado de CONFORME para DESVIO_EXECUCAO porque a própria análise descreveu uma divergência.';
-    } else if (status === 'CONFORME' && nota < 4) {
-      nota = 4;
-      ajusteValidacao = 'Nota ajustada para 4,0 porque o critério foi marcado como CONFORME e não apresenta divergência.';
     }
     if (status === 'DESVIO_EXECUCAO' && semDivergencia(divergencia)) {
-      if (nota !== null && nota >= 4) {
+      if (!semDivergencia(justificativa)) {
+        divergencia = justificativa;
+        ajusteValidacao = 'A divergência foi consolidada a partir da justificativa.';
+      } else {
         status = 'CONFORME';
         divergencia = 'Não houve divergência.';
-        ajusteValidacao = 'Status ajustado para CONFORME porque não foi descrita divergência e a nota está na faixa de conformidade.';
-      } else {
-        divergencia = semDivergencia(justificativa) ? 'A execução apresentou desvio em relação ao comportamento esperado no pitch.' : justificativa;
-        ajusteValidacao = 'A divergência foi consolidada a partir da justificativa da nota.';
+        ajusteValidacao = 'Status ajustado para CONFORME porque não existe divergência descrita.';
       }
-    }
-    if (status === 'DESVIO_EXECUCAO' && (nota === null || nota > 3.5)) {
-      nota = 3.5;
-      ajusteValidacao = ajusteValidacao || 'Nota limitada a 3,5 pela faixa definida para execução com desvio.';
     }
     if (status === 'NAO_EXECUTADO' && semDivergencia(divergencia)) {
       divergencia = 'O comportamento obrigatório não foi evidenciado na transcrição.';
       ajusteValidacao = 'A ausência foi explicitada com base no status NAO_EXECUTADO.';
     }
-    if (status === 'NAO_EXECUTADO' && (nota === null || nota > 1)) {
-      nota = 1;
-      ajusteValidacao = ajusteValidacao || 'Nota limitada a 1,0 pela faixa definida para comportamento não executado.';
-    }
+    const nota = audV3NotaStatusExecucao_(status);
     if (ajusteValidacao) justificativa += ' ' + ajusteValidacao;
     return {
       id: id,
