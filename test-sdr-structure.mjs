@@ -91,6 +91,11 @@ assert.throws(
   'SDR incompleto não pode virar resultado oficial.'
 );
 
+const schemaSdr = contexto.audV3SchemaRespostaSdr_();
+if (schemaSdr.properties.criterios_avaliados.items.properties.pontuacao) {
+  throw new Error('A IA ainda pode definir pontuação diretamente no schema SDR.');
+}
+
 const contraditorio = {
   etapas_pitch: [{
     etapa: 'Primeira Frase de Qualificação',
