@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: startsWith(github.event.head_commit.message, 'Deploy: modo noturno 4.23.6')
+    if: "${{ startsWith(github.event.head_commit.message, 'Deploy: modo noturno 4.23.6') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
