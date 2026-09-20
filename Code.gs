@@ -262,6 +262,28 @@ function EXECUTAR_SISTEMA() {
   };
 }
 
+function obterVersaoFrontend() {
+  return audBuildAtual_();
+}
+
+function audBuildAtual_() {
+  try {
+    const arquivoProjeto = DriveApp.getFileById(ScriptApp.getScriptId());
+    const atualizadoEm = arquivoProjeto.getLastUpdated();
+    return {
+      id: String(atualizadoEm.getTime()),
+      versao: APP.versao,
+      atualizadoEm: atualizadoEm.toISOString()
+    };
+  } catch (erro) {
+    return {
+      id: String(APP.versao || ''),
+      versao: APP.versao,
+      atualizadoEm: ''
+    };
+  }
+}
+
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
@@ -271,8 +293,13 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  return HtmlService
-    .createHtmlOutputFromFile('Index')
+  const template = HtmlService.createTemplateFromFile('Index');
+  const build = audBuildAtual_();
+  template.AUDIT_BUILD_ID = build.id;
+  template.AUDIT_BUILD_VERSAO = build.versao;
+
+  return template
+    .evaluate()
     .setTitle(APP.nome)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
