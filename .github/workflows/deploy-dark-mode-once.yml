@@ -17,7 +17,6 @@ jobs:
     if: "${{ startsWith(github.event.head_commit.message, 'Deploy: modo noturno 4.23.6') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: apps-script-production
     steps:
       - name: Checkout production revision
         uses: actions/checkout@v4
