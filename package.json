@@ -1,0 +1,16 @@
+{
+  "name": "boardaudit",
+  "version": "4.21.0",
+  "private": true,
+  "description": "Board de Auditorias VOLUM em Google Apps Script",
+  "scripts": {
+    "check": "node check-project.mjs",
+    "test": "npm run check && node test-automacao-central.mjs && node test-circle-auditoria.mjs && node test-closer.mjs && node test-sdr-structure.mjs && node test-tarefas-formalizacoes.mjs"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
