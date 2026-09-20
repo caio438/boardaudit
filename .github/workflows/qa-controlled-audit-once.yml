@@ -1,0 +1,78 @@
+name: Run controlled audit E2E once
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          startsWith(github.event.workflow_run.head_commit.message, 'QA: executa teste controlado') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout exact deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Configure Apps Script project
+        shell: bash
+        run: |
+          cat > .clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+
+      - name: Execute controlled audit test
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT="$(npx clasp run EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5 --dev 2>&1)"
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
+          fi
+          echo "$OUTPUT" | grep -q '"sucesso":true\|"sucesso": true'
+          echo "$OUTPUT" | grep -q 'AGUARDANDO_VINCULO'
+          echo "$OUTPUT" | grep -q 'VALIDADA'
+          echo "$OUTPUT" | grep -q 'APROVADA'
+          echo "QA_AUDITORIA_E2E_OK=1"
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
