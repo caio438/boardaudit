@@ -1,0 +1,63 @@
+name: QA Hitecnet live once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet live:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          cat > .clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+
+      - name: Execute corrected Hitecnet audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx clasp run-function TESTAR_AUDITORIA_HITECNET_STEC --params '[]' > /tmp/hitecnet-audit.txt 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] || grep -q '^Exception:' /tmp/hitecnet-audit.txt; then
+            echo "HITECNET_AUDIT_COMMAND_OK=0"
+            exit 1
+          fi
+          echo "HITECNET_AUDIT_COMMAND_OK=1"
+
+      - name: Cleanup auth and transient output
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/hitecnet-audit.txt
