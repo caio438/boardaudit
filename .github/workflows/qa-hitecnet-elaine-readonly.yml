@@ -1,9 +1,9 @@
 name: QA Hitecnet Elaine read only
 
 on:
-  push:
+  pull_request:
     branches:
-      - qa/hitecnet-elaine-live
+      - main
 
 permissions:
   contents: read
