@@ -144,6 +144,74 @@ jobs:
             --deploymentId AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA \
             --description "Board Audit auto deploy ${{ github.event.workflow_run.head_sha }}"
 
+      - name: Verify live Apps Script after deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-live-after
+          mkdir -p /tmp/boardaudit-live-after
+          cat > /tmp/boardaudit-live-after/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-live-after
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          rm -f .clasp.json
+
+          compare_pair() {
+            local expected="$1"
+            local live="$2"
+            test -f "$expected"
+            test -f "$live"
+            cmp -s "$expected" "$live" || {
+              echo "Post-deploy mismatch: $expected <-> $live"
+              diff -u "$live" "$expected" | head -160 || true
+              exit 1
+            }
+          }
+
+          compare_pair "/tmp/boardaudit-deploy/AuditoriaV3.gs" "/tmp/boardaudit-live-after/AuditoriaV3.js"
+          compare_pair "/tmp/boardaudit-deploy/RdAuditorias.gs" "/tmp/boardaudit-live-after/RdAuditorias.js"
+          compare_pair "/tmp/boardaudit-deploy/AutomacaoCentral.gs" "/tmp/boardaudit-live-after/AutomacaoCentral.js"
+          compare_pair "/tmp/boardaudit-deploy/Code.gs" "/tmp/boardaudit-live-after/Código.js"
+          compare_pair "/tmp/boardaudit-deploy/Index.html" "/tmp/boardaudit-live-after/Index.html"
+          compare_pair "/tmp/boardaudit-deploy/appsscript.json" "/tmp/boardaudit-live-after/appsscript.json"
+
+          grep -q "MODO NOTURNO FIXO - PRODUCAO" /tmp/boardaudit-live-after/Index.html
+          grep -q "AUDIT_BUILD_ATUAL" /tmp/boardaudit-live-after/Index.html
+          grep -q "function audV3FinalizarAutomaticamente_" /tmp/boardaudit-live-after/AuditoriaV3.js
+          grep -q "function audRdPublicarAutomaticamente_" /tmp/boardaudit-live-after/RdAuditorias.js
+          grep -q "AGUARDANDO_VINCULO" /tmp/boardaudit-live-after/RdAuditorias.js
+
+          cat > /tmp/boardaudit-live-after/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deployments | tee /tmp/boardaudit-deployments.txt
+          grep -q "AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA" /tmp/boardaudit-deployments.txt
+
+          echo "POST_DEPLOY_SOURCE_MATCH=1"
+          echo "POST_DEPLOY_AUTOMATION_MARKERS=1"
+          echo "POST_DEPLOY_DEPLOYMENT_ID=1"
+
+      - name: Probe web app response
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -L -sS -o /tmp/boardaudit-webapp.html -w '%{http_code}' "$URL" || true)"
+          echo "WEBAPP_HTTP_STATUS=$code"
+          if grep -q "audit-build" /tmp/boardaudit-webapp.html 2>/dev/null; then
+            echo "WEBAPP_RENDERED_CURRENT_HTML=1"
+          else
+            echo "WEBAPP_RENDERED_CURRENT_HTML=0"
+            echo "Web app may require an authenticated Google session; source/deployment verification already passed."
+          fi
+
       - name: Remove local authentication file
         if: always()
         run: rm -f "$HOME/.clasprc.json"
