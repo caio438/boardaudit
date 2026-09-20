@@ -35,9 +35,19 @@ Código-fonte do produto de auditorias, formalizações de reuniões e acompanha
 Com Node.js instalado, execute:
 
 ```bash
-node check-project.mjs
-node test-closer.mjs
+npm ci
+npm test
 ```
+
+## Integração segura com o Apps Script
+
+- `.clasp.json` aponta para o projeto correto do Apps Script.
+- `.claspignore` limita o envio aos arquivos `.gs`, `.html` e ao manifesto.
+- Toda alteração enviada ao GitHub passa pela validação automática.
+- O fluxo de produção não é automático: aceita somente a branch `main`, exige a confirmação `APROVAR DEPLOY` e usa o ambiente protegido `apps-script-production`.
+- A autenticação do clasp deve existir apenas no secret `CLASPRC_JSON` do GitHub. Nunca grave o conteúdo de `.clasprc.json` no repositório.
+
+Antes do primeiro deploy, configure o ambiente `apps-script-production` com revisores obrigatórios e cadastre o secret `CLASPRC_JSON`. Até isso acontecer, mantenha o workflow apenas como preparação e não o execute.
 
 ## Segurança
 

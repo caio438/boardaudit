@@ -1,0 +1,74 @@
+name: Deploy Apps Script (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Digite APROVAR DEPLOY para confirmar a produção'
+        required: true
+        type: string
+      description:
+        description: 'Descrição curta desta versão'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.inputs.confirmation == 'APROVAR DEPLOY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+    steps:
+      - name: Checkout selected revision
+        uses: actions/checkout@v4
+
+      - name: Require main branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Deploy permitido apenas a partir da branch main."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate project
+        run: npm test
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Push source to Apps Script
+        run: npx clasp push --force
+
+      - name: Update production deployment
+        env:
+          DEPLOYMENT_DESCRIPTION: ${{ github.event.inputs.description }}
+        run: >-
+          npx clasp deploy
+          --deploymentId AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA
+          --description "$DEPLOYMENT_DESCRIPTION"
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
