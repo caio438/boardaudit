@@ -1,0 +1,143 @@
+name: Verify live Apps Script production
+
+on:
+  push:
+    branches:
+      - verify/live-production-after-auto-deploy
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+    steps:
+      - name: Checkout expected revision
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Pull live Apps Script read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-live
+          mkdir -p /tmp/boardaudit-live
+          cat > /tmp/boardaudit-live/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-live
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          rm -f .clasp.json
+          find . -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Verify live source markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/boardaudit-live
+
+          test -f "Código.js"
+          test -f "Index.html"
+          test -f "AuditoriaV3.js"
+          test -f "RdAuditorias.js"
+
+          grep -q "MODO NOTURNO FIXO - PRODUCAO" Index.html
+          grep -q "AUDIT_BUILD_ATUAL" Index.html
+          grep -q "audit-build" Index.html
+          grep -q "AUDIT_BUILD_ID_FRONTEND" "Código.js"
+
+          grep -q "versao: '5.0.0'" AuditoriaV3.js
+          grep -q "function audV3FinalizarAutomaticamente_" AuditoriaV3.js
+          grep -q "const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);" AuditoriaV3.js
+          grep -q "function reprocessarAutomacaoAuditoriaV3" AuditoriaV3.js
+
+          grep -q "function audRdPublicarAutomaticamente_" RdAuditorias.js
+          grep -q "AGUARDANDO_VINCULO" RdAuditorias.js
+          grep -q "publicacao = audRdPublicarAutomaticamente_(id);" RdAuditorias.js
+
+          echo "LIVE_MARKERS_OK=1"
+
+      - name: Compare protected live files with main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          compare_pair() {
+            local repo_file="$1"
+            local live_file="$2"
+            if ! cmp -s "$GITHUB_WORKSPACE/$repo_file" "/tmp/boardaudit-live/$live_file"; then
+              echo "Mismatch: $repo_file <-> $live_file"
+              diff -u "/tmp/boardaudit-live/$live_file" "$GITHUB_WORKSPACE/$repo_file" | head -120 || true
+              exit 1
+            fi
+          }
+
+          compare_pair "AuditoriaV3.gs" "AuditoriaV3.js"
+          compare_pair "RdAuditorias.gs" "RdAuditorias.js"
+          compare_pair "AutomacaoCentral.gs" "AutomacaoCentral.js"
+          compare_pair "ConsumoIA.gs" "ConsumoIA.js"
+          compare_pair "IntegracaoAuditoriasComunidade.gs" "IntegracaoAuditoriasComunidade.js"
+          compare_pair "JornadaCliente.gs" "JornadaCliente.js"
+          compare_pair "PublicacaoCircle.gs" "PublicacaoCircle.js"
+          compare_pair "PublicacaoComunidade.gs" "PublicacaoComunidade.js"
+          compare_pair "ReparoBaseV3.gs" "ReparoBaseV3.js"
+          compare_pair "TranscricaoAudioV4.gs" "TranscricaoAudioV4.js"
+          compare_pair "appsscript.json" "appsscript.json"
+
+          echo "LIVE_PROTECTED_FILES_MATCH_MAIN=1"
+
+      - name: Verify deployment ID exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/boardaudit-deploy-check
+          cat > /tmp/boardaudit-deploy-check/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-deploy-check
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deployments | tee /tmp/deployments.txt
+          grep -q "AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA" /tmp/deployments.txt
+          echo "DEPLOYMENT_ID_OK=1"
+
+      - name: Probe published web app
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -L -sS -o /tmp/webapp.html -w '%{http_code}' "$URL" || true)"
+          echo "WEBAPP_HTTP_STATUS=$code"
+          if grep -q "audit-build" /tmp/webapp.html 2>/dev/null; then
+            echo "WEBAPP_RENDERED_CURRENT_HTML=1"
+          else
+            echo "WEBAPP_RENDERED_CURRENT_HTML=0"
+          fi
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
