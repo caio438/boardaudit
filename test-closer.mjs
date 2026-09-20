@@ -126,6 +126,15 @@ assert.throws(
   'Closer sem os quatro momentos não pode virar auditoria oficial.'
 );
 
+const promptModelado = 'PROMPT OFICIAL CLOSER TESTE';
+vm.runInContext('this.promptOficialTeste=audV3PromptOficial_({PROMPT_AUDITORIA:"' + promptModelado + '",TIPO_AUDITORIA:"CLOSER"},"CLOSER");', context);
+if (context.promptOficialTeste !== promptModelado) throw new Error('O motor não está usando o prompt salvo no modelo como fonte oficial.');
+
+const schemaSemNota = context.api.schema('CLOSER');
+if (schemaSemNota.properties.criterios_avaliados.items.properties.pontuacao) {
+  throw new Error('A IA ainda pode definir pontuação diretamente no schema Closer.');
+}
+
 const schemaCompleto = context.api.schema('CLOSER');
 const schemaApi = context.api.apiSchema('CLOSER');
 if (!schemaCompleto.properties.semaforo_geral) throw new Error('Schema final Closer perdeu campos derivados.');
