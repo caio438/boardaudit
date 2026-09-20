@@ -106,13 +106,14 @@ context.api.validateOfficial(
   resultado,
   'CLOSER',
   criterios,
-  'Evidência objetiva da transcrição.'
+  'Evidência objetiva da transcrição.',
+  'Comportamento obrigatório descrito no pitch.'
 );
 
 const resultadoComEvidenciaInventada = JSON.parse(JSON.stringify(resultado));
 resultadoComEvidenciaInventada.criterios_avaliados[0].o_que_foi_dito = 'Frase que não existe na transcrição.';
 assert.throws(
-  () => context.api.validateOfficial(resultadoComEvidenciaInventada, 'CLOSER', criterios, 'Evidência objetiva da transcrição.'),
+  () => context.api.validateOfficial(resultadoComEvidenciaInventada, 'CLOSER', criterios, 'Evidência objetiva da transcrição.', 'Comportamento obrigatório descrito no pitch.'),
   /não foi localizada na transcrição original/,
   'Uma evidência inventada precisa bloquear a auditoria oficial.'
 );
@@ -120,7 +121,7 @@ assert.throws(
 const resultadoSemMomento = JSON.parse(JSON.stringify(resultado));
 resultadoSemMomento.momentos.pop();
 assert.throws(
-  () => context.api.validateOfficial(resultadoSemMomento, 'CLOSER', criterios, 'Evidência objetiva da transcrição.'),
+  () => context.api.validateOfficial(resultadoSemMomento, 'CLOSER', criterios, 'Evidência objetiva da transcrição.', 'Comportamento obrigatório descrito no pitch.'),
   /quatro momentos oficiais/,
   'Closer sem os quatro momentos não pode virar auditoria oficial.'
 );
