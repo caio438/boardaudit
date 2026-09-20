@@ -147,7 +147,7 @@ function TESTE_SMOKE_AUDITORIA_AUTOMATICA() {
 
     if (status !== 'APROVADA') throw new Error('Smoke test: status final esperado APROVADA, recebido ' + status + '.');
     if (validacao !== 'VALIDADA') throw new Error('Smoke test: validação esperada VALIDADA, recebida ' + validacao + '.');
-    if (!/^CONCLUIDA/.test(automacao)) throw new Error('Smoke test: automação não foi concluída. Status: ' + automacao + '.');
+    if (automacao !== 'CONCLUIDA_AGUARDANDO_RD') throw new Error('Smoke test: automação esperada CONCLUIDA_AGUARDANDO_RD, recebida ' + automacao + '.');
     if (rdStatus !== 'AGUARDANDO_VINCULO') throw new Error('Smoke test: RD deveria aguardar vínculo, recebido ' + rdStatus + '.');
     if (!idDocumento) throw new Error('Smoke test: Google Docs não foi criado.');
     if (!modeloIa) throw new Error('Smoke test: modelo de IA usado não foi registrado.');
@@ -155,10 +155,21 @@ function TESTE_SMOKE_AUDITORIA_AUTOMATICA() {
 
     const arquivoDoc = DriveApp.getFileById(idDocumento);
     if (!arquivoDoc || arquivoDoc.isTrashed()) throw new Error('Smoke test: documento criado não está acessível.');
+    const documento = DocumentApp.openById(idDocumento);
+    const textoDocumento = documento.getBody().getText();
+    ['Resultado da Auditoria', 'Checklist de Adesão ao Script', 'Conclusão'].forEach(function(secao) {
+      if (textoDocumento.indexOf(secao) < 0) {
+        throw new Error('Smoke test: seção obrigatória ausente no Google Docs: ' + secao + '.');
+      }
+    });
 
     const score = resultadoJson && resultadoJson.pontuacao_calculada
       ? resultadoJson.pontuacao_calculada.score_5
       : registro.SCORE;
+
+    if (score === null || score === '' || !isFinite(Number(score)) || Number(score) < 0 || Number(score) > 5) {
+      throw new Error('Smoke test: score final inválido: ' + score + '.');
+    }
 
     resultadoTeste = {
       sucesso: true,
@@ -171,6 +182,7 @@ function TESTE_SMOKE_AUDITORIA_AUTOMATICA() {
       modeloIa: modeloIa,
       hashFonteRegistrado: true,
       documentoCriado: true,
+      documentoEstruturaValidada: true,
       registrosSinteticos: {
         cliente: idCliente,
         pitch: idPitch,
