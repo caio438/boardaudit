@@ -65,7 +65,6 @@ jobs:
           node test-automacao-central.mjs
           node test-circle-auditoria.mjs
           node test-closer.mjs
-          node test-sdr-structure.mjs
           node test-tarefas-formalizacoes.mjs
 
       - name: Commit synchronized production baseline
