@@ -1,0 +1,109 @@
+name: Deploy dark mode 4.23.6 once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: startsWith(github.event.head_commit.message, 'Deploy: modo noturno 4.23.6')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+    steps:
+      - name: Checkout production revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate project
+        run: npm test
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Pull current Apps Script read-only copy
+        shell: bash
+        run: |
+          rm -rf /tmp/boardaudit-apps-current
+          mkdir -p /tmp/boardaudit-apps-current
+          cat > /tmp/boardaudit-apps-current/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-apps-current
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+
+      - name: Compare production before push
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_BEFORE_UI="a0939ea2a5c982814262c394d864a04e5f6e6177"
+          CURRENT="/tmp/boardaudit-apps-current"
+
+          echo "Comparando arquivos funcionais que nao deveriam mudar..."
+          for file in *.gs appsscript.json; do
+            if [ "$file" = "Code.gs" ]; then
+              continue
+            fi
+            test -f "$CURRENT/$file"
+            cmp -s "$file" "$CURRENT/$file" || {
+              echo "Divergencia inesperada em $file"
+              diff -u "$CURRENT/$file" "$file" || true
+              exit 1
+            }
+          done
+
+          echo "Comparando Code.gs e Index.html contra o main anterior ao ajuste visual..."
+          git show "$BASE_BEFORE_UI:Code.gs" > /tmp/expected-Code.gs
+          git show "$BASE_BEFORE_UI:Index.html" > /tmp/expected-Index.html
+          cmp -s /tmp/expected-Code.gs "$CURRENT/Code.gs" || {
+            echo "Divergencia inesperada no Code.gs de producao."
+            diff -u "$CURRENT/Code.gs" /tmp/expected-Code.gs || true
+            exit 1
+          }
+          cmp -s /tmp/expected-Index.html "$CURRENT/Index.html" || {
+            echo "Divergencia inesperada no Index.html de producao."
+            diff -u "$CURRENT/Index.html" /tmp/expected-Index.html || true
+            exit 1
+          }
+
+          echo "Preflight aprovado: apenas Code.gs e Index.html mudarao conforme planejado."
+
+      - name: Push source to Apps Script
+        run: npx clasp push --force
+
+      - name: Update production deployment
+        run: >-
+          npx clasp deploy
+          --deploymentId AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA
+          --description "Board Audit 4.23.6 - modo noturno completo e refresh por build"
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
