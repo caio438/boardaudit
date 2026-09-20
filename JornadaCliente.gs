@@ -320,6 +320,8 @@ function carregarAreaCliente(dados) {
   const otimizacoes = jornadaListarOtimizacoes_(idCliente, base.otimizacoes);
   const auditorias = jornadaListarAuditorias_(idCliente, periodo, base.auditorias);
   const formalizacoes = jornadaListarFormalizacoes_(idCliente, periodo, base.formalizacoes);
+  const formalizacoesHistorico = jornadaListarFormalizacoes_(idCliente, '', base.formalizacoes);
+  const tarefasFormalizacoes = jornadaListarTarefasFormalizacoes_(idCliente, base.tarefasFormalizacoes);
   const metas = typeof listarMetasClientes_ === 'function'
     ? listarMetasClientes_(base.metas).filter(item => String(item.idCliente) === idCliente)
     : [];
@@ -346,6 +348,8 @@ function carregarAreaCliente(dados) {
     otimizacoes: otimizacoes,
     auditorias: auditorias,
     formalizacoes: formalizacoes,
+    formalizacoesHistorico: formalizacoesHistorico,
+    tarefasFormalizacoes: tarefasFormalizacoes,
     metas: metas,
     materiais: materiais,
     pitches: pitches,
@@ -369,6 +373,7 @@ function jornadaCarregarContextoAreaCliente_() {
     reunioes: APP.sheets.reunioesCalendario,
     auditorias: APP.sheets.auditorias,
     formalizacoes: APP.sheets.formalizacoes,
+    tarefasFormalizacoes: APP.sheets.tarefasFormalizacoes,
     interacoes: APP.sheets.interacoes,
     diario: APP.sheets.diarioClientes,
     otimizacoes: APP.sheets.otimizacoesClientes,
@@ -617,9 +622,10 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         return valido;
       })
       .filter(item => {
-        const valido = Boolean(calendarios[String(item.CALENDAR_ID || '').trim().toLowerCase()]);
-        if (valido) diagnosticoFila.agendas++;
-        return valido;
+        // A reunião já foi identificada para um cliente durante a sincronização.
+        // Não a descarte quando o Google normalizar o ID da agenda de outra forma.
+        diagnosticoFila.agendas++;
+        return true;
       })
       .filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim()))
       .filter(jornadaReuniaoDeveFormalizar_)
@@ -638,11 +644,15 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     diagnosticoFila.formalizaveis = todasReunioes.filter(jornadaReuniaoDeveFormalizar_).length;
     diagnosticoFila.pendentes = todasCandidatas.length;
     const limiteLote = Math.min(3, Math.max(1, Number(opcoes.limite || 3)));
-    const candidatas = todasCandidatas.slice(0, limiteLote);
+    // Examine mais registros do que o limite de geração: uma reunião marcada
+    // como transcrita pode conter somente Anotações do Gemini. Ela deve ser
+    // pulada sem impedir que a próxima transcrição real seja formalizada.
+    const candidatas = todasCandidatas.slice(0, Math.max(limiteLote, 25));
 
     const geradas = [];
     const erros = [];
-    candidatas.forEach(reuniao => {
+    for (const reuniao of candidatas) {
+      if (geradas.length >= limiteLote) break;
       try {
         const id = jornadaGerarFormalizacaoSeNecessario_(reuniao, {
           idInteracao: reuniao.ID_INTERACAO,
@@ -663,7 +673,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
           };
         }
       }
-    });
+    }
     jornadaSalvarFalhasFilaFormalizacao_(falhasFila);
     registrarLog_('JORNADA', 'FORMALIZACOES_AUTOMATICAS', geradas.length + ' gerada(s); ' + erros.length + ' erro(s).');
     limparCachesDados_();
@@ -674,6 +684,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
 }
 
 function jornadaReuniaoDeveFormalizar_(reuniao) {
+  if (String(reuniao.ID_CLIENTE || '').trim() && String(reuniao.ID_TRANSCRICAO || '').trim()) return true;
   const tipo = String(reuniao.TIPO_REUNIAO || '').toUpperCase();
   if (['EXECUTIVA', 'OPERACIONAL_SDR', 'OPERACIONAL_CLOSER'].includes(tipo)) return true;
   const titulo = String(reuniao.TITULO || '');
@@ -2299,10 +2310,27 @@ function jornadaListarAuditorias_(idCliente, periodo, itensInformados) {
 }
 
 function jornadaListarFormalizacoes_(idCliente, periodo, itensInformados) {
-  return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.formalizacoes)).filter(item => String(item.ID_CLIENTE) === String(idCliente) && jornadaPeriodoData_(item.DATA_REUNIAO || item.SOLICITADO_EM) === periodo).map(item => ({
+  return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.formalizacoes)).filter(item => String(item.ID_CLIENTE) === String(idCliente) && (!periodo || jornadaPeriodoData_(item.DATA_REUNIAO || item.SOLICITADO_EM) === periodo)).map(item => ({
     idFormalizacao: item.ID_FORMALIZACAO, titulo: item.TITULO, tipoReuniao: item.TIPO_REUNIAO, status: item.STATUS,
     data: serializarData_(item.DATA_REUNIAO || item.SOLICITADO_EM), linkCircle: item.CIRCLE_POST_URL
-  }));
+  })).sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
+}
+
+function jornadaListarTarefasFormalizacoes_(idCliente, itensInformados) {
+  return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.tarefasFormalizacoes))
+    .filter(item => String(item.ID_CLIENTE || '') === String(idCliente) && String(item.ATIVA || 'SIM').toUpperCase() !== 'NAO')
+    .map(item => ({
+      idTarefa: String(item.ID_TAREFA || ''),
+      idFormalizacao: String(item.ID_FORMALIZACAO || ''),
+      acao: String(item.ACAO || ''),
+      responsavel: String(item.RESPONSAVEL || 'Não definido'),
+      prazo: String(item.PRAZO || 'Não definido'),
+      status: String(item.STATUS || 'PENDENTE').toUpperCase(),
+      dataReuniao: serializarData_(item.DATA_REUNIAO),
+      concluidoEm: serializarData_(item.CONCLUIDO_EM),
+      atualizadoEm: serializarData_(item.ATUALIZADO_EM)
+    }))
+    .sort((a, b) => new Date(b.dataReuniao || b.atualizadoEm || 0) - new Date(a.dataReuniao || a.atualizadoEm || 0));
 }
 
 function jornadaResumo_(entregas, reunioes, otimizacoes, historico, equipe) {

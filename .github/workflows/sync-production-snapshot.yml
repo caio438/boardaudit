@@ -1,0 +1,78 @@
+name: Sync live Apps Script snapshot
+
+on:
+  push:
+    branches:
+      - sync/production-live-baseline
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  sync:
+    if: "${{ github.event.head_commit.message == 'Ops: importa snapshot real da producao' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout sync branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download approved production snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: apps-script-production-before-dark-mode
+          path: /tmp/apps-script-production
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: caio438/boardaudit
+          run-id: 35531130003
+
+      - name: Normalize production files into repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          for src in /tmp/apps-script-production/*.js; do
+            name="$(basename "$src" .js)"
+            if [ "$name" = "Código" ]; then
+              dest="Code.gs"
+            else
+              dest="$name.gs"
+            fi
+            cp "$src" "$dest"
+          done
+
+          cp /tmp/apps-script-production/Index.html Index.html
+          cp /tmp/apps-script-production/appsscript.json appsscript.json
+
+          echo "Arquivos Apps Script sincronizados:"
+          ls -1 *.gs Index.html appsscript.json | sort
+
+      - name: Apply approved dark mode overlay to synchronized baseline
+        shell: bash
+        env:
+          BUILD_ID: "repo-sync-${{ github.sha }}-${{ github.run_id }}"
+        run: |
+          node prepare-dark-mode-deploy.mjs "$GITHUB_WORKSPACE"
+
+      - name: Validate synchronized Apps Script
+        shell: bash
+        run: |
+          node check-project.mjs
+
+      - name: Commit synchronized production baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- *.gs Index.html appsscript.json
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteração para sincronizar."
+            exit 0
+          fi
+          git commit -m "Sync: production 4.25.7 baseline + dark mode"
+          git push origin HEAD:sync/production-live-baseline

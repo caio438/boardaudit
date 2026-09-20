@@ -61,5 +61,6 @@ const contraditorio = {
 contexto.audV3NormalizarLeiturasSdr_(contraditorio, { checklist: [] });
 assert.equal(contraditorio.etapas_pitch[0].status, 'DESVIO_EXECUCAO');
 assert.equal(contraditorio.etapas_pitch[0].nota, 2.5);
-assert.match(contraditorio.etapas_pitch[0].ajuste_validacao, /Status ajustado/);
-console.log('Estrutura SDR v4.3 validada.');
+assert.equal(contraditorio.etapas_pitch[0].divergencia_identificada, true);
+assert.match(contraditorio.etapas_pitch[0].desvio, /qualificação ocorreu depois/i);
+console.log('Estrutura SDR da produção atual validada.');
