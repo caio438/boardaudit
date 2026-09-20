@@ -1,0 +1,149 @@
+name: Deploy Apps Script automatically
+
+on:
+  workflow_run:
+    workflows:
+      - Validate Apps Script
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout exact validated revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Revalidate exact revision
+        run: npm test
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Pull current production for preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-production /tmp/boardaudit-deploy
+          mkdir -p /tmp/boardaudit-production /tmp/boardaudit-deploy
+          cat > /tmp/boardaudit-production/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-production
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          rm -f .clasp.json
+
+      - name: Save rollback snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: apps-script-production-before-auto-deploy-${{ github.run_id }}
+          path: /tmp/boardaudit-production
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build deployment source preserving remote-only files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          cp -- *.gs /tmp/boardaudit-deploy/
+          cp Index.html appsscript.json /tmp/boardaudit-deploy/
+
+          for src in /tmp/boardaudit-production/*.js; do
+            [ -e "$src" ] || continue
+            base="$(basename "$src" .js)"
+            if [ "$base" = "Código" ]; then
+              local_name="Code.gs"
+            else
+              local_name="$base.gs"
+            fi
+            if [ ! -f "/tmp/boardaudit-deploy/$local_name" ]; then
+              cp "$src" "/tmp/boardaudit-deploy/$local_name"
+              echo "Preservado arquivo remoto sem equivalente no GitHub: $local_name"
+            fi
+          done
+
+          for src in /tmp/boardaudit-production/*.html; do
+            [ -e "$src" ] || continue
+            name="$(basename "$src")"
+            if [ ! -f "/tmp/boardaudit-deploy/$name" ]; then
+              cp "$src" "/tmp/boardaudit-deploy/$name"
+              echo "Preservado HTML remoto sem equivalente no GitHub: $name"
+            fi
+          done
+
+      - name: Stamp build and validate deploy source
+        shell: bash
+        env:
+          BUILD_ID: "${{ github.event.workflow_run.head_sha }}-${{ github.run_id }}-${{ github.run_attempt }}"
+        run: |
+          set -euo pipefail
+          node prepare-dark-mode-deploy.mjs /tmp/boardaudit-deploy
+
+          for file in /tmp/boardaudit-deploy/*.gs; do
+            node -e "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
+          done
+
+          node -e "const fs=require('fs'); const h=fs.readFileSync('/tmp/boardaudit-deploy/Index.html','utf8'); for(const m of h.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)) new Function(m[1]);"
+
+      - name: Push exact validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/boardaudit-deploy/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-deploy
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force
+
+      - name: Update production deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/boardaudit-deploy
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deploy \
+            --deploymentId AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA \
+            --description "Board Audit auto deploy ${{ github.event.workflow_run.head_sha }}"
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
