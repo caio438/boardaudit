@@ -152,7 +152,7 @@ function automacaoCentralExecutarFase_() {
         return { sucesso: true, fase: fase, resultado: auditorias, restante: statusAuditorias.elegiveis };
       }
       props.setProperty(AUTOMACAO_CENTRAL_19H.chaveTentativas, '0');
-      return automacaoCentralConcluir_('Agenda, fontes e ligações processadas. Formalizações mantidas na fila noturna, com uma execução por hora.');
+      const formalizacoes = jornadaExecutarFormalizacaoNoturna_(false); return automacaoCentralConcluir_('Agenda, fontes, ligações e formalizações processadas. ' + Number(formalizacoes.geradas || 0) + ' formalização(ões) preparada(s); ' + Number(formalizacoes.restantes || 0) + ' restante(s) na fila horária.');
     }
     if (fase === 'FORMALIZACOES') {
       return automacaoCentralConcluir_('Fase antiga de formalizações encerrada. A fila segue na rotina noturna por hora.');

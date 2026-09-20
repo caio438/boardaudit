@@ -1,6 +1,7 @@
+var AUDIT_BUILD_ID_FRONTEND = "repo-sync-3939ee6576d70fc90c126aeb0aa7e42739890bff-35532117243";
 const APP = {
   nome: 'Board de Auditorias VOLUM',
-  versao: '4.23.6',
+  versao: '4.25.7',
   spreadsheetId: '1s1HWCfqEunoq-iToJMO9mWaZQoYd0FgdT3YqmYrUgck',
   timezone: 'America/Sao_Paulo',
   rdBaseUrl: 'https://crm.rdstation.com/api/v1',
@@ -36,6 +37,11 @@ const APP = {
     logs: 'LOGS'
   }
 };
+
+const ACESSO_BOARD = Object.freeze({
+  email: 'crm@govolum.com',
+  credencialHash: '34b72f1ea3893291fb2f5a7a521f34cefc53dbfb235f725caa7a4fd554abd443'
+});
 
 /**
  * Catálogo oficial documentado no VOLUMBERG em 15/08/2026.
@@ -267,21 +273,11 @@ function obterVersaoFrontend() {
 }
 
 function audBuildAtual_() {
-  try {
-    const arquivoProjeto = DriveApp.getFileById(ScriptApp.getScriptId());
-    const atualizadoEm = arquivoProjeto.getLastUpdated();
-    return {
-      id: String(atualizadoEm.getTime()),
-      versao: APP.versao,
-      atualizadoEm: atualizadoEm.toISOString()
-    };
-  } catch (erro) {
-    return {
-      id: String(APP.versao || ''),
-      versao: APP.versao,
-      atualizadoEm: ''
-    };
-  }
+  return {
+    id: String(AUDIT_BUILD_ID_FRONTEND || APP.versao || ''),
+    versao: APP.versao,
+    atualizadoEm: new Date().toISOString()
+  };
 }
 
 function doGet(e) {
@@ -303,6 +299,53 @@ function doGet(e) {
     .setTitle(APP.nome)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function verificarAcessoBoard(credenciais) {
+  credenciais = credenciais || {};
+  const email = String(credenciais.email || '').trim().toLowerCase();
+  const senha = String(credenciais.senha || '');
+  const cache = CacheService.getScriptCache();
+  const chaveFalhas = 'BOARD_AUTH_FAILURES';
+  const falhas = Number(cache.get(chaveFalhas) || 0);
+
+  if (falhas >= 10) {
+    return {
+      sucesso: false,
+      mensagem: 'Muitas tentativas incorretas. Aguarde alguns minutos e tente novamente.'
+    };
+  }
+
+  const hashRecebido = gerarHashAcessoBoard_(email + '|' + senha);
+  const emailValido = compararTextoSeguro_(email, ACESSO_BOARD.email);
+  const senhaValida = compararTextoSeguro_(hashRecebido, ACESSO_BOARD.credencialHash);
+
+  if (!emailValido || !senhaValida) {
+    cache.put(chaveFalhas, String(falhas + 1), 300);
+    return { sucesso: false, mensagem: 'E-mail ou senha incorretos.' };
+  }
+
+  cache.remove(chaveFalhas);
+  return { sucesso: true, validadeHoras: 8 };
+}
+
+function gerarHashAcessoBoard_(texto) {
+  return Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(texto || ''),
+    Utilities.Charset.UTF_8
+  ).map(byte => ('0' + ((byte + 256) % 256).toString(16)).slice(-2)).join('');
+}
+
+function compararTextoSeguro_(valorA, valorB) {
+  const a = String(valorA || '');
+  const b = String(valorB || '');
+  const tamanho = Math.max(a.length, b.length);
+  let diferenca = a.length ^ b.length;
+  for (let indice = 0; indice < tamanho; indice += 1) {
+    diferenca |= (a.charCodeAt(indice) || 0) ^ (b.charCodeAt(indice) || 0);
+  }
+  return diferenca === 0;
 }
 
 function VISUALIZAR_DADOS_SISTEMA() {

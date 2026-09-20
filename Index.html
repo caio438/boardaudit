@@ -39,6 +39,35 @@
     button, input, select, textarea { font: inherit; }
     button { cursor: pointer; }
 
+    .access-gate {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top left, rgba(22,128,58,.12), transparent 34%),
+        var(--bg);
+    }
+
+    .access-gate[hidden], .app[hidden] { display: none !important; }
+
+    .access-card {
+      width: min(420px, 100%);
+      padding: 32px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .access-card h1 { margin: 0 0 8px; font-size: 24px; }
+    .access-card > p { margin: 0 0 24px; color: var(--muted); }
+    .access-card .field { margin-bottom: 16px; }
+    .access-card .btn { width: 100%; justify-content: center; }
+    .access-message { min-height: 20px; margin-top: 14px; color: var(--danger); font-size: 13px; }
+    .access-exit { margin-top: 18px; border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; }
+    .access-exit button { width: 100%; color: #cbd5e1; }
+
     .app {
       min-height: 100vh;
       display: grid;
@@ -799,6 +828,7 @@
       .journey-summary, .journey-lanes, .operation-base, .meeting-connections, .client-main-grid, .client-materials, .quality-grid, .guide-flow, .roadmap-item { grid-template-columns: 1fr; }
     }
   
+
     /* =========================================================
        MODO NOTURNO FIXO - PRODUCAO
     ========================================================= */
@@ -819,268 +849,159 @@
       --shadow: 0 8px 24px rgba(0, 0, 0, .34);
     }
 
-    html,
-    body,
-    .app,
-    .main,
-    .page {
+    html, body, .app, .main, .page, .access-gate {
       background: var(--bg) !important;
       color: var(--text) !important;
     }
 
-    body {
-      min-height: 100vh;
+    body { min-height: 100vh; }
+    .access-gate {
+      background-image: radial-gradient(circle at top left, rgba(37,99,235,.10), transparent 34%) !important;
     }
+    .sidebar { background: #070d18 !important; color: var(--text) !important; }
+    .topbar { background: transparent !important; color: var(--text) !important; }
 
-    .sidebar {
-      background: #070d18 !important;
+    .topbar h2, .topbar p, .section-title h3, .section-title p,
+    .card h1, .card h2, .card h3, .card h4, .card p, .card label, .card strong, .card span,
+    details, summary, .access-card h1, .access-card p, .access-card label {
       color: var(--text) !important;
     }
 
-    .topbar {
-      background: transparent !important;
-      color: var(--text) !important;
-    }
-
-    .topbar h2,
-    .topbar p,
-    .section-title h3,
-    .section-title p,
-    .card h1,
-    .card h2,
-    .card h3,
-    .card h4,
-    .card p,
-    .card label,
-    .card strong,
-    .card span,
-    details,
-    summary {
-      color: var(--text) !important;
-    }
-
-    .topbar p,
-    .section-title p,
-    .muted,
-    .small,
-    small,
-    .audit-transcript-meta,
-    .brand span {
+    .topbar p, .section-title p, .muted, .small, small, .audit-transcript-meta, .brand span,
+    .access-card > p {
       color: var(--muted) !important;
     }
 
-    .card,
-    .card.expansivel,
-    details.card,
-    .automation div,
-    .table-wrap,
-    .audit-transcript-list,
-    .loading-box,
-    .modal-conteudo,
-    .material-chip,
-    .audit-sheet,
-    .compact-item,
-    .quality-card,
-    .guide-check,
-    .meeting-connection,
-    .journey-lane,
-    .task-client-heading,
-    .history-date-heading {
+    .access-card, .card, .card.expansivel, details.card, .automation div, .table-wrap,
+    .audit-transcript-list, .loading-box, .modal-conteudo, .material-chip, .audit-sheet,
+    .compact-item, .quality-card, .guide-check, .meeting-connection, .journey-lane,
+    .task-client-heading, .history-date-heading {
       background: var(--surface) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
 
-    .card.expansivel > .section-title,
-    details > summary,
-    .client-settings > summary {
+    .card.expansivel > .section-title, details > summary, .client-settings > summary {
       background: transparent !important;
       color: var(--text) !important;
     }
 
-    .audit-meta,
-    .audit-json-panel,
-    .audit-json-panel summary,
-    .material-summary-grid > div,
-    .guide-step,
-    th {
+    .audit-meta, .audit-json-panel, .audit-json-panel summary, .material-summary-grid > div,
+    .guide-step, th {
       background: var(--surface-2) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
 
-    input,
-    select,
-    textarea {
+    input, select, textarea {
       background: var(--surface-2) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
 
-    input::placeholder,
-    textarea::placeholder {
-      color: #738198 !important;
-    }
+    input::placeholder, textarea::placeholder { color: #738198 !important; }
+    select option { background: var(--surface) !important; color: var(--text) !important; }
 
-    select option {
-      background: var(--surface) !important;
-      color: var(--text) !important;
-    }
-
-    .nav button {
-      color: #cbd5e1 !important;
-    }
-
-    .nav button:hover,
-    .nav button.active {
+    .nav button { color: #cbd5e1 !important; }
+    .nav button:hover, .nav button.active {
       background: rgba(37, 99, 235, .18) !important;
-      color: #ffffff !important;
+      color: #fff !important;
     }
 
     .btn {
       background: var(--primary) !important;
-      color: #ffffff !important;
+      color: #fff !important;
       border-color: transparent !important;
     }
-
-    .btn:hover {
-      background: var(--primary-hover) !important;
-    }
-
+    .btn:hover { background: var(--primary-hover) !important; }
     .btn.secondary {
       background: #243044 !important;
       color: var(--text) !important;
       border: 1px solid var(--border) !important;
     }
+    .btn.secondary:hover { background: #2f3d54 !important; }
 
-    .btn.secondary:hover {
-      background: #2f3d54 !important;
-    }
+    .status { background: #243044 !important; color: #cbd5e1 !important; }
+    .status.success { background: rgba(34,197,94,.14) !important; color: #86efac !important; }
+    .status.warning { background: rgba(245,158,11,.14) !important; color: #fcd34d !important; }
+    .status.danger { background: rgba(239,68,68,.14) !important; color: #fca5a5 !important; }
 
-    .status {
-      background: #243044 !important;
-      color: #cbd5e1 !important;
-    }
-
-    .status.success {
-      background: rgba(34, 197, 94, .14) !important;
-      color: #86efac !important;
-    }
-
-    .status.warning {
-      background: rgba(245, 158, 11, .14) !important;
-      color: #fcd34d !important;
-    }
-
-    .status.danger {
-      background: rgba(239, 68, 68, .14) !important;
-      color: #fca5a5 !important;
-    }
-
-    .consumo-barra {
-      background: #263244 !important;
-    }
-
-    .table-wrap,
-    table,
-    tbody,
-    tr,
-    td {
+    .consumo-barra { background: #263244 !important; }
+    .table-wrap, table, tbody, tr, td {
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
-
-    tbody tr:hover td {
-      background: rgba(37, 99, 235, .06) !important;
-    }
+    tbody tr:hover td { background: rgba(37,99,235,.06) !important; }
 
     .material-chip.ok {
       color: #86efac !important;
-      border-color: rgba(74, 222, 128, .4) !important;
-      background: rgba(34, 197, 94, .12) !important;
+      border-color: rgba(74,222,128,.4) !important;
+      background: rgba(34,197,94,.12) !important;
     }
 
     .local-error {
       color: #fca5a5 !important;
-      background: rgba(127, 29, 29, .24) !important;
-      border-color: rgba(248, 113, 113, .35) !important;
+      background: rgba(127,29,29,.24) !important;
+      border-color: rgba(248,113,113,.35) !important;
     }
 
-    .audit-sheet {
-      box-shadow: 0 12px 34px rgba(0, 0, 0, .34) !important;
-    }
-
-    .audit-sheet hr {
-      border-top-color: #475569 !important;
-    }
-
-    .audit-report .line-success {
-      color: #86efac !important;
-    }
-
-    .audit-report .line-danger {
-      color: #fca5a5 !important;
-    }
-
+    .audit-sheet { box-shadow: 0 12px 34px rgba(0,0,0,.34) !important; }
+    .audit-sheet hr { border-top-color: #475569 !important; }
+    .audit-report .line-success { color: #86efac !important; }
+    .audit-report .line-danger { color: #fca5a5 !important; }
     .audit-report .line-tip {
-      background: rgba(245, 158, 11, .12) !important;
-      border: 1px solid rgba(245, 158, 11, .22) !important;
+      background: rgba(245,158,11,.12) !important;
+      border: 1px solid rgba(245,158,11,.22) !important;
       color: var(--text) !important;
     }
 
-    .audit-json-panel {
-      border-color: var(--border) !important;
-    }
-
-    .audit-json-panel summary {
-      border-bottom: 1px solid var(--border) !important;
-    }
-
-    .audit-report th,
-    .audit-report td {
+    .audit-json-panel { border-color: var(--border) !important; }
+    .audit-json-panel summary { border-bottom: 1px solid var(--border) !important; }
+    .audit-report th, .audit-report td {
       border-color: #334155 !important;
       color: var(--text) !important;
     }
-
-    .audit-report th {
-      background: var(--surface-3) !important;
-    }
-
-    .audit-json-code {
-      background: #07101f !important;
-      color: #dbeafe !important;
-    }
+    .audit-report th { background: var(--surface-3) !important; }
+    .audit-json-code { background: #07101f !important; color: #dbeafe !important; }
 
     .audit-review-actions {
-      background: rgba(17, 24, 39, .96) !important;
+      background: rgba(17,24,39,.96) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
 
-    .loading {
-      background: rgba(2, 6, 23, .72) !important;
-    }
-
+    .loading { background: rgba(2,6,23,.72) !important; }
     .toast {
       background: #172033 !important;
-      color: #ffffff !important;
+      color: #fff !important;
       border: 1px solid var(--border);
     }
 
-    a {
-      color: #60a5fa !important;
-    }
-
-    ::selection {
-      background: rgba(37, 99, 235, .45);
-      color: #ffffff;
-    }
+    a { color: #60a5fa !important; }
+    ::selection { background: rgba(37,99,235,.45); color: #fff; }
 
   </style>
 </head>
 
 <body>
-  <div class="app">
+  <section id="accessGate" class="access-gate">
+    <form class="access-card" onsubmit="autenticarBoardFront(event)">
+      <h1>Board de Auditorias VOLUM</h1>
+      <p>Entre com o acesso autorizado para continuar.</p>
+      <div class="field">
+        <label for="accessEmail">E-mail</label>
+        <input id="accessEmail" type="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="accessPassword">Senha</label>
+        <input id="accessPassword" type="password" autocomplete="current-password" required>
+      </div>
+      <button id="accessSubmit" class="btn success" type="submit">Entrar</button>
+      <div id="accessMessage" class="access-message" role="alert"></div>
+    </form>
+  </section>
+
+  <div class="app" hidden>
     <aside class="sidebar">
       <div class="brand">
         <h1 id="appNome">Board de Auditorias</h1>
@@ -1095,6 +1016,9 @@
         <button data-page="integracoes">Configurações</button>
         <button data-page="guia">Guia e roadmap</button>
       </nav>
+      <div class="access-exit">
+        <button type="button" onclick="encerrarAcessoBoard_()">Sair</button>
+      </div>
     </aside>
 
     <main class="main">
@@ -1205,6 +1129,14 @@
             <div class="section-title" style="margin-top:14px"><div></div><select id="areaHistoricoEscopo" onchange="renderizarHistoricoArea_()" style="width:auto"><option value="">Todos os escopos</option><option value="SDR">SDR</option><option value="CLOSER">Closer</option><option value="GESTAO">Gestão</option><option value="GERAL">Geral</option></select></div>
             <div id="areaHistorico" class="compact-list"></div>
           </details>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <div class="section-title"><div><h3>Histórico individual do cliente</h3><p>Formalizações anteriores e tarefas acumuladas, organizadas por data.</p></div></div>
+          <div class="grid two">
+            <div><h4 style="margin:0 0 10px">Formalizações anteriores</h4><div id="areaFormalizacoesHistorico" class="compact-list"></div></div>
+            <div><h4 style="margin:0 0 10px">Tarefas registradas</h4><div id="areaTarefasHistorico" class="compact-list"></div></div>
+          </div>
         </div>
 
         <div class="card" style="margin-top:18px">
@@ -1626,6 +1558,18 @@
               <input id="manualLead" placeholder="Nome do lead, se disponível">
             </div>
 
+            <div class="field">
+              <label for="manualNomeArquivo">Nome do arquivo original</label>
+              <input id="manualNomeArquivo" placeholder="Empresa-01-Nome do SDR.txt">
+              <div class="small muted">Padrão: empresa-número-SDR. A empresa antes do primeiro hífen será usada como referência oficial.</div>
+            </div>
+
+            <div class="field">
+              <label for="manualRdDealId">ID do lead/negociação no RD</label>
+              <input id="manualRdDealId" placeholder="24 caracteres ou link completo do RD" autocomplete="off">
+              <div class="small muted">Opcional. Permite enviar ao RD auditorias manuais ou importadas do tl;dv.</div>
+            </div>
+
             <div class="field full">
               <label for="manualUrlAudio">Link da gravação MP3</label>
               <input id="manualUrlAudio" type="url" placeholder="https://listener.api4com.com/files/listen/...mp3" oninput="atualizarPreviewAudioManual()">
@@ -1682,6 +1626,7 @@
 
         <div class="card" style="margin-top:18px">
           <div class="section-title"><div><h3>Auditorias realizadas</h3></div></div>
+          <div id="resumoEnviosRdAuditorias" class="grid cards" style="margin-bottom:14px"></div>
           <div class="toolbar">
             <div class="filters">
               <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
@@ -2513,8 +2458,77 @@
       document.querySelectorAll('details').forEach(bloco => {
         bloco.open = false;
       });
-      carregarInicial();
+      iniciarProtecaoAcesso_();
     });
+
+    const BOARD_AUTH_SESSION_KEY = 'boardAuditAuthUntil';
+    let boardInicializado = false;
+
+    function iniciarProtecaoAcesso_() {
+      const validade = Number(sessionStorage.getItem(BOARD_AUTH_SESSION_KEY) || 0);
+      if (validade > Date.now()) {
+        liberarBoard_();
+        return;
+      }
+      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      document.getElementById('accessGate').hidden = false;
+      document.querySelector('.app').hidden = true;
+      document.getElementById('accessEmail').focus();
+    }
+
+    function autenticarBoardFront(evento) {
+      if (evento) evento.preventDefault();
+      const botao = document.getElementById('accessSubmit');
+      const mensagem = document.getElementById('accessMessage');
+      const email = document.getElementById('accessEmail').value.trim();
+      const senha = document.getElementById('accessPassword').value;
+      botao.disabled = true;
+      botao.textContent = 'Verificando...';
+      mensagem.textContent = '';
+
+      google.script.run
+        .withSuccessHandler(retorno => {
+          botao.disabled = false;
+          botao.textContent = 'Entrar';
+          if (!retorno || !retorno.sucesso) {
+            mensagem.textContent = retorno && retorno.mensagem
+              ? retorno.mensagem
+              : 'Não foi possível validar o acesso.';
+            document.getElementById('accessPassword').value = '';
+            document.getElementById('accessPassword').focus();
+            return;
+          }
+          const horas = Number(retorno.validadeHoras || 8);
+          sessionStorage.setItem(BOARD_AUTH_SESSION_KEY, String(Date.now() + horas * 60 * 60 * 1000));
+          liberarBoard_();
+        })
+        .withFailureHandler(() => {
+          botao.disabled = false;
+          botao.textContent = 'Entrar';
+          mensagem.textContent = 'Não foi possível validar o acesso. Tente novamente.';
+        })
+        .verificarAcessoBoard({ email, senha });
+    }
+
+    function liberarBoard_() {
+      document.getElementById('accessGate').hidden = true;
+      document.querySelector('.app').hidden = false;
+      document.getElementById('accessPassword').value = '';
+      if (!boardInicializado) {
+        boardInicializado = true;
+        carregarInicial();
+      }
+    }
+
+    function encerrarAcessoBoard_() {
+      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      document.querySelector('.app').hidden = true;
+      document.getElementById('accessGate').hidden = false;
+      document.getElementById('accessEmail').value = '';
+      document.getElementById('accessPassword').value = '';
+      document.getElementById('accessMessage').textContent = '';
+      document.getElementById('accessEmail').focus();
+    }
 
     function integrarImportacoesManuaisAosSeletores_() {
       [
@@ -3055,6 +3069,7 @@
       renderizarBaseOperacionalArea_();
       renderizarGraficosQualitativosArea_();
       renderizarHistoricoArea_();
+      renderizarHistoricoIndividualCliente_();
       renderizarEntregasArea_();
       renderizarDiarioArea_();
       renderizarOtimizacoesArea_();
@@ -3215,6 +3230,20 @@
       const filtro = document.getElementById('areaHistoricoEscopo').value;
       const itens = (dados.historicoOperacional || []).filter(item => !filtro || String(item.escopo).toUpperCase() === filtro);
       document.getElementById('areaHistorico').innerHTML = itens.length ? itens.map(item => `<div class="compact-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><strong>${escapeHtml(item.titulo)}</strong> <span class="status">${escapeHtml(item.tipo)}</span></div><span class="small muted">${escapeHtml(formatarDataHoraArea_(item.data))}</span></div><p>${escapeHtml(item.detalhe || item.status || '')}</p><p class="small muted">${escapeHtml(item.escopo || 'GERAL')} · ${escapeHtml(item.status || '')}${item.link ? ` · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Abrir referência</a>` : ''}</p></div>`).join('') : '<div class="empty">Nenhum avanço operacional registrado neste escopo.</div>';
+    }
+
+    function renderizarHistoricoIndividualCliente_() {
+      const dados = estado.areaCliente || {};
+      const formalizacoes = dados.formalizacoesHistorico || dados.formalizacoes || [];
+      const tarefas = dados.tarefasFormalizacoes || [];
+      const alvoFormalizacoes = document.getElementById('areaFormalizacoesHistorico');
+      const alvoTarefas = document.getElementById('areaTarefasHistorico');
+      if (alvoFormalizacoes) {
+        alvoFormalizacoes.innerHTML = formalizacoes.length ? formalizacoes.map(item => `<div class="compact-item"><div style="display:flex;justify-content:space-between;gap:12px"><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><span class="small muted">${escapeHtml(formatarDataHoraArea_(item.data, true))}</span></div><p class="small muted">${escapeHtml(item.tipoReuniao || 'Reunião')} · ${escapeHtml(item.status || '')}</p><div class="actions" style="margin-top:8px"><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></div>`).join('') : '<div class="empty">Nenhuma formalização anterior deste cliente.</div>';
+      }
+      if (alvoTarefas) {
+        alvoTarefas.innerHTML = tarefas.length ? tarefas.map(item => `<div class="compact-item"><div style="display:flex;justify-content:space-between;gap:12px"><strong>${escapeHtml(item.acao || 'Tarefa')}</strong><span class="status ${item.status === 'CONCLUIDA' ? 'success' : item.status === 'PENDENTE' ? 'warning' : ''}">${escapeHtml(rotuloStatusTarefaFormalizacao_(item.status))}</span></div><p class="small muted"><strong>Responsável:</strong> ${escapeHtml(item.responsavel || 'Não definido')} · <strong>Reunião:</strong> ${escapeHtml(formatarDataHoraArea_(item.dataReuniao, true))}${item.concluidoEm ? ` · <strong>Concluída:</strong> ${escapeHtml(formatarDataHoraArea_(item.concluidoEm, true))}` : ''}</p></div>`).join('') : '<div class="empty">Nenhuma tarefa registrada para este cliente.</div>';
+      }
     }
 
     function abrirMateriaisArea_() {
@@ -4665,8 +4694,8 @@
         dataInteracao: valor('manualDataInteracao'),
         duracaoSegundos: '',
         oportunidade: '',
-        linkCrm: '',
-        nomeArquivoOrigem: '',
+        rdDealId: valor('manualRdDealId'),
+        nomeArquivoOrigem: valor('manualNomeArquivo'),
         transcricao: transcricao
       });
   }
@@ -4675,7 +4704,7 @@
     const url = valor('manualUrlAudio');
     const box = document.getElementById('manualAudioBox');
     const audio = document.getElementById('manualAudioPreview');
-    const valido = /^https:\/\//i.test(url);
+    const valido = String(url || '').indexOf('https:') === 0;
     box.style.display = valido ? 'grid' : 'none';
     if (valido) audio.src = url;
     else {
@@ -4691,7 +4720,7 @@
     const urlAudio = valor('manualUrlAudio');
     if (!idCliente) return mostrarToast('Selecione o cliente da ligação.', 'error');
     if (!titulo) return mostrarToast('Informe um título para identificar a ligação.', 'error');
-    if (!/^https:\/\//i.test(urlAudio)) return mostrarToast('Informe um link HTTPS válido para o MP3.', 'error');
+    if (String(urlAudio || '').indexOf('https:') !== 0) return mostrarToast('Informe um link HTTPS válido para o MP3.', 'error');
 
     const funcao = valor('audTipo');
     if (!funcao) return mostrarToast('Selecione a função auditada.', 'error');
@@ -4749,7 +4778,9 @@
         colaborador: valor('manualColaborador'),
         lead: valor('manualLead'),
         dataInteracao: valor('manualDataInteracao'),
-        urlAudio: urlAudio
+        urlAudio: urlAudio,
+        nomeArquivoOrigem: valor('manualNomeArquivo'),
+        rdDealId: valor('manualRdDealId')
       });
   }
 
@@ -4782,7 +4813,7 @@
       titulo: valor('loteTitulo' + indice) || ('Ligação ' + indice + ' — ' + hoje)
     })).filter(item => item.url);
     if (!slots.length) return mostrarToast('Adicione pelo menos um link de gravação.', 'error');
-    const invalido = slots.find(item => !/^https:\/\//i.test(item.url));
+    const invalido = slots.find(item => String(item.url || '').indexOf('https:') !== 0);
     if (invalido) return mostrarToast('O link do slot ' + invalido.indice + ' não é um endereço HTTPS válido.', 'error');
 
     const botao = document.getElementById('btnProcessarLoteAudio');
@@ -6088,7 +6119,6 @@
       <div class="audit-sheet">
         ${cabecalhoPreview}
         <div class="audit-report">${renderizarConteudoAuditoriaV3(r, tipoAudit, auditoria)}</div>
-        ${renderizarJsonFormatadoAuditoria_(r)}
       </div>
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
@@ -6149,8 +6179,8 @@
   function statusPlanoFront_(valor) {
     const status = String(valor || '').toUpperCase();
     if (status.includes('PARCIAL')) return { texto: 'Parcial', nota: 0.5, cor: '#b54708' };
-    if (/NAO_EXECUTADO|NÃO EXECUTADO|NAO EXECUTADO|INCORRETO|INCOMPLETO|NÃO CONFORME|NAO CONFORME/.test(status)) return { texto: 'Não executado', nota: 0, cor: '#b42318' };
-    if (/ATINGIDO|CORRETO|COMPLETO|CONFORME/.test(status)) return { texto: 'Atingido', nota: 1, cor: '#16803a' };
+    if (/NAO_EXECUTADO|NÃO EXECUTADO|NAO EXECUTADO|INCORRETO|INCOMPLETO|NÃO CONFORME|NAO CONFORME/.test(status)) return { texto: 'Incorreto', nota: 0, cor: '#b42318' };
+    if (/ATINGIDO|CORRETO|COMPLETO|CONFORME/.test(status)) return { texto: 'Correto', nota: 1, cor: '#16803a' };
     return { texto: 'Parcial', nota: 0.5, cor: '#b54708' };
   }
 
@@ -6167,24 +6197,23 @@
 
     let html = `<article style="max-width:760px;margin:16px auto 0;font-size:14px;line-height:1.65;color:#172033;background:#fff;padding:28px 30px;border:1px solid #e4e7ec;border-radius:8px;">`;
     
-    html += `<p>Bom dia Pessoal! Como vai?</p><br>`;
+    html += `<p>Bom dia Pessoal! Como vai?</p><hr>`;
     
     html += `<p>🎯 <strong>Objetivo:</strong><br>`;
-    html += `Este documento formaliza os resultados da Análise do Plano de Otimização da atuação do <strong>${escapeHtml(funcaoAuditada.toUpperCase())}</strong>, com foco em identificar onde e como as melhorias devem ser aplicadas. O objetivo central não é apontar falhas, mas sim fornecer insights estratégicos conforme processo VOLUM, que possibilitem um aprimoramento contínuo da performance, garantindo um processo comercial cada vez mais eficiente e estruturado.</p><br>`;
+    html += `Este documento formaliza os resultados da Análise do Plano de Otimização da atuação do <strong>${escapeHtml(funcaoAuditada.toUpperCase())}</strong>, com foco em identificar onde e como as melhorias devem ser aplicadas. O objetivo central não é apontar falhas, mas sim fornecer insights estratégicos conforme processo VOLUM, que possibilitem um aprimoramento contínuo da performance, garantindo um processo comercial cada vez mais eficiente e estruturado.</p><hr>`;
     
-    html += `<p style="text-align: center;">⚠️ <strong>IMPORTANTE</strong> ⚠️ Mostre essa análise para seu ${escapeHtml(funcaoAuditada.toUpperCase())}.<br>`;
-    html += `⚠️ ℹ️ Esses parâmetros são retirados do Plano de Otimização ℹ️ ⚠️</p><br>`;
+    html += `<p style="text-align: center;">⚠️ <strong>IMPORTANTE</strong> ⚠️ Mostre essa análise para seu ${escapeHtml(funcaoAuditada.toUpperCase())}.</p><hr>`;
+    html += `<p style="text-align:center;">⚠️ ℹ️ Esses parâmetros são retirados do Plano de Otimização ℹ️ ⚠️</p><hr>`;
     
     html += `<p>📝 <strong>Os parâmetros foram:</strong></p>`;
     html += `<p><strong>Equipe Analisada: ${escapeHtml(funcaoAuditada.toUpperCase())} &rarr; ${escapeHtml(colaborador)}</strong></p>`;
 
+    html += `<ul style="padding-left:20px;margin-top:8px;">`;
     criterios.forEach(c => {
       const status = statusPlanoFront_(c.status);
-      html += `<section style="padding:16px 0;border-bottom:1px solid #eaecf0;">`;
-      html += `<div style="font-weight:700;margin-bottom:7px;">${escapeHtml(limparTextoPlanoFront_(c.nome || c.id))}</div>`;
-      html += `<div><strong style="color:${status.cor};">(${status.texto} — ${status.nota.toFixed(1).replace('.', ',')})</strong> ${escapeHtml(limparTextoPlanoFront_(c.analise || c.comentario || ''))}</div>`;
-      html += `</section>`;
+      html += `<li style="margin-bottom:10px;"><strong>${escapeHtml(limparTextoPlanoFront_(c.nome || c.id))} <span style="color:${status.cor};">(${status.texto})</span></strong> ${escapeHtml(limparTextoPlanoFront_(c.analise || c.comentario || ''))}</li>`;
     });
+    html += `</ul>`;
 
     html += `<p style="margin-top: 24px;">⏭ <strong>Ações Necessárias:</strong></p>`;
     if (acoes.length) {
@@ -6201,14 +6230,6 @@
 
     html += `<p>📌 As aplicações dessas ações serão acompanhadas no Plano de Otimização do próximo mês.</p><br>`;
 
-    const pontuacao = r.pontuacao_calculada || {};
-    html += `<section style="padding:18px 0;border-top:1px solid #d0d5dd;border-bottom:1px solid #d0d5dd;margin-bottom:20px;">`;
-    html += `<div style="font-weight:700;margin-bottom:8px;">Resultado consolidado</div>`;
-    html += `<div>Nota: <strong>${Number(pontuacao.score_5 || 0).toFixed(1).replace('.', ',')} de 5,0</strong></div>`;
-    html += `<div>Aderência: <strong>${Number(pontuacao.score_percentual || 0).toFixed(1).replace('.', ',')}%</strong></div>`;
-    html += `<div class="small" style="margin-top:7px;">Régua: Atingido = 1,0 | Parcial = 0,5 | Não executado = 0,0</div>`;
-    html += `</section>`;
-
     const links = Array.isArray(r.leads_analisados) ? r.leads_analisados : [];
     if (links.length) {
       html += `<p><strong>Leads analisados:</strong><br>`;
@@ -6221,11 +6242,12 @@
     }
     
     const encerramentoPadrao = String(funcaoAuditada).toUpperCase() === 'CLOSER'
-      ? '🚀 Esta análise foi feita para ajudar o Closer a evoluir no processo de fechamento da venda, com observações e sugestões práticas baseadas na metodologia VOLUM. O objetivo é tornar a rotina comercial mais eficiente, previsível e focada na conversão. 🚀'
-      : '🚀 Esta análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias escaláveis, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil. 🚀';
-    html += `<p>${escapeHtml(limparTextoPlanoFront_(r.encerramento) || encerramentoPadrao)}</p><br>`;
+      ? `🚀 Esta análise foi feita para ajudar o Closer a evoluir no processo de Fechamento da Venda, trazendo observações e sugestões práticas com base em ${criterios.length} pontos avaliados, levando em consideração a metodologia VOLUM, como apresentada no módulo Venda Perfeita. A ideia é apoiar de forma direta e construtiva, tornando a rotina comercial mais eficiente, com mais previsibilidade e foco na conversão. Tudo isso pensando no crescimento consistente da operação e no desenvolvimento de quem está à frente das negociações. 🚀`
+      : '🚀 A análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias que acelerem o desempenho comercial de forma escalonável, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil de vendas. O direcionamento aqui apresentado visa tornar a abordagem mais assertiva, garantindo maior previsibilidade nos resultados e contribuindo diretamente para o crescimento da empresa. 🚀';
+    const encerramento = String(funcaoAuditada).toUpperCase() === 'CLOSER' ? encerramentoPadrao : (limparTextoPlanoFront_(r.encerramento) || encerramentoPadrao);
+    html += `<hr><p>${escapeHtml(encerramento)}</p><hr>`;
     
-    html += `<p>FYI<br>No que precisarem, estou à disposição 🧑&zwj;💻</p>`;
+    html += `<p>FYI</p><hr><p><strong>No que precisarem, estou à disposição 🧑&zwj;💻</strong></p>`;
     
     html += `</article>`;
     
@@ -6889,6 +6911,7 @@
 
   function renderizarAuditorias() {
     const alvo = document.getElementById('listaAuditorias');
+    renderizarResumoEnviosRdAuditorias_();
     const idCliente = String((document.getElementById('audHistoricoCliente') || {}).value || '');
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
@@ -6908,6 +6931,11 @@
       const circlePublicado = Boolean(item.circlePostUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(item.circleStatus || '').toUpperCase());
       const comunidadePublicada = Boolean(item.comunidadePostUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(String(item.comunidadeStatus || '').toUpperCase());
       const comunidadeErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
+      const rdPublicado = String(item.rdStatus || '').toUpperCase() === 'PUBLICADA';
+      const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
+      const indicadorRd = item.linkCrm
+        ? `<span class="status ${rdPublicado ? 'success' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'danger' : 'warning'}">RD: ${rdPublicado ? 'enviado' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'erro' : 'não enviado'}</span>`
+        : `<span class="status">RD: sem vínculo</span>`;
       const indicadorCircle = item.circlePostUrl
         ? `<a class="status success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Circle: publicado</a>`
         : `<span class="status warning">Circle: não publicado</span>`;
@@ -6917,24 +6945,139 @@
       return `<div class="card" style="box-shadow:none;margin-bottom:10px">
         <div class="section-title">
           <div><strong>${escapeHtml(nomeAuditoriaExibicao_(item))}</strong><div class="small muted">${escapeHtml(item.tipoAuditoria || '')} - ${escapeHtml(formatarDataDia(item.dataInteracao))}</div></div>
-          <div class="actions" style="margin:0;justify-content:flex-end"><span class="${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div>
+          <div class="actions" style="margin:0;justify-content:flex-end"><span class="${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}${indicadorRd}</div>
         </div>
         ${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}
         ${item.circleErro ? `<div class="status danger">${escapeHtml(item.circleErro)}</div>` : ''}
         ${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}
+        ${item.rdErro ? `<div class="status danger">RD: ${escapeHtml(item.rdErro)}</div>` : ''}
         <div class="toolbar" style="align-items:end;margin-top:12px">
           <div class="field" style="flex:1;min-width:260px"><label for="auditCircleLink_${escapeAtributo(item.idAuditoria)}">Link do post no Circle</label><input id="auditCircleLink_${escapeAtributo(item.idAuditoria)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div>
           <button id="btnAuditCircleLink_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarLinkCircleAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">${circlePublicado ? 'Atualizar link' : 'Registrar link'}</button>
         </div>
+        <div class="toolbar" style="align-items:end;margin-top:10px">
+          <div class="field" style="flex:1;min-width:260px"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" ${rdPublicado ? 'disabled' : ''}><div class="small muted">Use este campo para auditorias manuais ou do tl;dv que ainda não estejam vinculadas ao CRM.</div></div>
+          ${rdPublicado ? '' : `<button id="btnAuditRdDealId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarIdRdAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo do RD</button>`}
+        </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
-          ${item.status === 'EM_REVISAO' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Aprovar e gerar Docs</button>` : ''}
+          ${item.status === 'EM_REVISAO' ? `<span class="actions" style="margin:0;gap:8px"><button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Aprovar e gerar Docs</button><button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar</button></span>` : ''}
+          ${item.status === 'APROVADA' && !circlePublicado && !comunidadePublicada && !rdPublicado ? `<button class="btn danger" type="button" onclick="excluirAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Excluir auditoria</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
+          ${item.resultado && item.linkCrm && !rdPublicado ? `<button class="btn secondary" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar resultado ao RD</button>` : ''}
+          ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>` : ''}
         </div>
       </div>`;
     });
+  }
+
+  function extrairIdRdFront_(valor) {
+    const encontrado = String(valor || '').match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i) || String(valor || '').match(/\b([0-9a-f]{24})\b/i);
+    return encontrado ? encontrado[1] : '';
+  }
+
+  function salvarIdRdAuditoriaFront(idAuditoria) {
+    const campo = document.getElementById('auditRdDealId_' + idAuditoria);
+    const botao = document.getElementById('btnAuditRdDealId_' + idAuditoria);
+    if (!campo || !botao || botao.disabled) return;
+    const rdDealId = String(campo.value || '').trim();
+    if (rdDealId && !extrairIdRdFront_(rdDealId)) return mostrarToast('Informe o ID de 24 caracteres ou o link completo da negociação do RD.', 'error');
+    const textoOriginal = botao.textContent; botao.disabled = true; botao.textContent = 'Salvando...';
+    google.script.run.withSuccessHandler(resposta => {
+      estado.auditorias = resposta.auditorias || [];
+      if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = resposta.auditoria;
+      renderizarAuditorias(); mostrarToast(resposta.mensagem, 'success');
+    }).withFailureHandler(erro => { botao.disabled = false; botao.textContent = textoOriginal; tratarErro(erro); })
+      .salvarIdRdAuditoriaV3({ idAuditoria: idAuditoria, rdDealId: rdDealId });
+  }
+
+  function renderizarResumoEnviosRdAuditorias_() {
+    const alvo = document.getElementById('resumoEnviosRdAuditorias');
+    if (!alvo) return;
+    const auditorias = (estado.auditorias || []).filter(item => Boolean(item.resultado) && Boolean(item.linkCrm));
+    const enviadas = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
+    const erros = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
+    const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase()));
+    const porFuncao = funcao => auditorias.filter(item => String(item.tipoAuditoria || '').toUpperCase() === funcao);
+    const metricas = [
+      ['Elegíveis para CRM', auditorias.length, 'Auditorias com resultado e negociação vinculada.'],
+      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas registradas no RD.'],
+      ['Pendentes de envio', pendentes.length, 'Aguardando revisão e confirmação de envio.'],
+      ['Erros de envio', erros.length, 'Precisam de conferência antes de tentar novamente.'],
+      ['SDR vinculadas', porFuncao('SDR').length, 'Auditorias SDR elegíveis ao CRM.'],
+      ['Closer vinculadas', porFuncao('CLOSER').length, 'Auditorias Closer prontas para revisão e envio manual.']
+    ];
+    alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
+  }
+
+  function descartarAuditoriaV3Front(idAuditoria) {
+    const item = (estado.auditorias || []).find(auditoria => String(auditoria.idAuditoria || '') === String(idAuditoria || ''));
+    if (!item) return mostrarToast('Auditoria não encontrada.', 'error');
+    if (!window.confirm('Descartar esta auditoria em revisão? Ela sairá do histórico ativo e a interação poderá ser auditada novamente.')) return;
+    mostrarLoading('Descartando a auditoria...');
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || [];
+        if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = null;
+        renderizarAuditorias();
+        esconderLoading();
+        mostrarToast(resposta.mensagem, 'success');
+      })
+      .withFailureHandler(erro => { esconderLoading(); tratarErro(erro); })
+      .descartarAuditoriaV3({ idAuditoria: idAuditoria });
+  }
+
+  function excluirAuditoriaV3Front(idAuditoria) {
+    const item = (estado.auditorias || []).find(auditoria => String(auditoria.idAuditoria || '') === String(idAuditoria || ''));
+    if (!item) return mostrarToast('Auditoria não encontrada.', 'error');
+    if (!window.confirm('Excluir esta auditoria e liberar a interação para uma nova geração? O Google Docs criado será movido para a lixeira.')) return;
+    mostrarLoading('Excluindo a auditoria...');
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || [];
+        if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = null;
+        renderizarAuditorias();
+        esconderLoading();
+        mostrarToast(resposta.mensagem, 'success');
+      })
+      .withFailureHandler(erro => { esconderLoading(); tratarErro(erro); })
+      .excluirAuditoriaV3({ idAuditoria: idAuditoria });
+  }
+
+  function prepararEnvioAuditoriaRdFront(idAuditoria, botao) {
+    if (botao) { botao.disabled = true; botao.textContent = 'Preparando...'; }
+    google.script.run
+      .withSuccessHandler(preview => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Enviar resultado ao RD'; }
+        const confirmado = window.confirm(
+          'Registrar esta anotação no histórico da negociação ' + (preview.oportunidade || preview.dealId) + '?\n\n' +
+          preview.texto + '\n\nATENÇÃO: ' + preview.aviso
+        );
+        if (!confirmado) return;
+        enviarAuditoriaParaRdFront(idAuditoria, preview.texto, botao);
+      })
+      .withFailureHandler(erro => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Enviar resultado ao RD'; }
+        tratarErro(erro);
+      })
+      .prepararEnvioAuditoriaRd(idAuditoria);
+  }
+
+  function enviarAuditoriaParaRdFront(idAuditoria, texto, botao) {
+    if (botao) { botao.disabled = true; botao.textContent = 'Enviando ao RD...'; }
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || estado.auditorias;
+        renderizarAuditorias();
+        mostrarToast(resposta.mensagem, 'success');
+      })
+      .withFailureHandler(erro => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Enviar resultado ao RD'; }
+        tratarErro(erro);
+      })
+      .enviarAuditoriaParaRd({ idAuditoria: idAuditoria, texto: texto });
   }
 
   function salvarLinkCircleAuditoriaFront(idAuditoria) {
@@ -7655,7 +7798,7 @@
           <div class="field full"><label>Highlights <span class="muted">(um por linha)</span></label><textarea id="formalEditHighlights">${escapeHtml((r.highlights || []).join('\n'))}</textarea></div>
           <div class="field full"><label>Necessidades <span class="muted">(necessidade | contexto | prioridade)</span></label><textarea id="formalEditNecessidades" style="min-height:140px">${escapeHtml((r.necessidades_identificadas || []).map(x => [x.necessidade, x.contexto, x.prioridade].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Decisões tomadas <span class="muted">(uma por linha)</span></label><textarea id="formalEditDecisoes">${escapeHtml((r.decisoes_tomadas || []).join('\n'))}</textarea></div>
-          <div class="field full"><label>Acompanhamento das auditorias <span class="muted">(origem | ponto | status | evidência desta reunião)</span></label><textarea id="formalEditAcompanhamento" style="min-height:150px">${escapeHtml((r.acompanhamento_auditorias || []).map(x => [x.origem, x.ponto, x.status, x.evidencia_reuniao].join(' | ')).join('\n'))}</textarea></div>
+          <div class="field full"><label>Acompanhamento das auditorias <span class="muted">(origem | ponto | status | evidência desta reunião)</span></label><textarea id="formalEditAcompanhamento" style="min-height:150px">${escapeHtml(formalAcompanhamentoAtual_(r.acompanhamento_auditorias).map(x => [x.origem, x.ponto, x.status, x.evidencia_reuniao].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Ajustes operacionais <span class="muted">(comportamento | o que fazer | como executar | frequência | indicador | responsável | prazo)</span></label><textarea id="formalEditAjustes" style="min-height:190px">${escapeHtml((r.ajustes_operacionais || []).map(x => [x.comportamento, x.o_que_fazer, x.como_executar, x.frequencia, x.indicador, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Próximos passos <span class="muted">(ação | responsável | prazo)</span></label><textarea id="formalEditPassos" style="min-height:140px">${escapeHtml((r.proximos_passos || []).map(x => [x.acao, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Pendências <span class="muted">(uma por linha)</span></label><textarea id="formalEditPendencias">${escapeHtml((r.pendencias || []).join('\n'))}</textarea></div>
@@ -7699,7 +7842,7 @@
       if (pontos.length && !/principais pontos discutidos na reuni[aã]o\s*:/i.test(composto)) {
         composto += `${composto ? '\n\n' : ''}Principais pontos discutidos na reunião:\n\n${pontos.map((ponto, indice) => `${indice + 1}. ${ponto}`).join('\n')}`;
       }
-      const auditorias = (Array.isArray(r.acompanhamento_auditorias) ? r.acompanhamento_auditorias : []).map(item => {
+      const auditorias = formalAcompanhamentoAtual_(r.acompanhamento_auditorias).map(item => {
         const origem = String((item || {}).origem || '').trim();
         const ponto = String((item || {}).ponto || '').trim();
         const status = String((item || {}).status || '').trim();
@@ -7711,6 +7854,17 @@
         composto += `${composto ? '\n\n' : ''}Acompanhamento das auditorias:\n\n${auditorias.map((item, indice) => `${indice + 1}. ${item}`).join('\n')}`;
       }
       return composto;
+    }
+
+    function formalAcompanhamentoAtual_(itens) {
+      return (Array.isArray(itens) ? itens : []).filter(item => {
+        const origem = normalizarComparacaoFront((item || {}).origem || '');
+        const status = normalizarComparacaoFront((item || {}).status || '');
+        const evidencia = normalizarComparacaoFront((item || {}).evidencia_reuniao || '');
+        if (origem.includes('formalizacao anterior')) return false;
+        if (status === 'nao discutido' && evidencia.includes('nao ha mencao na transcricao atual')) return false;
+        return true;
+      });
     }
 
     function lerEditorFormalizacao_() {
@@ -7800,9 +7954,42 @@
         const avisoPreAprovada = item.preAprovada
           ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
           : '';
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const podeAprovar = item.status !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
+        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       });
       salvarCacheFormalizacoesFront_();
+    }
+
+    function aprovarFormalizacaoHistoricoFront(idFormalizacao) {
+      const item = (estado.formalizacoes || []).find(formalizacao =>
+        String(formalizacao.idFormalizacao || '') === String(idFormalizacao || '')
+      );
+      if (!item || !item.resultado || !Object.keys(item.resultado).length) {
+        return mostrarToast('Formalização não encontrada ou sem conteúdo para aprovação.', 'error');
+      }
+      const botao = document.getElementById('btnAprovarHistorico_' + idFormalizacao);
+      if (botao) { botao.disabled = true; botao.textContent = 'Aprovando...'; }
+      google.script.run
+        .withSuccessHandler(resposta => {
+          estado.formalizacoes = resposta.formalizacoes || [];
+          estado.formalizacoesResumoClientes = resposta.formalizacoes || [];
+          if (estado.formalizacaoAtual && String(estado.formalizacaoAtual.idFormalizacao || '') === String(idFormalizacao || '')) {
+            estado.formalizacaoAtual = resposta.formalizacao;
+            renderizarEditorFormalizacao(resposta.formalizacao);
+          }
+          renderizarHistoricoFormalizacoes();
+          mostrarToast(resposta.mensagem || 'Formalização aprovada.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar'; }
+          tratarErro(erro);
+        })
+        .salvarFormalizacaoReuniao({
+          idFormalizacao: item.idFormalizacao,
+          idCliente: item.idCliente || '',
+          status: 'APROVADA',
+          resultado: item.resultado
+        });
     }
 
     function salvarLinkCircleFormalizacaoFront(idFormalizacao) {
@@ -8223,12 +8410,13 @@
       }
       const rotuloEquipe = { SALES_OPS: 'Sales Ops', MIDIA: 'Mídia', CLIENTE_OUTRO: 'Cliente / outro', SEM_RESPONSAVEL: 'Sem responsável' };
       const classeStatus = { PENDENTE: 'warning', EM_ANDAMENTO: '', CONCLUIDA: 'success' };
-      const renderizarTabela = itens => `<div class="table-wrap"><table style="min-width:1040px"><thead><tr><th>Tarefa</th><th>Equipe</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Origem</th><th>Ações</th></tr></thead><tbody>${itens.map(item => `<tr>
+      const renderizarTabela = itens => `<div class="table-wrap"><table style="min-width:1120px"><thead><tr><th>Copiar</th><th>Tarefa</th><th>Equipe</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Origem</th><th>Ações</th></tr></thead><tbody>${itens.map(item => `<tr>
+        <td><button class="btn secondary" type="button" data-texto="${escapeAtributo(textoTarefaFormalizacaoParaCopiar_(item))}" onclick="copiarTarefaFormalizacao_(this.dataset.texto, this)">Copiar</button></td>
         <td style="min-width:300px"><strong>${escapeHtml(item.acao)}</strong>${item.criterioConclusao ? `<div class="small muted" style="margin-top:5px"><strong>Concluído quando:</strong> ${escapeHtml(item.criterioConclusao)}</div>` : ''}</td>
         <td><span class="status">${escapeHtml(rotuloEquipe[item.equipe] || item.equipe)}</span></td><td>${escapeHtml(item.responsavel || 'Não definido')}</td><td>${escapeHtml(item.prazo || 'Não definido')}</td>
         <td><span class="status ${classeStatus[item.status] || ''}">${escapeHtml(rotuloStatusTarefaFormalizacao_(item.status))}</span></td>
         <td><div>${escapeHtml(item.tituloReuniao || 'Formalização')}</div><div class="small muted">${item.origem === 'AJUSTE_OPERACIONAL' ? 'Ajuste operacional' : 'Próximo passo'}</div></td>
-        <td><div class="actions" style="margin:0;min-width:240px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
+        <td><div class="actions" style="margin:0;min-width:250px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
       </tr>`).join('')}</tbody></table></div>`;
       const porData = {};
       filtradas.forEach(item => {
@@ -8261,6 +8449,23 @@
         if (botao) { botao.disabled = false; botao.textContent = 'Regularizar atrasadas agora'; }
         tratarErro(erro);
       }).iniciarRecuperacaoFormalizacoesAtrasadas();
+    }
+
+    async function copiarTarefaFormalizacao_(texto, botao) {
+      const rotuloOriginal = botao ? botao.textContent : 'Copiar tarefa';
+      try {
+        await copiarTextoCompatibilidade_(texto);
+        if (botao) botao.textContent = 'Copiada';
+        mostrarToast('Texto da tarefa copiado.', 'success');
+      } catch (erro) {
+        mostrarToast('Não foi possível copiar o texto da tarefa.', 'error');
+      } finally {
+        if (botao) setTimeout(() => { botao.textContent = rotuloOriginal; }, 1400);
+      }
+    }
+
+    function textoTarefaFormalizacaoParaCopiar_(item) {
+      return ['Responsável: ' + String(item.responsavel || 'Não definido'), 'Tarefa: ' + String(item.acao || ''), item.prazo ? 'Prazo: ' + item.prazo : '', item.criterioConclusao ? 'Concluído quando: ' + item.criterioConclusao : ''].filter(Boolean).join('\n');
     }
 
     function rotuloStatusTarefaFormalizacao_(status) {
