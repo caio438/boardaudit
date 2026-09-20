@@ -1,28 +1,38 @@
-name: Probe Apps Script function execution
+name: Smoke controlled audit
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
 
 permissions:
   contents: read
 
 jobs:
-  probe:
-    if: "${{ startsWith(github.event.head_commit.message, 'Smoke:') }}"
+  smoke:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          startsWith(github.event.workflow_run.head_commit.message, 'Smoke audit:') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     environment: apps-script-production
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Configure clasp authentication
         shell: bash
@@ -33,11 +43,20 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
-      - name: Probe read-only Apps Script execution
+      - name: Run synthetic end-to-end audit
         shell: bash
         run: |
           set -euo pipefail
-          npx clasp run-function obterVersaoFrontend --params '[]'
+          npx clasp run-function TESTE_SMOKE_AUDITORIA_AUTOMATICA --params '[]' | tee /tmp/smoke-audit-result.txt
+
+      - name: Publish smoke result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-audit-result-${{ github.run_id }}
+          path: /tmp/smoke-audit-result.txt
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Cleanup auth
         if: always()
