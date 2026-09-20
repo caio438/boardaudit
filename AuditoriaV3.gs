@@ -1712,7 +1712,7 @@ function executarAuditoriaV3(dados) {
     const resultado = audV3NormalizarResultado_(resultadoIa, criterios, identidade, interacao, pitch, tipo);
     resultado.metadados = resultado.metadados || {};
     resultado.metadados.modelo_ia = modeloIaUsado;
-    audV3ValidarResultadoOficial_(resultado, tipo, criterios, transcricao.CONTEUDO);
+    audV3ValidarResultadoOficial_(resultado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
     const texto = audV3ResultadoTexto_(resultado, tipo);
 
     let scoreValue = '';
@@ -1821,7 +1821,7 @@ function aprovarAuditoriaV3(idAuditoria) {
     throw new Error('A fonte desta auditoria mudou após a geração. Gere uma nova análise antes de aprovar.');
   }
   const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
-  audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO);
+  audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -2167,7 +2167,7 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   }).join('');
 }
 
-function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, transcricao) {
+function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
   resultado = resultado || {};
   criterios = criterios || {};
   const tipo = String(tipoAuditoria || '').toUpperCase();
@@ -2197,6 +2197,14 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
   const score = Number(((resultado.pontuacao_calculada || {}).score_5));
   if (!isFinite(score) || score < 0 || score > 5) throw new Error('Resultado ' + tipo + ' com score oficial inválido.');
 
+  const validarRegraPitch = function(trecho, contexto) {
+    const regra = String(trecho || '').trim();
+    if (!regra || /^n[aã]o evidenciado/i.test(regra)) return;
+    if (!audV3TrechoExisteNaTranscricao_(regra, conteudoPitch)) {
+      throw new Error(contexto + ' contém uma regra que não foi localizada no pitch oficial.');
+    }
+  };
+
   const validarEvidencia = function(trecho, locutor, contexto) {
     const fala = String(trecho || '').trim();
     const papel = String(locutor || '').trim().toUpperCase();
@@ -2209,6 +2217,7 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
 
   avaliados.forEach(function(item) {
     validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia, 'O critério ' + String(item.id || 'sem id'));
+    validarRegraPitch(item.regra_pitch, 'O critério ' + String(item.id || 'sem id'));
   });
 
   if (tipo === 'SDR') {
@@ -2222,6 +2231,7 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
     });
     etapas.forEach(function(item) {
       validarEvidencia(item.fato_transcricao, item.locutor_evidencia, 'A etapa SDR ' + String(item.etapa || 'sem nome'));
+      validarRegraPitch(item.regra_pitch, 'A etapa SDR ' + String(item.etapa || 'sem nome'));
     });
     const perguntas = resultado.perguntas_qualificacao || {};
     ['corretas', 'com_desvio'].forEach(function(chave) {
