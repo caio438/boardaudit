@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+
+const yaml = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
+
+assert.ok(yaml.includes('workflow_run:'), 'Deploy automático não depende da validação.');
+assert.ok(yaml.includes('Validate Apps Script'), 'Deploy automático não observa o workflow de validação.');
+assert.ok(yaml.includes("github.event.workflow_run.conclusion == 'success'"), 'Deploy não exige validação com sucesso.');
+assert.ok(yaml.includes("github.event.workflow_run.head_branch == 'main'"), 'Deploy automático não está restrito à main.');
+assert.ok(yaml.includes('environment: apps-script-production'), 'Deploy não usa o Environment que contém a credencial do clasp.');
+assert.ok(yaml.includes('Pull current production for preservation'), 'Deploy não preserva a produção atual antes da publicação.');
+assert.ok(yaml.includes('Save rollback snapshot'), 'Deploy não cria snapshot de rollback.');
+assert.ok(yaml.includes('preserving remote-only files'), 'Deploy pode apagar arquivos existentes apenas na produção.');
+assert.ok(yaml.includes('prepare-dark-mode-deploy.mjs'), 'Build ID/refresh do frontend não é atualizado no deploy.');
+assert.ok(yaml.includes('clasp" push --force'), 'Deploy não envia o projeto para Apps Script.');
+assert.ok(yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA'), 'Deployment ID de produção não está fixado no workflow.');
+
+console.log('Deploy automático validado: main verde -> snapshot -> preservação -> push -> deployment.');
