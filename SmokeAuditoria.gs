@@ -1,3 +1,27 @@
+function TESTE_SMOKE_DIAGNOSTICO_CONTEXTO() {
+  const ativo = String(Session.getActiveUser().getEmail() || '');
+  const efetivo = String(Session.getEffectiveUser().getEmail() || '');
+  try {
+    const ss = SpreadsheetApp.openById(APP.spreadsheetId);
+    const nome = ss.getName();
+    return {
+      sucesso: true,
+      activeUser: ativo,
+      effectiveUser: efetivo,
+      spreadsheetAcessivel: true,
+      spreadsheetNome: nome
+    };
+  } catch (erro) {
+    throw new Error(
+      'SMOKE_DIAGNOSTICO_STORAGE|' +
+      'active=' + ativo +
+      '|effective=' + efetivo +
+      '|spreadsheetId=' + String(APP.spreadsheetId || '') +
+      '|erro=' + String(erro && erro.message ? erro.message : erro)
+    );
+  }
+}
+
 /**
  * Smoke test controlado do pipeline de auditoria.
  *

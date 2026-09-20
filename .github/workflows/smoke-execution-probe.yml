@@ -43,18 +43,34 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
+      - name: Diagnose remote execution context
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run-function TESTE_SMOKE_DIAGNOSTICO_CONTEXTO --params '[]' 2>&1 | tee /tmp/smoke-context.txt
+          if grep -q '^Exception:' /tmp/smoke-context.txt; then
+            cat /tmp/smoke-context.txt
+            exit 1
+          fi
+
       - name: Run synthetic end-to-end audit
         shell: bash
         run: |
           set -euo pipefail
-          npx clasp run-function TESTE_SMOKE_AUDITORIA_AUTOMATICA --params '[]' | tee /tmp/smoke-audit-result.txt
+          npx clasp run-function TESTE_SMOKE_AUDITORIA_AUTOMATICA --params '[]' 2>&1 | tee /tmp/smoke-audit-result.txt
+          if grep -q '^Exception:' /tmp/smoke-audit-result.txt; then
+            cat /tmp/smoke-audit-result.txt
+            exit 1
+          fi
 
       - name: Publish smoke result artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-audit-result-${{ github.run_id }}
-          path: /tmp/smoke-audit-result.txt
+          path: |
+            /tmp/smoke-context.txt
+            /tmp/smoke-audit-result.txt
           if-no-files-found: warn
           retention-days: 3
 
