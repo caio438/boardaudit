@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const contexto = vm.createContext({ console });
-vm.runInContext(codigo, contexto);
+vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_};', contexto);
 
 const resultado = {
   etapas_pitch: [
@@ -63,4 +63,72 @@ assert.equal(contraditorio.etapas_pitch[0].status, 'DESVIO_EXECUCAO');
 assert.equal(contraditorio.etapas_pitch[0].nota, 2.5);
 assert.equal(contraditorio.etapas_pitch[0].divergencia_identificada, true);
 assert.match(contraditorio.etapas_pitch[0].desvio, /qualificação ocorreu depois/i);
+
+const criteriosOficiais = contexto.apiV5.criteria();
+const evidenciaOficial = 'Qual é o segmento?';
+const regraOficial = 'Comportamento obrigatório do pitch.';
+const resultadoOficialSdr = {
+  criterios_avaliados: criteriosOficiais.dimensoes.map(item => ({
+    id: item.id,
+    nome: item.nome,
+    aplicavel: true,
+    status: 'CONFORME',
+    o_que_foi_dito: evidenciaOficial,
+    locutor_evidencia: 'SDR',
+    regra_pitch: regraOficial,
+    divergencia: 'Não houve divergência.',
+    correcao_pratica: 'Manter a execução.',
+    pontuacao: 5,
+    justificativa_nota: 'Execução conforme.'
+  })),
+  etapas_pitch: criteriosOficiais.checklist.map(nome => ({
+    etapa: nome,
+    status: 'CONFORME',
+    fato_transcricao: evidenciaOficial,
+    locutor_evidencia: 'SDR',
+    regra_pitch: regraOficial,
+    desvio: 'Não houve divergência.'
+  })),
+  perguntas_qualificacao: { corretas: [], com_desvio: [], ausentes: [] },
+  pontuacao_calculada: { score_5: 5, itens_avaliados: 5 }
+};
+
+contexto.apiV5.validateOfficial(
+  resultadoOficialSdr,
+  'SDR',
+  criteriosOficiais,
+  'SDR: ' + evidenciaOficial,
+  regraOficial
+);
+
+const sdrComEvidenciaInventada = JSON.parse(JSON.stringify(resultadoOficialSdr));
+sdrComEvidenciaInventada.etapas_pitch[0].fato_transcricao = 'Frase inventada pelo modelo.';
+assert.throws(
+  () => contexto.apiV5.validateOfficial(sdrComEvidenciaInventada, 'SDR', criteriosOficiais, 'SDR: ' + evidenciaOficial, regraOficial),
+  /não foi localizada na transcrição original/,
+  'Evidência não presente na transcrição precisa bloquear a auditoria SDR.'
+);
+
+const sdrComRegraInventada = JSON.parse(JSON.stringify(resultadoOficialSdr));
+sdrComRegraInventada.etapas_pitch[0].regra_pitch = 'Regra inexistente no pitch.';
+assert.throws(
+  () => contexto.apiV5.validateOfficial(sdrComRegraInventada, 'SDR', criteriosOficiais, 'SDR: ' + evidenciaOficial, regraOficial),
+  /não foi localizada literalmente no pitch oficial/,
+  'Regra não presente no pitch precisa bloquear a auditoria SDR.'
+);
+
+const schemaSdr = contexto.apiV5.schema();
+if (schemaSdr.properties.criterios_avaliados.items.properties.pontuacao) {
+  throw new Error('A IA ainda pode definir pontuação diretamente no schema SDR.');
+}
+if (!schemaSdr.properties.criterios_avaliados.items.properties.locutor_evidencia) {
+  throw new Error('O schema SDR não exige rastreabilidade do locutor da evidência.');
+}
+
+const promptTeste = 'PROMPT OFICIAL SDR TESTE';
+assert.equal(
+  contexto.apiV5.promptOfficial({ PROMPT_AUDITORIA: promptTeste, TIPO_AUDITORIA: 'SDR' }, 'SDR'),
+  promptTeste
+);
+
 console.log('Estrutura SDR da produção atual validada.');
