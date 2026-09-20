@@ -14,5 +14,10 @@ assert.ok(yaml.includes('preserving remote-only files'), 'Deploy pode apagar arq
 assert.ok(yaml.includes('prepare-dark-mode-deploy.mjs'), 'Build ID/refresh do frontend não é atualizado no deploy.');
 assert.ok(yaml.includes('clasp" push --force'), 'Deploy não envia o projeto para Apps Script.');
 assert.ok(yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA'), 'Deployment ID de produção não está fixado no workflow.');
+assert.ok(yaml.includes('Verify live Apps Script after deployment'), 'Deploy não reconfirma a fonte ao vivo após publicar.');
+assert.ok(yaml.includes('POST_DEPLOY_SOURCE_MATCH=1'), 'Deploy não valida correspondência pós-publicação.');
+assert.ok(yaml.includes('function audV3FinalizarAutomaticamente_'), 'Deploy não verifica o pipeline automático no Apps Script ao vivo.');
+assert.ok(yaml.includes('function audRdPublicarAutomaticamente_'), 'Deploy não verifica a publicação automática no RD ao vivo.');
+assert.ok(yaml.includes('Probe web app response'), 'Deploy não testa a resposta do web app após publicar.');
 
-console.log('Deploy automático validado: main verde -> snapshot -> preservação -> push -> deployment.');
+console.log('Deploy automático validado: main verde -> snapshot -> preservação -> push -> deployment -> verificação ao vivo.');
