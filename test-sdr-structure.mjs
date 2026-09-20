@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const contexto = vm.createContext({ console });
-vm.runInContext(codigo, contexto);
+vm.runInContext(codigo + '\nthis.api={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_};', contexto);
 
 const resultado = {
   etapas_pitch: [
@@ -47,6 +47,49 @@ assert.equal(resultado.perguntas_qualificacao.total_ausentes, 1);
 assert.equal(resultado.etapas_pitch[0].nota, 2.5);
 assert.equal(resultado.etapas_pitch[3].nota, 0);
 assert.equal(resultado.etapas_pitch[4].nota, null);
+
+const criteriosOficiais = contexto.api.criteria();
+const resultadoOficialSdr = {
+  criterios_avaliados: criteriosOficiais.dimensoes.map(item => ({
+    id: item.id,
+    nome: item.nome,
+    aplicavel: true,
+    status: 'CONFORME',
+    o_que_foi_dito: 'Qual é o segmento?',
+    locutor_evidencia: 'SDR',
+    regra_pitch: 'Comportamento obrigatório do pitch.',
+    divergencia: 'Não houve divergência.',
+    pontuacao: 5,
+    justificativa_nota: 'Execução conforme.'
+  })),
+  etapas_pitch: criteriosOficiais.checklist.map(nome => ({
+    etapa: nome,
+    status: 'CONFORME',
+    fato_transcricao: 'Qual é o segmento?',
+    locutor_evidencia: 'SDR',
+    regra_pitch: 'Comportamento obrigatório do pitch.',
+    desvio: 'Não houve divergência.'
+  })),
+  perguntas_qualificacao: { corretas: [], com_desvio: [], ausentes: [] },
+  pontuacao_calculada: { score_5: 5 }
+};
+contexto.api.validateOfficial(resultadoOficialSdr, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?');
+
+const sdrComEvidenciaInventada = JSON.parse(JSON.stringify(resultadoOficialSdr));
+sdrComEvidenciaInventada.etapas_pitch[0].fato_transcricao = 'Frase inventada pelo modelo.';
+assert.throws(
+  () => contexto.api.validateOfficial(sdrComEvidenciaInventada, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?'),
+  /não foi localizada na transcrição original/,
+  'Evidência não presente na transcrição precisa bloquear a auditoria SDR.'
+);
+
+const sdrSemEtapa = JSON.parse(JSON.stringify(resultadoOficialSdr));
+sdrSemEtapa.etapas_pitch.pop();
+assert.throws(
+  () => contexto.api.validateOfficial(sdrSemEtapa, 'SDR', criteriosOficiais, 'SDR: Qual é o segmento?'),
+  /todas as etapas oficiais/,
+  'SDR incompleto não pode virar resultado oficial.'
+);
 
 const contraditorio = {
   etapas_pitch: [{
