@@ -1,0 +1,75 @@
+name: QA Hitecnet HEAD OAuth once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet HEAD:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Extract Google access token
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Execute Hitecnet audit on HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          URL="https://script.google.com/macros/s/AKfycbxk_jvoxhRCiHKjTSN6wKWH3cbh07ziB6xOYBI5rWuE/dev?qa_hitecnet_stec=1"
+          code="$(curl -L -sS -H "Authorization: Bearer $TOKEN" -o /tmp/hitecnet-head.txt -w '%{http_code}' "$URL" || true)"
+          echo "HEAD_HTTP_STATUS=$code"
+          if [ "$code" != "200" ]; then
+            echo "HITECNET_HEAD_AUDIT=HTTP_FAILURE"
+            exit 1
+          fi
+          if ! grep -q '"sucesso"[[:space:]]*:[[:space:]]*true' /tmp/hitecnet-head.txt; then
+            echo "HITECNET_HEAD_AUDIT=NO_SUCCESS_MARKER"
+            exit 1
+          fi
+          echo "HITECNET_HEAD_AUDIT=SUCCESS"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/hitecnet-head.txt
