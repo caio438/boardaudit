@@ -3357,6 +3357,85 @@ function audV3EncerramentoPlanoPadrao_(funcaoAuditada) {
   return '🚀 Esta análise foi conduzida para apoiar a Operação de Vendas na implementação de melhorias escaláveis, otimizando a conversão de leads e fortalecendo a aderência às melhores práticas do funil. O direcionamento busca tornar a abordagem do SDR mais assertiva, previsível e consistente. 🚀';
 }
 
+function audV3Espaco_(body, pontos) {
+  const p = body.appendParagraph('');
+  p.setSpacingAfter(Number(pontos || 8));
+  return p;
+}
+
+function audV3TabelaResultadoInicial_(body, resultado, tipo) {
+  resultado = resultado || {};
+  tipo = String(tipo || 'SDR').toUpperCase();
+  const criterios = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const pc = resultado.pontuacao_calculada || {};
+  audV3Titulo_(body, 'Resultado da Auditoria', DocumentApp.ParagraphHeading.HEADING1);
+  audV3Tabela_(body, [['Critério', 'Status', 'Score']].concat(
+    criterios.map(function(item) {
+      return [
+        item.nome || item.id || '',
+        audV3RotuloStatus_(item.status || ''),
+        item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A'
+      ];
+    }).concat([[
+      'Score consolidado',
+      tipo === 'CLOSER' ? String(resultado.semaforo || '') : '',
+      pc.score_5 === null || pc.score_5 === undefined ? 'Não calculável' : String(pc.score_5) + '/5 (' + String(pc.score_percentual || 0) + '%)'
+    ]])
+  ));
+  audV3Espaco_(body, 10);
+}
+
+function audV3ChecklistInicial_(body, resultado, titulo) {
+  const checklist = Array.isArray((resultado || {}).checklist) ? resultado.checklist : [];
+  audV3Titulo_(body, titulo || 'Checklist do Processo', DocumentApp.ParagraphHeading.HEADING1);
+  audV3Tabela_(body, [['Etapa', 'Resultado']].concat(checklist.map(function(item) {
+    return [item.item || '', audV3RotuloStatus_(item.resultado || '')];
+  })));
+  audV3Espaco_(body, 12);
+}
+
+function audV3ConclusaoDocumento_(body, resultado, tipo) {
+  resultado = resultado || {};
+  const resumo = resultado.resumo_executivo || {};
+  const feedback = resultado.feedback || {};
+  const passos = Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : [];
+  const fortes = Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes.filter(Boolean) : [];
+  const melhorias = Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria.filter(Boolean) : [];
+  const primeiroPasso = passos.find(function(item) { return item && item.acao; }) || {};
+
+  audV3Titulo_(body, 'Conclusão', DocumentApp.ParagraphHeading.HEADING1);
+
+  let p1 = '';
+  if (fortes.length) {
+    p1 = (String(tipo || '').toUpperCase() === 'CLOSER' ? 'O Closer ' : 'A SDR ') +
+      'executou corretamente ' + fortes.slice(0, 3).join('; ').replace(/\.$/, '') + '.';
+  } else {
+    p1 = String(resumo.visao_geral || 'A análise foi concluída com base nas evidências da interação e no pitch vigente.');
+  }
+
+  let p2 = '';
+  if (melhorias.length) {
+    p2 = 'O principal ajuste está em ' + melhorias.slice(0, 2).join(' e ').replace(/\.$/, '') + '.';
+  } else {
+    p2 = String(resumo.recomendacao_central || 'Os ajustes devem seguir os desvios identificados ao longo da análise.');
+  }
+
+  let p3 = '';
+  if (primeiroPasso.acao) {
+    p3 = 'Na prática, ' + String(primeiroPasso.acao).replace(/^./, function(letra) { return letra.toLowerCase(); }).replace(/\.$/, '') + '.';
+    if (primeiroPasso.criterio_conclusao) {
+      p3 += ' O ajuste será considerado aplicado quando ' +
+        String(primeiroPasso.criterio_conclusao).replace(/^./, function(letra) { return letra.toLowerCase(); }).replace(/\.$/, '') + '.';
+    }
+  } else {
+    p3 = 'Na prática, a execução precisa incorporar as correções indicadas nesta auditoria antes da próxima interação.';
+  }
+
+  [p1, p2, p3].forEach(function(texto) {
+    body.appendParagraph(audV3TextoDocumento_(texto, '')).setSpacingAfter(12);
+  });
+}
+
 function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const m = r.metadados || {};
   const data = audV3DataTexto_(interacao.DATA_INTERACAO).replace(/[/:]/g, '-');
@@ -3376,6 +3455,10 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
     ['Data e horário', m.data_hora || 'Não evidenciado'],
     ['Pitch', (pitch.NOME_VERSAO || '') + ' — v' + (pitch.NUMERO_VERSAO || '-')]
   ]);
+  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3Espaco_(body, 12);
+  audV3TabelaResultadoInicial_(body, r, 'SDR');
+  audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Script');
 
   const contexto = r.resumo_contato || {};
   audV3Titulo_(body, 'Resumo do contato com o lead', DocumentApp.ParagraphHeading.HEADING1);
@@ -3384,12 +3467,6 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3RotuloTexto_(body, 'Evidência da motivação', contexto.evidencia_motivacao || 'Não evidenciado');
   audV3RotuloTexto_(body, 'Necessidade principal', contexto.necessidade_principal || 'Não evidenciado');
   audV3RotuloTexto_(body, 'Resultado do contato', contexto.resultado_contato || 'Não evidenciado');
-
-  const etapasPitch = Array.isArray(r.etapas_pitch) ? r.etapas_pitch : [];
-  audV3Titulo_(body, 'Aderência por etapa do pitch', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Etapa', 'Status', 'Nota', 'Fala do SDR', 'O que consta no pitch', 'Divergência', 'Correção prática', 'Impacto provável']].concat(etapasPitch.map(item => [
-    item.etapa || '', audV3RotuloStatus_(item.status), item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao || '', item.regra_pitch || '', item.desvio || '', item.correcao_pratica || '', item.impacto_resultado || ''
-  ])));
 
   audV3Titulo_(body, '1. Aderência ao pitch completo e à introdução', DocumentApp.ParagraphHeading.HEADING1);
   audV3AderenciaSdr_(body, r.aderencia_script || {});
@@ -3443,12 +3520,10 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3Tabela_(body, [['Critério não atingido', 'Impacto de não executar corretamente', 'Benefício da correção', 'Indicador que pode ser afetado']].concat((r.impactos_nao_conformidades || []).map(item => [
     item.criterio || '', item.impacto_de_nao_executar || '', item.beneficio_de_corrigir || '', item.indicador_que_pode_ser_afetado || ''
   ])));
-  audV3Titulo_(body, '11. Checklist de Adesão ao Script', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
   audV3AdicionarProximosPassosEquipes_(body, r);
-  audV3Titulo_(body, '13. Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'chamada'));
-  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3ConclusaoDocumento_(body, r, 'SDR');
+  audV3Titulo_(body, 'Duração Total da Chamada', DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'chamada')).setSpacingAfter(12);
 
   doc.saveAndClose();
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
@@ -3474,6 +3549,10 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
     ['Data e horário', m.data_hora || 'Não evidenciado'],
     ['Pitch', (pitch.NOME_VERSAO || '') + ' — v' + (pitch.NUMERO_VERSAO || '-')]
   ]);
+  audV3AdicionarLinkGravacao_(body, interacao);
+  audV3Espaco_(body, 12);
+  audV3TabelaResultadoInicial_(body, r, 'CLOSER');
+  audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Processo');
 
   const contexto = r.resumo_reuniao || {};
   audV3Titulo_(body, 'Resumo do que foi conversado com o lead', DocumentApp.ParagraphHeading.HEADING1);
@@ -3593,12 +3672,10 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3Tabela_(body, [['Critério não atingido', 'Impacto de não executar corretamente', 'Benefício da correção', 'Indicador que pode ser afetado']].concat((r.impactos_nao_conformidades || []).map(item => [
     item.criterio || '', item.impacto_de_nao_executar || '', item.beneficio_de_corrigir || '', item.indicador_que_pode_ser_afetado || ''
   ])));
-  audV3Titulo_(body, 'Checklist de adesão', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Item', 'Resultado', 'Observações']].concat((r.checklist || []).map(item => [item.item || '', audV3RotuloStatus_(item.resultado), item.observacao || ''])));
   audV3AdicionarProximosPassosEquipes_(body, r);
+  audV3ConclusaoDocumento_(body, r, 'CLOSER');
   audV3Titulo_(body, 'Duração total da reunião', DocumentApp.ParagraphHeading.HEADING1);
-  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'reunião'));
-  audV3AdicionarLinkGravacao_(body, interacao);
+  body.appendParagraph(audV3DuracaoRelatorio_(r, interacao, 'reunião')).setSpacingAfter(12);
 
   doc.saveAndClose();
   const pastaId = audV3Configuracao_('PASTA_AUDITORIAS_DRIVE_ID');
@@ -3688,6 +3765,7 @@ function audV3PerguntasSdr_(body, item) {
 function audV3Titulo_(body, texto, nivel) {
   const paragrafo = body.appendParagraph(audV3TextoDocumento_(texto, 'Seção')).setHeading(nivel);
   paragrafo.editAsText().setForegroundColor('#111111');
+  paragrafo.setSpacingBefore(14).setSpacingAfter(8);
   return paragrafo;
 }
 
@@ -3697,6 +3775,7 @@ function audV3RotuloTexto_(body, rotulo, texto) {
   const p = body.appendParagraph(rotuloSeguro + ': ');
   p.editAsText().setBold(0, rotuloSeguro.length, true);
   p.appendText(textoSeguro);
+  p.setSpacingAfter(8);
   return p;
 }
 
@@ -4060,6 +4139,7 @@ function audV3Tabela_(body, linhas) {
       cabecalho.getCell(i).editAsText().setForegroundColor('#ffffff').setBold(true);
     }
   }
+  body.appendParagraph('').setSpacingAfter(8);
   return tabela;
 }
 
