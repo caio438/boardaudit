@@ -204,6 +204,13 @@ jobs:
           echo "POST_DEPLOY_AUTOMATION_MARKERS=1"
           echo "POST_DEPLOY_DEPLOYMENT_ID=1"
 
+      - name: Smoke clasp run read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run obterVersaoFrontend | tee /tmp/clasp-run-smoke.txt
+          grep -q "versao" /tmp/clasp-run-smoke.txt
+
       - name: Probe web app response
         shell: bash
         run: |
