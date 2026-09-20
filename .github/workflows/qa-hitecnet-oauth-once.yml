@@ -1,0 +1,79 @@
+name: QA Hitecnet OAuth once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet OAuth:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Extract Google access token
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const p = process.env.HOME + '/.clasprc.json';
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Execute Hitecnet audit through OAuth dev endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/dev?qa_hitecnet_stec=1"
+          : > /tmp/hitecnet-oauth-result.txt
+
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -L -sS -H "Authorization: Bearer $TOKEN" -o /tmp/hitecnet-oauth-result.txt -w '%{http_code}' "$URL" || true)"
+            if [ "$code" = "200" ] && grep -q '"sucesso"[[:space:]]*:[[:space:]]*true' /tmp/hitecnet-oauth-result.txt; then
+              echo "HITECNET_OAUTH_AUDIT=SUCCESS"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "HITECNET_OAUTH_AUDIT=FAILURE"
+          exit 1
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/hitecnet-oauth-result.txt
