@@ -793,6 +793,152 @@
       .audit-meta { grid-template-columns: 1fr; }
       .journey-summary, .journey-lanes, .operation-base, .meeting-connections, .client-main-grid, .client-materials, .quality-grid, .guide-flow, .roadmap-item { grid-template-columns: 1fr; }
     }
+  
+
+    /* =========================================================
+       MODO NOTURNO
+       Tema fixo do Board Audit
+    ========================================================= */
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --surface: #111827;
+      --surface-2: #172033;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --border: #263244;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --shadow: 0 8px 24px rgba(0, 0, 0, .32);
+    }
+
+    body { background: var(--bg); }
+    .sidebar { background: #070d18; }
+
+    input,
+    select,
+    textarea,
+    .audit-transcript-list,
+    .table-wrap,
+    .loading-box,
+    .modal-conteudo,
+    .material-chip,
+    .audit-sheet,
+    .compact-item,
+    .quality-card,
+    .guide-check {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #738198;
+    }
+
+    select option {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .consumo-barra { background: #263244; }
+
+    .btn.secondary {
+      background: #243044;
+      color: var(--text);
+    }
+
+    .btn.secondary:hover { background: #2f3d54; }
+
+    .status {
+      background: #243044;
+      color: #cbd5e1;
+    }
+
+    .status.success {
+      background: rgba(34, 197, 94, .14);
+      color: #86efac;
+    }
+
+    .status.warning {
+      background: rgba(245, 158, 11, .14);
+      color: #fcd34d;
+    }
+
+    .status.danger {
+      background: rgba(239, 68, 68, .14);
+      color: #fca5a5;
+    }
+
+    .history-date-heading,
+    th {
+      color: var(--text);
+    }
+
+    .task-client-heading,
+    .audit-meta,
+    .audit-json-panel,
+    .audit-json-panel summary,
+    .meeting-connection,
+    .journey-lane {
+      background: var(--surface-2);
+    }
+
+    .material-chip.ok {
+      color: #86efac;
+      border-color: rgba(74, 222, 128, .4);
+      background: rgba(34, 197, 94, .12);
+    }
+
+    .local-error {
+      color: #fca5a5;
+      background: rgba(127, 29, 29, .24);
+      border-color: rgba(248, 113, 113, .35);
+    }
+
+    .audit-sheet {
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .34);
+    }
+
+    .audit-sheet hr {
+      border-top-color: #475569;
+    }
+
+    .audit-report .line-success { color: #86efac; }
+    .audit-report .line-danger { color: #fca5a5; }
+    .audit-report .line-tip {
+      background: rgba(245, 158, 11, .12);
+      border: 1px solid rgba(245, 158, 11, .22);
+    }
+
+    .audit-json-panel {
+      border-color: var(--border);
+    }
+
+    .audit-json-panel summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .audit-report th,
+    .audit-report td {
+      border-color: #334155;
+    }
+
+    .audit-report th {
+      background: #1e293b;
+      color: #e5e7eb;
+    }
+
+    .audit-json-code {
+      background: #07101f;
+      color: #dbeafe;
+    }
+
+    a { color: #60a5fa; }
+
   </style>
 </head>
 
