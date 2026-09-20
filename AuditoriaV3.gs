@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '4.2.0',
+  versao: '4.3.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -996,20 +996,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'SDR',
       PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-      VERSAO_MODELO: '4.0.0',
+      VERSAO_MODELO: '5.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agora,
       ATUALIZADO_EM: agora
     });
   } else {
     const versaoMaiorSdr = Number(String(existente.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 4) {
+    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 5) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloPadrao, {
         NOME_MODELO: 'Auditoria SDR VOLUM',
         TIPO_AUDITORIA: 'SDR',
         PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-        VERSAO_MODELO: '4.0.0',
+        VERSAO_MODELO: '5.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
@@ -1029,20 +1029,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'CLOSER',
       PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-      VERSAO_MODELO: '4.0.0',
+      VERSAO_MODELO: '5.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agoraCloser,
       ATUALIZADO_EM: agoraCloser
     });
   } else {
     const versaoMaior = Number(String(existenteCloser.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 4) {
+    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 5) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloCloserPadrao, {
         NOME_MODELO: 'Auditoria Closer VOLUM',
         TIPO_AUDITORIA: 'CLOSER',
         PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-        VERSAO_MODELO: '4.0.0',
+        VERSAO_MODELO: '5.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
