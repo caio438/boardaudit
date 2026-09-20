@@ -12,7 +12,6 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: apps-script-production
 
     steps:
       - name: Checkout
