@@ -245,7 +245,7 @@ jobs:
           )
           for id in "${ids[@]}"; do
             echo "Reprocessing $id"
-            "$GITHUB_WORKSPACE/node_modules/.bin/clasp" run regenerarAuditoriaGrupoSinergiaParaCrmV3 --params "[\"$id\"]"
+            "$GITHUB_WORKSPACE/node_modules/.bin/clasp" run regenerarAuditoriaGrupoSinergiaParaCrmV3 --nondev --params "[\"$id\"]"
           done
 
       - name: Remove local authentication file
