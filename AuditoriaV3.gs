@@ -3651,10 +3651,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3RotuloTexto_(body, 'Ponto de melhoria', conclusao.ponto_melhoria || '');
 
   audV3Titulo_(body, '9. Pontuação de Qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  const linhasPontuacao = [['Critério', 'Status', 'Nota', 'Evidências e comparação']].concat((r.criterios_avaliados || []).map(item => [
-    item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', audV3ResumoCriterioDocumento_(item, 'SDR')
-  ]));
-  audV3Tabela_(body, linhasPontuacao, [120, 78, 42, 270]);
+  audV3PontuacaoQualidade_(body, r.criterios_avaliados || [], 'SDR');
   const pc = r.pontuacao_calculada || {};
   audV3RotuloTexto_(body, 'Total Score', pc.score_5 === null ? 'Não calculável' : pc.score_5 + ' / 5 (' + pc.score_percentual + '%)');
   audV3RotuloTexto_(body, 'Memória de cálculo', (pc.soma_pontos || 0) + ' pontos em ' + (pc.itens_avaliados || 0) + ' dimensões aplicáveis; ' + (pc.itens_na || 0) + ' N/A.');
@@ -3810,9 +3807,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3Lista_(body, 'Hipóteses de comunicação para o time de mídia', mercado.insights_para_midia || []);
 
   audV3Titulo_(body, 'Pontuação de qualidade', DocumentApp.ParagraphHeading.HEADING1);
-  audV3Tabela_(body, [['Critério', 'Status', 'Nota', 'Evidências e comparação']].concat((r.criterios_avaliados || []).map(item => [
-    item.nome || item.id, audV3RotuloStatus_(item.status), item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A', audV3ResumoCriterioDocumento_(item, 'Closer')
-  ])), [120, 78, 42, 270]);
+  audV3PontuacaoQualidade_(body, r.criterios_avaliados || [], 'Closer');
   const pc = r.pontuacao_calculada || {};
   audV3RotuloTexto_(body, 'Total Score', pc.score_5 === null ? 'Não calculável' : pc.score_5 + ' / 5 (' + pc.score_percentual + '%)');
 
@@ -3959,6 +3954,54 @@ function audV3ResumoCriterioDocumento_(item, papel) {
     'Divergência: ' + audV3TextoDocumento_(item.divergencia, 'Nenhuma divergência registrada.'),
     'Justificativa: ' + audV3TextoDocumento_(item.justificativa_nota, 'Não evidenciada.')
   ].join('\n');
+}
+
+function audV3PontuacaoQualidade_(body, criterios, papel) {
+  const itens = Array.isArray(criterios) ? criterios : [];
+  const rotuloPapel = String(papel || 'profissional');
+
+  const resumo = audV3Tabela_(body, [['Critério', 'Status', 'Nota']].concat(itens.map(function(item) {
+    return [
+      item.nome || item.id || 'Critério',
+      audV3RotuloStatus_(item.status),
+      item.aplicavel ? String(item.pontuacao) + '/5' : 'N/A'
+    ];
+  })), [390, 220, 160]);
+
+  if (resumo) {
+    for (let linha = 1; linha < resumo.getNumRows(); linha++) {
+      const celulaNota = resumo.getRow(linha).getCell(2);
+      for (let filho = 0; filho < celulaNota.getNumChildren(); filho++) {
+        const elemento = celulaNota.getChild(filho);
+        if (elemento.getType() === DocumentApp.ElementType.PARAGRAPH) {
+          elemento.asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        }
+      }
+    }
+  }
+
+  itens.forEach(function(item, indice) {
+    audV3Titulo_(
+      body,
+      String(indice + 1) + '. ' + audV3TextoDocumento_(item.nome || item.id, 'Critério'),
+      DocumentApp.ParagraphHeading.HEADING2
+    );
+
+    const detalhes = audV3Tabela_(body, [
+      ['Análise', 'Conteúdo'],
+      ['Fala do ' + rotuloPapel, item.o_que_foi_dito || 'Não evidenciado.'],
+      ['Regra do pitch', item.regra_pitch || 'Não evidenciado.'],
+      ['Divergência', item.divergencia || 'Nenhuma divergência registrada.'],
+      ['Justificativa da nota', item.justificativa_nota || 'Não evidenciada.']
+    ], [175, 595]);
+
+    if (detalhes) {
+      for (let linha = 1; linha < detalhes.getNumRows(); linha++) {
+        const rotulo = detalhes.getRow(linha).getCell(0).editAsText();
+        if (rotulo.getText().length) rotulo.setBold(true);
+      }
+    }
+  });
 }
 
 /* =========================================================
