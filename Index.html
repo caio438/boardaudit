@@ -7496,14 +7496,18 @@
       const comunidadeErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
       const rdPublicado = String(item.rdStatus || '').toUpperCase() === 'PUBLICADA';
       const crmGrupoSinergiaStatus = String(item.crmGrupoSinergiaStatus || '').toUpperCase();
-      const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA'].includes(crmGrupoSinergiaStatus);
+      const podeDescartar = !rdPublicado && !circlePublicado && !comunidadePublicada &&
+        !['PROCESSANDO', 'DESCARTADA'].includes(String(item.status || '').toUpperCase()) &&
+        (crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' || ['ERRO', 'EM_REVISAO'].includes(String(item.status || '').toUpperCase()));
+      const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA'].includes(crmGrupoSinergiaStatus);
       const sinalGrupoSinergia = ({
         REANALISE_NECESSARIA: '<span class="status danger">Grupo Sinergia · refazer para CRM</span>',
         AGUARDANDO_VINCULO: '<span class="status warning">Grupo Sinergia · vincular RD</span>',
         PRONTA_ENVIO: '<span class="status warning">Grupo Sinergia · pronta para CRM</span>',
         ERRO: '<span class="status danger">Grupo Sinergia · erro no CRM</span>',
         ENVIADA: '<span class="status success">Grupo Sinergia · enviada ao CRM</span>',
-        SUBSTITUIDA: '<span class="status">Grupo Sinergia · versão legada substituída</span>'
+        SUBSTITUIDA: '<span class="status">Grupo Sinergia · versão legada substituída</span>',
+        DESCARTADA: '<span class="status">Grupo Sinergia · descartada</span>'
       })[crmGrupoSinergiaStatus] || '';
       const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
       const indicadorRd = crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA'
@@ -7544,6 +7548,7 @@
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
           ${crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? `<button class="btn success" type="button" onclick="regenerarAuditoriaGrupoSinergiaParaCrmFront('${escapeAtributo(item.idAuditoria)}')">Gerar versão pronta para CRM</button>` : ''}
+          ${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar auditoria</button>` : ''}
           ${item.status === 'EM_REVISAO' && crmGrupoSinergiaStatus !== 'REANALISE_NECESSARIA' ? `<span class="status warning">Aguardando finalização automática</span>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado && !comunidadePublicada && !rdPublicado ? `<button class="btn danger" type="button" onclick="excluirAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Excluir auditoria</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
@@ -7613,7 +7618,7 @@
   function descartarAuditoriaV3Front(idAuditoria) {
     const item = (estado.auditorias || []).find(auditoria => String(auditoria.idAuditoria || '') === String(idAuditoria || ''));
     if (!item) return mostrarToast('Auditoria não encontrada.', 'error');
-    if (!window.confirm('Descartar esta auditoria em revisão? Ela sairá do histórico ativo e a interação poderá ser auditada novamente.')) return;
+    if (!window.confirm('Descartar auditoria?\n\nEsta ação retira esta auditoria do fluxo atual e impede envio ao RD CRM. O histórico será preservado.')) return;
     mostrarLoading('Descartando a auditoria...');
     google.script.run
       .withSuccessHandler(resposta => {
