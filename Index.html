@@ -6585,6 +6585,149 @@
     `;
   }
 
+  function statusMomentoConformeCloserFront_(item) {
+    const chave = normalizarStatusAuditoriaFront_((item || {}).cor || (item || {}).status || '');
+    return ['VERDE', 'CONFORME', 'ATINGIDO', 'CORRETO', 'COMPLETO'].includes(chave);
+  }
+
+  function statusMomentoNaoAplicavelCloserFront_(item) {
+    const chave = normalizarStatusAuditoriaFront_((item || {}).cor || (item || {}).status || '');
+    return ['NAO_APLICAVEL', 'NAO_EVIDENCIADO'].includes(chave);
+  }
+
+  function renderizarConclusaoObjetivaCloserFront_(r) {
+    r = r || {};
+    const resumo = r.resumo_executivo || {};
+    const feedback = r.feedback || {};
+    const fortes = (Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes : (resumo.pontos_fortes || []))
+      .map(item => String(item || '').trim().replace(/[.;]+$/g, '')).filter(Boolean);
+    const melhorias = (Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria : (resumo.riscos || []))
+      .map(item => String(item || '').trim().replace(/[.;]+$/g, '')).filter(Boolean);
+    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+    const primeiroPasso = passos.find(item => item && String(item.acao || '').trim()) || {};
+
+    const p1 = fortes.length
+      ? 'O Closer executou corretamente ' + fortes.slice(0, 3).join('; ') + '.'
+      : String(resumo.visao_geral || 'A reunião foi analisada com base na transcrição e no processo vigente.');
+
+    const p2 = melhorias.length
+      ? 'O principal ajuste está em ' + melhorias.slice(0, 2).join(' e ') + '.'
+      : String(resumo.recomendacao_central || 'Os ajustes necessários estão descritos nos desvios identificados nesta auditoria.');
+
+    let p3 = '';
+    if (primeiroPasso.acao) {
+      let acao = String(primeiroPasso.acao).trim().replace(/[.;]+$/g, '');
+      acao = acao.charAt(0).toLowerCase() + acao.slice(1);
+      p3 = 'Na prática, ' + acao + '.';
+    } else {
+      p3 = 'Na prática, os próximos passos devem atacar diretamente os desvios registrados em relação ao pitch e ao processo.';
+    }
+
+    return [p1, p2, p3];
+  }
+
+  function renderizarResumoExecutivoCloserV3_(r) {
+    r = r || {};
+    const contexto = r.resumo_reuniao || {};
+    const momentos = Array.isArray(r.momentos) ? r.momentos : [];
+    const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+
+    const aderentesMomentos = momentos.filter(statusMomentoConformeCloserFront_);
+    const desviosMomentos = momentos.filter(item =>
+      !statusMomentoConformeCloserFront_(item) &&
+      !statusMomentoNaoAplicavelCloserFront_(item)
+    );
+
+    const aderentes = aderentesMomentos.length ? aderentesMomentos.map(item => ({
+      titulo: item.nome || item.id || 'Momento',
+      evidencia: item.o_que_foi_dito || '',
+      regra: item.o_que_se_espera || item.texto_script || ''
+    })) : criterios.filter(item => statusConformeAuditoriaFront_(item.status)).map(item => ({
+      titulo: item.nome || item.id || 'Critério',
+      evidencia: item.o_que_foi_dito || '',
+      regra: item.regra_pitch || ''
+    }));
+
+    const desvios = desviosMomentos.length ? desviosMomentos.map(item => ({
+      titulo: item.nome || item.id || 'Momento',
+      divergencia: item.divergencia || ((item.pontos_melhorar || []).join(' • ')) || 'Desvio registrado.',
+      evidencia: item.o_que_foi_dito || '',
+      correcao: item.o_que_fazer || item.como_agir || ''
+    })) : criterios.filter(item =>
+      !statusConformeAuditoriaFront_(item.status) &&
+      !statusNaoAplicavelAuditoriaFront_(item.status)
+    ).map(item => ({
+      titulo: item.nome || item.id || 'Critério',
+      divergencia: item.divergencia || 'Desvio registrado.',
+      evidencia: item.o_que_foi_dito || '',
+      correcao: ''
+    }));
+
+    const listaAderentes = aderentes.length
+      ? '<ul class="audit-executive-list">' + aderentes.map(item =>
+          '<li><strong>' + escapeHtml(item.titulo) + '</strong>' +
+          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
+          (item.regra ? '<br><span class="muted">Referência do processo:</span> ' + escapeHtml(item.regra) : '') +
+          '</li>'
+        ).join('') + '</ul>'
+      : '<p class="muted">Nenhuma execução aderente foi registrada com a evidência disponível.</p>';
+
+    const listaDesvios = desvios.length
+      ? '<ul class="audit-executive-list">' + desvios.map(item =>
+          '<li><strong>' + escapeHtml(item.titulo) + '</strong>: ' + escapeHtml(item.divergencia) +
+          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
+          (item.correcao ? '<br><span class="muted">Correção prática:</span> ' + escapeHtml(item.correcao) : '') +
+          '</li>'
+        ).join('') + '</ul>'
+      : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
+
+    const listaPassos = passos.length
+      ? '<ul class="audit-executive-list">' + passos.map(item =>
+          '<li><strong>' + escapeHtml(item.acao || 'Ação') + '</strong>' +
+          (item.responsavel ? ' · ' + escapeHtml(item.responsavel) : '') +
+          (item.criterio_conclusao ? '<br><span class="muted">Critério de conclusão:</span> ' + escapeHtml(item.criterio_conclusao) : '') +
+          '</li>'
+        ).join('') + '</ul>'
+      : '<p class="muted">Nenhum próximo passo foi definido na análise.</p>';
+
+    const conclusao = renderizarConclusaoObjetivaCloserFront_(r);
+
+    return `
+      <div class="audit-executive">
+        <section class="audit-executive-block">
+          <h3>Cenário da reunião</h3>
+          <p>${escapeHtml(contexto.resumo_conversa || contexto.cenario_atual || 'Não evidenciado.')}</p>
+          <div class="audit-executive-facts">
+            <div class="audit-executive-fact"><small>Dor principal</small><strong>${escapeHtml(contexto.dor_principal || 'Não evidenciado')}</strong></div>
+            <div class="audit-executive-fact"><small>Impacto principal</small><strong>${escapeHtml(contexto.impacto_principal || 'Não evidenciado')}</strong></div>
+            <div class="audit-executive-fact"><small>Resultado da reunião</small><strong>${escapeHtml(contexto.resultado_reuniao || 'Não evidenciado')}</strong></div>
+          </div>
+        </section>
+
+        <section class="audit-executive-block">
+          <h3>Execuções aderentes ao processo</h3>
+          ${listaAderentes}
+        </section>
+
+        <section class="audit-executive-block">
+          <h3>Desvios em relação ao pitch/processo</h3>
+          ${listaDesvios}
+        </section>
+
+        <section class="audit-executive-block">
+          <h3>Próximos passos conforme o pitch/processo</h3>
+          ${listaPassos}
+        </section>
+
+        <section class="audit-executive-block">
+          <h3>Conclusão</h3>
+          ${conclusao.map(paragrafo => '<p>' + escapeHtml(paragrafo) + '</p>').join('')}
+        </section>
+      </div>
+    `;
+  }
+
   function renderizarConteudoCloserV3(r, auditoria) {
     if (!r || !Object.keys(r).length) return '<div class="empty">Resultado estruturado indisponível.</div>';
     const resumo = r.resumo_executivo || {};
@@ -6630,6 +6773,10 @@
     }).join('');
 
     return `
+      ${renderizarResumoExecutivoCloserV3_(r)}
+      <details class="audit-detail-panel">
+        <summary>Análise detalhada da auditoria Closer</summary>
+        <div>
       <h3>Resumo do que foi conversado com o lead</h3>
       <p>${escapeHtml(contexto.resumo_conversa || 'Não evidenciado')}</p>
       <p><strong>Motivação do contato:</strong> ${escapeHtml(contexto.motivacao_contato || 'Não evidenciado')}</p>
@@ -6699,6 +6846,8 @@
       <h3>Duração total da reunião</h3>
       <p>${escapeHtml(duracaoAuditoriaTexto_(r, auditoria, 'reunião'))}</p>
       ${linkAudioAuditoriaHtml_(auditoria)}
+        </div>
+      </details>
     `;
   }
 
