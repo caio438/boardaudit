@@ -275,6 +275,7 @@ function audRdTextoCloser_(c) {
   var pc = r.pontuacao_calculada || {};
   var feedback = r.feedback || {};
   var perguntas = r.perguntas_diagnostico || {};
+  var impacto = r.analise_impacto_implicacao || {};
   var repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
   var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
   var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
@@ -290,13 +291,13 @@ function audRdTextoCloser_(c) {
   function semPontoCloser(v) {
     return String(v || '').trim().replace(/[.;]+$/g, '');
   }
-  function fraseMinCloser(v) {
-    var t = semPontoCloser(v);
-    return t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
-  }
   function conforme(x) {
     var s = normCloser((x || {}).cor || (x || {}).status);
     return s === 'VERDE' || s === 'CONFORME';
+  }
+  function naoAplicavelCloser(x) {
+    var s = normCloser((x || {}).cor || (x || {}).status);
+    return s === 'NAO_APLICAVEL' || s === 'NAO_EVIDENCIADO';
   }
   function rotuloStatus(v) {
     var s = normCloser(v).replace(/[ -]+/g, '_');
@@ -307,69 +308,153 @@ function audRdTextoCloser_(c) {
     if (s === 'NAO_EVIDENCIADO') return 'Não evidenciado';
     return String(v || 'Não evidenciado');
   }
+  function chaveUnica(v) {
+    return normCloser(v).replace(/[^A-Z0-9]+/g, ' ').trim();
+  }
+  function adicionarUnico(lista, vistos, texto) {
+    var limpo = String(texto || '').trim();
+    if (!limpo) return;
+    var chave = chaveUnica(limpo);
+    if (!chave || vistos[chave]) return;
+    vistos[chave] = true;
+    lista.push(limpo);
+  }
+  function ehTemaImplicacaoNecessidade(v) {
+    var t = normCloser(v);
+    return /(IMPLIC|IMPACT|CONSEQU|CUSTO|FINANCEIR|INA[CÇ]AO|NECESS|RESULTADO|PRIORIDADE|URGENC|RISCO|PERDA|GANHO)/.test(t);
+  }
 
   var aderentes = momentos.filter(conforme);
+  var desviosMomentos = momentos.filter(function(x) { return !conforme(x) && !naoAplicavelCloser(x); });
+
   var acertos = aderentes.slice(0, 4).map(function(x) {
     return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 210);
   });
 
-  var perguntasRealizadas = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
-    .filter(function(x) { return x && String(x.pergunta || '').trim(); })
-    .slice(0, 10)
-    .map(function(x) {
-      var contexto = [x.categoria, x.timestamp].filter(Boolean).join(' · ');
-      var linha = '- ' + (contexto ? '[' + contexto + '] ' : '') + '"' + curtoCloser(x.pergunta, 220) + '"';
-      if (x.resposta_lead) linha += ' | Resposta: ' + curtoCloser(x.resposta_lead, 180);
-      return linha;
-    });
+  var perguntasRealizadasBase = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
+    .filter(function(x) { return x && String(x.pergunta || '').trim(); });
+  var perguntasFaltantesBase = (Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [])
+    .filter(function(x) { return x && String(x.pergunta || '').trim(); });
 
-  var perguntasFaltantes = (Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [])
-    .filter(function(x) { return x && String(x.pergunta || '').trim(); })
-    .slice(0, 8)
-    .map(function(x) {
-      var linha = '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta, 230) + '"';
-      if (x.motivo_importancia) linha += ' | Por que importa: ' + curtoCloser(x.motivo_importancia, 170);
-      return linha;
-    });
-
-  var perguntasSugeridas = repertorio
-    .filter(function(x) {
-      return x && String(x.pergunta_sugerida || '').trim() && normCloser(x.origem) === 'SUGESTAO_ENABLEMENT';
-    })
-    .slice(0, 4)
-    .map(function(x) {
-      return '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta_sugerida, 230) + '"' +
-        (x.objetivo ? ' | Objetivo: ' + curtoCloser(x.objetivo, 160) : '');
-    });
-
-  var proximos = passos.filter(function(x) {
-    return x && String(x.acao || '').trim();
-  }).slice(0, 5).map(function(x) {
-    return '- ' + curtoCloser(x.acao, 210) +
-      (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 170) : '');
+  var perguntasRealizadas = perguntasRealizadasBase.slice(0, 10).map(function(x) {
+    var contexto = [x.categoria, x.timestamp].filter(Boolean).join(' · ');
+    var linha = '- ' + (contexto ? '[' + contexto + '] ' : '') + '"' + curtoCloser(x.pergunta, 220) + '"';
+    if (x.resposta_lead) linha += ' | Resposta: ' + curtoCloser(x.resposta_lead, 180);
+    return linha;
   });
 
-  var fortes = Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes.filter(Boolean).slice(0, 3) : [];
-  var melhorias = Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria.filter(Boolean).slice(0, 3) : [];
-  var primeiroPasso = passos.find(function(x) { return x && String(x.acao || '').trim(); }) || {};
-  var nomesAderentes = aderentes.slice(0, 2).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
+  var perguntasFaltantes = perguntasFaltantesBase.slice(0, 8).map(function(x) {
+    var linha = '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta, 230) + '"';
+    if (x.motivo_importancia) linha += ' | Por que importa: ' + curtoCloser(x.motivo_importancia, 170);
+    return linha;
+  });
 
-  var p1 = fortes.length
-    ? 'O Closer executou corretamente: ' + fortes.map(semPontoCloser).join('; ') + '.'
-    : (nomesAderentes.length
-      ? 'O Closer executou corretamente: ' + nomesAderentes.join('; ') + '.'
-      : 'Não houve ponto forte suficientemente evidenciado para destacar sem extrapolar a transcrição.');
+  var perguntasSugeridasBase = repertorio.filter(function(x) {
+    return x && String(x.pergunta_sugerida || '').trim() && normCloser(x.origem) === 'SUGESTAO_ENABLEMENT';
+  });
+  var perguntasSugeridas = perguntasSugeridasBase.slice(0, 4).map(function(x) {
+    return '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta_sugerida, 230) + '"' +
+      (x.objetivo ? ' | Objetivo: ' + curtoCloser(x.objetivo, 160) : '');
+  });
 
-  var p2 = melhorias.length
-    ? 'O principal ajuste está em: ' + melhorias.map(semPontoCloser).join('; ') + '.'
-    : 'Não foi identificado ajuste prioritário adicional nesta auditoria.';
+  var implicacaoNecessidade = [];
+  var vistosImplicacao = {};
+  (Array.isArray(impacto.lacunas) ? impacto.lacunas : []).slice(0, 4).forEach(function(item) {
+    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Lacuna a aprofundar: ' + curtoCloser(item, 220));
+  });
+  (Array.isArray(impacto.impactos_identificados) ? impacto.impactos_identificados : []).slice(0, 4).forEach(function(item) {
+    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Impacto do lead que deveria ser aprofundado: ' + curtoCloser(item, 220));
+  });
+  perguntasFaltantesBase.filter(function(item) {
+    return ehTemaImplicacaoNecessidade([item.categoria, item.motivo_importancia, item.impacto_da_ausencia, item.pergunta].join(' '));
+  }).slice(0, 4).forEach(function(item) {
+    adicionarUnico(
+      implicacaoNecessidade,
+      vistosImplicacao,
+      '- Pergunta do pitch para aprofundar: "' + curtoCloser(item.pergunta, 230) + '"' +
+        (item.sugestao_aplicacao ? ' | Como aplicar: ' + curtoCloser(item.sugestao_aplicacao, 170) : '')
+    );
+  });
+  perguntasSugeridasBase.filter(function(item) {
+    return ehTemaImplicacaoNecessidade([item.categoria, item.objetivo, item.pergunta_sugerida].join(' '));
+  }).slice(0, 3).forEach(function(item) {
+    adicionarUnico(
+      implicacaoNecessidade,
+      vistosImplicacao,
+      '- Sugestão de enablement para aprofundar: "' + curtoCloser(item.pergunta_sugerida, 230) + '"' +
+        (item.objetivo ? ' | Objetivo: ' + curtoCloser(item.objetivo, 160) : '')
+    );
+  });
 
-  var p3 = primeiroPasso.acao
-    ? 'Na prática, ' + fraseMinCloser(primeiroPasso.acao) + '.' +
-      (primeiroPasso.criterio_conclusao ? ' O ajuste será considerado aplicado quando ' + fraseMinCloser(primeiroPasso.criterio_conclusao) + '.' : '')
-    : 'Na prática, mantenha os comportamentos aderentes e aplique as correções indicadas nas próximas reuniões.';
+  var ajustesObjetivos = [];
+  var vistosAjustes = {};
+  perguntasFaltantesBase.slice(0, 5).forEach(function(item) {
+    adicionarUnico(
+      ajustesObjetivos,
+      vistosAjustes,
+      '- ' + (item.categoria ? curtoCloser(item.categoria, 60) + ': ' : 'Diagnóstico: ') +
+        'pergunte "' + curtoCloser(item.pergunta, 230) + '"' +
+        (item.sugestao_aplicacao ? ' | Aplicação: ' + curtoCloser(item.sugestao_aplicacao, 170) : '')
+    );
+  });
+
+  desviosMomentos.slice(0, 4).forEach(function(item) {
+    var nome = String(item.nome || item.id || 'Momento');
+    if (String(item.texto_script || '').trim()) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': use a formulação do pitch "' + curtoCloser(item.texto_script, 240) + '"');
+      return;
+    }
+    if (String(item.como_agir || '').trim()) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.como_agir, 240));
+      return;
+    }
+    if (String(item.o_que_fazer || '').trim()) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.o_que_fazer, 240));
+    }
+  });
 
   var fechamento = momentos.find(function(x) { return String((x || {}).id || '') === 'momento_3'; }) || {};
+  var fechamentoTexto = [
+    fechamento.divergencia,
+    fechamento.o_que_fazer,
+    fechamento.como_agir,
+    (fechamento.pontos_melhorar || []).join(' ')
+  ].join(' ');
+  if (!conforme(fechamento) && /(AGEND|HORAR|PROXIMO PASSO|FOLLOW|DATA|CONVITE|COMPROMISSO)/.test(normCloser(fechamentoTexto))) {
+    adicionarUnico(
+      ajustesObjetivos,
+      vistosAjustes,
+      '- Fechamento: termine com duas opções objetivas de agenda. Exemplo de execução: "Posso te enviar o convite para terça às 14h ou quarta às 16h. Qual funciona melhor?"'
+    );
+  }
+
+  var proximos = ajustesObjetivos.slice(0, 7);
+  if (!proximos.length) {
+    passos.filter(function(x) { return x && String(x.acao || '').trim(); }).slice(0, 5).forEach(function(x) {
+      adicionarUnico(
+        proximos,
+        {},
+        '- ' + curtoCloser(x.acao, 210) +
+          (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 170) : '')
+      );
+    });
+  }
+
+  var fortes = Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes.filter(Boolean).slice(0, 3) : [];
+  var nomesAderentes = aderentes.slice(0, 2).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
+  var p1 = fortes.length
+    ? 'Pontos fortes: ' + fortes.map(semPontoCloser).join('; ') + '.'
+    : (nomesAderentes.length
+      ? 'Pontos fortes: ' + nomesAderentes.join('; ') + '.'
+      : 'Pontos fortes: nenhum ponto foi destacado sem evidência suficiente.');
+
+  var resumoAjustes = proximos.slice(0, 3).map(function(item) {
+    return String(item || '').replace(/^[-•]\s*/, '').trim();
+  }).filter(Boolean);
+  var p2 = resumoAjustes.length
+    ? 'Prioridade prática para a próxima reunião: ' + resumoAjustes.join(' | ')
+    : 'Prioridade prática: manter a execução aderente e seguir o pitch vigente.';
+
   var acordoResumo = String(co.resultado_reuniao || '').trim();
   var acordoEvidencia = String(fechamento.o_que_foi_dito || '').trim();
   var acordoLinhas = [];
@@ -410,6 +495,9 @@ function audRdTextoCloser_(c) {
     'PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS',
     perguntasFaltantes.length ? perguntasFaltantes.join(n) : '- Nenhuma pergunta obrigatória ausente foi identificada.',
     '',
+    'IMPLICAÇÃO E NECESSIDADE — O QUE DEVERIA TER SIDO EXPLORADO',
+    implicacaoNecessidade.length ? implicacaoNecessidade.join(n) : '- Nenhuma lacuna específica de implicação ou necessidade foi identificada com segurança.',
+    '',
     perguntasSugeridas.length ? 'SUGESTÕES DE APROFUNDAMENTO' : '',
     perguntasSugeridas.length ? perguntasSugeridas.join(n) : '',
     perguntasSugeridas.length ? 'Observação: estas perguntas são sugestões de enablement e não substituem o pitch vigente.' : '',
@@ -417,15 +505,12 @@ function audRdTextoCloser_(c) {
     'ACORDO DE PRÓXIMO PASSO',
     acordoLinhas.join(n),
     '',
-    'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
-    proximos.length ? proximos.join(n) : '- Manter a execução conforme e acompanhar os critérios da próxima reunião.',
+    'AJUSTES OBJETIVOS PARA A PRÓXIMA REUNIÃO',
+    proximos.length ? proximos.join(n) : '- Nenhum ajuste objetivo adicional foi identificado.',
     '',
     'CONCLUSÃO',
     p1,
-    '',
     p2,
-    '',
-    p3,
     '',
     'PONTUAÇÃO DE QUALIDADE',
     scoreLinhas.length ? scoreLinhas.join(n) : '- Pontuação por critério indisponível.',
