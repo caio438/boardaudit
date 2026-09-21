@@ -4,25 +4,13 @@ on:
   push:
     branches:
       - main
-  workflow_run:
-    workflows:
-      - Deploy Apps Script automatically
-    types:
-      - completed
 
 permissions:
   contents: read
 
 jobs:
   qa:
-    if: >-
-      ${{
-        (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'QA Hitecnet HEAD:')) ||
-        (github.event_name == 'workflow_run' &&
-         github.event.workflow_run.conclusion == 'success' &&
-         github.event.workflow_run.head_branch == 'main' &&
-         startsWith(github.event.workflow_run.head_commit.message, 'Ops: deploy and reprocess Sinergia evidence anchor'))
-      }}
+    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet HEAD:') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
@@ -48,6 +36,89 @@ jobs:
           set -euo pipefail
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
+
+      - name: Pull current Apps Script HEAD for preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-qa-remote /tmp/boardaudit-qa-head
+          mkdir -p /tmp/boardaudit-qa-remote /tmp/boardaudit-qa-head
+          cat > /tmp/boardaudit-qa-remote/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-qa-remote
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          rm -f .clasp.json
+
+      - name: Build safe QA HEAD source
+        shell: bash
+        env:
+          BUILD_ID: "qa-head-${{ github.sha }}"
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          cp -- *.gs /tmp/boardaudit-qa-head/
+          cp Index.html appsscript.json /tmp/boardaudit-qa-head/
+
+          for src in /tmp/boardaudit-qa-remote/*.js; do
+            [ -e "$src" ] || continue
+            base="$(basename "$src" .js)"
+            if [ "$base" = "Código" ]; then
+              local_name="Code.gs"
+            else
+              local_name="$base.gs"
+            fi
+            if [ ! -f "/tmp/boardaudit-qa-head/$local_name" ]; then
+              cp "$src" "/tmp/boardaudit-qa-head/$local_name"
+            fi
+          done
+
+          for src in /tmp/boardaudit-qa-remote/*.html; do
+            [ -e "$src" ] || continue
+            name="$(basename "$src")"
+            if [ ! -f "/tmp/boardaudit-qa-head/$name" ]; then
+              cp "$src" "/tmp/boardaudit-qa-head/$name"
+            fi
+          done
+
+          node prepare-dark-mode-deploy.mjs /tmp/boardaudit-qa-head
+          for file in /tmp/boardaudit-qa-head/*.gs; do
+            node -e "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
+          done
+          grep -q "function audV3RepararEvidenciasRastreaveis_" /tmp/boardaudit-qa-head/AuditoriaV3.gs
+
+      - name: Push validated source to Apps Script HEAD only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/boardaudit-qa-head/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-qa-head
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force
+
+      - name: Verify Apps Script HEAD contains evidence anchoring
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-qa-after
+          mkdir -p /tmp/boardaudit-qa-after
+          cat > /tmp/boardaudit-qa-after/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-qa-after
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          grep -q "function audV3RepararEvidenciasRastreaveis_" AuditoriaV3.js
+          echo "QA_HEAD_EVIDENCE_ANCHOR=1"
 
       - name: Refresh Google OAuth token
         shell: bash
@@ -90,4 +161,6 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/hitecnet-head.txt
+        run: |
+          rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/hitecnet-head.txt /tmp/clasp-versions.txt
+          rm -rf /tmp/boardaudit-qa-remote /tmp/boardaudit-qa-head /tmp/boardaudit-qa-after
