@@ -24,6 +24,12 @@ assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não tr
 assert.ok(front.includes('Gerar e concluir auditoria'), 'A interface ainda apresenta a auditoria como geração parcial.');
 assert.ok(front.includes('A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.'), 'A interface não informa o fluxo automático.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
+assert.ok(audit.includes('function audV3EstadoCrmGrupoSinergia_'), 'Auditorias do Grupo Sinergia não possuem estado específico para CRM.');
+assert.ok(audit.includes('function regenerarAuditoriaGrupoSinergiaParaCrmV3'), 'Auditorias legadas do Grupo Sinergia não podem ser regeneradas com as travas atuais.');
+assert.ok(audit.includes("'CLI-20260806105306-25F3490A'"), 'Fluxo do Grupo Sinergia não aponta para o cliente canônico INGEE.');
+assert.ok(front.includes('Grupo Sinergia · refazer para CRM'), 'Board não sinaliza auditorias legadas do Grupo Sinergia.');
+assert.ok(front.includes('Grupo Sinergia · vincular RD'), 'Board não sinaliza auditorias do Grupo Sinergia prontas para vínculo RD.');
+assert.ok(front.includes('function regenerarAuditoriaGrupoSinergiaParaCrmFront'), 'Board não oferece regeneração segura da auditoria legada para CRM.');
 
 for (const bloco of [
   'Cenário da ligação',

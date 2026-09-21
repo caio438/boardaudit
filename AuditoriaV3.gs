@@ -1824,6 +1824,57 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   };
 }
 
+function regenerarAuditoriaGrupoSinergiaParaCrmV3(idAuditoria) {
+  const id = String(idAuditoria || '').trim();
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+  const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {};
+  const estadoCrm = audV3EstadoCrmGrupoSinergia_(auditoria, interacao);
+  if (!estadoCrm) throw new Error('Esta auditoria não pertence ao fluxo de CRM do Grupo Sinergia.');
+  if (estadoCrm === 'ENVIADA') throw new Error('Esta auditoria já foi enviada ao RD CRM.');
+  if (estadoCrm === 'SUBSTITUIDA') throw new Error('Esta auditoria legada já foi substituída por uma versão preparada para o CRM.');
+  if (estadoCrm === 'AGUARDANDO_VINCULO' || estadoCrm === 'PRONTA_ENVIO' || estadoCrm === 'ERRO') {
+    return {
+      sucesso: true,
+      reutilizada: true,
+      mensagem: 'Esta auditoria já possui as travas atuais. Vincule a negociação do RD para seguir com o envio.',
+      auditoria: audV3AuditoriaFront_(auditoria),
+      auditorias: audV3ListarAuditoriasFront_()
+    };
+  }
+  if (estadoCrm !== 'REANALISE_NECESSARIA') {
+    throw new Error('A auditoria ainda não está em condição de ser preparada para o CRM.');
+  }
+
+  const resultado = executarAuditoriaV3({
+    idCliente: auditoria.ID_CLIENTE,
+    idPitch: auditoria.ID_PITCH,
+    idInteracao: auditoria.ID_INTERACAO,
+    idModelo: auditoria.ID_MODELO,
+    tipoAuditoria: auditoria.TIPO_AUDITORIA,
+    nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
+    evitarDuplicidade: true
+  });
+
+  const nova = resultado && resultado.auditoria ? resultado.auditoria : null;
+  if (nova && String(nova.idAuditoria || '') !== id) {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_CRM',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  }
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+  return {
+    sucesso: true,
+    reutilizada: Boolean(resultado && resultado.reutilizada),
+    mensagem: 'Nova versão validada criada para o CRM. Agora vincule a negociação do RD; o envio será automático.',
+    auditoria: nova,
+    auditorias: audV3ListarAuditoriasFront_()
+  };
+}
+
 function reprocessarAutomacaoAuditoriaV3(idAuditoria) {
   const id = String(idAuditoria || '').trim();
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
@@ -4430,6 +4481,33 @@ function audV3ResultadoTexto_(r, tipoAuditoria) {
   ].join('\n');
 }
 
+function audV3EhGrupoSinergiaCrm_(auditoria, interacao) {
+  auditoria = auditoria || {};
+  interacao = interacao || {};
+  if (String(auditoria.ID_CLIENTE || '') !== 'CLI-20260806105306-25F3490A') return false;
+  if (!['SDR', 'CLOSER'].includes(String(auditoria.TIPO_AUDITORIA || '').toUpperCase())) return false;
+  const responsavel = audV3NormalizarTrechoRastreavel_(interacao.COLABORADOR || interacao.VENDEDOR || '');
+  return responsavel === 'juliana' || responsavel === 'juliana ingee';
+}
+
+function audV3EstadoCrmGrupoSinergia_(auditoria, interacao) {
+  if (!audV3EhGrupoSinergiaCrm_(auditoria, interacao)) return '';
+  const rdStatus = String((auditoria || {}).RD_STATUS || '').toUpperCase();
+  const status = String((auditoria || {}).STATUS || '').toUpperCase();
+  const validacao = String((auditoria || {}).VALIDACAO_STATUS || '').toUpperCase();
+  const hash = String((auditoria || {}).HASH_FONTE || '').trim();
+  const automacao = String((auditoria || {}).AUTOMACAO_STATUS || '').toUpperCase();
+  const linkCrm = String((interacao || {}).LINK_CRM || '').trim();
+
+  if (rdStatus === 'PUBLICADA') return 'ENVIADA';
+  if (automacao === 'SUBSTITUIDA_PARA_CRM') return 'SUBSTITUIDA';
+  if (status !== 'APROVADA') return 'REANALISE_NECESSARIA';
+  if (validacao !== 'VALIDADA' || !hash) return 'REANALISE_NECESSARIA';
+  if (!linkCrm) return 'AGUARDANDO_VINCULO';
+  if (rdStatus === 'ERRO') return 'ERRO';
+  return 'PRONTA_ENVIO';
+}
+
 function audV3AuditoriaFront_(a, contexto) {
   if (!a) return null;
   contexto = contexto || {};
@@ -4445,6 +4523,7 @@ function audV3AuditoriaFront_(a, contexto) {
   } catch (erro) {
     resultado = null;
   }
+  const crmGrupoSinergiaStatus = audV3EstadoCrmGrupoSinergia_(a, interacao);
   return {
     idAuditoria: a.ID_AUDITORIA,
     idCliente: a.ID_CLIENTE,
@@ -4469,6 +4548,8 @@ function audV3AuditoriaFront_(a, contexto) {
     lead: interacao.LEAD || '',
     dataInteracao: audV3DataIso_(interacao.DATA_INTERACAO),
     tipoInteracao: interacao.TIPO_INTERACAO || '',
+    grupoSinergiaCrm: Boolean(crmGrupoSinergiaStatus),
+    crmGrupoSinergiaStatus: crmGrupoSinergiaStatus,
     pitchNome: a.NOME_PITCH_SNAPSHOT || '',
     pitchVersao: a.VERSAO_PITCH_SNAPSHOT || '',
     concluidoEm: audV3DataIso_(a.CONCLUIDO_EM),
