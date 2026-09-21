@@ -61,6 +61,41 @@ export async function refreshAccessToken(credential, fetchImpl = fetch) {
   return json.access_token;
 }
 
+export function validateExecutionContract(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    fail('EXECUTION_CONTRACT_INVALID', 'result must be an object');
+  }
+  if (typeof result.sucesso !== 'boolean') fail('EXECUTION_CONTRACT_INVALID', 'sucesso must be boolean');
+  if (!String(result.requestId || '').trim()) fail('EXECUTION_CONTRACT_INVALID', 'requestId is required');
+  if (!String(result.codigo || '').trim()) fail('EXECUTION_CONTRACT_INVALID', 'codigo is required');
+  if (!String(result.etapa || '').trim()) fail('EXECUTION_CONTRACT_INVALID', 'etapa is required');
+  if (!String(result.versao || '').trim()) fail('EXECUTION_CONTRACT_INVALID', 'versao is required');
+  if (!String(result.timestamp || '').trim() || Number.isNaN(Date.parse(result.timestamp))) {
+    fail('EXECUTION_CONTRACT_INVALID', 'timestamp must be ISO-compatible');
+  }
+  if (!Object.prototype.hasOwnProperty.call(result, 'resultado')) {
+    fail('EXECUTION_CONTRACT_INVALID', 'resultado is required');
+  }
+  if (!Object.prototype.hasOwnProperty.call(result, 'erro')) {
+    fail('EXECUTION_CONTRACT_INVALID', 'erro is required');
+  }
+  if (result.sucesso === true && result.erro !== null) {
+    fail('EXECUTION_CONTRACT_INVALID', 'erro must be null on success');
+  }
+  if (result.sucesso === false) {
+    if (!result.erro || typeof result.erro !== 'object') {
+      fail('EXECUTION_CONTRACT_INVALID', 'erro object is required on failure');
+    }
+    if (!String(result.erro.mensagem || '').trim()) {
+      fail('EXECUTION_CONTRACT_INVALID', 'erro.mensagem is required');
+    }
+    if (typeof result.erro.retryable !== 'boolean') {
+      fail('EXECUTION_CONTRACT_INVALID', 'erro.retryable must be boolean');
+    }
+  }
+  return result;
+}
+
 export function validateExecutionResponse(httpStatus, payload, expectedSuccessField = '') {
   if (httpStatus < 200 || httpStatus >= 300) {
     const status = payload?.error?.status || payload?.error?.code || httpStatus;
@@ -100,6 +135,7 @@ export async function runAppsScript({
   devMode = true,
   accessToken,
   expectedSuccessField = '',
+  requireContract = false,
   fetchImpl = fetch
 }) {
   if (!scriptId) fail('SCRIPT_ID_MISSING');
@@ -127,7 +163,8 @@ export async function runAppsScript({
   try { payload = text ? JSON.parse(text) : {}; } catch {
     fail('EXECUTION_RESPONSE_NOT_JSON', 'HTTP ' + response.status);
   }
-  return validateExecutionResponse(response.status, payload, expectedSuccessField);
+  const result = validateExecutionResponse(response.status, payload, expectedSuccessField);
+  return requireContract ? validateExecutionContract(result) : result;
 }
 
 async function main() {
@@ -143,6 +180,7 @@ async function main() {
   const expectedSuccessField = get('--expect-true');
   const paramsRaw = get('--params') || '[]';
   const devMode = !args.includes('--no-dev-mode');
+  const requireContract = args.includes('--require-contract');
 
   let parameters;
   try { parameters = JSON.parse(paramsRaw); } catch { fail('PARAMS_INVALID_JSON'); }
@@ -156,7 +194,8 @@ async function main() {
     parameters,
     devMode,
     accessToken,
-    expectedSuccessField
+    expectedSuccessField,
+    requireContract
   });
 
   const summary = {
@@ -165,7 +204,7 @@ async function main() {
     verifiedResult: true
   };
   if (result && typeof result === 'object') {
-    for (const key of ['sucesso', 'status', 'validacaoStatus', 'automacaoStatus', 'rdStatus', 'score']) {
+    for (const key of ['sucesso', 'requestId', 'codigo', 'etapa', 'versao', 'timestamp', 'status', 'validacaoStatus', 'automacaoStatus', 'rdStatus', 'score']) {
       if (Object.prototype.hasOwnProperty.call(result, key)) summary[key] = result[key];
     }
   }
