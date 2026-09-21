@@ -5040,6 +5040,7 @@ function carregarAnaliticaAuditoriasV3(dados) {
   });
 
   const registros = [];
+  const profissionaisTodos = {};
   audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
     if (!auditoria.ID_AUDITORIA) return;
     if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
@@ -5061,9 +5062,12 @@ function carregarAnaliticaAuditoriasV3(dados) {
       interacao.VENDEDOR ||
       'Não identificado'
     ).trim() || 'Não identificado';
+    const score = audV3AnaliticaNumero_(auditoria.SCORE !== '' ? auditoria.SCORE : ((resultado.pontuacao_calculada || {}).score_5));
+    if (!profissionaisTodos[profissional]) profissionaisTodos[profissional] = { nome: profissional, auditorias: 0, scores: [] };
+    profissionaisTodos[profissional].auditorias += 1;
+    if (score !== null) profissionaisTodos[profissional].scores.push(score);
     if (profissionalFiltro && audV3NormalizarTrechoRastreavel_(profissional) !== audV3NormalizarTrechoRastreavel_(profissionalFiltro)) return;
 
-    const score = audV3AnaliticaNumero_(auditoria.SCORE !== '' ? auditoria.SCORE : ((resultado.pontuacao_calculada || {}).score_5));
     registros.push({
       idAuditoria: String(auditoria.ID_AUDITORIA || ''),
       idCliente: String(auditoria.ID_CLIENTE || ''),
@@ -5079,14 +5083,8 @@ function carregarAnaliticaAuditoriasV3(dados) {
   });
 
   registros.sort(function(a, b) { return a.dataMs - b.dataMs; });
-  const profissionais = {};
-  registros.forEach(function(item) {
-    if (!profissionais[item.profissional]) profissionais[item.profissional] = { nome: item.profissional, auditorias: 0, scores: [] };
-    profissionais[item.profissional].auditorias += 1;
-    if (item.score !== null) profissionais[item.profissional].scores.push(item.score);
-  });
-  const profissionaisLista = Object.keys(profissionais).map(function(nome) {
-    const item = profissionais[nome];
+  const profissionaisLista = Object.keys(profissionaisTodos).map(function(nome) {
+    const item = profissionaisTodos[nome];
     const media = item.scores.length ? item.scores.reduce(function(soma, valor) { return soma + valor; }, 0) / item.scores.length : null;
     return { nome: nome, auditorias: item.auditorias, mediaScore: media === null ? null : Math.round(media * 10) / 10 };
   }).sort(function(a, b) { return a.nome.localeCompare(b.nome); });
