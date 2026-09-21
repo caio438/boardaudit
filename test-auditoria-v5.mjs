@@ -33,6 +33,12 @@ assert.ok(front.includes('function renderizarResumoExecutivoSdrV3_'), 'Resumo ex
 assert.ok(front.includes('function renderizarConclusaoObjetivaSdrFront_'), 'Conclusão objetiva SDR não foi implementada.');
 assert.ok(front.includes('Análise detalhada da auditoria SDR'), 'Detalhamento SDR não foi preservado em seção própria.');
 
+assert.ok(front.includes('function renderizarResumoExecutivoCloserV3_'), 'Resumo executivo Closer não foi implementado.');
+assert.ok(front.includes('function renderizarConclusaoObjetivaCloserFront_'), 'Conclusão objetiva Closer não foi implementada.');
+assert.ok(front.includes('Cenário da reunião'), 'Cenário executivo do Closer está ausente.');
+assert.ok(front.includes('Análise detalhada da auditoria Closer'), 'Detalhamento Closer não foi preservado em seção própria.');
+
+
 
 for (const tipo of ['SDR', 'CLOSER', 'PLANO']) {
   assert.ok(front.includes('data-audit-space="' + tipo + '"'), 'Espaço visual ausente para ' + tipo + '.');
