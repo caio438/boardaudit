@@ -37,6 +37,12 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
+      - name: Refresh Google OAuth token
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp versions > /tmp/clasp-versions.txt
+
       - name: Extract Google access token
         shell: bash
         run: |
