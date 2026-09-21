@@ -4,13 +4,25 @@ on:
   push:
     branches:
       - main
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
 
 permissions:
   contents: read
 
 jobs:
   qa:
-    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet HEAD:') }}"
+    if: >-
+      ${{
+        (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'QA Hitecnet HEAD:')) ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_branch == 'main' &&
+         startsWith(github.event.workflow_run.head_commit.message, 'Ops: deploy and reprocess Sinergia evidence anchor'))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
