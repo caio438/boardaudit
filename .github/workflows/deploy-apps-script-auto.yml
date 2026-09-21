@@ -52,6 +52,20 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
+      - name: Check Apps Script version capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          versions_output="$(npx clasp versions)"
+          printf '%s\n' "$versions_output" | tee /tmp/boardaudit-versions.txt
+          version_count="$(printf '%s\n' "$versions_output" | sed -n 's/^Found \([0-9][0-9]*\) versions\.$/\1/p' | head -1)"
+          test -n "$version_count"
+          echo "APPS_SCRIPT_VERSION_COUNT=$version_count"
+          if [ "$version_count" -ge 200 ]; then
+            echo "::error::Apps Script atingiu o limite de 200 versões. Exclua versões antigas não usadas em Project History antes de publicar novamente."
+            exit 1
+          fi
+
       - name: Pull current production for preservation
         shell: bash
         run: |
@@ -203,26 +217,6 @@ jobs:
           echo "POST_DEPLOY_SOURCE_MATCH=1"
           echo "POST_DEPLOY_AUTOMATION_MARKERS=1"
           echo "POST_DEPLOY_DEPLOYMENT_ID=1"
-
-      - name: Probe authenticated web app debug
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const p = process.env.HOME + '/.clasprc.json';
-          const j = JSON.parse(fs.readFileSync(p,'utf8'));
-          const token =
-            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
-            (j.token && j.token.access_token) ||
-            j.access_token || '';
-          if (!token) process.exit(2);
-          fs.writeFileSync('/tmp/google_access_token', token, {mode:0o600});
-          NODE
-          TOKEN="$(cat /tmp/google_access_token)"
-          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?debug=1"
-          curl -L -sS -H "Authorization: Bearer $TOKEN" "$URL" -o /tmp/debug.json
-          grep -q '"sistema"' /tmp/debug.json
 
       - name: Probe web app response
         shell: bash
