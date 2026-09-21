@@ -2532,7 +2532,11 @@ function salvarIntegracaoCliente(dados) {
     throw new Error('Cliente não encontrado.');
   }
 
-  const config = dados.config && typeof dados.config === 'object' ? dados.config : {};
+  const integracaoExistente = obterIntegracaoCliente_(idCliente, tipo);
+  let configAtual = {};
+  try { configAtual = JSON.parse((integracaoExistente && integracaoExistente.CONFIG_JSON) || '{}'); } catch (erro) {}
+  const configEntrada = dados.config && typeof dados.config === 'object' ? dados.config : {};
+  const config = Object.assign({}, configAtual, configEntrada);
   const integracao = obterOuCriarIntegracaoCliente_(idCliente, tipo, {
     ATIVO: dados.ativo ? 'SIM' : 'NAO',
     CONFIG_JSON: JSON.stringify(config),
