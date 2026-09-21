@@ -95,7 +95,7 @@ jobs:
           failures=0
           for id in "${ids[@]}"; do
             echo "===== $id =====" | tee -a "$result"
-            npx clasp run regenerarAuditoriaGrupoSinergiaParaCrmV3 --params "[\"$id\"]" > "/tmp/sinergia-audit-results/$id.txt" 2>&1
+            npx clasp run regenerarAuditoriaGrupoSinergiaParaCrmV3 --nondev --params "[\"$id\"]" > "/tmp/sinergia-audit-results/$id.txt" 2>&1
             rc=$?
             cat "/tmp/sinergia-audit-results/$id.txt" | tee -a "$result"
             echo "RC_$id=$rc" | tee -a "$result"
