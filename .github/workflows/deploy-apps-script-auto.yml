@@ -21,7 +21,7 @@ jobs:
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     environment: apps-script-production
 
     steps:
@@ -231,22 +231,6 @@ jobs:
             echo "WEBAPP_RENDERED_CURRENT_HTML=0"
             echo "Web app may require an authenticated Google session; source/deployment verification already passed."
           fi
-
-      - name: One-time reprocess four Sinergia audits
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /tmp/boardaudit-deploy
-          ids=(
-            "AUD-20260806134800-83C708AF"
-            "AUD-20260813175829-FAB9BCCE"
-            "AUD-20260813180755-A9D4A165"
-            "AUD-20260911153743-09EE7CE8"
-          )
-          for id in "${ids[@]}"; do
-            echo "Reprocessing $id"
-            "$GITHUB_WORKSPACE/node_modules/.bin/clasp" run regenerarAuditoriaGrupoSinergiaParaCrmV3 --nondev --params "[\"$id\"]"
-          done
 
       - name: Remove local authentication file
         if: always()
