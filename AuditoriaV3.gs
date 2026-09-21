@@ -3336,6 +3336,12 @@ function audV3NormalizarAnaliseTemporalCloser_(resultado, interacao) {
     audV3EtapaTemporalCloser_('Apresentação', '15–45 min', momento2.timestamp_inicio, momento2.timestamp_fim, 15 * 60, 45 * 60, [momento2]),
     audV3EtapaTemporalCloser_('Fechamento', '45–60 min', momento3.timestamp_inicio, momento3.timestamp_fim, 45 * 60, 60 * 60, [momento3])
   ];
+  const momentosDetalhados = [
+    audV3EtapaTemporalCloser_('Contexto e Rapport', 'Momento 0', momento0.timestamp_inicio, momento0.timestamp_fim, 0, 15 * 60, [momento0]),
+    audV3EtapaTemporalCloser_('Diagnóstico', 'Momento 1', momento1.timestamp_inicio, momento1.timestamp_fim, 0, 15 * 60, [momento1]),
+    audV3EtapaTemporalCloser_('Apresentação da Solução', 'Momento 2', momento2.timestamp_inicio, momento2.timestamp_fim, 15 * 60, 45 * 60, [momento2]),
+    audV3EtapaTemporalCloser_('Fechamento', 'Momento 3', momento3.timestamp_inicio, momento3.timestamp_fim, 45 * 60, 60 * 60, [momento3])
+  ];
   const medidas = etapas.filter(item => item.mensuravel).length;
   const limitacoes = [];
   if (medidas < etapas.length) limitacoes.push('A transcrição não contém timestamps suficientes para cronometrar todas as etapas. A sequência e a execução continuam avaliadas qualitativamente.');
@@ -3349,6 +3355,7 @@ function audV3NormalizarAnaliseTemporalCloser_(resultado, interacao) {
     diagnostico: etapas[0],
     apresentacao: etapas[1],
     fechamento: etapas[2],
+    momentos: momentosDetalhados,
     limitacoes: limitacoes
   };
   resultado.duracao = resultado.duracao || {};
@@ -4933,6 +4940,253 @@ function audV3ListarAuditoriasFront_() {
     .slice(-200)
     .map(item => audV3AuditoriaFront_(item, contexto))
     .reverse();
+}
+
+function audV3AnaliticaNumero_(valor) {
+  const numero = Number(valor);
+  return isFinite(numero) ? numero : null;
+}
+
+function audV3AnaliticaStatusConforme_(status, nota) {
+  const chave = String(status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (/NAO_APLICAVEL|NAO_EVIDENCIADO|N\/A/.test(chave)) return null;
+  if (/CONFORME|VERDE|ATINGIDO|CORRETO|COMPLETO/.test(chave)) return true;
+  const numero = audV3AnaliticaNumero_(nota);
+  if (numero !== null) return numero >= 4.99;
+  return false;
+}
+
+function audV3AnaliticaCriterios_(auditoria, resultado) {
+  let itens = [];
+  try { itens = JSON.parse(String((auditoria || {}).SCORES_DIMENSOES_JSON || '[]')); } catch (erro) { itens = []; }
+  if (!Array.isArray(itens) || !itens.length) itens = Array.isArray((resultado || {}).criterios_avaliados) ? resultado.criterios_avaliados : [];
+  return itens.map(function(item) {
+    const nota = audV3AnaliticaNumero_(item.nota !== undefined ? item.nota : item.pontuacao);
+    return {
+      id: String(item.id || ''),
+      nome: String(item.nome || item.id || 'Critério'),
+      status: String(item.status || ''),
+      aplicavel: item.aplicavel !== false,
+      nota: nota
+    };
+  }).filter(function(item) { return item.aplicavel; });
+}
+
+function audV3AnaliticaEtapas_(auditoria, resultado, tipo) {
+  let itens = [];
+  try { itens = JSON.parse(String((auditoria || {}).SCORES_ETAPAS_JSON || '[]')); } catch (erro) { itens = []; }
+  if (!Array.isArray(itens) || !itens.length) {
+    itens = String(tipo || '').toUpperCase() === 'CLOSER'
+      ? (Array.isArray((resultado || {}).momentos) ? resultado.momentos : [])
+      : (Array.isArray((resultado || {}).etapas_pitch) ? resultado.etapas_pitch : []);
+  }
+  return itens.map(function(item) {
+    return {
+      id: String(item.id || item.etapa || ''),
+      nome: String(item.nome || item.etapa || item.id || 'Etapa'),
+      status: String(item.status || item.cor || ''),
+      nota: audV3AnaliticaNumero_(item.nota)
+    };
+  });
+}
+
+function audV3AnaliticaTemposCloser_(resultado) {
+  resultado = resultado || {};
+  const momentos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+  const nomes = {
+    momento_0: 'Contexto e Rapport',
+    momento_1: 'Diagnóstico',
+    momento_2: 'Apresentação da Solução',
+    momento_3: 'Fechamento'
+  };
+  return momentos.map(function(item, indice) {
+    const inicio = audV3TimestampSegundos_(item.timestamp_inicio);
+    const fim = audV3TimestampSegundos_(item.timestamp_fim);
+    const mensuravel = inicio !== null && fim !== null && fim >= inicio;
+    const id = String(item.id || ('momento_' + indice));
+    return {
+      id: id,
+      nome: nomes[id] || String(item.nome || id),
+      minutos: mensuravel ? Math.round(((fim - inicio) / 60) * 10) / 10 : null,
+      mensuravel: mensuravel
+    };
+  });
+}
+
+function audV3AnaliticaMediana_(valores) {
+  const numeros = (valores || []).filter(function(valor) { return isFinite(Number(valor)); }).map(Number).sort(function(a, b) { return a - b; });
+  if (!numeros.length) return null;
+  const meio = Math.floor(numeros.length / 2);
+  return numeros.length % 2 ? numeros[meio] : Math.round(((numeros[meio - 1] + numeros[meio]) / 2) * 10) / 10;
+}
+
+function carregarAnaliticaAuditoriasV3(dados) {
+  dados = dados || {};
+  const tipo = String(dados.tipoAuditoria || 'SDR').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) return { tipoAuditoria: tipo, profissionais: [], resumo: {}, linhaTempo: [], erros: [], tempos: [] };
+
+  const idCliente = String(dados.idCliente || '').trim();
+  const profissionalFiltro = String(dados.profissional || '').trim();
+  const dias = Math.max(0, Number(dados.dias || 90));
+  const corte = dias ? Date.now() - dias * 24 * 60 * 60 * 1000 : 0;
+
+  const clientes = {};
+  audV3Ler_('CLIENTES').forEach(function(item) {
+    if (item.ID_CLIENTE) clientes[String(item.ID_CLIENTE)] = String(item.NOME_CLIENTE || item.ID_CLIENTE);
+  });
+  const interacoes = {};
+  audV3Ler_('INTERACOES').forEach(function(item) {
+    if (item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item;
+  });
+
+  const registros = [];
+  audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
+    if (!auditoria.ID_AUDITORIA) return;
+    if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
+    if (String(auditoria.STATUS || '').toUpperCase() === 'DESCARTADA') return;
+    if (idCliente && String(auditoria.ID_CLIENTE || '') !== idCliente) return;
+    if (!String(auditoria.RESULTADO_JSON || '').trim() && !String(auditoria.SCORES_DIMENSOES_JSON || '').trim()) return;
+
+    const dataBase = auditoria.CONCLUIDO_EM || auditoria.SOLICITADO_EM;
+    const dataMs = dataBase ? new Date(dataBase).getTime() : 0;
+    if (corte && dataMs && dataMs < corte) return;
+
+    let resultado = {};
+    try { resultado = JSON.parse(String(auditoria.RESULTADO_JSON || '{}')); } catch (erroResultado) { resultado = {}; }
+    const interacao = interacoes[String(auditoria.ID_INTERACAO || '')] || {};
+    const meta = resultado.metadados || {};
+    const profissional = String(
+      (tipo === 'CLOSER' ? meta.closer : meta.sdr) ||
+      interacao.COLABORADOR ||
+      interacao.VENDEDOR ||
+      'Não identificado'
+    ).trim() || 'Não identificado';
+    if (profissionalFiltro && audV3NormalizarTrechoRastreavel_(profissional) !== audV3NormalizarTrechoRastreavel_(profissionalFiltro)) return;
+
+    const score = audV3AnaliticaNumero_(auditoria.SCORE !== '' ? auditoria.SCORE : ((resultado.pontuacao_calculada || {}).score_5));
+    registros.push({
+      idAuditoria: String(auditoria.ID_AUDITORIA || ''),
+      idCliente: String(auditoria.ID_CLIENTE || ''),
+      cliente: clientes[String(auditoria.ID_CLIENTE || '')] || String(auditoria.ID_CLIENTE || ''),
+      profissional: profissional,
+      data: audV3DataIso_(dataBase),
+      dataMs: dataMs,
+      score: score,
+      criterios: audV3AnaliticaCriterios_(auditoria, resultado),
+      etapas: audV3AnaliticaEtapas_(auditoria, resultado, tipo),
+      tempos: tipo === 'CLOSER' ? audV3AnaliticaTemposCloser_(resultado) : []
+    });
+  });
+
+  registros.sort(function(a, b) { return a.dataMs - b.dataMs; });
+  const profissionais = {};
+  registros.forEach(function(item) {
+    if (!profissionais[item.profissional]) profissionais[item.profissional] = { nome: item.profissional, auditorias: 0, scores: [] };
+    profissionais[item.profissional].auditorias += 1;
+    if (item.score !== null) profissionais[item.profissional].scores.push(item.score);
+  });
+  const profissionaisLista = Object.keys(profissionais).map(function(nome) {
+    const item = profissionais[nome];
+    const media = item.scores.length ? item.scores.reduce(function(soma, valor) { return soma + valor; }, 0) / item.scores.length : null;
+    return { nome: nome, auditorias: item.auditorias, mediaScore: media === null ? null : Math.round(media * 10) / 10 };
+  }).sort(function(a, b) { return a.nome.localeCompare(b.nome); });
+
+  const scores = registros.map(function(item) { return item.score; }).filter(function(valor) { return valor !== null; });
+  const mediaScore = scores.length ? scores.reduce(function(soma, valor) { return soma + valor; }, 0) / scores.length : null;
+  const ultimoScore = scores.length ? scores[scores.length - 1] : null;
+  const anteriorScore = scores.length > 1 ? scores[scores.length - 2] : null;
+
+  const porDia = {};
+  registros.forEach(function(item) {
+    if (item.score === null || !item.data) return;
+    const chave = String(item.data).slice(0, 10);
+    if (!porDia[chave]) porDia[chave] = { soma: 0, quantidade: 0, auditorias: 0 };
+    porDia[chave].soma += item.score;
+    porDia[chave].quantidade += 1;
+    porDia[chave].auditorias += 1;
+  });
+  const linhaTempo = Object.keys(porDia).sort().map(function(data) {
+    return {
+      data: data,
+      score: Math.round((porDia[data].soma / porDia[data].quantidade) * 10) / 10,
+      auditorias: porDia[data].auditorias
+    };
+  });
+
+  const mapaErros = {};
+  registros.forEach(function(item) {
+    item.criterios.concat(item.etapas).forEach(function(registro) {
+      const nome = String(registro.nome || registro.id || 'Item');
+      const chave = String(registro.id || nome);
+      if (!mapaErros[chave]) mapaErros[chave] = { id: chave, nome: nome, avaliacoes: 0, desvios: 0, notas: [] };
+      const conforme = audV3AnaliticaStatusConforme_(registro.status, registro.nota);
+      if (conforme === null) return;
+      mapaErros[chave].avaliacoes += 1;
+      if (!conforme) mapaErros[chave].desvios += 1;
+      if (registro.nota !== null && registro.nota !== undefined) mapaErros[chave].notas.push(Number(registro.nota));
+    });
+  });
+  const erros = Object.keys(mapaErros).map(function(chave) {
+    const item = mapaErros[chave];
+    const mediaNota = item.notas.length ? item.notas.reduce(function(soma, valor) { return soma + valor; }, 0) / item.notas.length : null;
+    return {
+      id: item.id,
+      nome: item.nome,
+      avaliacoes: item.avaliacoes,
+      desvios: item.desvios,
+      taxaDesvio: item.avaliacoes ? Math.round((item.desvios / item.avaliacoes) * 1000) / 10 : 0,
+      mediaNota: mediaNota === null ? null : Math.round(mediaNota * 10) / 10
+    };
+  }).filter(function(item) { return item.avaliacoes > 0; }).sort(function(a, b) {
+    return b.taxaDesvio - a.taxaDesvio || b.desvios - a.desvios || a.nome.localeCompare(b.nome);
+  }).slice(0, 12);
+
+  const mapaTempos = {};
+  let temposMensuraveis = 0;
+  let temposTotais = 0;
+  if (tipo === 'CLOSER') {
+    registros.forEach(function(item) {
+      item.tempos.forEach(function(etapa) {
+        temposTotais += 1;
+        if (!mapaTempos[etapa.id]) mapaTempos[etapa.id] = { id: etapa.id, nome: etapa.nome, valores: [] };
+        if (etapa.mensuravel && etapa.minutos !== null) {
+          mapaTempos[etapa.id].valores.push(etapa.minutos);
+          temposMensuraveis += 1;
+        }
+      });
+    });
+  }
+  const ordemMomentos = ['momento_0', 'momento_1', 'momento_2', 'momento_3'];
+  const tempos = Object.keys(mapaTempos).map(function(chave) {
+    const item = mapaTempos[chave];
+    const valores = item.valores;
+    const media = valores.length ? valores.reduce(function(soma, valor) { return soma + valor; }, 0) / valores.length : null;
+    return {
+      id: item.id,
+      nome: item.nome,
+      amostras: valores.length,
+      mediaMinutos: media === null ? null : Math.round(media * 10) / 10,
+      medianaMinutos: audV3AnaliticaMediana_(valores),
+      minimoMinutos: valores.length ? Math.min.apply(null, valores) : null,
+      maximoMinutos: valores.length ? Math.max.apply(null, valores) : null
+    };
+  }).sort(function(a, b) { return ordemMomentos.indexOf(a.id) - ordemMomentos.indexOf(b.id); });
+
+  return JSON.parse(JSON.stringify({
+    tipoAuditoria: tipo,
+    filtros: { idCliente: idCliente, profissional: profissionalFiltro, dias: dias },
+    profissionais: profissionaisLista,
+    resumo: {
+      auditorias: registros.length,
+      mediaScore: mediaScore === null ? null : Math.round(mediaScore * 10) / 10,
+      ultimoScore: ultimoScore,
+      variacaoScore: ultimoScore !== null && anteriorScore !== null ? Math.round((ultimoScore - anteriorScore) * 10) / 10 : null,
+      coberturaTemporal: temposTotais ? Math.round((temposMensuraveis / temposTotais) * 1000) / 10 : 0
+    },
+    linhaTempo: linhaTempo,
+    erros: erros,
+    tempos: tempos
+  }));
 }
 
 function audV3PromptSistemaPlano_() {
