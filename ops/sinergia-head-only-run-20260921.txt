@@ -1,0 +1,1 @@
+Executa as quatro auditorias Sinergia no HEAD validado, sem criar nova versao publicada do Apps Script.
