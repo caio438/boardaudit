@@ -13,7 +13,7 @@ const PUBLICACAO_COMUNIDADE = Object.freeze({
 
 const COMUNIDADE_GRUPO_INGEE = Object.freeze({
   espaco: 'Feed INGEE',
-  clientes: ['ingee', 'sinergia', 'semeio cbi', 'semeio']
+  clientes: ['ingee', 'sinergia', 'semeio cbi', 'semeio', 'cbi']
 });
 
 function comunidadeEspacoCompartilhadoCliente_(cliente) {
