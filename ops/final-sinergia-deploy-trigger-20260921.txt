@@ -1,0 +1,1 @@
+Trigger operacional sem efeito no Apps Script para validar e publicar a correcao final do motor antes da reexecucao das quatro auditorias Sinergia.
