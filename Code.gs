@@ -69,9 +69,7 @@ const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'informaction', nome: 'InformAction' },
   { chave: 'hitecnet', nome: 'Hitecnet' },
   { chave: 'melius', nome: 'Melius' },
-  { chave: 'ingee', nome: 'INGEE' },
-  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio CBI'] },
-  { chave: 'sinergia', nome: 'Sinergia' },
+  { chave: 'ingee', nome: 'INGEE', aliases: ['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio/CBI', 'CBI'] },
   { chave: 'o_guia_transportes', nome: 'O Guia Transportes', aliases: ['O Guia Digital'] },
   { chave: 'tecnosoft', nome: 'Tecnosoft' },
   { chave: 'siptalk', nome: 'SipTalk', aliases: ['Sip Talk'] },
@@ -1560,6 +1558,333 @@ function salvarClientePainel(dados) {
     lock.releaseLock();
   }
 }
+
+
+const UNIFICACAO_INGEE = Object.freeze({
+  idCanonico: 'CLI-20260806105306-25F3490A',
+  idsLegados: Object.freeze([
+    'CLI-20260806112340-E575DA0D',
+    'CLI_VOL_SEMEIO_CBI'
+  ]),
+  aliases: Object.freeze(['INGEE', 'Sinergia', 'Semeio', 'Semeio CBI', 'Semeio/CBI', 'CBI']),
+  confirmacao: 'CONFIRMAR_UNIFICACAO_INGEE'
+});
+
+function unificacaoIngeeAbasComCliente_() {
+  return [
+    APP.sheets.materiaisClientes,
+    APP.sheets.metasClientes,
+    APP.sheets.integracoesClientes,
+    APP.sheets.pitches,
+    APP.sheets.interacoes,
+    APP.sheets.auditorias,
+    APP.sheets.formalizacoes,
+    APP.sheets.tarefasFormalizacoes,
+    APP.sheets.identificadoresClientes,
+    APP.sheets.reunioesCalendario,
+    APP.sheets.regrasEntregas,
+    APP.sheets.entregasMensais,
+    APP.sheets.diarioClientes,
+    APP.sheets.otimizacoesClientes,
+    APP.sheets.equipeClientes,
+    APP.sheets.resumoRd
+  ];
+}
+
+function planejarUnificacaoIngeeSinergiaSemeioCbi() {
+  criarAbasAusentes_();
+  const clienteCanonico = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', UNIFICACAO_INGEE.idCanonico);
+  if (!clienteCanonico) throw new Error('Cliente canônico INGEE não encontrado.');
+
+  const idsLegados = new Set(UNIFICACAO_INGEE.idsLegados);
+  const porAba = {};
+  let totalReferencias = 0;
+
+  unificacaoIngeeAbasComCliente_().forEach(nomeAba => {
+    const registros = lerObjetos_(nomeAba);
+    const porId = {};
+    UNIFICACAO_INGEE.idsLegados.forEach(id => porId[id] = 0);
+    registros.forEach(item => {
+      const id = String(item.ID_CLIENTE || '').trim();
+      if (!idsLegados.has(id)) return;
+      porId[id]++;
+      totalReferencias++;
+    });
+    porAba[nomeAba] = {
+      total: Object.keys(porId).reduce((soma, id) => soma + porId[id], 0),
+      porId: porId
+    };
+  });
+
+  const pitches = lerObjetos_(APP.sheets.pitches);
+  const tiposAtuaisCanonicos = new Set(
+    pitches
+      .filter(item => String(item.ID_CLIENTE) === UNIFICACAO_INGEE.idCanonico && normalizarBooleano_(item.PITCH_ATUAL))
+      .map(item => String(item.TIPO_PITCH || '').toUpperCase())
+      .filter(Boolean)
+  );
+  const conflitosPitch = pitches
+    .filter(item =>
+      idsLegados.has(String(item.ID_CLIENTE || '')) &&
+      normalizarBooleano_(item.PITCH_ATUAL) &&
+      tiposAtuaisCanonicos.has(String(item.TIPO_PITCH || '').toUpperCase())
+    )
+    .map(item => ({
+      idPitch: item.ID_PITCH,
+      tipo: String(item.TIPO_PITCH || '').toUpperCase(),
+      nome: item.NOME_VERSAO || ''
+    }));
+
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes);
+  const normalizadosCanonicos = new Set(
+    identificadores
+      .filter(item => String(item.ID_CLIENTE || '') === UNIFICACAO_INGEE.idCanonico)
+      .map(item => normalizarTextoComparacao_(item.VALOR_NORMALIZADO || item.VALOR))
+      .filter(Boolean)
+  );
+  const aliasesFaltantes = UNIFICACAO_INGEE.aliases.filter(alias =>
+    !normalizadosCanonicos.has(normalizarTextoComparacao_(alias))
+  );
+
+  const clientesLegados = UNIFICACAO_INGEE.idsLegados.map(id => {
+    const item = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', id);
+    return item ? {
+      idCliente: id,
+      nome: item.NOME_CLIENTE || '',
+      status: item.STATUS || '',
+      chaveVolumberg: item.CHAVE_VOLUMBERG || ''
+    } : { idCliente: id, ausente: true };
+  });
+
+  return {
+    sucesso: true,
+    modo: 'DRY_RUN',
+    clienteCanonico: {
+      idCliente: clienteCanonico.ID_CLIENTE,
+      nome: clienteCanonico.NOME_CLIENTE,
+      chaveVolumberg: clienteCanonico.CHAVE_VOLUMBERG
+    },
+    clientesLegados: clientesLegados,
+    totalReferencias: totalReferencias,
+    porAba: porAba,
+    conflitosPitch: conflitosPitch,
+    aliasesFaltantes: aliasesFaltantes,
+    prontoParaExecutar: true,
+    confirmacaoNecessaria: UNIFICACAO_INGEE.confirmacao
+  };
+}
+
+function unificacaoIngeeCriarBackup_(plano) {
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_UNIFICACAO_INGEE_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const linhas = [['ABA', 'LINHA_ORIGINAL', 'DADOS_JSON']];
+
+  const idsLegados = new Set(UNIFICACAO_INGEE.idsLegados);
+  unificacaoIngeeAbasComCliente_().forEach(nomeAba => {
+    const origem = ss.getSheetByName(nomeAba);
+    if (!origem || origem.getLastRow() < 2) return;
+    const dados = origem.getDataRange().getValues();
+    const cabecalhos = dados[0].map(String);
+    const indiceCliente = cabecalhos.indexOf('ID_CLIENTE');
+    if (indiceCliente < 0) return;
+    dados.slice(1).forEach((linha, indice) => {
+      if (!idsLegados.has(String(linha[indiceCliente] || '').trim())) return;
+      const objeto = {};
+      cabecalhos.forEach((cabecalho, coluna) => {
+        if (cabecalho) objeto[cabecalho] = linha[coluna];
+      });
+      linhas.push([nomeAba, indice + 2, JSON.stringify(objeto)]);
+    });
+  });
+
+  const clientes = ss.getSheetByName(APP.sheets.clientes);
+  if (clientes && clientes.getLastRow() >= 2) {
+    const dados = clientes.getDataRange().getValues();
+    const cabecalhos = dados[0].map(String);
+    const indiceId = cabecalhos.indexOf('ID_CLIENTE');
+    dados.slice(1).forEach((linha, indice) => {
+      const id = String(linha[indiceId] || '').trim();
+      if (id !== UNIFICACAO_INGEE.idCanonico && !idsLegados.has(id)) return;
+      const objeto = {};
+      cabecalhos.forEach((cabecalho, coluna) => {
+        if (cabecalho) objeto[cabecalho] = linha[coluna];
+      });
+      linhas.push([APP.sheets.clientes, indice + 2, JSON.stringify(objeto)]);
+    });
+  }
+
+  aba.getRange(1, 1, linhas.length, 3).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  return { nome: nome, registros: Math.max(0, linhas.length - 1), plano: plano };
+}
+
+function unificacaoIngeeMigrarAba_(nomeAba) {
+  const aba = abrirPlanilha_().getSheetByName(nomeAba);
+  if (!aba || aba.getLastRow() < 2) return 0;
+  const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0].map(String);
+  const indiceCliente = cabecalhos.indexOf('ID_CLIENTE');
+  if (indiceCliente < 0) return 0;
+
+  const valores = aba.getRange(2, indiceCliente + 1, aba.getLastRow() - 1, 1).getDisplayValues();
+  const idsLegados = new Set(UNIFICACAO_INGEE.idsLegados);
+  const celulas = [];
+  valores.forEach((linha, indice) => {
+    if (idsLegados.has(String(linha[0] || '').trim())) {
+      celulas.push(aba.getRange(indice + 2, indiceCliente + 1).getA1Notation());
+    }
+  });
+  if (celulas.length) aba.getRangeList(celulas).setValue(UNIFICACAO_INGEE.idCanonico);
+  return celulas.length;
+}
+
+function unificacaoIngeeResolverConflitosPitch_() {
+  const aba = abrirPlanilha_().getSheetByName(APP.sheets.pitches);
+  if (!aba || aba.getLastRow() < 2) return 0;
+  const dados = aba.getDataRange().getValues();
+  const cabecalhos = dados[0].map(String);
+  const iCliente = cabecalhos.indexOf('ID_CLIENTE');
+  const iTipo = cabecalhos.indexOf('TIPO_PITCH');
+  const iAtual = cabecalhos.indexOf('PITCH_ATUAL');
+  if ([iCliente, iTipo, iAtual].some(i => i < 0)) return 0;
+
+  const atuaisCanonicos = new Set(
+    dados.slice(1)
+      .filter(linha => String(linha[iCliente]) === UNIFICACAO_INGEE.idCanonico && normalizarBooleano_(linha[iAtual]))
+      .map(linha => String(linha[iTipo] || '').toUpperCase())
+      .filter(Boolean)
+  );
+  const idsLegados = new Set(UNIFICACAO_INGEE.idsLegados);
+  const celulas = [];
+  dados.slice(1).forEach((linha, indice) => {
+    if (!idsLegados.has(String(linha[iCliente] || ''))) return;
+    if (!normalizarBooleano_(linha[iAtual])) return;
+    if (!atuaisCanonicos.has(String(linha[iTipo] || '').toUpperCase())) return;
+    celulas.push(aba.getRange(indice + 2, iAtual + 1).getA1Notation());
+  });
+  if (celulas.length) aba.getRangeList(celulas).setValue('NAO');
+  return celulas.length;
+}
+
+function unificacaoIngeeGarantirAliases_() {
+  const existentes = lerObjetos_(APP.sheets.identificadoresClientes);
+  const porNormalizado = {};
+  existentes.forEach(item => {
+    const normal = normalizarTextoComparacao_(item.VALOR_NORMALIZADO || item.VALOR);
+    if (normal) porNormalizado[normal] = item;
+  });
+  let criados = 0;
+  let atualizados = 0;
+  const agora = new Date();
+
+  UNIFICACAO_INGEE.aliases.forEach((alias, indice) => {
+    const normal = normalizarTextoComparacao_(alias);
+    const existente = porNormalizado[normal];
+    if (existente) {
+      if (String(existente.ID_CLIENTE || '') !== UNIFICACAO_INGEE.idCanonico ||
+          String(existente.ATIVO || 'SIM').toUpperCase() === 'NAO') {
+        atualizarPorCampo_(APP.sheets.identificadoresClientes, 'ID_IDENTIFICADOR', existente.ID_IDENTIFICADOR, {
+          ID_CLIENTE: UNIFICACAO_INGEE.idCanonico,
+          ATIVO: 'SIM',
+          ATUALIZADO_EM: agora
+        });
+        atualizados++;
+      }
+      return;
+    }
+    adicionarObjeto_(APP.sheets.identificadoresClientes, {
+      ID_IDENTIFICADOR: gerarId_('IDE'),
+      ID_CLIENTE: UNIFICACAO_INGEE.idCanonico,
+      TIPO: 'NOME',
+      VALOR: alias,
+      VALOR_NORMALIZADO: normal,
+      PRIORIDADE: Math.max(5, 10 - indice),
+      ATIVO: 'SIM',
+      ORIGEM: 'UNIFICACAO_INGEE',
+      CRIADO_EM: agora,
+      ATUALIZADO_EM: agora
+    });
+    criados++;
+  });
+  return { criados: criados, atualizados: atualizados };
+}
+
+function executarUnificacaoIngeeSinergiaSemeioCbi(confirmacao) {
+  if (String(confirmacao || '') !== UNIFICACAO_INGEE.confirmacao) {
+    throw new Error('Confirmação inválida. Execute primeiro o dry-run e informe a confirmação exigida.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento. Tente novamente em alguns segundos.');
+  try {
+    const plano = planejarUnificacaoIngeeSinergiaSemeioCbi();
+    const possuiLegadosAtivos = plano.clientesLegados.some(item =>
+      !item.ausente && String(item.status || '').toUpperCase() !== 'INATIVO'
+    );
+    if (!plano.totalReferencias && !plano.aliasesFaltantes.length && !possuiLegadosAtivos) {
+      return { sucesso: true, jaUnificado: true, plano: plano };
+    }
+
+    const backup = unificacaoIngeeCriarBackup_(plano);
+    const conflitosPitchResolvidos = unificacaoIngeeResolverConflitosPitch_();
+    const migradosPorAba = {};
+    let totalMigrados = 0;
+    unificacaoIngeeAbasComCliente_().forEach(nomeAba => {
+      const quantidade = unificacaoIngeeMigrarAba_(nomeAba);
+      migradosPorAba[nomeAba] = quantidade;
+      totalMigrados += quantidade;
+    });
+
+    const aliases = unificacaoIngeeGarantirAliases_();
+    const agora = new Date();
+    UNIFICACAO_INGEE.idsLegados.forEach(id => {
+      const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', id);
+      if (!cliente) return;
+      atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', id, {
+        STATUS: 'INATIVO',
+        ATUALIZADO_EM: agora
+      });
+    });
+    atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', UNIFICACAO_INGEE.idCanonico, {
+      NOME_CLIENTE: 'INGEE',
+      CHAVE_VOLUMBERG: 'ingee',
+      STATUS: 'ATIVO',
+      ATUALIZADO_EM: agora
+    });
+
+    SpreadsheetApp.flush();
+    limparCachesDados_();
+    const validacao = validarEstruturaBanco_();
+    registrarLog_(
+      'CLIENTES',
+      'UNIFICAR_INGEE',
+      'Referências migradas: ' + totalMigrados +
+      ' | conflitos de pitch resolvidos: ' + conflitosPitchResolvidos +
+      ' | aliases criados: ' + aliases.criados +
+      ' | backup: ' + backup.nome +
+      ' | estrutura válida: ' + validacao.valido
+    );
+
+    if (!validacao.valido) {
+      throw new Error('A migração foi aplicada, mas a validação estrutural encontrou problemas: ' + validacao.erros.join(' | '));
+    }
+
+    return {
+      sucesso: true,
+      clienteCanonico: UNIFICACAO_INGEE.idCanonico,
+      totalMigrados: totalMigrados,
+      migradosPorAba: migradosPorAba,
+      conflitosPitchResolvidos: conflitosPitchResolvidos,
+      aliases: aliases,
+      backup: { nome: backup.nome, registros: backup.registros },
+      validacao: validacao
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 
 function obterResumoCatalogoVolumberg_() {
   const clientes = lerObjetos_(APP.sheets.clientes).filter(item => item.ID_CLIENTE);

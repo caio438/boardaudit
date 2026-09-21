@@ -16,6 +16,22 @@ assert.match(central, /\.after\(/);
 assert.match(code, /tldvSyncHours:\s*\[19\]/);
 assert.match(code, /rdTriggerHour:\s*19/);
 assert.doesNotMatch(code, /configurada em 7 horários diários/);
+assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio\/CBI', 'CBI'\] \}/);
+assert.doesNotMatch(code, /\{ chave: 'sinergia'/);
+assert.doesNotMatch(code, /\{ chave: 'semeio_cbi'/);
+
+assert.match(code, /function planejarUnificacaoIngeeSinergiaSemeioCbi\(\)/, 'Dry-run da unificação INGEE não foi implementado.');
+assert.match(code, /function executarUnificacaoIngeeSinergiaSemeioCbi\(confirmacao\)/, 'Execução protegida da unificação INGEE não foi implementada.');
+assert.match(code, /CONFIRMAR_UNIFICACAO_INGEE/, 'Unificação INGEE não exige confirmação explícita.');
+assert.match(code, /BACKUP_UNIFICACAO_INGEE_/, 'Unificação INGEE não cria snapshot dos registros afetados.');
+assert.match(code, /APP\.sheets\.tarefasFormalizacoes/, 'Migração INGEE não cobre tarefas de formalização.');
+assert.match(code, /APP\.sheets\.reunioesCalendario/, 'Migração INGEE não cobre agenda.');
+assert.match(code, /APP\.sheets\.entregasMensais/, 'Migração INGEE não cobre entregas mensais.');
+assert.match(code, /unificacaoIngeeResolverConflitosPitch_/, 'Migração INGEE não trata conflito de pitch atual.');
+assert.match(code, /unificacaoIngeeGarantirAliases_/, 'Migração INGEE não preserva aliases futuros.');
+assert.match(jornada, /lerObjetos_\(APP\.sheets\.identificadoresClientes\)/, 'Agenda não usa identificadores canônicos de cliente.');
+
+
 assert.match(auditoria, /maxPorExecucao:\s*3/);
 assert.match(auditoria, /horarios:\s*\[19\]/);
 assert.match(jornada, /Math\.min\(3,/);

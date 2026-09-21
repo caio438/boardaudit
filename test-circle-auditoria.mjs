@@ -50,6 +50,9 @@ assert.match(manual.conteudo, /Thiago/);
 assert.match(manual.conteudo, /Luis/);
 assert.match(manual.conteudo, /Ouvir gravação/);
 assert.doesNotMatch(manual.conteudo, /—/);
+const grupoIngee = vm.runInContext('COMUNIDADE_GRUPO_INGEE', contexto);
+assert.ok(grupoIngee.clientes.includes('cbi'), 'CBI deve compartilhar o espaço da INGEE.');
+
 assert.ok(manual.conteudo.split('\n').length > 10, 'A versão manual deve preservar a estrutura em blocos.');
 
 const automatico = vm.runInContext('circleMontarPublicacaoAuditoria_', contexto)(auditoria, cliente, interacao, resultado);
