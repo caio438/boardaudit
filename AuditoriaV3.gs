@@ -1831,8 +1831,24 @@ function regenerarAuditoriaGrupoSinergiaParaCrmV3(idAuditoria) {
   const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {};
   const estadoCrm = audV3EstadoCrmGrupoSinergia_(auditoria, interacao);
   if (!estadoCrm) throw new Error('Esta auditoria não pertence ao fluxo de CRM do Grupo Sinergia.');
-  if (estadoCrm === 'ENVIADA') throw new Error('Esta auditoria já foi enviada ao RD CRM.');
-  if (estadoCrm === 'SUBSTITUIDA') throw new Error('Esta auditoria legada já foi substituída por uma versão preparada para o CRM.');
+  if (estadoCrm === 'ENVIADA') {
+    return {
+      sucesso: true,
+      reutilizada: true,
+      mensagem: 'Esta auditoria já foi enviada ao RD CRM.',
+      auditoria: audV3AuditoriaFront_(auditoria),
+      auditorias: audV3ListarAuditoriasFront_()
+    };
+  }
+  if (estadoCrm === 'SUBSTITUIDA') {
+    return {
+      sucesso: true,
+      reutilizada: true,
+      mensagem: 'Esta auditoria legada já foi substituída por uma versão preparada para o CRM.',
+      auditoria: audV3AuditoriaFront_(auditoria),
+      auditorias: audV3ListarAuditoriasFront_()
+    };
+  }
   if (estadoCrm === 'AGUARDANDO_VINCULO' || estadoCrm === 'PRONTA_ENVIO' || estadoCrm === 'ERRO') {
     return {
       sucesso: true,
