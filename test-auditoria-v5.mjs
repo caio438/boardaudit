@@ -122,11 +122,25 @@ assert.ok(rd.includes('CENÁRIO DA REUNIÃO'), 'Anotação do Closer não possui
 
 assert.ok(rd.includes('Necessidade principal: '), 'Resumo SDR no RD não inclui a necessidade principal.');
 assert.ok(rd.includes('Impacto principal: '), 'Resumo Closer no RD não inclui o impacto principal.');
-assert.ok(rd.includes('function naoAplicavelCloser'), 'Closer não protege itens não aplicáveis de serem tratados como desvio no RD.');
-assert.ok(rd.includes("!conforme(x) && !naoAplicavelCloser(x)"), 'Filtro de desvios do Closer no RD não exclui itens não aplicáveis.');
-
+const inicioCloserRd = rd.indexOf('function audRdTextoCloser_');
+const fimCloserRd = rd.indexOf('function audRdTextoSdr_', inicioCloserRd);
+const closerRd = rd.slice(inicioCloserRd, fimCloserRd);
+assert.ok(inicioCloserRd >= 0 && fimCloserRd > inicioCloserRd, 'Formatter do Closer no RD não foi localizado.');
+assert.ok(!closerRd.includes('DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'), 'Closer ainda publica o bloco antigo de desvios no RD.');
+for (const titulo of [
+  'CENÁRIO DA REUNIÃO',
+  'EXECUÇÕES ADERENTES AO PROCESSO',
+  'PERGUNTAS REALIZADAS PELO CLOSER',
+  'PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS',
+  'ACORDO DE PRÓXIMO PASSO',
+  'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
+  'CONCLUSÃO',
+  'PONTUAÇÃO DE QUALIDADE'
+]) {
+  assert.ok(closerRd.includes(titulo), 'Bloco da anotação Closer no CRM ausente: ' + titulo);
+}
 for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'EXECUÇÕES ADERENTES AO PROCESSO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO', 'CONCLUSÃO']) {
-  assert.ok(rd.includes(titulo), 'Bloco da anotação CRM ausente: ' + titulo);
+  assert.ok(rd.includes(titulo), 'Bloco da anotação SDR no CRM ausente: ' + titulo);
 }
 
 console.log('Auditoria v5 validada: integridade, documento e gate do RD CRM.');
