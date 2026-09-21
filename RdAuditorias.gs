@@ -169,7 +169,7 @@ function audRdCtx_(id) {
     dealId: dealId,
     token: token,
     sdr: sdr,
-    volum: audRdUsuario_(token, RD_AUDITORIA_EMAIL_VOLUM)
+    volum: audRdUsuarioVolum_(token, it)
   };
 }
 function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO']);}
@@ -177,6 +177,36 @@ function audRdDeal_(i){var l=String((i||{}).LINK_CRM||''),m=l.match(/(?:\/deals\
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}
 function audRdUsuarios_(token){var r=requisicaoJson_(APP.rdBaseUrl+'/users?token='+encodeURIComponent(token)+'&active=true&limit=200',{method:'get',headers:{Accept:'application/json'}});return Array.isArray(r)?r:(r.users||r.data||r.results||r.items||[]);}
+function audRdConfigIntegracao_(integracao){var bruto=String((integracao||{}).CONFIG_JSON||'').trim();if(!bruto)return{};try{var cfg=JSON.parse(bruto);return cfg&&typeof cfg==='object'?cfg:{};}catch(e){throw new Error('CONFIG_JSON da integração RD está inválido.');}}
+function audRdUsuarioVolum_(token,integracao){
+  var usuarios=audRdUsuarios_(token),cfg=audRdConfigIntegracao_(integracao);
+  var idCfg=String(cfg.rdAuditoriaUsuarioVolumId||cfg.usuarioVolumId||'').trim();
+  var emailCfg=String(cfg.rdAuditoriaUsuarioVolumEmail||cfg.usuarioVolumEmail||'').trim().toLowerCase();
+  var porId=function(u){return String((u||{}).id||(u||{})._id||(u||{}).user_id||'')===idCfg;};
+  var porEmail=function(u,email){return String((u||{}).email||'').trim().toLowerCase()===email;};
+  var serializar=function(u,fallback){u=u||{};return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||u.nome||fallback||'VOLUM'),email:String(u.email||'')};};
+  if(idCfg){
+    var ui=usuarios.find(porId);
+    if(!ui)throw new Error('O usuário VOLUM configurado para esta integração não foi encontrado entre os usuários ativos do RD CRM.');
+    return serializar(ui,'VOLUM');
+  }
+  if(emailCfg){
+    var ue=usuarios.find(function(u){return porEmail(u,emailCfg);});
+    if(!ue)throw new Error('O usuário VOLUM configurado ('+emailCfg+') não foi encontrado entre os usuários ativos do RD CRM.');
+    return serializar(ue,emailCfg);
+  }
+  var emailPadrao=String(RD_AUDITORIA_EMAIL_VOLUM||'').trim().toLowerCase();
+  var up=emailPadrao?usuarios.find(function(u){return porEmail(u,emailPadrao);}):null;
+  if(up)return serializar(up,emailPadrao);
+  var candidatos=usuarios.filter(function(u){
+    var email=String((u||{}).email||'').trim().toLowerCase();
+    var nome=normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||''));
+    return /@govolum\.com$/.test(email)||nome.indexOf('volum')>=0;
+  });
+  if(candidatos.length===1)return serializar(candidatos[0],'VOLUM');
+  if(candidatos.length>1)throw new Error('Há mais de um usuário VOLUM ativo no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
+  throw new Error('Nenhum usuário VOLUM ativo foi encontrado no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
+}
 function audRdResponsavel_(token,i,r){var ext=String((i||{}).ID_EXTERNO||'');if(/^RD_TASK_/i.test(ext)){try{var origem=audRdOrigem_(token,ext),resp=typeof extrairResponsaveisRd_==='function'?extrairResponsaveisRd_(origem)[0]:null;if(resp&&resp.id&&resp.id!=='SEM_ID')return resp;}catch(e){}}var meta=(r||{}).metadados||{},ident=String((i||{}).COLABORADOR||(i||{}).VENDEDOR||meta.sdr||meta.closer||'').trim();if(!ident)throw new Error('Informe o responsável auditado para localizar o usuário correspondente no RD CRM.');var chave=normalizarTextoComparacao_(ident),email=ident.indexOf('@')>=0?ident.toLowerCase():'',cand=audRdUsuarios_(token).filter(function(u){var nome=normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||'')),mail=String((u||{}).email||'').trim().toLowerCase();return(email&&mail===email)||(chave&&nome===chave);});if(cand.length!==1)throw new Error(cand.length?'Há mais de um usuário do RD com o nome '+ident+'. Informe o e-mail no campo de colaborador.':'O responsável '+ident+' não foi encontrado entre os usuários ativos do RD CRM.');var u=cand[0]||{};return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||u.nome||ident),email:String(u.email||'')};}
 function audRdOrigem_(token,id){id=String(id||'').replace(/^RD_TASK_/i,'').trim();if(!id)throw new Error('Tarefa original não identificada.');var r=requisicaoJson_(APP.rdBaseUrl+'/tasks/'+encodeURIComponent(id)+'?token='+encodeURIComponent(token),{method:'get',headers:{Accept:'application/json'}});return r.task||r.data||r;}
 function audRdUsuario_(token,email){var us=audRdUsuarios_(token),e=String(email).toLowerCase(),u=us.find(function(x){return String((x||{}).email||'').toLowerCase()===e;});if(!u)throw new Error('O usuário '+email+' não foi encontrado ou não está ativo no RD CRM.');return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||email),email:String(u.email||email)};}
