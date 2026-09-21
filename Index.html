@@ -943,6 +943,24 @@
     .quality-card svg { width: 100%; height: 120px; display: block; margin-top: 10px; }
     .quality-card .quality-values { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
     .quality-card .quality-values strong { display: block; font-size: 18px; }
+    .audit-performance-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .audit-performance-wide { grid-column:span 2; }
+    .performance-bars { display:grid; gap:10px; margin-top:12px; }
+    .performance-bar-row { display:grid; gap:5px; }
+    .performance-bar-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; }
+    .performance-track { height:8px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
+    .performance-fill { height:100%; border-radius:999px; background:var(--primary); }
+    .client-picker { display:grid; gap:6px; min-width:220px; }
+    .client-picker input[type="search"] { min-width:0; }
+    .rd-quick-list { display:grid; gap:8px; margin-top:12px; max-height:520px; overflow:auto; padding-right:4px; }
+    .rd-quick-row { display:grid; grid-template-columns:minmax(170px,1.2fr) minmax(120px,.75fr) minmax(180px,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); }
+    .rd-quick-row .actions { margin:0; flex-wrap:nowrap; }
+    .compact-scroll { max-height:420px; overflow:auto; padding-right:4px; }
+    @media (max-width: 900px) {
+      .audit-performance-grid { grid-template-columns:1fr; }
+      .audit-performance-wide { grid-column:auto; }
+      .rd-quick-row { grid-template-columns:1fr; }
+    }
     .client-settings > summary { cursor: pointer; font-weight: 700; list-style: none; }
     .client-settings > summary::-webkit-details-marker { display: none; }
     .client-settings > summary::before { content: '▸'; display: inline-block; margin-right: 8px; }
@@ -1215,7 +1233,10 @@
           </div>
           <div class="toolbar">
             <div class="filters">
-              <select id="areaClienteSelect" onchange="carregarAreaClienteFront(true)"><option value="">Selecione o cliente</option></select>
+              <div class="client-picker">
+                <input id="areaClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientesAreaFront_()">
+                <select id="areaClienteSelect" onchange="carregarAreaClienteFront(true)"><option value="">Selecione o cliente</option></select>
+              </div>
               <input id="areaPeriodo" type="month" onchange="carregarAreaClienteFront(true)">
             </div>
             <button class="btn" type="button" onclick="carregarAreaClienteFront(true)">Atualizar visão</button>
@@ -1590,10 +1611,13 @@
 
           <div class="toolbar" style="align-items:end">
             <div class="field" style="min-width:280px;flex:1">
-              <label for="audCliente">Cliente</label>
-              <select id="audCliente" onchange="atualizarSeletoresAuditoria()">
-                <option value="">Selecione o cliente</option>
-              </select>
+              <label for="audClienteBusca">Cliente</label>
+              <div class="client-picker">
+                <input id="audClienteBusca" type="search" placeholder="Digite para encontrar o cliente" oninput="filtrarClientesAuditoriaFront_()">
+                <select id="audCliente" onchange="atualizarSeletoresAuditoria()">
+                  <option value="">Selecione o cliente</option>
+                </select>
+              </div>
             </div>
             <button class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
           </div>
@@ -1775,14 +1799,69 @@
           <div id="auditRdHost" style="margin-top:16px"></div>
         </details>
 
+        <details id="audPerformanceDetails" class="card client-settings" style="margin-top:18px" ontoggle="aoAlternarAnaliticaAuditoriasFront_(this)">
+          <summary class="summary-with-subtitle">
+            <span class="summary-copy">
+              <span>Performance das auditorias</span>
+              <small>Evolução de score, critérios com mais desvios e tempo por etapa do Closer.</small>
+            </span>
+          </summary>
+          <div style="margin-top:16px">
+            <div class="toolbar">
+              <div class="filters">
+                <div class="client-picker">
+                  <input id="audPerformanceClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientePerformanceFront_()">
+                  <select id="audPerformanceCliente" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                    <option value="">Todos os clientes</option>
+                  </select>
+                </div>
+                <select id="audPerformanceProfissional" aria-label="Filtrar por profissional" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                  <option value="">Todos os profissionais</option>
+                </select>
+                <select id="audPerformancePeriodo" aria-label="Período da análise" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90" selected>Últimos 90 dias</option>
+                  <option value="180">Últimos 180 dias</option>
+                  <option value="365">Últimos 12 meses</option>
+                  <option value="0">Todo o histórico</option>
+                </select>
+              </div>
+              <button class="btn secondary" type="button" onclick="carregarAnaliticaAuditoriasFront_(true)">Atualizar análise</button>
+            </div>
+            <div id="audPerformanceAviso" class="small muted" style="margin:10px 0 12px">Abra este painel para carregar somente os dados analíticos necessários.</div>
+            <div id="audPerformanceResumo" class="grid cards" style="margin-bottom:12px"></div>
+            <div class="audit-performance-grid">
+              <div class="quality-card audit-performance-wide">
+                <h4>Evolução da pontuação</h4>
+                <div id="audPerformanceScore"><div class="empty" style="margin-top:12px">Carregando quando o painel for aberto.</div></div>
+              </div>
+              <div class="quality-card">
+                <h4>Itens que mais precisam de ajuste</h4>
+                <div id="audPerformanceErros"><div class="empty" style="margin-top:12px">Sem dados carregados.</div></div>
+              </div>
+              <div id="audPerformanceTemposCard" class="quality-card audit-performance-wide">
+                <h4>Tempo médio por etapa da reunião</h4>
+                <div id="audPerformanceTempos"><div class="empty" style="margin-top:12px">Disponível nas auditorias de Closer com timestamps.</div></div>
+              </div>
+              <div class="quality-card">
+                <h4>Leitura rápida para coaching</h4>
+                <div id="audPerformanceCoaching"><div class="empty" style="margin-top:12px">Sem dados carregados.</div></div>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <div class="card" style="margin-top:18px">
           <div class="section-title"><div><h3 id="audHistoricoTitulo">Auditorias SDR realizadas</h3></div></div>
           <div id="resumoEnviosRdAuditorias" class="grid cards" style="margin-bottom:14px"></div>
           <div class="toolbar">
             <div class="filters">
-              <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
-                <option value="">Todos os clientes</option>
-              </select>
+              <div class="client-picker">
+                <input id="audHistoricoClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientesHistoricoAuditoriaFront_()">
+                <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
+                  <option value="">Todos os clientes</option>
+                </select>
+              </div>
               <input id="audHistoricoMes" type="month" aria-label="Filtrar auditorias por mês" onchange="renderizarAuditorias()">
               <select id="audHistoricoStatus" aria-label="Filtrar auditorias por situação" onchange="renderizarAuditorias()">
                 <option value="">Todas as situações</option>
@@ -2052,8 +2131,11 @@
 
             <div class="form-grid">
               <div class="field full">
-                <label for="integracaoCliente">Cliente</label>
-                <select id="integracaoCliente"></select>
+                <label for="integracaoClienteBusca">Cliente</label>
+                <div class="client-picker">
+                  <input id="integracaoClienteBusca" type="search" placeholder="Digite para encontrar o cliente" oninput="filtrarClientesIntegracaoFront_()">
+                  <select id="integracaoCliente"></select>
+                </div>
               </div>
 
               <div class="field">
@@ -2099,7 +2181,16 @@
                 <p>Status por cliente e última sincronização.</p>
               </div>
             </div>
-            <div id="listaIntegracoesClientes"></div>
+            <details class="client-settings" open>
+              <summary>Tokenização rápida do RD</summary>
+              <p class="small muted" style="margin-top:10px">Localize o cliente, cole o token e salve sem abrir cada cadastro completo. Tokens existentes nunca são exibidos.</p>
+              <input id="integracaoRdBusca" type="search" placeholder="Buscar cliente para tokenizar" oninput="renderizarMatrizRdClientes_()" style="margin-top:10px">
+              <div id="integracaoRdRapida" class="rd-quick-list"></div>
+            </details>
+            <details class="client-settings" style="margin-top:16px">
+              <summary>Ver todas as integrações configuradas</summary>
+              <div id="listaIntegracoesClientes" class="compact-scroll" style="margin-top:12px"></div>
+            </details>
           </div>
         </div>
 
@@ -2493,6 +2584,9 @@
       automacaoLigacoes: null,
       areaCliente: null,
       carregandoAreaCliente: false,
+      analiticaAuditorias: null,
+      carregandoAnaliticaAuditorias: false,
+      analiticaAuditoriasCarregada: false,
       carregando: {},
       paginacao: {
         reunioes: { pagina: 1, tamanho: 10 },
