@@ -1009,7 +1009,9 @@
       </div>
 
       <nav class="nav">
-        <button class="active" data-page="auditorias">Audit</button>
+        <button class="active" data-page="auditorias" data-audit-type="SDR">Auditoria SDR</button>
+        <button data-page="auditorias" data-audit-type="CLOSER">Auditoria Closer</button>
+        <button data-page="auditorias" data-audit-type="PLANO">Plano de otimização</button>
         <button data-page="formalizacoes">Formalizar</button>
         <button data-page="tarefasFormalizacoes">Tarefas das formalizações</button>
         <button data-page="areaCliente">Área do cliente</button>
@@ -1452,7 +1454,7 @@
           </div>
 
           <div class="form-grid">
-            <div class="field">
+            <div id="audTipoBox" class="field">
               <label for="audTipo">Função auditada</label>
               <select id="audTipo" onchange="atualizarSeletoresAuditoria()">
                 <option value="">Selecione a função</option>
@@ -2313,6 +2315,7 @@
     const estado = {
       dados: null,
       paginaAtual: 'auditorias',
+      auditoriaTipoPagina: 'SDR',
       clientes: [],
       materiaisClientes: [],
       metasClientes: [],
@@ -2447,7 +2450,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav button').forEach(botao => {
-        botao.addEventListener('click', () => abrirPagina(botao.dataset.page));
+        botao.addEventListener('click', () => abrirPagina(botao.dataset.page, botao.dataset.auditType || ''));
       });
 
       moverFerramentasParaAudit_();
@@ -2661,19 +2664,31 @@
       });
     }
 
-    function abrirPagina(nome) {
+    function abrirPagina(nome, tipoAuditoria) {
       estado.paginaAtual = nome;
+      if (nome === 'auditorias') estado.auditoriaTipoPagina = String(tipoAuditoria || '').toUpperCase();
 
       document.querySelectorAll('.nav button').forEach(botao => {
-        botao.classList.toggle('active', botao.dataset.page === nome);
+        const mesmoTipo = nome !== 'auditorias' || !botao.dataset.auditType || botao.dataset.auditType === estado.auditoriaTipoPagina;
+        botao.classList.toggle('active', botao.dataset.page === nome && mesmoTipo);
       });
 
       document.querySelectorAll('.page').forEach(pagina => {
         pagina.classList.toggle('active', pagina.id === 'page-' + nome);
       });
 
-      document.getElementById('tituloPagina').textContent = paginas[nome][0];
-      document.getElementById('subtituloPagina').textContent = paginas[nome][1];
+      const tituloAuditoria = {
+        SDR: ['Auditoria SDR', 'Auditorias de ligações e execução do processo SDR.'],
+        CLOSER: ['Auditoria Closer', 'Auditorias de reuniões, diagnóstico, condução e fechamento.'],
+        PLANO: ['Plano de otimização', 'Análises e ações de melhoria da operação comercial.']
+      };
+      const cabecalho = nome === 'auditorias' && tituloAuditoria[estado.auditoriaTipoPagina]
+        ? tituloAuditoria[estado.auditoriaTipoPagina]
+        : paginas[nome];
+      document.getElementById('tituloPagina').textContent = cabecalho[0];
+      document.getElementById('subtituloPagina').textContent = cabecalho[1];
+
+      sincronizarTipoAuditoriaPagina_();
 
       if (nome === 'dashboard') {
         return;
@@ -2681,6 +2696,21 @@
 
       if (!estado.carregado[nome]) {
         carregarPagina(nome, false);
+      }
+    }
+
+    function sincronizarTipoAuditoriaPagina_() {
+      const tipo = String(estado.auditoriaTipoPagina || '').toUpperCase();
+      const seletor = document.getElementById('audTipo');
+      const caixa = document.getElementById('audTipoBox');
+      if (!seletor || !caixa) return;
+      if (['SDR', 'CLOSER', 'PLANO'].includes(tipo)) {
+        seletor.value = tipo;
+        seletor.disabled = true;
+        caixa.style.display = 'none';
+      } else {
+        seletor.disabled = false;
+        caixa.style.display = '';
       }
     }
 
@@ -2710,7 +2740,7 @@
             'Versão ' + dados.app.versao;
 
           estado.carregado.dashboard = false;
-          abrirPagina('auditorias');
+          abrirPagina('auditorias', 'SDR');
         })
         .withFailureHandler(erro => {
           mostrarToast(
@@ -2823,7 +2853,7 @@
       if (nome === 'auditorias') {
         if (!iniciarCarga_('auditorias', forcar)) return;
         mostrarLoadingLocal('listaAuditorias','Carregando auditorias...');
-        google.script.run.withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); atualizarSeletoresAuditoria(); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
+        google.script.run.withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); sincronizarTipoAuditoriaPagina_(); atualizarSeletoresAuditoria(); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
         return;
       }
 
@@ -6919,9 +6949,11 @@
     const idCliente = String((document.getElementById('audHistoricoCliente') || {}).value || '');
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
+    const tipoPagina = String(estado.auditoriaTipoPagina || '').toUpperCase();
     const auditorias = (estado.auditorias || []).filter(item => {
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
-      return (!idCliente || String(item.idCliente || '') === idCliente) &&
+      return (!tipoPagina || String(item.tipoAuditoria || '').toUpperCase() === tipoPagina) &&
+        (!idCliente || String(item.idCliente || '') === idCliente) &&
         (!mes || chave.slice(0, 7) === mes) &&
         (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
     });
