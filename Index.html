@@ -1676,7 +1676,7 @@
             <div class="field">
               <label for="manualRdDealId">ID do lead/negociação no RD</label>
               <input id="manualRdDealId" placeholder="24 caracteres ou link completo do RD" autocomplete="off">
-              <div class="small muted">Opcional. Permite enviar ao RD auditorias manuais ou importadas do tl;dv.</div>
+              <div class="small muted">Opcional. Para reuniões de Closer, este é o vínculo manual padrão. Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.</div>
             </div>
 
             <div class="field full">
@@ -7477,7 +7477,7 @@
           <button id="btnAuditCircleLink_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarLinkCircleAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">${circlePublicado ? 'Atualizar link' : 'Registrar link'}</button>
         </div>
         <div class="toolbar" style="align-items:end;margin-top:10px">
-          <div class="field" style="flex:1;min-width:260px"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" ${rdPublicado ? 'disabled' : ''}><div class="small muted">Use este campo para auditorias manuais ou do tl;dv que ainda não estejam vinculadas ao CRM.</div></div>
+          <div class="field" style="flex:1;min-width:260px"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" ${rdPublicado ? 'disabled' : ''}><div class="small muted">${String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div></div>
           ${rdPublicado ? '' : `<button id="btnAuditRdDealId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarIdRdAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo do RD</button>`}
         </div>
         <div class="actions">
