@@ -273,6 +273,10 @@ function audRdTextoCloser_(c) {
   var momentos = Array.isArray(r.momentos) ? r.momentos : [];
   var co = r.resumo_reuniao || {};
   var pc = r.pontuacao_calculada || {};
+  var feedback = r.feedback || {};
+  var perguntas = r.perguntas_diagnostico || {};
+  var repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
+  var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
   var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
 
   function normCloser(v) {
@@ -283,50 +287,105 @@ function audRdTextoCloser_(c) {
     max = max || 220;
     return t.length > max ? t.slice(0, max - 1).trim() + '…' : t;
   }
+  function semPontoCloser(v) {
+    return String(v || '').trim().replace(/[.;]+$/g, '');
+  }
   function fraseMinCloser(v) {
-    var t = String(v || '').trim().replace(/[.;]+$/g, '');
+    var t = semPontoCloser(v);
     return t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
   }
   function conforme(x) {
     var s = normCloser((x || {}).cor || (x || {}).status);
     return s === 'VERDE' || s === 'CONFORME';
   }
-  function naoAplicavelCloser(x) {
-    var s = normCloser((x || {}).cor || (x || {}).status);
-    return s === 'NAO_APLICAVEL' || s === 'NAO_EVIDENCIADO';
+  function rotuloStatus(v) {
+    var s = normCloser(v).replace(/[ -]+/g, '_');
+    if (s === 'CONFORME') return 'CONFORME';
+    if (s === 'DESVIO_EXECUCAO') return 'Desvio na execução';
+    if (s === 'NAO_EXECUTADO') return 'Não executado';
+    if (s === 'NAO_APLICAVEL') return 'Não aplicável';
+    if (s === 'NAO_EVIDENCIADO') return 'Não evidenciado';
+    return String(v || 'Não evidenciado');
   }
 
   var aderentes = momentos.filter(conforme);
-  var desvios = momentos.filter(function(x) { return !conforme(x) && !naoAplicavelCloser(x); });
-
   var acertos = aderentes.slice(0, 4).map(function(x) {
-    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 190);
+    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 210);
   });
-  var erros = desvios.slice(0, 4).map(function(x) {
-    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.divergencia || 'Gatilho não alcançado.', 190) +
-      (x.o_que_se_espera ? ' | Esperado: ' + curtoCloser(x.o_que_se_espera, 150) : '');
-  });
-  var principal = desvios[0] || {};
+
+  var perguntasRealizadas = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
+    .filter(function(x) { return x && String(x.pergunta || '').trim(); })
+    .slice(0, 10)
+    .map(function(x) {
+      var contexto = [x.categoria, x.timestamp].filter(Boolean).join(' · ');
+      var linha = '- ' + (contexto ? '[' + contexto + '] ' : '') + '"' + curtoCloser(x.pergunta, 220) + '"';
+      if (x.resposta_lead) linha += ' | Resposta: ' + curtoCloser(x.resposta_lead, 180);
+      return linha;
+    });
+
+  var perguntasFaltantes = (Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [])
+    .filter(function(x) { return x && String(x.pergunta || '').trim(); })
+    .slice(0, 8)
+    .map(function(x) {
+      var linha = '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta, 230) + '"';
+      if (x.motivo_importancia) linha += ' | Por que importa: ' + curtoCloser(x.motivo_importancia, 170);
+      return linha;
+    });
+
+  var perguntasSugeridas = repertorio
+    .filter(function(x) {
+      return x && String(x.pergunta_sugerida || '').trim() && normCloser(x.origem) === 'SUGESTAO_ENABLEMENT';
+    })
+    .slice(0, 4)
+    .map(function(x) {
+      return '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta_sugerida, 230) + '"' +
+        (x.objetivo ? ' | Objetivo: ' + curtoCloser(x.objetivo, 160) : '');
+    });
+
   var proximos = passos.filter(function(x) {
     return x && String(x.acao || '').trim();
   }).slice(0, 5).map(function(x) {
-    return '- ' + curtoCloser(x.acao, 190) +
-      (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 150) : '');
+    return '- ' + curtoCloser(x.acao, 210) +
+      (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 170) : '');
   });
 
-  var nomesAderentes = aderentes.slice(0, 3).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
-  var nomesDesvios = desvios.slice(0, 2).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
+  var fortes = Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes.filter(Boolean).slice(0, 3) : [];
+  var melhorias = Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria.filter(Boolean).slice(0, 3) : [];
   var primeiroPasso = passos.find(function(x) { return x && String(x.acao || '').trim(); }) || {};
+  var nomesAderentes = aderentes.slice(0, 2).map(function(x) { return String(x.nome || x.id || '').trim(); }).filter(Boolean);
 
-  var p1 = nomesAderentes.length
-    ? 'O Closer executou corretamente ' + nomesAderentes.join(', ') + '.'
-    : 'A auditoria não identificou momento plenamente conforme para destacar nesta conclusão.';
-  var p2 = nomesDesvios.length
-    ? 'O principal ajuste está em ' + nomesDesvios.join(' e ') + '.'
-    : 'Não foi identificado desvio prioritário nesta auditoria.';
+  var p1 = fortes.length
+    ? 'O Closer executou corretamente: ' + fortes.map(semPontoCloser).join('; ') + '.'
+    : (nomesAderentes.length
+      ? 'O Closer executou corretamente: ' + nomesAderentes.join('; ') + '.'
+      : 'Não houve ponto forte suficientemente evidenciado para destacar sem extrapolar a transcrição.');
+
+  var p2 = melhorias.length
+    ? 'O principal ajuste está em: ' + melhorias.map(semPontoCloser).join('; ') + '.'
+    : 'Não foi identificado ajuste prioritário adicional nesta auditoria.';
+
   var p3 = primeiroPasso.acao
-    ? 'Na prática, ' + fraseMinCloser(primeiroPasso.acao) + '.'
-    : 'Na prática, a próxima reunião deve manter os momentos conformes e corrigir os desvios indicados acima.';
+    ? 'Na prática, ' + fraseMinCloser(primeiroPasso.acao) + '.' +
+      (primeiroPasso.criterio_conclusao ? ' O ajuste será considerado aplicado quando ' + fraseMinCloser(primeiroPasso.criterio_conclusao) + '.' : '')
+    : 'Na prática, mantenha os comportamentos aderentes e aplique as correções indicadas nas próximas reuniões.';
+
+  var fechamento = momentos.find(function(x) { return String((x || {}).id || '') === 'momento_3'; }) || {};
+  var acordoResumo = String(co.resultado_reuniao || '').trim();
+  var acordoEvidencia = String(fechamento.o_que_foi_dito || '').trim();
+  var acordoLinhas = [];
+  if (acordoResumo) acordoLinhas.push('Acordo registrado: ' + curtoCloser(acordoResumo, 320));
+  else acordoLinhas.push('Acordo registrado: Não evidenciado na reunião.');
+  if (acordoEvidencia && !/^n[aã]o evidenciado/i.test(acordoEvidencia)) {
+    acordoLinhas.push('Evidência do fechamento: "' + curtoCloser(acordoEvidencia, 240) + '"');
+  }
+
+  var scoreLinhas = criterios.slice(0, 8).map(function(item) {
+    var nota = item && item.aplicavel === false
+      ? 'N/A'
+      : (item && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '' ? String(item.pontuacao) + '/5' : 'N/A');
+    return '- ' + String((item || {}).nome || (item || {}).id || 'Critério') + ' | ' +
+      rotuloStatus((item || {}).status) + ' | ' + nota;
+  });
 
   var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
   var pct = pc.score_percentual != null ? pc.score_percentual : c.a.SCORE_PERCENTUAL;
@@ -340,14 +399,23 @@ function audRdTextoCloser_(c) {
     curtoCloser(co.resumo_conversa || 'Não evidenciado', 450),
     co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 250) : '',
     co.impacto_principal ? 'Impacto principal: ' + curtoCloser(co.impacto_principal, 250) : '',
-    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 260) : '',
+    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 300) : '',
     '',
     'EXECUÇÕES ADERENTES AO PROCESSO',
     acertos.length ? acertos.join(n) : '- Nenhum momento foi classificado como plenamente conforme.',
     '',
-    'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO',
-    erros.length ? erros.join(n) : '- Nenhum desvio de execução foi identificado.',
-    principal.o_que_foi_dito ? 'Evidência do principal desvio: "' + curtoCloser(principal.o_que_foi_dito, 220) + '"' : '',
+    'PERGUNTAS REALIZADAS PELO CLOSER',
+    perguntasRealizadas.length ? perguntasRealizadas.join(n) : '- Nenhuma pergunta foi registrada com evidência literal suficiente.',
+    '',
+    'PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS',
+    perguntasFaltantes.length ? perguntasFaltantes.join(n) : '- Nenhuma pergunta obrigatória ausente foi identificada.',
+    '',
+    perguntasSugeridas.length ? 'SUGESTÕES DE APROFUNDAMENTO' : '',
+    perguntasSugeridas.length ? perguntasSugeridas.join(n) : '',
+    perguntasSugeridas.length ? 'Observação: estas perguntas são sugestões de enablement e não substituem o pitch vigente.' : '',
+    perguntasSugeridas.length ? '' : '',
+    'ACORDO DE PRÓXIMO PASSO',
+    acordoLinhas.join(n),
     '',
     'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
     proximos.length ? proximos.join(n) : '- Manter a execução conforme e acompanhar os critérios da próxima reunião.',
@@ -358,6 +426,10 @@ function audRdTextoCloser_(c) {
     p2,
     '',
     p3,
+    '',
+    'PONTUAÇÃO DE QUALIDADE',
+    scoreLinhas.length ? scoreLinhas.join(n) : '- Pontuação por critério indisponível.',
+    'Total: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     '',
     c.i.URL_GRAVACAO ? 'Gravação: ' + c.i.URL_GRAVACAO : '',
     c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : ''
