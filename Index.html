@@ -6523,6 +6523,34 @@
     `;
   }
 
+  function renderizarPontuacaoQualidadeSdrFront_(criterios) {
+    const itens = Array.isArray(criterios) ? criterios : [];
+    if (!itens.length) return '<p class="muted">Nenhum critério de qualidade foi registrado.</p>';
+
+    const resumo = tabelaAuditoriaV3(
+      ['Critério', 'Status', 'Nota'],
+      itens.map(item => [
+        item.nome || item.id || 'Critério',
+        formatarStatusAuditoriaV3(item.status || 'Não evidenciado'),
+        item.aplicavel ? item.pontuacao + '/5' : 'N/A'
+      ])
+    );
+
+    const detalhes = itens.map((item, indice) => `
+      <section class="audit-executive-block" style="margin-top:12px">
+        <h4>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Critério')}</h4>
+        ${tabelaAuditoriaV3(['Análise', 'Conteúdo'], [
+          ['Fala do SDR', item.o_que_foi_dito || 'Não evidenciado'],
+          ['Regra do pitch', item.regra_pitch || 'Não evidenciado'],
+          ['Divergência', item.divergencia || 'Nenhuma divergência registrada'],
+          ['Justificativa da nota', item.justificativa_nota || 'Não evidenciada']
+        ])}
+      </section>
+    `).join('');
+
+    return resumo + detalhes;
+  }
+
   function renderizarConteudoSdrV3(r, auditoria) {
     if (!r || !Object.keys(r).length) return '<div class="empty">Resultado estruturado indisponível.</div>';
     const conversa = r.analise_conversacao || {};
@@ -6571,7 +6599,7 @@
       <p><strong>Status:</strong> ${escapeHtml(formatarStatusAuditoriaV3(conclusao.status || 'Não evidenciado'))}</p>
       <p><strong>Ponto de melhoria:</strong> ${escapeHtml(conclusao.ponto_melhoria || '-')}</p>
       <h3>9. Pontuação de Qualidade</h3>
-      ${tabelaAuditoriaV3(['Critério','Status','Nota','Fala do SDR','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
+      ${renderizarPontuacaoQualidadeSdrFront_(criteriosAvaliados)}
       <h3>10. Feedback Qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>
