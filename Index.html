@@ -6759,6 +6759,34 @@
     `;
   }
 
+  function renderizarPontuacaoQualidadeCloserFront_(criterios) {
+    const itens = Array.isArray(criterios) ? criterios : [];
+    if (!itens.length) return '<p class="muted">Nenhum critério de qualidade foi registrado.</p>';
+
+    const resumo = tabelaAuditoriaV3(
+      ['Critério', 'Status', 'Nota'],
+      itens.map(item => [
+        item.nome || item.id || 'Critério',
+        formatarStatusAuditoriaV3(item.status || 'Não evidenciado'),
+        item.aplicavel ? item.pontuacao + '/5' : 'N/A'
+      ])
+    );
+
+    const detalhes = itens.map((item, indice) => `
+      <section class="audit-executive-block" style="margin-top:12px">
+        <h4>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Critério')}</h4>
+        ${tabelaAuditoriaV3(['Análise', 'Conteúdo'], [
+          ['Fala do Closer', item.o_que_foi_dito || 'Não evidenciado'],
+          ['Regra do pitch', item.regra_pitch || 'Não evidenciado'],
+          ['Divergência', item.divergencia || 'Nenhuma divergência registrada'],
+          ['Justificativa da nota', item.justificativa_nota || 'Não evidenciada']
+        ])}
+      </section>
+    `).join('');
+
+    return resumo + detalhes;
+  }
+
   function renderizarConteudoCloserV3(r, auditoria) {
     if (!r || !Object.keys(r).length) return '<div class="empty">Resultado estruturado indisponível.</div>';
     const resumo = r.resumo_executivo || {};
@@ -6865,7 +6893,7 @@
       <h4>Linguagem utilizada pelo lead</h4>${listaCloser(mercado.linguagem_do_lead)}
       <h4>Hipóteses para o time de mídia</h4>${listaCloser(mercado.insights_para_midia)}
       <h3>Pontuação de qualidade</h3>
-      ${tabelaAuditoriaV3(['Critério','Status','Nota','Fala do Closer','Regra do pitch','Divergência','Justificativa da nota'], criteriosAvaliados.map(item => [item.nome || item.id, item.status, item.aplicavel ? item.pontuacao + '/5' : 'N/A', item.o_que_foi_dito, item.regra_pitch, item.divergencia, item.justificativa_nota]))}
+      ${renderizarPontuacaoQualidadeCloserFront_(criteriosAvaliados)}
       <h3>Feedback qualitativo</h3>
       <p class="line-success">✅ Pontos fortes: ${escapeHtml((feedback.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
       <p class="line-danger">❌ Áreas de melhoria: ${escapeHtml((feedback.areas_melhoria || []).join(' • ') || 'Nenhuma área registrada.')}</p>
