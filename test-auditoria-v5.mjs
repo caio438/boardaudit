@@ -20,6 +20,14 @@ assert.ok(front.includes('Gerar e concluir auditoria'), 'A interface ainda apres
 assert.ok(front.includes('A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.'), 'A interface não informa o fluxo automático.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
 
+for (const tipo of ['SDR', 'CLOSER', 'PLANO']) {
+  assert.ok(front.includes('data-audit-space="' + tipo + '"'), 'Espaço visual ausente para ' + tipo + '.');
+}
+assert.ok(front.includes("auditoriaEspaco: 'SDR'"), 'Espaço padrão de auditoria não foi definido.');
+assert.ok(front.includes('function selecionarEspacoAuditoriaFront_'), 'Navegação simples entre SDR, Closer e Plano não foi implementada.');
+assert.ok(front.includes("String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco"), 'Histórico não é filtrado pelo espaço de auditoria selecionado.');
+
+
 
 assert.match(audit, /versao:\s*'5\.0\.0'/, 'Engine de auditoria não foi versionado para v5.');
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
@@ -40,6 +48,16 @@ assert.ok(audit.includes('function audV3ConclusaoDocumento_'), 'Documento não p
 assert.ok(audit.includes("audV3AdicionarLinkGravacao_(body, interacao);"), 'Documento não inclui link da gravação.');
 assert.ok(audit.includes("p2 = 'O principal ajuste está em '"), 'Conclusão não segue o padrão objetivo aprovado.');
 assert.ok(audit.includes("p3 = 'Na prática, '"), 'Conclusão não contém aplicação prática separada.');
+
+assert.ok(audit.includes('function audV3PontuacaoQualidade_'), 'Documento não possui layout legível para a Pontuação de Qualidade.');
+assert.ok(audit.includes("[['Critério', 'Status', 'Nota']].concat"), 'Pontuação de Qualidade não possui tabela-resumo de três colunas.');
+for (const campo of ['Fala do ', 'Regra do pitch', 'Divergência', 'Justificativa da nota']) {
+  assert.ok(audit.includes(campo), 'Campo detalhado da Pontuação de Qualidade ausente: ' + campo);
+}
+assert.ok(audit.includes("audV3PontuacaoQualidade_(body, r.criterios_avaliados || [], 'SDR')"), 'SDR não usa o novo layout da Pontuação de Qualidade.');
+assert.ok(audit.includes("audV3PontuacaoQualidade_(body, r.criterios_avaliados || [], 'Closer')"), 'Closer não usa o novo layout da Pontuação de Qualidade.');
+assert.ok(!audit.includes("['Critério', 'Status', 'Nota', 'Evidências e comparação']"), 'Tabela larga antiga da Pontuação de Qualidade ainda existe.');
+
 
 assert.match(rd, /String\(a\.STATUS \|\| ''\)\.toUpperCase\(\) !== 'APROVADA'/, 'RD ainda aceita auditoria em revisão.');
 assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VALIDADA'/, 'RD não exige auditoria validada.');

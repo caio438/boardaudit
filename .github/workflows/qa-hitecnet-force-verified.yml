@@ -1,22 +1,19 @@
-name: QA Hitecnet force verified
+name: Verify Apps Script Execution API
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  audit:
-    if: "${{ startsWith(github.event.head_commit.message, 'QA Hitecnet verify:') }}"
+  read-only-probe:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
 
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -28,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Configure clasp authentication
+      - name: Configure OAuth credential
         shell: bash
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
@@ -38,29 +35,19 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
 
-      - name: Execute and verify forced audit
+      - name: Execute read-only probe through Apps Script API
         shell: bash
+        env:
+          APPS_SCRIPT_ID: 1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9
         run: |
           set -euo pipefail
-          set +e
-          npx clasp run-function QA_HITECNET_STEC_FORCAR_AUDITORIA --params '[]' > /tmp/hitecnet-verified.txt 2>&1
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ]; then
-            echo "HITECNET_VERIFY=CLI_FAILURE"
-            exit 1
-          fi
-          if grep -qiE '^Exception:|function.*not found|unexpected end of json|script error' /tmp/hitecnet-verified.txt; then
-            echo "HITECNET_VERIFY=REMOTE_FAILURE"
-            exit 1
-          fi
-          if ! grep -Eq '"sucesso"[[:space:]]*:[[:space:]]*true' /tmp/hitecnet-verified.txt; then
-            echo "HITECNET_VERIFY=NO_SUCCESS_MARKER"
-            wc -c < /tmp/hitecnet-verified.txt | awk '{print "OUTPUT_BYTES=" $1}'
-            exit 1
-          fi
-          echo "HITECNET_VERIFY=SUCCESS"
+          node scripts/run-apps-script-function.mjs \
+            --function QA_EXECUTION_API_READ_ONLY_PROBE \
+            --params '[]' \
+            --expect-true sucesso \
+            --require-contract
+          echo "EXECUTION_API_PROBE=SUCCESS"
 
       - name: Cleanup
         if: always()
-        run: rm -f "$HOME/.clasprc.json" /tmp/hitecnet-verified.txt
+        run: rm -f "$HOME/.clasprc.json"
