@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const rdSource = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
@@ -170,5 +171,19 @@ if (context.api.documentText('', '') !== '') {
 if (!source.includes("linha.map(valor => audV3TextoDocumento_(valor, 'Não evidenciado.'))")) {
   throw new Error('As células vazias das tabelas não estão protegidas para o Google Docs.');
 }
+
+
+const inicioRdCloser = rdSource.indexOf('function audRdTextoCloser_');
+const fimRdCloser = rdSource.indexOf('function audRdTextoSdr_', inicioRdCloser);
+const trechoRdCloser = rdSource.slice(inicioRdCloser, fimRdCloser);
+assert.ok(inicioRdCloser >= 0 && fimRdCloser > inicioRdCloser, 'Formatter Closer do RD não foi localizado.');
+assert.doesNotMatch(trechoRdCloser, /DESVIOS EM RELAÇÃO AO PITCH\/PROCESSO/, 'A seção antiga de desvios voltou ao texto do RD.');
+assert.match(trechoRdCloser, /PERGUNTAS REALIZADAS PELO CLOSER/, 'O RD precisa listar as perguntas realizadas pelo Closer.');
+assert.match(trechoRdCloser, /PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS/, 'O RD precisa listar perguntas obrigatórias ausentes.');
+assert.match(trechoRdCloser, /ACORDO DE PRÓXIMO PASSO/, 'O RD precisa exibir o acordo de próximo passo.');
+assert.match(trechoRdCloser, /PONTUAÇÃO DE QUALIDADE/, 'O RD precisa exibir a pontuação por critério.');
+assert.match(trechoRdCloser, /SUGESTÕES DE APROFUNDAMENTO/, 'O RD precisa separar sugestões de enablement das perguntas do pitch.');
+assert.match(trechoRdCloser, /O Closer executou corretamente:/, 'A conclusão precisa usar pontos fortes objetivos.');
+assert.match(trechoRdCloser, /O principal ajuste está em:/, 'A conclusão precisa explicitar os ajustes prioritários.');
 
 console.log(`Teste Closer válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise e normalização final.`);
