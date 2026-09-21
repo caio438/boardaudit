@@ -1691,7 +1691,7 @@ function executarAuditoriaV3(dados) {
     if (!interacao.ID_CLIENTE) dadosInteracao.ID_CLIENTE = cliente.ID_CLIENTE;
     audV3Atualizar_('INTERACOES', 'ID_INTERACAO', interacao.ID_INTERACAO, dadosInteracao);
 
-    const resultadoIa = audV3ChamarGemini_({
+    const contextoIa = {
       modelo: modelo,
       criterios: criterios,
       cliente: cliente,
@@ -1708,16 +1708,35 @@ function executarAuditoriaV3(dados) {
         : [],
       tipoAuditoria: tipo,
       equipePlano: equipePlano
-    });
-    const modeloIaUsado = String(resultadoIa.__modelo_ia || '');
-    delete resultadoIa.__modelo_ia;
-    if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
-      resultadoIa.equipe_analisada = equipePlano;
+    };
+
+    const processarRespostaIa = function(respostaIa) {
+      const modeloUsado = String((respostaIa || {}).__modelo_ia || '');
+      if (respostaIa && Object.prototype.hasOwnProperty.call(respostaIa, '__modelo_ia')) delete respostaIa.__modelo_ia;
+      if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
+        respostaIa.equipe_analisada = equipePlano;
+      }
+      const normalizado = audV3NormalizarResultado_(respostaIa, criterios, identidade, interacao, pitch, tipo);
+      normalizado.metadados = normalizado.metadados || {};
+      normalizado.metadados.modelo_ia = modeloUsado;
+      audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+      return { resultado: normalizado, modeloIaUsado: modeloUsado };
+    };
+
+    let processado;
+    const primeiraRespostaIa = audV3ChamarGemini_(contextoIa);
+    try {
+      processado = processarRespostaIa(primeiraRespostaIa);
+    } catch (erroValidacaoIa) {
+      if (tipo === 'PLANO') throw erroValidacaoIa;
+      contextoIa.correcaoValidacao = String(erroValidacaoIa && erroValidacaoIa.message ? erroValidacaoIa.message : erroValidacaoIa);
+      console.warn('Resposta da auditoria rejeitada pelo validador. Executando uma tentativa de reparo: ' + contextoIa.correcaoValidacao);
+      const segundaRespostaIa = audV3ChamarGemini_(contextoIa);
+      processado = processarRespostaIa(segundaRespostaIa);
     }
-    const resultado = audV3NormalizarResultado_(resultadoIa, criterios, identidade, interacao, pitch, tipo);
-    resultado.metadados = resultado.metadados || {};
-    resultado.metadados.modelo_ia = modeloIaUsado;
-    audV3ValidarResultadoOficial_(resultado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+
+    const resultado = processado.resultado;
+    const modeloIaUsado = processado.modeloIaUsado;
     const texto = audV3ResultadoTexto_(resultado, tipo);
 
     let scoreValue = '';
@@ -2317,7 +2336,15 @@ function audV3MontarPrompt_(ctx) {
     'Use equipe NAO_DEFINIDA quando a transcrição e a análise não indicarem Caio, Thiago, Allafy, Luis ou uma equipe responsável.',
     'O resumo_publicacao deve ser uma síntese fiel dos achados do relatório completo, sem criar fatos novos e sem frases genéricas.',
     regraConclusao,
-    'Sem timestamps ou duração informada, tempo de fala, interrupções e duração devem ser marcados como não mensuráveis.'
+    'Sem timestamps ou duração informada, tempo de fala, interrupções e duração devem ser marcados como não mensuráveis.',
+    ctx.correcaoValidacao ? [
+      'CORREÇÃO OBRIGATÓRIA DA TENTATIVA ANTERIOR.',
+      'A resposta anterior foi rejeitada pelo validador por este motivo: ' + String(ctx.correcaoValidacao || ''),
+      'Gere novamente o JSON completo corrigindo esse problema sem relaxar nenhuma regra.',
+      'Para toda evidência de fala (o_que_foi_dito, fato_transcricao, pergunta ou evidencia), copie um trecho curto, literal e contíguo da TRANSCRICAO. Não resuma, não reescreva e não complete palavras.',
+      'Para regra_pitch, copie somente um trecho curto e literal existente no PITCH_VIGENTE. Se não houver regra literal aplicável, use Não previsto no pitch.',
+      'Se não existir fala literal segura do profissional auditado, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO.'
+    ].join('\n') : ''
   ].filter(Boolean).join('\n\n');
 }
 
