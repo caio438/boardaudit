@@ -429,6 +429,40 @@
       min-width: 180px;
     }
 
+    .audit-space-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 18px;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-2);
+    }
+
+    .audit-space-tab {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 10px 16px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .audit-space-tab:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
+
+    .audit-space-tab.active {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
     .history-date-group + .history-date-group {
       margin-top: 22px;
     }
@@ -1429,6 +1463,12 @@
       </section>
 
       <section id="page-auditorias" class="page active">
+        <div class="audit-space-tabs" role="tablist" aria-label="Espaços de auditoria">
+          <button class="audit-space-tab active" type="button" role="tab" data-audit-space="SDR" aria-selected="true" onclick="selecionarEspacoAuditoriaFront_('SDR')">SDR</button>
+          <button class="audit-space-tab" type="button" role="tab" data-audit-space="CLOSER" aria-selected="false" onclick="selecionarEspacoAuditoriaFront_('CLOSER')">Closer</button>
+          <button class="audit-space-tab" type="button" role="tab" data-audit-space="PLANO" aria-selected="false" onclick="selecionarEspacoAuditoriaFront_('PLANO')">Plano de Otimização</button>
+        </div>
+
         <div class="card">
           <div class="section-title">
             <div>
@@ -1454,7 +1494,7 @@
           <div class="form-grid">
             <div class="field">
               <label for="audTipo">Função auditada</label>
-              <select id="audTipo" onchange="atualizarSeletoresAuditoria()">
+              <select id="audTipo" onchange="alterarTipoAuditoriaFront_()">
                 <option value="">Selecione a função</option>
                 <option value="SDR">SDR</option>
                 <option value="CLOSER">Closer</option>
@@ -1625,7 +1665,7 @@
         </details>
 
         <div class="card" style="margin-top:18px">
-          <div class="section-title"><div><h3>Auditorias realizadas</h3></div></div>
+          <div class="section-title"><div><h3 id="audHistoricoTitulo">Auditorias SDR realizadas</h3></div></div>
           <div id="resumoEnviosRdAuditorias" class="grid cards" style="margin-bottom:14px"></div>
           <div class="toolbar">
             <div class="filters">
@@ -2320,6 +2360,7 @@
       pitches: [],
       auditorias: [],
       auditoriaAtual: null,
+      auditoriaEspaco: 'SDR',
       circleManualAtual: null,
       interacoesAuditoria: [],
       modelosAuditoria: [],
@@ -2823,7 +2864,7 @@
       if (nome === 'auditorias') {
         if (!iniciarCarga_('auditorias', forcar)) return;
         mostrarLoadingLocal('listaAuditorias','Carregando auditorias...');
-        google.script.run.withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); atualizarSeletoresAuditoria(); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
+        google.script.run.withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); selecionarEspacoAuditoriaFront_(estado.auditoriaEspaco || 'SDR', true); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
         return;
       }
 
@@ -6913,20 +6954,61 @@
     renderizarAuditorias();
   }
 
+  function rotuloEspacoAuditoria_(tipo) {
+    const chave = String(tipo || '').toUpperCase();
+    if (chave === 'CLOSER') return 'Closer';
+    if (chave === 'PLANO') return 'Plano de Otimização';
+    return 'SDR';
+  }
+
+  function sincronizarEspacoAuditoriaFront_() {
+    const tipo = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    document.querySelectorAll('[data-audit-space]').forEach(botao => {
+      const ativo = String(botao.dataset.auditSpace || '').toUpperCase() === tipo;
+      botao.classList.toggle('active', ativo);
+      botao.setAttribute('aria-selected', ativo ? 'true' : 'false');
+    });
+    const titulo = document.getElementById('audHistoricoTitulo');
+    if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
+  }
+
+  function selecionarEspacoAuditoriaFront_(tipo, silencioso) {
+    const chave = String(tipo || '').toUpperCase();
+    if (!['SDR', 'CLOSER', 'PLANO'].includes(chave)) return;
+    estado.auditoriaEspaco = chave;
+    const seletor = document.getElementById('audTipo');
+    if (seletor && seletor.value !== chave) seletor.value = chave;
+    sincronizarEspacoAuditoriaFront_();
+    atualizarSeletoresAuditoria();
+    if (!silencioso) renderizarAuditorias();
+  }
+
+  function alterarTipoAuditoriaFront_() {
+    const seletor = document.getElementById('audTipo');
+    const chave = String((seletor || {}).value || '').toUpperCase();
+    if (['SDR', 'CLOSER', 'PLANO'].includes(chave)) estado.auditoriaEspaco = chave;
+    sincronizarEspacoAuditoriaFront_();
+    atualizarSeletoresAuditoria();
+    renderizarAuditorias();
+  }
+
   function renderizarAuditorias() {
     const alvo = document.getElementById('listaAuditorias');
     renderizarResumoEnviosRdAuditorias_();
     const idCliente = String((document.getElementById('audHistoricoCliente') || {}).value || '');
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
+    const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
     const auditorias = (estado.auditorias || []).filter(item => {
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
-      return (!idCliente || String(item.idCliente || '') === idCliente) &&
+      return String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco &&
+        (!idCliente || String(item.idCliente || '') === idCliente) &&
         (!mes || chave.slice(0, 7) === mes) &&
         (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
     });
     if (!auditorias.length) {
-      alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhuma auditoria encontrada para os filtros selecionados.' : 'Nenhuma auditoria executada.'}</div>`;
+      const rotulo = rotuloEspacoAuditoria_(espaco);
+      alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhum registro de ' + escapeHtml(rotulo) + ' encontrado para os filtros selecionados.' : 'Nenhum registro executado.'}</div>`;
       return;
     }
 
