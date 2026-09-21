@@ -44,7 +44,8 @@ jobs:
           node scripts/run-apps-script-function.mjs \
             --function QA_EXECUTION_API_READ_ONLY_PROBE \
             --params '[]' \
-            --expect-true sucesso
+            --expect-true sucesso \
+            --require-contract
           echo "EXECUTION_API_PROBE=SUCCESS"
 
       - name: Cleanup
