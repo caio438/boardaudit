@@ -1,0 +1,100 @@
+name: One-time reprocess Sinergia audits
+
+on:
+  push:
+    branches:
+      - ops/reprocess-sinergia-audits
+
+permissions:
+  contents: read
+
+jobs:
+  reprocess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          cat > .clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+
+      - name: Confirm live source has Sinergia CRM runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/boardaudit-live
+          mkdir -p /tmp/boardaudit-live
+          cat > /tmp/boardaudit-live/.clasp.json <<'JSON'
+          {
+            "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
+            "rootDir": "."
+          }
+          JSON
+          cd /tmp/boardaudit-live
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
+          grep -q "function regenerarAuditoriaGrupoSinergiaParaCrmV3" AuditoriaV3.js
+          echo "LIVE_RUNNER_READY=1"
+
+      - name: Reprocess four Sinergia audits
+        shell: bash
+        run: |
+          set -uo pipefail
+          ids=(
+            "AUD-20260806134800-83C708AF"
+            "AUD-20260813175829-FAB9BCCE"
+            "AUD-20260813180755-A9D4A165"
+            "AUD-20260911153743-09EE7CE8"
+          )
+          failures=0
+          mkdir -p /tmp/sinergia-audit-results
+          for id in "${ids[@]}"; do
+            echo "===== $id ====="
+            if npx clasp run regenerarAuditoriaGrupoSinergiaParaCrmV3 --params "[\"$id\"]" 2>&1 | tee "/tmp/sinergia-audit-results/$id.txt"; then
+              echo "REPROCESS_OK=$id"
+            else
+              echo "REPROCESS_FAIL=$id"
+              failures=$((failures + 1))
+            fi
+          done
+          echo "REPROCESS_FAILURES=$failures"
+          if [ "$failures" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload execution results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinergia-audit-reprocess-results
+          path: /tmp/sinergia-audit-results
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Remove local authentication file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json
