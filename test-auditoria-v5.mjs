@@ -101,6 +101,12 @@ assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VA
 assert.ok(rd.includes('audV3HashFonte_'), 'RD não reconfirma a integridade da fonte.');
 assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0"), 'Plano de Otimização ainda pode ser enviado ao RD CRM.');
 assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloser_(c);"), 'Closer não usa o modelo objetivo de anotação.');
+assert.ok(rd.includes("if(tipo==='SDR')return audRdTextoSdr_(c);"), 'SDR não usa exclusivamente o modelo objetivo de anotação.');
+assert.ok(rd.includes("Tipo de auditoria não suportado para publicação no RD"), 'Dispatcher do RD não bloqueia tipos fora de SDR/Closer.');
+assert.ok(!rd.includes('TESTAR_PREVIA_RD_STEC'), 'Função temporária de prévia STEC ainda está em produção.');
+assert.ok(!rd.includes('APLICAR_FLUXO_RD_STEC'), 'Função temporária de publicação STEC ainda está em produção.');
+assert.ok(!rd.includes('audRdCategoriaSpin_'), 'Fallback legado do texto RD ainda deixou helper sem uso.');
+
 assert.ok(rd.includes('CENÁRIO DA REUNIÃO'), 'Anotação do Closer não possui cenário objetivo.');
 
 assert.ok(rd.includes('Necessidade principal: '), 'Resumo SDR no RD não inclui a necessidade principal.');
