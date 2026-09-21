@@ -4,19 +4,23 @@ on:
   push:
     branches:
       - ops/reprocess-sinergia-audits
+    paths:
+      - .github/workflows/one-time-reprocess-sinergia-audits.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   reprocess:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: apps-script-production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ops/reprocess-sinergia-audits
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,27 +47,45 @@ jobs:
           }
           JSON
 
-      - name: Confirm live source has Sinergia CRM runner
+      - name: Pull live source and reprocess
+        id: execute
         shell: bash
         run: |
-          set -euo pipefail
-          rm -rf /tmp/boardaudit-live
-          mkdir -p /tmp/boardaudit-live
+          set +e
+          mkdir -p /tmp/boardaudit-live /tmp/sinergia-audit-results
+          result=/tmp/sinergia-audit-results/result.txt
+          : > "$result"
+          echo "RUN_SHA=$GITHUB_SHA" | tee -a "$result"
+          echo "RUN_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$result"
+
           cat > /tmp/boardaudit-live/.clasp.json <<'JSON'
           {
             "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
             "rootDir": "."
           }
           JSON
-          cd /tmp/boardaudit-live
-          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
-          grep -q "function regenerarAuditoriaGrupoSinergiaParaCrmV3" AuditoriaV3.js
-          echo "LIVE_RUNNER_READY=1"
 
-      - name: Reprocess four Sinergia audits
-        shell: bash
-        run: |
-          set -uo pipefail
+          cd /tmp/boardaudit-live
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull >> "$result" 2>&1
+          pull_rc=$?
+          echo "PULL_RC=$pull_rc" | tee -a "$result"
+
+          if [ "$pull_rc" -ne 0 ]; then
+            echo "FINAL_STATUS=PULL_FAILED" | tee -a "$result"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if grep -q "function regenerarAuditoriaGrupoSinergiaParaCrmV3" AuditoriaV3.js; then
+            echo "LIVE_RUNNER_READY=1" | tee -a "$result"
+          else
+            echo "LIVE_RUNNER_READY=0" | tee -a "$result"
+            echo "FINAL_STATUS=RUNNER_NOT_DEPLOYED" | tee -a "$result"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cd "$GITHUB_WORKSPACE"
           ids=(
             "AUD-20260806134800-83C708AF"
             "AUD-20260813175829-FAB9BCCE"
@@ -71,30 +93,47 @@ jobs:
             "AUD-20260911153743-09EE7CE8"
           )
           failures=0
-          mkdir -p /tmp/sinergia-audit-results
           for id in "${ids[@]}"; do
-            echo "===== $id ====="
-            if npx clasp run regenerarAuditoriaGrupoSinergiaParaCrmV3 --params "[\"$id\"]" 2>&1 | tee "/tmp/sinergia-audit-results/$id.txt"; then
-              echo "REPROCESS_OK=$id"
-            else
-              echo "REPROCESS_FAIL=$id"
+            echo "===== $id =====" | tee -a "$result"
+            npx clasp run regenerarAuditoriaGrupoSinergiaParaCrmV3 --params "[\"$id\"]" > "/tmp/sinergia-audit-results/$id.txt" 2>&1
+            rc=$?
+            cat "/tmp/sinergia-audit-results/$id.txt" | tee -a "$result"
+            echo "RC_$id=$rc" | tee -a "$result"
+            if [ "$rc" -ne 0 ]; then
               failures=$((failures + 1))
             fi
           done
-          echo "REPROCESS_FAILURES=$failures"
+          echo "REPROCESS_FAILURES=$failures" | tee -a "$result"
           if [ "$failures" -gt 0 ]; then
-            exit 1
+            echo "FINAL_STATUS=PARTIAL_OR_FAILED" | tee -a "$result"
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "FINAL_STATUS=SUCCESS" | tee -a "$result"
+            echo "failed=0" >> "$GITHUB_OUTPUT"
           fi
+          exit 0
 
-      - name: Upload execution results
+      - name: Commit execution result
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sinergia-audit-reprocess-results
-          path: /tmp/sinergia-audit-results
-          if-no-files-found: warn
-          retention-days: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ops-results
+          cp /tmp/sinergia-audit-results/result.txt ops-results/sinergia-reprocess-latest.txt || echo "NO_RESULT_FILE" > ops-results/sinergia-reprocess-latest.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ops-results/sinergia-reprocess-latest.txt
+          if git diff --cached --quiet; then
+            echo "No result changes to commit."
+          else
+            git commit -m "Ops result: Sinergia audit reprocess"
+            git push origin HEAD:ops/reprocess-sinergia-audits
+          fi
 
       - name: Remove local authentication file
         if: always()
         run: rm -f "$HOME/.clasprc.json" .clasp.json
+
+      - name: Fail workflow when execution failed
+        if: steps.execute.outputs.failed == '1'
+        run: exit 1
