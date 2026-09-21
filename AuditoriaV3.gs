@@ -2025,13 +2025,58 @@ function descartarAuditoriaV3(dados) {
   const id = String(dados.idAuditoria || '').trim();
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   if (!auditoria) throw new Error('Auditoria não encontrada.');
+
   const status = String(auditoria.STATUS || '').toUpperCase();
-  if (status === 'APROVADA' || String(auditoria.LINK_DOCUMENTO || '').trim()) throw new Error('Uma auditoria aprovada não pode ser descartada por este botão.');
-  if (status !== 'EM_REVISAO') throw new Error('Somente auditorias em revisão podem ser descartadas.');
-  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, { STATUS: 'DESCARTADA', CONCLUIDO_EM: new Date(), ERRO: '' });
-  if (auditoria.ID_INTERACAO) audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, { STATUS_AUDITORIA: 'NAO_AUDITADA', ATUALIZADO_EM: new Date() });
+  const publicadaRd = String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA';
+  const publicadaCircle = Boolean(String(auditoria.CIRCLE_POST_URL || '').trim());
+  const publicadaComunidade = Boolean(String(auditoria.COMUNIDADE_POST_URL || '').trim());
+
+  if (status === 'DESCARTADA') {
+    return {
+      sucesso: true,
+      mensagem: 'Esta auditoria já está descartada.',
+      auditorias: audV3ListarAuditoriasFront_()
+    };
+  }
+  if (status === 'PROCESSANDO') throw new Error('Aguarde a auditoria terminar antes de descartá-la.');
+  if (publicadaRd || publicadaCircle || publicadaComunidade) {
+    throw new Error('Esta auditoria já foi publicada e não pode ser descartada pelo Board.');
+  }
+
+  const agora = new Date();
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    STATUS: 'DESCARTADA',
+    CONCLUIDO_EM: agora,
+    ERRO: '',
+    AUTOMACAO_STATUS: 'CONCLUIDA_DESCARTADA',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: agora,
+    RD_STATUS: 'DESCARTADA',
+    RD_ACTIVITY_ID: '',
+    RD_ERRO: '',
+    RD_PUBLICADO_EM: ''
+  });
+
+  if (auditoria.ID_INTERACAO) {
+    const outrasAtivas = audV3Ler_('AUDITORIAS').filter(function(item) {
+      if (String(item.ID_AUDITORIA || '') === id) return false;
+      if (String(item.ID_INTERACAO || '') !== String(auditoria.ID_INTERACAO || '')) return false;
+      return ['PROCESSANDO', 'EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase());
+    });
+    if (!outrasAtivas.length) {
+      audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, {
+        STATUS_AUDITORIA: 'NAO_AUDITADA',
+        ATUALIZADO_EM: agora
+      });
+    }
+  }
+
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
-  return { sucesso: true, mensagem: 'Auditoria descartada. A interação poderá ser auditada novamente.', auditorias: audV3ListarAuditoriasFront_() };
+  return {
+    sucesso: true,
+    mensagem: 'Auditoria descartada. O histórico foi preservado e o envio ao RD ficou bloqueado.',
+    auditorias: audV3ListarAuditoriasFront_()
+  };
 }
 
 function excluirAuditoriaV3(dados) {
@@ -2132,6 +2177,8 @@ function audV3Identidade_(dados, cliente, interacao) {
   const numeroChamada = partes.length > 1 ? partes[1] : '';
   const sdrArquivo = partes.length > 2 ? partes.slice(2).join(' - ') : '';
   return {
+    idCliente: String((cliente || {}).ID_CLIENTE || ''),
+    clienteNome: String((cliente || {}).NOME_CLIENTE || ''),
     empresa: String(empresaArquivo || interacao.EMPRESA_ARQUIVO || interacao.OPORTUNIDADE || cliente.NOME_CLIENTE || ''),
     empresaArquivo: empresaArquivo,
     numeroChamada: numeroChamada,
@@ -2261,6 +2308,10 @@ function audV3MontarPrompt_(ctx) {
     modelo_versao: ctx.modelo.VERSAO_MODELO
   };
   
+  if (tipo === 'CLOSER' && audV3EhClienteIngee_(i)) {
+    meta.closers_validos = ['Juliana', 'Jéssica', 'Maíra'];
+  }
+
   let regraConclusao = '';
   if (tipo === 'CLOSER') {
     regraConclusao = 'Diferencie fechamento, próximo passo concreto e intenção sem compromisso.';
@@ -2318,6 +2369,7 @@ function audV3MontarPrompt_(ctx) {
     'Paráfrases, saudações equivalentes, inversões naturais de frase, abreviações e pequenas variações de redação não são divergência e não reduzem nota. Nesses casos use CONFORME e escreva divergencia=Não houve divergência.',
     'Variações fonéticas ou erros de transcrição em nomes próprios, como Aline/Elaine ou Moisés/Moreira, não constituem desvio do pitch e nunca podem reduzir a nota. Use o responsável informado nos metadados como identidade canônica quando o contexto indicar a mesma pessoa.',
     tipo === 'SDR' ? 'REGRA CANÔNICA DO ARQUIVO: quando nome_arquivo_origem estiver preenchido no padrão nomedaempresa-numero-nomedosdr, considere obrigatoriamente como empresa o texto antes do primeiro hífen, como número da chamada o trecho central e como SDR o texto após o segundo hífen. A transcrição não pode substituir esses dados por aproximações fonéticas.' : '',
+    tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica e Maíra são closers válidas. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
     tipo === 'SDR' ? 'AUDITORIA SDR OBRIGATÓRIA: examine separadamente apresentação pelo próprio nome, nome da empresa, origem do contato, frase de agilidade e empatia (reconhecer que o lead está corrido e pedir apenas três minutos), primeira frase de qualificação, pergunta de segmento, motivo do contato, todas as perguntas obrigatórias do pitch, validação do LMV, trilha positiva ou negativa correta conforme o LMV, manejo de objeções, valorização da reunião, oferta de dois horários concretos, confirmação do compromisso, aviso de contato prévio/no-show e encerramento profissional.' : '',
     tipo === 'SDR' ? 'O SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
     tipo === 'SDR' ? 'A validação do LMV é obrigatória. Identifique a resposta do lead, determine se o LMV foi positivo ou negativo e verifique se o SDR seguiu a trilha correspondente. LMV positivo deve seguir o pitch positivo. LMV negativo deve seguir o pitch negativo de desqualificação/precificação. Não penalize quando o pitch não definir a trilha; nesse caso use LACUNA_PROCESSO.' : '',
@@ -2686,12 +2738,24 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
   return true;
 }
 
+function audV3EhClienteIngee_(identidade) {
+  return String((identidade || {}).idCliente || (identidade || {}).ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A';
+}
+
+function audV3CloserIngeeValido_(valor) {
+  const nome = audV3NormalizarTrechoRastreavel_(valor);
+  if (!nome) return false;
+  const primeiroNome = nome.split(' ')[0];
+  return ['juliana', 'jessica', 'maira'].includes(primeiroNome);
+}
+
 function audV3NormalizarLocutorAuditoria_(valor, tipoAuditoria, identidade) {
   const bruto = String(valor || '').trim();
   if (!bruto) return '';
   const tipo = String(tipoAuditoria || '').trim().toUpperCase();
   const papel = bruto.toUpperCase();
   if (papel === tipo || papel === 'NAO_IDENTIFICADO') return papel;
+  if (tipo === 'CLOSER' && audV3EhClienteIngee_(identidade) && audV3CloserIngeeValido_(bruto)) return 'CLOSER';
 
   const nomeProfissional = audV3NormalizarTrechoRastreavel_((identidade || {}).sdr || '');
   const locutor = audV3NormalizarTrechoRastreavel_(bruto);
@@ -4750,8 +4814,10 @@ function audV3EhGrupoSinergiaCrm_(auditoria, interacao) {
   auditoria = auditoria || {};
   interacao = interacao || {};
   if (String(auditoria.ID_CLIENTE || '') !== 'CLI-20260806105306-25F3490A') return false;
-  if (!['SDR', 'CLOSER'].includes(String(auditoria.TIPO_AUDITORIA || '').toUpperCase())) return false;
+  const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) return false;
   const responsavel = audV3NormalizarTrechoRastreavel_(interacao.COLABORADOR || interacao.VENDEDOR || '');
+  if (tipo === 'CLOSER') return audV3CloserIngeeValido_(responsavel);
   return responsavel === 'juliana' || responsavel === 'juliana ingee';
 }
 
@@ -4765,6 +4831,7 @@ function audV3EstadoCrmGrupoSinergia_(auditoria, interacao) {
   const linkCrm = String((interacao || {}).LINK_CRM || '').trim();
 
   if (rdStatus === 'PUBLICADA') return 'ENVIADA';
+  if (status === 'DESCARTADA' || rdStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
   if (automacao === 'SUBSTITUIDA_PARA_CRM') return 'SUBSTITUIDA';
   if (status !== 'APROVADA') return 'REANALISE_NECESSARIA';
   if (validacao !== 'VALIDADA' || !hash) return 'REANALISE_NECESSARIA';
