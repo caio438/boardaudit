@@ -1716,6 +1716,7 @@ function executarAuditoriaV3(dados) {
       if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
         respostaIa.equipe_analisada = equipePlano;
       }
+      audV3RepararEvidenciasRastreaveis_(respostaIa, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
       const normalizado = audV3NormalizarResultado_(respostaIa, criterios, identidade, interacao, pitch, tipo);
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
@@ -2306,7 +2307,8 @@ function audV3MontarPrompt_(ctx) {
     '<REGRAS_CLIENTE>\n' + String(ctx.cliente.REGRAS_CLIENTE || 'Nenhuma regra adicional cadastrada.') + '\n</REGRAS_CLIENTE>',
     '<METAS_CLIENTE>\n' + JSON.stringify(ctx.metas && ctx.metas.length ? ctx.metas : { informado: false }, null, 2) + '\n</METAS_CLIENTE>',
     '<PITCH_VIGENTE>\n' + String(ctx.pitch.CONTEUDO_PITCH || '') + '\n</PITCH_VIGENTE>',
-    '<TRANSCRICAO>\n' + String(ctx.transcricao.CONTEUDO || '') + '\n</TRANSCRICAO>',
+    '<CATALOGO_EVIDENCIAS_TRANSCRICAO>\n' + audV3CatalogarEvidencias_(ctx.transcricao.CONTEUDO || '') + '\n</CATALOGO_EVIDENCIAS_TRANSCRICAO>',
+    'Cada código EV identifica um turno literal da transcrição. Para campos de evidência, escolha somente um turno pertinente ao critério e copie um trecho literal contíguo do texto após o código EV. Nunca coloque o código EV no campo de evidência. Se nenhum turno comprovar diretamente o item, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO. Não escolha uma fala apenas para preencher o campo.',
     'Em criterios_avaliados, devolva exatamente uma comparação para cada dimensão oficial e use o mesmo id recebido em CRITERIOS_OFICIAIS.',
     'Cada comparação deve ligar, no mesmo objeto: o_que_foi_dito, regra_pitch, status, divergencia, correcao_pratica e justificativa_nota. Não atribua nota; o Board calcula a pontuação pelo status.',
     'Use somente os status CONFORME, DESVIO_EXECUCAO, NAO_EXECUTADO, NAO_APLICAVEL, LACUNA_PROCESSO ou NAO_EVIDENCIADO.',
@@ -2341,7 +2343,7 @@ function audV3MontarPrompt_(ctx) {
       'CORREÇÃO OBRIGATÓRIA DA TENTATIVA ANTERIOR.',
       'A resposta anterior foi rejeitada pelo validador por este motivo: ' + String(ctx.correcaoValidacao || ''),
       'Gere novamente o JSON completo corrigindo esse problema sem relaxar nenhuma regra.',
-      'Para toda evidência de fala (o_que_foi_dito, fato_transcricao, pergunta ou evidencia), copie um trecho curto, literal e contíguo da TRANSCRICAO. Não resuma, não reescreva e não complete palavras.',
+      'Para toda evidência de fala (o_que_foi_dito, fato_transcricao, pergunta ou evidencia), selecione um turno pertinente do CATALOGO_EVIDENCIAS_TRANSCRICAO e copie somente um trecho curto, literal e contíguo do texto do turno. Não use o código EV, não resuma, não reescreva e não complete palavras.',
       'Para regra_pitch, copie somente um trecho curto e literal existente no PITCH_VIGENTE. Se não houver regra literal aplicável, use Não previsto no pitch.',
       'Se não existir fala literal segura do profissional auditado, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO.'
     ].join('\n') : ''
@@ -2372,6 +2374,189 @@ function audV3TrechoExisteNaFonte_(trecho, fonte) {
   if (!evidencia || /^nao evidenciado(?: na fala do (?:sdr|closer|profissional))?$/.test(evidencia)) return true;
   const base = audV3NormalizarTrechoRastreavel_(fonte);
   return Boolean(base && base.indexOf(evidencia) >= 0);
+}
+
+function audV3CatalogarEvidencias_(fonte) {
+  const texto = String(fonte || '').trim();
+  if (!texto) return '';
+  const turnos = texto
+    .split(/\s*>>\s*|\n+/)
+    .map(function(item) { return String(item || '').trim(); })
+    .filter(Boolean);
+  return turnos.map(function(turno, indice) {
+    return '[EV' + String(indice + 1).padStart(4, '0') + '] ' + turno;
+  }).join('\n');
+}
+
+function audV3TokensSignificativos_(valor) {
+  const stop = {
+    a:1, o:1, os:1, as:1, um:1, uma:1, uns:1, umas:1, de:1, da:1, do:1, das:1, dos:1,
+    e:1, em:1, no:1, na:1, nos:1, nas:1, para:1, por:1, com:1, sem:1, que:1, se:1,
+    eu:1, voce:1, voces:1, ele:1, ela:1, eles:1, elas:1, meu:1, minha:1, seu:1, sua:1,
+    isso:1, isto:1, aquilo:1, aqui:1, ali:1, ai:1, la:1, ja:1, nao:1, sim:1, mas:1,
+    ou:1, como:1, qual:1, quais:1, quando:1, onde:1, porque:1, entao:1, assim:1,
+    muito:1, mais:1, menos:1, tambem:1, gente:1, pra:1, pro:1, pela:1, pelo:1,
+    foi:1, era:1, ser:1, ter:1, tem:1, tinha:1, esta:1, estava:1, sao:1, ta:1, ne:1
+  };
+  return audV3NormalizarTrechoRastreavel_(valor)
+    .split(' ')
+    .filter(function(token) {
+      return token && token.length >= 3 && !stop[token] && !/^\d+$/.test(token);
+    });
+}
+
+function audV3RecuperarTrechoLiteral_(trecho, fonte) {
+  const original = String(trecho || '').trim().replace(/^\[EV\d+\]\s*/i, '');
+  const base = String(fonte || '');
+  if (!original || /^n[aã]o evidenciado/i.test(original)) return original;
+  if (audV3TrechoExisteNaFonte_(original, base)) return original;
+
+  const consulta = audV3TokensSignificativos_(original);
+  const unicosConsulta = {};
+  consulta.forEach(function(token) { unicosConsulta[token] = true; });
+  const chaves = Object.keys(unicosConsulta);
+  if (chaves.length < 2) return '';
+
+  const segmentos = base.split(/\s*>>\s*|\n+/).map(function(item) {
+    return String(item || '').trim();
+  }).filter(Boolean);
+
+  let melhor = null;
+  segmentos.forEach(function(segmento) {
+    const partes = segmento.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const candidatos = partes.length > 1 ? partes.concat([segmento]) : [segmento];
+    candidatos.forEach(function(candidato) {
+      const tokens = audV3TokensSignificativos_(candidato);
+      if (!tokens.length) return;
+      const setCand = {};
+      tokens.forEach(function(token) { setCand[token] = true; });
+      let sobreposicao = 0;
+      chaves.forEach(function(token) { if (setCand[token]) sobreposicao += 1; });
+      const cobertura = sobreposicao / chaves.length;
+      const uniao = {};
+      chaves.forEach(function(token) { uniao[token] = true; });
+      Object.keys(setCand).forEach(function(token) { uniao[token] = true; });
+      const jaccard = sobreposicao / Math.max(1, Object.keys(uniao).length);
+      const score = cobertura * 0.8 + jaccard * 0.2;
+      if (!melhor || score > melhor.score) melhor = {
+        texto: candidato.trim(),
+        score: score,
+        cobertura: cobertura,
+        sobreposicao: sobreposicao
+      };
+    });
+  });
+
+  if (!melhor) return '';
+  const minimoSobreposicao = chaves.length <= 3 ? chaves.length : 3;
+  if (melhor.sobreposicao < minimoSobreposicao || melhor.cobertura < 0.6 || melhor.score < 0.5) return '';
+  return audV3TrechoExisteNaFonte_(melhor.texto, base) ? melhor.texto : '';
+}
+
+function audV3RepararRegraPitch_(trecho, conteudoPitch) {
+  const regra = String(trecho || '').trim();
+  if (!regra || /^n[aã]o previsto no pitch/i.test(regra) || /^n[aã]o evidenciado/i.test(regra)) return regra || 'Não previsto no pitch.';
+  if (audV3TrechoExisteNaFonte_(regra, conteudoPitch)) return regra;
+  return audV3RecuperarTrechoLiteral_(regra, conteudoPitch) || 'Não previsto no pitch.';
+}
+
+function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
+  resultado = resultado || {};
+  criterios = criterios || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) return resultado;
+
+  const repararFala = function(valor) {
+    const fala = String(valor || '').trim();
+    if (!fala || /^n[aã]o evidenciado/i.test(fala)) return fala || 'Não evidenciado na fala do profissional.';
+    return audV3RecuperarTrechoLiteral_(fala, transcricao);
+  };
+
+  (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+    item = item || {};
+    const reparada = repararFala(item.o_que_foi_dito);
+    item.regra_pitch = audV3RepararRegraPitch_(item.regra_pitch, conteudoPitch);
+    if (reparada) {
+      item.o_que_foi_dito = reparada;
+      return;
+    }
+    item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
+    item.locutor_evidencia = 'NAO_IDENTIFICADO';
+    item.status = 'NAO_EVIDENCIADO';
+    item.aplicavel = false;
+    item.divergencia = 'Não há evidência literal segura para sustentar este critério.';
+    item.justificativa_nota = 'Critério excluído da pontuação por falta de evidência literal rastreável na transcrição.';
+  });
+
+  if (tipo === 'CLOSER') {
+    (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(item) {
+      item = item || {};
+      const reparada = repararFala(item.o_que_foi_dito);
+      if (reparada) {
+        item.o_que_foi_dito = reparada;
+      } else {
+        item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
+        item.locutor_evidencia = 'NAO_IDENTIFICADO';
+        item.gatilho_alcancado = false;
+        item.status = 'VERMELHO';
+        item.divergencia = 'Não foi possível sustentar este momento com evidência literal rastreável.';
+        item.justificativa_nota = 'Momento mantido como não comprovado para evitar inferência sem fonte literal.';
+        const melhorias = Array.isArray(item.pontos_melhorar) ? item.pontos_melhorar : [];
+        melhorias.push('Revisar este momento com base em uma fala literal identificável da gravação.');
+        item.pontos_melhorar = melhorias.slice(0, 3);
+      }
+      item.texto_script = audV3RepararRegraPitch_(item.texto_script, conteudoPitch);
+    });
+
+    const perguntas = resultado.perguntas_diagnostico || {};
+    perguntas.perguntas_realizadas = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
+      .map(function(item) {
+        item = item || {};
+        const reparada = repararFala(item.pergunta);
+        if (!reparada) return null;
+        item.pergunta = reparada;
+        return item;
+      })
+      .filter(Boolean);
+    perguntas.total_realizadas = perguntas.perguntas_realizadas.length;
+    resultado.perguntas_diagnostico = perguntas;
+
+    (Array.isArray(resultado.objecoes_respostas) ? resultado.objecoes_respostas : []).forEach(function(item) {
+      item.objecao_ou_pergunta_lead = audV3RecuperarTrechoLiteral_(item.objecao_ou_pergunta_lead, transcricao) || 'Não evidenciado literalmente na transcrição.';
+      item.resposta_closer = audV3RecuperarTrechoLiteral_(item.resposta_closer, transcricao) || 'Não evidenciado na fala do profissional.';
+      item.referencia_pitch = audV3RepararRegraPitch_(item.referencia_pitch, conteudoPitch);
+    });
+  } else {
+    (Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : []).forEach(function(item) {
+      item = item || {};
+      const reparada = repararFala(item.fato_transcricao);
+      item.regra_pitch = audV3RepararRegraPitch_(item.regra_pitch, conteudoPitch);
+      if (reparada) {
+        item.fato_transcricao = reparada;
+      } else {
+        item.fato_transcricao = 'Não evidenciado na fala do profissional.';
+        item.locutor_evidencia = 'NAO_IDENTIFICADO';
+        item.status = 'NAO_EVIDENCIADO';
+        item.desvio = 'Não há evidência literal segura para avaliar esta etapa.';
+      }
+    });
+  }
+
+  const checklist = Array.isArray(resultado.checklist) ? resultado.checklist : [];
+  const obrigatorios = Array.isArray(criterios.checklist) ? criterios.checklist : [];
+  obrigatorios.forEach(function(nome) {
+    if (!checklist.some(function(item) {
+      return String((item || {}).item || '').trim().toLowerCase() === String(nome || '').trim().toLowerCase();
+    })) {
+      checklist.push({
+        item: String(nome || ''),
+        resultado: 'NAO_EVIDENCIADO',
+        observacao: 'Item preservado no checklist oficial; a IA não devolveu evidência suficiente para classificá-lo.'
+      });
+    }
+  });
+  resultado.checklist = checklist;
+  return resultado;
 }
 
 function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
