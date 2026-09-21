@@ -32,6 +32,14 @@ for (const bloco of [
 assert.ok(front.includes('function renderizarResumoExecutivoSdrV3_'), 'Resumo executivo SDR não foi implementado.');
 assert.ok(front.includes('function renderizarConclusaoObjetivaSdrFront_'), 'Conclusão objetiva SDR não foi implementada.');
 assert.ok(front.includes('Análise detalhada da auditoria SDR'), 'Detalhamento SDR não foi preservado em seção própria.');
+assert.ok(front.includes('function renderizarPontuacaoQualidadeSdrFront_'), 'Pontuação de Qualidade SDR não possui visualização legível própria.');
+assert.ok(front.includes("['Critério', 'Status', 'Nota']"), 'Pontuação de Qualidade SDR não possui resumo compacto.');
+assert.ok(front.includes("['Fala do SDR', item.o_que_foi_dito"), 'Detalhamento da Pontuação SDR perdeu a fala do SDR.');
+assert.ok(front.includes("['Regra do pitch', item.regra_pitch"), 'Detalhamento da Pontuação SDR perdeu a regra do pitch.');
+assert.ok(front.includes("['Divergência', item.divergencia"), 'Detalhamento da Pontuação SDR perdeu a divergência.');
+assert.ok(front.includes("['Justificativa da nota', item.justificativa_nota"), 'Detalhamento da Pontuação SDR perdeu a justificativa.');
+assert.ok(!front.includes("['Critério','Status','Nota','Fala do SDR','Regra do pitch','Divergência','Justificativa da nota']"), 'Tabela SDR antiga de sete colunas ainda está presente.');
+
 
 assert.ok(front.includes('function renderizarResumoExecutivoCloserV3_'), 'Resumo executivo Closer não foi implementado.');
 assert.ok(front.includes('function renderizarConclusaoObjetivaCloserFront_'), 'Conclusão objetiva Closer não foi implementada.');
