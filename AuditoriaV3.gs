@@ -2474,6 +2474,24 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
   return true;
 }
 
+function audV3NormalizarLocutorAuditoria_(valor, tipoAuditoria, identidade) {
+  const bruto = String(valor || '').trim();
+  if (!bruto) return '';
+  const tipo = String(tipoAuditoria || '').trim().toUpperCase();
+  const papel = bruto.toUpperCase();
+  if (papel === tipo || papel === 'NAO_IDENTIFICADO') return papel;
+
+  const nomeProfissional = audV3NormalizarTrechoRastreavel_((identidade || {}).sdr || '');
+  const locutor = audV3NormalizarTrechoRastreavel_(bruto);
+  if (nomeProfissional && locutor &&
+      (locutor === nomeProfissional ||
+       (nomeProfissional.length >= 3 && locutor.indexOf(nomeProfissional) >= 0) ||
+       (locutor.length >= 3 && nomeProfissional.indexOf(locutor) >= 0))) {
+    return tipo;
+  }
+  return papel;
+}
+
 function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, pitch, tipoAuditoria) {
   resultado = resultado || {};
   const tipo = String(tipoAuditoria || 'SDR').toUpperCase();
@@ -2570,6 +2588,9 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   resultado.schema_versao = '4.2';
 
   const normalizadas = audV3NormalizarCriteriosComparados_(resultado, criterios);
+  normalizadas.forEach(function(item) {
+    item.locutor_evidencia = audV3NormalizarLocutorAuditoria_(item.locutor_evidencia, tipo, identidade);
+  });
   resultado.criterios_avaliados = normalizadas;
   resultado.pontuacao = normalizadas.map(function(item) {
     return {
@@ -2603,7 +2624,13 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
     audV3NormalizarMomentosCloser_(resultado, criterios);
     audV3NormalizarAnaliseTemporalCloser_(resultado, interacao);
     const perguntas = resultado.perguntas_diagnostico || {};
-    perguntas.perguntas_realizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
+    perguntas.perguntas_realizadas = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
+      .map(function(item) {
+        item = item || {};
+        const locutorInformado = item.locutor || item.locutor_evidencia || '';
+        if (locutorInformado) item.locutor = audV3NormalizarLocutorAuditoria_(locutorInformado, tipo, identidade);
+        return item;
+      });
     perguntas.total_realizadas = perguntas.perguntas_realizadas.length;
     resultado.perguntas_diagnostico = perguntas;
     resultado.repertorio_perguntas_sugeridas = (resultado.repertorio_perguntas_sugeridas || []).map(item => {
@@ -2643,6 +2670,16 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
     });
     resultado.etapas_pitch = etapas;
     audV3NormalizarLeiturasSdr_(resultado, criterios);
+    (resultado.etapas_pitch || []).forEach(function(item) {
+      item.locutor_evidencia = audV3NormalizarLocutorAuditoria_(item.locutor_evidencia, tipo, identidade);
+    });
+    const perguntasSdr = resultado.perguntas_qualificacao || {};
+    ['corretas', 'com_desvio'].forEach(function(chave) {
+      (Array.isArray(perguntasSdr[chave]) ? perguntasSdr[chave] : []).forEach(function(item) {
+        const locutorInformado = item.locutor || item.locutor_evidencia || '';
+        if (locutorInformado) item.locutor = audV3NormalizarLocutorAuditoria_(locutorInformado, tipo, identidade);
+      });
+    });
   }
   audV3NormalizarProximosPassosEquipes_(resultado);
   return resultado;
