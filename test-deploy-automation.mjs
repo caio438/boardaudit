@@ -8,6 +8,13 @@ assert.ok(yaml.includes('Validate Apps Script'), 'Deploy automático não observ
 assert.ok(yaml.includes("github.event.workflow_run.conclusion == 'success'"), 'Deploy não exige validação com sucesso.');
 assert.ok(yaml.includes("github.event.workflow_run.head_branch == 'main'"), 'Deploy automático não está restrito à main.');
 assert.ok(yaml.includes('environment: apps-script-production'), 'Deploy não usa o Environment que contém a credencial do clasp.');
+assert.ok(yaml.includes('Check Apps Script version capacity'), 'Deploy não verifica o limite de versões antes de publicar.');
+assert.ok(yaml.includes('APPS_SCRIPT_VERSION_COUNT='), 'Deploy não registra a contagem de versões.');
+assert.ok(yaml.includes('limite de 200 versões'), 'Deploy não explica como corrigir o limite de versões.');
+assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Push exact validated source'), 'Limite de versões só é verificado depois do push.');
+assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
+assert.ok(!yaml.includes('/tmp/google_access_token'), 'Deploy ainda extrai access_token diretamente do clasp.');
+
 assert.ok(yaml.includes('Pull current production for preservation'), 'Deploy não preserva a produção atual antes da publicação.');
 assert.ok(yaml.includes('Save rollback snapshot'), 'Deploy não cria snapshot de rollback.');
 assert.ok(yaml.includes('preserving remote-only files'), 'Deploy pode apagar arquivos existentes apenas na produção.');
