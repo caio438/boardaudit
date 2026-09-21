@@ -276,12 +276,43 @@ function obterVersaoFrontend() {
  * Sonda estritamente somente leitura para validar a Apps Script Execution API.
  * Não consulta integrações e não cria auditorias, documentos, tarefas ou registros.
  */
-function QA_EXECUTION_API_READ_ONLY_PROBE() {
+/**
+ * Contrato padrão para respostas de funções expostas à camada de execução.
+ * Não persiste dados; apenas normaliza o retorno para consumidores externos.
+ */
+function criarRespostaExecucao_(opcoes) {
+  const dados = opcoes || {};
+  const sucesso = dados.sucesso === true;
+  const erroInformado = dados.erro && typeof dados.erro === 'object' ? dados.erro : {};
+
   return {
-    sucesso: true,
+    sucesso: sucesso,
+    requestId: String(dados.requestId || gerarId_('REQ')),
+    codigo: String(dados.codigo || (sucesso ? 'OK' : 'ERRO')),
+    etapa: String(dados.etapa || ''),
     versao: String(APP.versao || ''),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    resultado: dados.resultado === undefined ? null : dados.resultado,
+    erro: sucesso ? null : {
+      mensagem: String(erroInformado.mensagem || 'Erro não informado.'),
+      retryable: erroInformado.retryable === true
+    }
   };
+}
+
+/**
+ * Sonda estritamente somente leitura para validar a Apps Script Execution API.
+ * Não consulta integrações e não cria auditorias, documentos, tarefas ou registros.
+ */
+function QA_EXECUTION_API_READ_ONLY_PROBE() {
+  return criarRespostaExecucao_({
+    sucesso: true,
+    codigo: 'EXECUTION_API_PROBE_OK',
+    etapa: 'PROBE_READ_ONLY',
+    resultado: {
+      modo: 'READ_ONLY'
+    }
+  });
 }
 
 function audBuildAtual_() {
