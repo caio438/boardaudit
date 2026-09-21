@@ -1,0 +1,1 @@
+Trigger autenticado do runner existente para reexecutar as quatro auditorias Sinergia apos o deploy final.
