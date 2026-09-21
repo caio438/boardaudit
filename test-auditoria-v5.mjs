@@ -18,6 +18,9 @@ assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo d
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
 assert.ok(rd.includes('rdAuditoriaUsuarioVolumId'), 'RD não permite mapear o usuário VOLUM por ID na integração do cliente.');
 assert.ok(rd.includes("publicacao = audRdPublicarAutomaticamente_(id);"), 'Salvar o vínculo do RD não dispara publicação automática.');
+assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
+assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
+assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
 assert.ok(front.includes('Gerar e concluir auditoria'), 'A interface ainda apresenta a auditoria como geração parcial.');
 assert.ok(front.includes('A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.'), 'A interface não informa o fluxo automático.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
