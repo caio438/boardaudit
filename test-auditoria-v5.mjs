@@ -46,6 +46,9 @@ for (const tipo of ['SDR', 'CLOSER', 'PLANO']) {
 assert.ok(front.includes("auditoriaEspaco: 'SDR'"), 'Espaço padrão de auditoria não foi definido.');
 assert.ok(front.includes('function selecionarEspacoAuditoriaFront_'), 'Navegação simples entre SDR, Closer e Plano não foi implementada.');
 assert.ok(front.includes("String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco"), 'Histórico não é filtrado pelo espaço de auditoria selecionado.');
+assert.ok(front.includes("selecionarEspacoAuditoriaFront_(tipo, true);"), 'Aberturas pela Jornada não sincronizam a aba visual com o tipo da auditoria.');
+assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item => String(item.idAuditoria) === idAuditoria) || null;"), 'Auditoria existente não resolve o tipo antes de abrir pela Jornada.');
+
 
 
 
