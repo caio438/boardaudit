@@ -323,6 +323,15 @@ function audRdTextoCloser_(c) {
     var t = normCloser(v);
     return /(IMPLIC|IMPACT|CONSEQU|CUSTO|FINANCEIR|INA[CÇ]AO|NECESS|RESULTADO|PRIORIDADE|URGENC|RISCO|PERDA|GANHO)/.test(t);
   }
+  function coachingAcionavelCloser(v) {
+    var bruto = String(v || '').trim();
+    if (!bruto) return false;
+    var t = normCloser(bruto);
+    if (/[?"]/g.test(bruto)) return true;
+    if (/(PERGUNTE|DIGA|CONFIRME|OFERECA|OFEREÇA|ENVIE|MARQUE|AGEND|CONVITE|DUAS OPCOES|DUAS OPÇÕES|DATA|HORARIO|HORÁRIO|REGISTRE|VALIDAR COM O LEAD|PERGUNTA DO PITCH)/.test(t)) return true;
+    if (/(REVISAR|MELHORAR|APROFUNDAR|REFORCAR|REFORÇAR|ESTRUTURAR|SEGUIR O PITCH|APLICAR CORRETAMENTE|EXPLORAR MELHOR)/.test(t) && bruto.length < 180) return false;
+    return bruto.length >= 90 && /(COMO|QUANDO|ANTES DE|DEPOIS DE|PARA QUE|ATE QUE|ATÉ QUE)/.test(t);
+  }
 
   var aderentes = momentos.filter(conforme);
   var desviosMomentos = momentos.filter(function(x) { return !conforme(x) && !naoAplicavelCloser(x); });
@@ -404,12 +413,28 @@ function audRdTextoCloser_(c) {
       adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': use a formulação do pitch "' + curtoCloser(item.texto_script, 240) + '"');
       return;
     }
-    if (String(item.como_agir || '').trim()) {
+    if (String(item.como_agir || '').trim() && coachingAcionavelCloser(item.como_agir)) {
       adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.como_agir, 240));
       return;
     }
-    if (String(item.o_que_fazer || '').trim()) {
+    if (String(item.o_que_fazer || '').trim() && coachingAcionavelCloser(item.o_que_fazer)) {
       adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.o_que_fazer, 240));
+      return;
+    }
+    var criterioRelacionado = criterios.find(function(crit) {
+      if (!crit || crit.aplicavel === false) return false;
+      var statusCrit = normCloser(crit.status);
+      if (statusCrit === 'CONFORME') return false;
+      return chaveUnica([crit.nome, crit.id].join(' ')).split(' ').some(function(token) {
+        return token.length > 4 && chaveUnica(nome).indexOf(token) >= 0;
+      });
+    });
+    if (criterioRelacionado && String(criterioRelacionado.correcao_pratica || '').trim() && coachingAcionavelCloser(criterioRelacionado.correcao_pratica)) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(criterioRelacionado.correcao_pratica, 240));
+      return;
+    }
+    if (criterioRelacionado && String(criterioRelacionado.regra_pitch || '').trim() && !/^n[aã]o previsto/i.test(String(criterioRelacionado.regra_pitch || ''))) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a regra do pitch "' + curtoCloser(criterioRelacionado.regra_pitch, 240) + '"');
     }
   });
 
@@ -430,12 +455,25 @@ function audRdTextoCloser_(c) {
 
   var proximos = ajustesObjetivos.slice(0, 7);
   if (!proximos.length) {
-    passos.filter(function(x) { return x && String(x.acao || '').trim(); }).slice(0, 5).forEach(function(x) {
+    passos.filter(function(x) {
+      return x && String(x.acao || '').trim() && coachingAcionavelCloser(x.acao);
+    }).slice(0, 5).forEach(function(x) {
       adicionarUnico(
         proximos,
         {},
         '- ' + curtoCloser(x.acao, 210) +
           (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 170) : '')
+      );
+    });
+  }
+  if (!proximos.length) {
+    perguntasSugeridasBase.slice(0, 3).forEach(function(item) {
+      adicionarUnico(
+        proximos,
+        vistosAjustes,
+        '- Enablement: pergunte "' + curtoCloser(item.pergunta_sugerida, 230) + '"' +
+          (item.quando_usar ? ' | Quando usar: ' + curtoCloser(item.quando_usar, 150) : '') +
+          (item.objetivo ? ' | Objetivo: ' + curtoCloser(item.objetivo, 150) : '')
       );
     });
   }
@@ -453,7 +491,7 @@ function audRdTextoCloser_(c) {
   }).filter(Boolean);
   var p2 = resumoAjustes.length
     ? 'Prioridade prática para a próxima reunião: ' + resumoAjustes.join(' | ')
-    : 'Prioridade prática: manter a execução aderente e seguir o pitch vigente.';
+    : 'Prioridade prática: nenhuma ação adicional foi incluída porque não havia orientação específica e rastreável suficiente para coaching.';
 
   var acordoResumo = String(co.resultado_reuniao || '').trim();
   var acordoEvidencia = String(fechamento.o_que_foi_dito || '').trim();

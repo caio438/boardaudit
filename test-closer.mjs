@@ -192,5 +192,12 @@ assert.match(trechoRdCloser, /Pontos fortes:/, 'A conclusão precisa usar pontos
 assert.match(trechoRdCloser, /Prioridade prática para a próxima reunião:/, 'A conclusão precisa resumir ações executáveis, sem orientação genérica.');
 assert.doesNotMatch(trechoRdCloser, /O principal ajuste está em:/, 'A conclusão genérica antiga voltou ao RD.');
 assert.doesNotMatch(trechoRdCloser, /Na prática, revisar/, 'A conclusão voltou a orientar revisão genérica em vez de execução concreta.');
+assert.match(source, /COACHING CLOSER OBRIGATÓRIO/, 'O prompt não bloqueia recomendações genéricas para Closer.');
+assert.match(source, /pergunta exata, frase sugerida, sequência de perguntas, duas opções concretas de agenda/, 'O prompt não exige comportamento observável para o coaching.');
+assert.match(source, /REGRA DE QUALIDADE DO FEEDBACK/, 'O prompt não exige que a orientação seja utilizável diretamente pelo gestor.');
+assert.match(trechoRdCloser, /function coachingAcionavelCloser/, 'O formatter do RD não possui filtro de coaching acionável.');
+assert.match(trechoRdCloser, /REVISAR\|MELHORAR\|APROFUNDAR/, 'O formatter do RD não bloqueia verbos genéricos sem execução concreta.');
+assert.match(trechoRdCloser, /execute conforme a regra do pitch/, 'O RD não possui fallback concreto para regra literal do pitch.');
+assert.match(trechoRdCloser, /nenhuma ação adicional foi incluída porque não havia orientação específica/, 'O RD voltou a preencher coaching sem evidência concreta.');
 
 console.log(`Teste Closer válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise e normalização final.`);
