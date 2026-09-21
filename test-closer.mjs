@@ -180,10 +180,17 @@ assert.ok(inicioRdCloser >= 0 && fimRdCloser > inicioRdCloser, 'Formatter Closer
 assert.doesNotMatch(trechoRdCloser, /DESVIOS EM RELAÇÃO AO PITCH\/PROCESSO/, 'A seção antiga de desvios voltou ao texto do RD.');
 assert.match(trechoRdCloser, /PERGUNTAS REALIZADAS PELO CLOSER/, 'O RD precisa listar as perguntas realizadas pelo Closer.');
 assert.match(trechoRdCloser, /PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS/, 'O RD precisa listar perguntas obrigatórias ausentes.');
+assert.match(trechoRdCloser, /IMPLICAÇÃO E NECESSIDADE — O QUE DEVERIA TER SIDO EXPLORADO/, 'O RD precisa explicitar implicações e necessidades que deveriam ter sido aprofundadas.');
+assert.match(trechoRdCloser, /Pergunta do pitch para aprofundar:/, 'O RD precisa usar perguntas concretas do pitch na orientação de implicação.');
+assert.match(trechoRdCloser, /AJUSTES OBJETIVOS PARA A PRÓXIMA REUNIÃO/, 'O RD precisa transformar gaps em ações objetivas.');
+assert.match(trechoRdCloser, /pergunte "/, 'O RD precisa dizer literalmente qual pergunta o Closer deve fazer.');
+assert.match(trechoRdCloser, /duas opções objetivas de agenda/, 'O RD precisa ter exemplo objetivo de agendamento quando houver gap de próximo passo.');
 assert.match(trechoRdCloser, /ACORDO DE PRÓXIMO PASSO/, 'O RD precisa exibir o acordo de próximo passo.');
 assert.match(trechoRdCloser, /PONTUAÇÃO DE QUALIDADE/, 'O RD precisa exibir a pontuação por critério.');
 assert.match(trechoRdCloser, /SUGESTÕES DE APROFUNDAMENTO/, 'O RD precisa separar sugestões de enablement das perguntas do pitch.');
-assert.match(trechoRdCloser, /O Closer executou corretamente:/, 'A conclusão precisa usar pontos fortes objetivos.');
-assert.match(trechoRdCloser, /O principal ajuste está em:/, 'A conclusão precisa explicitar os ajustes prioritários.');
+assert.match(trechoRdCloser, /Pontos fortes:/, 'A conclusão precisa usar pontos fortes objetivos.');
+assert.match(trechoRdCloser, /Prioridade prática para a próxima reunião:/, 'A conclusão precisa resumir ações executáveis, sem orientação genérica.');
+assert.doesNotMatch(trechoRdCloser, /O principal ajuste está em:/, 'A conclusão genérica antiga voltou ao RD.');
+assert.doesNotMatch(trechoRdCloser, /Na prática, revisar/, 'A conclusão voltou a orientar revisão genérica em vez de execução concreta.');
 
 console.log(`Teste Closer válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise e normalização final.`);
