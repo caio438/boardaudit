@@ -1,0 +1,1 @@
+Trigger autenticado /dev para reprocessar as quatro auditorias Closer do Grupo Sinergia. Arquivo sem efeito no Apps Script.
