@@ -154,7 +154,7 @@ function audRdCtx_(id) {
   audV3ValidarResultadoOficial_(resultado, a.TIPO_AUDITORIA, criterios, transcricao.CONTEUDO, a.CONTEUDO_PITCH_SNAPSHOT || '');
 
   var dealId = audRdDeal_(i);
-  if (!dealId) throw new Error('A ligação não possui negociação do RD vinculada.');
+  if (!dealId) throw new Error('A interação não possui negociação do RD vinculada. Informe o vínculo manualmente quando necessário.');
   var it = typeof obterIntegracaoCliente_ === 'function' ? obterIntegracaoCliente_(a.ID_CLIENTE, 'RD_STATION') : null;
   if (!it || String(it.ATIVO || '').toUpperCase() !== 'SIM') throw new Error('A integração RD deste cliente não está ativa.');
   var token = obterSegredo_('INTEGRACAO_TOKEN_' + it.ID_INTEGRACAO);
@@ -173,7 +173,7 @@ function audRdCtx_(id) {
   };
 }
 function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO']);}
-function audRdDeal_(i){var l=String((i||{}).LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];m=String((i||{}).DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
+function audRdDeal_(i){var item=i||{},tipoInteracao=String(item.TIPO_INTERACAO||'').toUpperCase(),l=String(item.LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];if(tipoInteracao==='REUNIAO')return'';m=String(item.DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}
 function audRdUsuarios_(token){var r=requisicaoJson_(APP.rdBaseUrl+'/users?token='+encodeURIComponent(token)+'&active=true&limit=200',{method:'get',headers:{Accept:'application/json'}});return Array.isArray(r)?r:(r.users||r.data||r.results||r.items||[]);}
