@@ -991,6 +991,7 @@ function limparCachesDados_() {
   try {
     CacheService.getScriptCache().removeAll([
       'CACHE_CLIENTES',
+      'CACHE_CLIENTES_ATIVOS_V1',
       'CACHE_PITCHES',
       'CACHE_REUNIOES',
       'CACHE_RESUMO_RD',
@@ -1003,11 +1004,11 @@ function limparCachesDados_() {
 }
 
 function listarClientesCache_() {
-  let dados = obterCacheJson_('CACHE_CLIENTES');
+  let dados = obterCacheJson_('CACHE_CLIENTES_ATIVOS_V1');
   if (dados) return dados;
 
   dados = listarClientes();
-  salvarCacheJson_('CACHE_CLIENTES', dados, 180);
+  salvarCacheJson_('CACHE_CLIENTES_ATIVOS_V1', dados, 180);
   return dados;
 }
 
@@ -1220,7 +1221,7 @@ function listarClientes(integracoesInformadas, materiaisInformados, clientesInfo
     : lerObjetos_(APP.sheets.clientes);
 
   return clientesBase
-    .filter(item => item.ID_CLIENTE)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO')
     .map(item => {
       const rd = mapaRd[item.ID_CLIENTE] || {};
       const integracoesCliente = integracoes.filter(integracao =>
