@@ -16,6 +16,10 @@ assert.match(central, /\.after\(/);
 assert.match(code, /tldvSyncHours:\s*\[19\]/);
 assert.match(code, /rdTriggerHour:\s*19/);
 assert.doesNotMatch(code, /configurada em 7 horários diários/);
+assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio\/CBI', 'CBI'\] \}/);
+assert.doesNotMatch(code, /\{ chave: 'sinergia'/);
+assert.doesNotMatch(code, /\{ chave: 'semeio_cbi'/);
+
 assert.match(auditoria, /maxPorExecucao:\s*3/);
 assert.match(auditoria, /horarios:\s*\[19\]/);
 assert.match(jornada, /Math\.min\(3,/);
