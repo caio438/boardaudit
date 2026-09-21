@@ -159,7 +159,7 @@ function audRdCtx_(id) {
   if (!it || String(it.ATIVO || '').toUpperCase() !== 'SIM') throw new Error('A integração RD deste cliente não está ativa.');
   var token = obterSegredo_('INTEGRACAO_TOKEN_' + it.ID_INTEGRACAO);
   if (!token) throw new Error('Token do RD não encontrado.');
-  var sdr = audRdResponsavel_(token, i, resultado);
+  var sdr = audRdResponsavel_(token, i, resultado, a);
   if (!sdr || !sdr.id || sdr.id === 'SEM_ID') throw new Error('Usuário responsável pela auditoria não identificado.');
 
   return {
@@ -207,7 +207,49 @@ function audRdUsuarioVolum_(token,integracao){
   if(candidatos.length>1)throw new Error('Há mais de um usuário VOLUM ativo no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
   throw new Error('Nenhum usuário VOLUM ativo foi encontrado no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
 }
-function audRdResponsavel_(token,i,r){var ext=String((i||{}).ID_EXTERNO||'');if(/^RD_TASK_/i.test(ext)){try{var origem=audRdOrigem_(token,ext),resp=typeof extrairResponsaveisRd_==='function'?extrairResponsaveisRd_(origem)[0]:null;if(resp&&resp.id&&resp.id!=='SEM_ID')return resp;}catch(e){}}var meta=(r||{}).metadados||{},ident=String((i||{}).COLABORADOR||(i||{}).VENDEDOR||meta.sdr||meta.closer||'').trim();if(!ident)throw new Error('Informe o responsável auditado para localizar o usuário correspondente no RD CRM.');var chave=normalizarTextoComparacao_(ident),email=ident.indexOf('@')>=0?ident.toLowerCase():'',cand=audRdUsuarios_(token).filter(function(u){var nome=normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||'')),mail=String((u||{}).email||'').trim().toLowerCase();return(email&&mail===email)||(chave&&nome===chave);});if(cand.length!==1)throw new Error(cand.length?'Há mais de um usuário do RD com o nome '+ident+'. Informe o e-mail no campo de colaborador.':'O responsável '+ident+' não foi encontrado entre os usuários ativos do RD CRM.');var u=cand[0]||{};return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||u.nome||ident),email:String(u.email||'')};}
+function audRdResponsavel_(token,i,r,a){
+  var meta=(r||{}).metadados||{};
+  var ident=String((i||{}).COLABORADOR||(i||{}).VENDEDOR||meta.sdr||meta.closer||'').trim();
+  var ingeCloser=String((a||{}).ID_CLIENTE||'')==='CLI-20260806105306-25F3490A' &&
+    String((a||{}).TIPO_AUDITORIA||'').toUpperCase()==='CLOSER' &&
+    typeof audV3CloserIngeeValido_==='function' && audV3CloserIngeeValido_(ident);
+
+  if(ingeCloser){
+    var chaveCompartilhada=normalizarTextoComparacao_('Sinergia Engenharia');
+    var compartilhados=audRdUsuarios_(token).filter(function(u){
+      return normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||''))===chaveCompartilhada;
+    });
+    if(compartilhados.length!==1){
+      throw new Error(compartilhados.length
+        ? 'Há mais de um usuário ativo no RD chamado Sinergia Engenharia. Mantenha apenas um usuário canônico para as closers da INGEE.'
+        : 'O usuário Sinergia Engenharia não foi encontrado entre os usuários ativos do RD CRM.');
+    }
+    var compartilhado=compartilhados[0]||{};
+    return{
+      id:String(compartilhado.id||compartilhado._id||compartilhado.user_id||''),
+      nome:String(compartilhado.name||compartilhado.nome||'Sinergia Engenharia'),
+      email:String(compartilhado.email||'')
+    };
+  }
+
+  var ext=String((i||{}).ID_EXTERNO||'');
+  if(/^RD_TASK_/i.test(ext)){
+    try{
+      var origem=audRdOrigem_(token,ext);
+      var resp=typeof extrairResponsaveisRd_==='function'?extrairResponsaveisRd_(origem)[0]:null;
+      if(resp&&resp.id&&resp.id!=='SEM_ID')return resp;
+    }catch(e){}
+  }
+  if(!ident)throw new Error('Informe o responsável auditado para localizar o usuário correspondente no RD CRM.');
+  var chave=normalizarTextoComparacao_(ident),email=ident.indexOf('@')>=0?ident.toLowerCase():'';
+  var cand=audRdUsuarios_(token).filter(function(u){
+    var nome=normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||'')),mail=String((u||{}).email||'').trim().toLowerCase();
+    return(email&&mail===email)||(chave&&nome===chave);
+  });
+  if(cand.length!==1)throw new Error(cand.length?'Há mais de um usuário do RD com o nome '+ident+'. Informe o e-mail no campo de colaborador.':'O responsável '+ident+' não foi encontrado entre os usuários ativos do RD CRM.');
+  var u=cand[0]||{};
+  return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||u.nome||ident),email:String(u.email||'')};
+}
 function audRdOrigem_(token,id){id=String(id||'').replace(/^RD_TASK_/i,'').trim();if(!id)throw new Error('Tarefa original não identificada.');var r=requisicaoJson_(APP.rdBaseUrl+'/tasks/'+encodeURIComponent(id)+'?token='+encodeURIComponent(token),{method:'get',headers:{Accept:'application/json'}});return r.task||r.data||r;}
 function audRdUsuario_(token,email){var us=audRdUsuarios_(token),e=String(email).toLowerCase(),u=us.find(function(x){return String((x||{}).email||'').toLowerCase()===e;});if(!u)throw new Error('O usuário '+email+' não foi encontrado ou não está ativo no RD CRM.');return{id:String(u.id||u._id||u.user_id||''),nome:String(u.name||email),email:String(u.email||email)};}
 function audRdNotas_(token,deal){var r=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(token)+'&deal_id='+encodeURIComponent(deal)+'&type=note&limit=200',{method:'get',headers:{Accept:'application/json'}});return Array.isArray(r)?r:(r.activities||r.data||r.results||r.items||[]);}

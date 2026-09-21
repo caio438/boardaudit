@@ -2309,7 +2309,7 @@ function audV3MontarPrompt_(ctx) {
   };
   
   if (tipo === 'CLOSER' && audV3EhClienteIngee_(i)) {
-    meta.closers_validos = ['Juliana', 'Jéssica', 'Maíra'];
+    meta.closers_validos = ['Juliana', 'Jéssica', 'Maíra', 'Sinergia Engenharia'];
   }
 
   let regraConclusao = '';
@@ -2369,7 +2369,7 @@ function audV3MontarPrompt_(ctx) {
     'Paráfrases, saudações equivalentes, inversões naturais de frase, abreviações e pequenas variações de redação não são divergência e não reduzem nota. Nesses casos use CONFORME e escreva divergencia=Não houve divergência.',
     'Variações fonéticas ou erros de transcrição em nomes próprios, como Aline/Elaine ou Moisés/Moreira, não constituem desvio do pitch e nunca podem reduzir a nota. Use o responsável informado nos metadados como identidade canônica quando o contexto indicar a mesma pessoa.',
     tipo === 'SDR' ? 'REGRA CANÔNICA DO ARQUIVO: quando nome_arquivo_origem estiver preenchido no padrão nomedaempresa-numero-nomedosdr, considere obrigatoriamente como empresa o texto antes do primeiro hífen, como número da chamada o trecho central e como SDR o texto após o segundo hífen. A transcrição não pode substituir esses dados por aproximações fonéticas.' : '',
-    tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica e Maíra são closers válidas. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
+    tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica, Maíra e o usuário operacional Sinergia Engenharia são identidades válidas de CLOSER. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
     tipo === 'SDR' ? 'AUDITORIA SDR OBRIGATÓRIA: examine separadamente apresentação pelo próprio nome, nome da empresa, origem do contato, frase de agilidade e empatia (reconhecer que o lead está corrido e pedir apenas três minutos), primeira frase de qualificação, pergunta de segmento, motivo do contato, todas as perguntas obrigatórias do pitch, validação do LMV, trilha positiva ou negativa correta conforme o LMV, manejo de objeções, valorização da reunião, oferta de dois horários concretos, confirmação do compromisso, aviso de contato prévio/no-show e encerramento profissional.' : '',
     tipo === 'SDR' ? 'O SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
     tipo === 'SDR' ? 'A validação do LMV é obrigatória. Identifique a resposta do lead, determine se o LMV foi positivo ou negativo e verifique se o SDR seguiu a trilha correspondente. LMV positivo deve seguir o pitch positivo. LMV negativo deve seguir o pitch negativo de desqualificação/precificação. Não penalize quando o pitch não definir a trilha; nesse caso use LACUNA_PROCESSO.' : '',
@@ -2745,6 +2745,7 @@ function audV3EhClienteIngee_(identidade) {
 function audV3CloserIngeeValido_(valor) {
   const nome = audV3NormalizarTrechoRastreavel_(valor);
   if (!nome) return false;
+  if (nome === 'sinergia engenharia') return true;
   const primeiroNome = nome.split(' ')[0];
   return ['juliana', 'jessica', 'maira'].includes(primeiroNome);
 }
