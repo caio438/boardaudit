@@ -943,6 +943,24 @@
     .quality-card svg { width: 100%; height: 120px; display: block; margin-top: 10px; }
     .quality-card .quality-values { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
     .quality-card .quality-values strong { display: block; font-size: 18px; }
+    .audit-performance-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .audit-performance-wide { grid-column:span 2; }
+    .performance-bars { display:grid; gap:10px; margin-top:12px; }
+    .performance-bar-row { display:grid; gap:5px; }
+    .performance-bar-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; }
+    .performance-track { height:8px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
+    .performance-fill { height:100%; border-radius:999px; background:var(--primary); }
+    .client-picker { display:grid; gap:6px; min-width:220px; }
+    .client-picker input[type="search"] { min-width:0; }
+    .rd-quick-list { display:grid; gap:8px; margin-top:12px; max-height:520px; overflow:auto; padding-right:4px; }
+    .rd-quick-row { display:grid; grid-template-columns:minmax(170px,1.2fr) minmax(120px,.75fr) minmax(180px,1fr) auto; gap:10px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); }
+    .rd-quick-row .actions { margin:0; flex-wrap:nowrap; }
+    .compact-scroll { max-height:420px; overflow:auto; padding-right:4px; }
+    @media (max-width: 900px) {
+      .audit-performance-grid { grid-template-columns:1fr; }
+      .audit-performance-wide { grid-column:auto; }
+      .rd-quick-row { grid-template-columns:1fr; }
+    }
     .client-settings > summary { cursor: pointer; font-weight: 700; list-style: none; }
     .client-settings > summary::-webkit-details-marker { display: none; }
     .client-settings > summary::before { content: '▸'; display: inline-block; margin-right: 8px; }
@@ -1215,7 +1233,10 @@
           </div>
           <div class="toolbar">
             <div class="filters">
-              <select id="areaClienteSelect" onchange="carregarAreaClienteFront(true)"><option value="">Selecione o cliente</option></select>
+              <div class="client-picker">
+                <input id="areaClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientesAreaFront_()">
+                <select id="areaClienteSelect" onchange="carregarAreaClienteFront(true)"><option value="">Selecione o cliente</option></select>
+              </div>
               <input id="areaPeriodo" type="month" onchange="carregarAreaClienteFront(true)">
             </div>
             <button class="btn" type="button" onclick="carregarAreaClienteFront(true)">Atualizar visão</button>
@@ -1590,10 +1611,13 @@
 
           <div class="toolbar" style="align-items:end">
             <div class="field" style="min-width:280px;flex:1">
-              <label for="audCliente">Cliente</label>
-              <select id="audCliente" onchange="atualizarSeletoresAuditoria()">
-                <option value="">Selecione o cliente</option>
-              </select>
+              <label for="audClienteBusca">Cliente</label>
+              <div class="client-picker">
+                <input id="audClienteBusca" type="search" placeholder="Digite para encontrar o cliente" oninput="filtrarClientesAuditoriaFront_()">
+                <select id="audCliente" onchange="atualizarSeletoresAuditoria()">
+                  <option value="">Selecione o cliente</option>
+                </select>
+              </div>
             </div>
             <button class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
           </div>
@@ -1775,14 +1799,69 @@
           <div id="auditRdHost" style="margin-top:16px"></div>
         </details>
 
+        <details id="audPerformanceDetails" class="card client-settings" style="margin-top:18px" ontoggle="aoAlternarAnaliticaAuditoriasFront_(this)">
+          <summary class="summary-with-subtitle">
+            <span class="summary-copy">
+              <span>Performance das auditorias</span>
+              <small>Evolução de score, critérios com mais desvios e tempo por etapa do Closer.</small>
+            </span>
+          </summary>
+          <div style="margin-top:16px">
+            <div class="toolbar">
+              <div class="filters">
+                <div class="client-picker">
+                  <input id="audPerformanceClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientePerformanceFront_()">
+                  <select id="audPerformanceCliente" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                    <option value="">Todos os clientes</option>
+                  </select>
+                </div>
+                <select id="audPerformanceProfissional" aria-label="Filtrar por profissional" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                  <option value="">Todos os profissionais</option>
+                </select>
+                <select id="audPerformancePeriodo" aria-label="Período da análise" onchange="carregarAnaliticaAuditoriasFront_(true)">
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90" selected>Últimos 90 dias</option>
+                  <option value="180">Últimos 180 dias</option>
+                  <option value="365">Últimos 12 meses</option>
+                  <option value="0">Todo o histórico</option>
+                </select>
+              </div>
+              <button class="btn secondary" type="button" onclick="carregarAnaliticaAuditoriasFront_(true)">Atualizar análise</button>
+            </div>
+            <div id="audPerformanceAviso" class="small muted" style="margin:10px 0 12px">Abra este painel para carregar somente os dados analíticos necessários.</div>
+            <div id="audPerformanceResumo" class="grid cards" style="margin-bottom:12px"></div>
+            <div class="audit-performance-grid">
+              <div class="quality-card audit-performance-wide">
+                <h4>Evolução da pontuação</h4>
+                <div id="audPerformanceScore"><div class="empty" style="margin-top:12px">Carregando quando o painel for aberto.</div></div>
+              </div>
+              <div class="quality-card">
+                <h4>Itens que mais precisam de ajuste</h4>
+                <div id="audPerformanceErros"><div class="empty" style="margin-top:12px">Sem dados carregados.</div></div>
+              </div>
+              <div id="audPerformanceTemposCard" class="quality-card audit-performance-wide">
+                <h4>Tempo médio por etapa da reunião</h4>
+                <div id="audPerformanceTempos"><div class="empty" style="margin-top:12px">Disponível nas auditorias de Closer com timestamps.</div></div>
+              </div>
+              <div class="quality-card">
+                <h4>Leitura rápida para coaching</h4>
+                <div id="audPerformanceCoaching"><div class="empty" style="margin-top:12px">Sem dados carregados.</div></div>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <div class="card" style="margin-top:18px">
           <div class="section-title"><div><h3 id="audHistoricoTitulo">Auditorias SDR realizadas</h3></div></div>
           <div id="resumoEnviosRdAuditorias" class="grid cards" style="margin-bottom:14px"></div>
           <div class="toolbar">
             <div class="filters">
-              <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
-                <option value="">Todos os clientes</option>
-              </select>
+              <div class="client-picker">
+                <input id="audHistoricoClienteBusca" type="search" placeholder="Buscar cliente" oninput="filtrarClientesHistoricoAuditoriaFront_()">
+                <select id="audHistoricoCliente" aria-label="Filtrar auditorias por cliente" onchange="renderizarAuditorias()">
+                  <option value="">Todos os clientes</option>
+                </select>
+              </div>
               <input id="audHistoricoMes" type="month" aria-label="Filtrar auditorias por mês" onchange="renderizarAuditorias()">
               <select id="audHistoricoStatus" aria-label="Filtrar auditorias por situação" onchange="renderizarAuditorias()">
                 <option value="">Todas as situações</option>
@@ -2052,8 +2131,11 @@
 
             <div class="form-grid">
               <div class="field full">
-                <label for="integracaoCliente">Cliente</label>
-                <select id="integracaoCliente"></select>
+                <label for="integracaoClienteBusca">Cliente</label>
+                <div class="client-picker">
+                  <input id="integracaoClienteBusca" type="search" placeholder="Digite para encontrar o cliente" oninput="filtrarClientesIntegracaoFront_()">
+                  <select id="integracaoCliente"></select>
+                </div>
               </div>
 
               <div class="field">
@@ -2099,7 +2181,16 @@
                 <p>Status por cliente e última sincronização.</p>
               </div>
             </div>
-            <div id="listaIntegracoesClientes"></div>
+            <details class="client-settings" open>
+              <summary>Tokenização rápida do RD</summary>
+              <p class="small muted" style="margin-top:10px">Localize o cliente, cole o token e salve sem abrir cada cadastro completo. Tokens existentes nunca são exibidos.</p>
+              <input id="integracaoRdBusca" type="search" placeholder="Buscar cliente para tokenizar" oninput="renderizarMatrizRdClientes_()" style="margin-top:10px">
+              <div id="integracaoRdRapida" class="rd-quick-list"></div>
+            </details>
+            <details class="client-settings" style="margin-top:16px">
+              <summary>Ver todas as integrações configuradas</summary>
+              <div id="listaIntegracoesClientes" class="compact-scroll" style="margin-top:12px"></div>
+            </details>
           </div>
         </div>
 
@@ -2493,6 +2584,9 @@
       automacaoLigacoes: null,
       areaCliente: null,
       carregandoAreaCliente: false,
+      analiticaAuditorias: null,
+      carregandoAnaliticaAuditorias: false,
+      analiticaAuditoriasCarregada: false,
       carregando: {},
       paginacao: {
         reunioes: { pagina: 1, tamanho: 10 },
@@ -3108,6 +3202,7 @@
           estado.integracoesClientes = dados.integracoesClientes || [];
           preencherIntegracoes(dados);
           preencherSelectIntegracaoClientes();
+          renderizarMatrizRdClientes_();
           renderizarIntegracoesClientes();
           concluirCarga_('configIntegracoes', true);
         })
@@ -3185,13 +3280,15 @@
     function preencherSeletoresAreaCliente_() {
       const dados = estado.areaCliente || {};
       const clientes = dados.clientes || [];
-      const opcoes = '<option value="">Selecione o cliente</option>' + clientes.map(item =>
-        `<option value="${escapeHtml(item.idCliente)}">${escapeHtml(item.nomeCliente)}</option>`
-      ).join('');
       const seletor = document.getElementById('areaClienteSelect');
-      seletor.innerHTML = opcoes;
-      seletor.value = dados.idCliente || '';
+      preencherSelectClienteFiltrado_('areaClienteSelect', clientes, valor('areaClienteBusca'), 'Selecione o cliente', dados.idCliente || seletor.value || '');
       document.getElementById('areaPeriodo').value = dados.periodo || periodoAtualArea_();
+    }
+
+    function filtrarClientesAreaFront_() {
+      const dados = estado.areaCliente || {};
+      const clientes = dados.clientes || estado.clientes || [];
+      preencherSelectClienteFiltrado_('areaClienteSelect', clientes, valor('areaClienteBusca'), 'Selecione o cliente', valor('areaClienteSelect'));
     }
 
     function renderizarAreaCliente_() {
@@ -4754,23 +4851,63 @@
         .sort((a, b) => String(a.nomeCliente || '').localeCompare(String(b.nomeCliente || ''), 'pt-BR'));
     }
 
-    function preencherSelectAuditoriaClientes() {
-      const select = document.getElementById('audCliente');
-      const atual = select.value;
-      const clientes = clientesAuditoriaUnicos();
-      select.innerHTML = '<option value="">Todos os clientes</option>' +
-        clientes.map(cliente => `<option value="${escapeAtributo(cliente.idCliente)}">${escapeHtml(cliente.nomeCliente)}</option>`).join('');
-      if (clientes.some(cliente => String(cliente.idCliente) === String(atual))) select.value = atual;
-      const filtroHistorico = document.getElementById('audHistoricoCliente');
-      if (filtroHistorico) {
-        const filtroAtual = filtroHistorico.value;
-        filtroHistorico.replaceChildren();
-        filtroHistorico.add(new Option('Todos os clientes', ''));
-        clientes.forEach(cliente => filtroHistorico.add(new Option(cliente.nomeCliente, cliente.idCliente)));
-        if (clientes.some(cliente => String(cliente.idCliente) === String(filtroAtual))) filtroHistorico.value = filtroAtual;
+    function normalizarBuscaClienteFront_(valor) {
+      return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    }
+
+    function preencherSelectClienteFiltrado_(selectId, clientes, busca, rotuloVazio, valorAtual) {
+      const select = document.getElementById(selectId);
+      if (!select) return;
+      const termo = normalizarBuscaClienteFront_(busca);
+      const lista = (clientes || []).filter(cliente => {
+        const nome = normalizarBuscaClienteFront_(cliente.nomeCliente || '');
+        return !termo || nome.includes(termo);
+      });
+      const atual = String(valorAtual !== undefined ? valorAtual : select.value || '');
+      select.replaceChildren();
+      select.add(new Option(rotuloVazio || 'Selecione o cliente', ''));
+      lista.forEach(cliente => select.add(new Option(String(cliente.nomeCliente || cliente.idCliente || ''), String(cliente.idCliente || ''))));
+      if (atual && (clientes || []).some(cliente => String(cliente.idCliente || '') === atual)) {
+        if (!lista.some(cliente => String(cliente.idCliente || '') === atual)) {
+          const selecionado = (clientes || []).find(cliente => String(cliente.idCliente || '') === atual);
+          if (selecionado) select.add(new Option(String(selecionado.nomeCliente || selecionado.idCliente), atual));
+        }
+        select.value = atual;
       }
+      return lista.length;
+    }
+
+    function preencherSelectAuditoriaClientes() {
+      const clientes = clientesAuditoriaUnicos();
+      const select = document.getElementById('audCliente');
+      const atual = select ? select.value : '';
+      preencherSelectClienteFiltrado_('audCliente', clientes, valor('audClienteBusca'), 'Selecione o cliente', atual);
+
+      const filtroHistorico = document.getElementById('audHistoricoCliente');
+      const filtroAtual = filtroHistorico ? filtroHistorico.value : '';
+      preencherSelectClienteFiltrado_('audHistoricoCliente', clientes, valor('audHistoricoClienteBusca'), 'Todos os clientes', filtroAtual);
+
+      const filtroPerformance = document.getElementById('audPerformanceCliente');
+      const performanceAtual = filtroPerformance ? filtroPerformance.value : '';
+      preencherSelectClienteFiltrado_('audPerformanceCliente', clientes, valor('audPerformanceClienteBusca'), 'Todos os clientes', performanceAtual);
       preencherClientesImportacaoManualV3();
     }
+
+    function filtrarClientesAuditoriaFront_() {
+      const clientes = clientesAuditoriaUnicos();
+      preencherSelectClienteFiltrado_('audCliente', clientes, valor('audClienteBusca'), 'Selecione o cliente', valor('audCliente'));
+    }
+
+    function filtrarClientesHistoricoAuditoriaFront_() {
+      const clientes = clientesAuditoriaUnicos();
+      preencherSelectClienteFiltrado_('audHistoricoCliente', clientes, valor('audHistoricoClienteBusca'), 'Todos os clientes', valor('audHistoricoCliente'));
+    }
+
+    function filtrarClientePerformanceFront_() {
+      const clientes = clientesAuditoriaUnicos();
+      preencherSelectClienteFiltrado_('audPerformanceCliente', clientes, valor('audPerformanceClienteBusca'), 'Todos os clientes', valor('audPerformanceCliente'));
+    }
+
 
   function preencherClientesImportacaoManualV3() {
     const data = document.getElementById('manualDataInteracao');
@@ -7458,6 +7595,7 @@
     sincronizarEspacoAuditoriaFront_();
     atualizarSeletoresAuditoria();
     if (!silencioso) renderizarAuditorias();
+    sincronizarAnaliticaComEspacoAuditoria_();
   }
 
   function alterarTipoAuditoriaFront_() {
@@ -7467,6 +7605,7 @@
     sincronizarEspacoAuditoriaFront_();
     atualizarSeletoresAuditoria();
     renderizarAuditorias();
+    sincronizarAnaliticaComEspacoAuditoria_();
   }
 
   function renderizarAuditorias() {
@@ -7559,6 +7698,180 @@
         </div>
       </div>`;
     });
+  }
+
+  function aoAlternarAnaliticaAuditoriasFront_(bloco) {
+    if (bloco && bloco.open) carregarAnaliticaAuditoriasFront_(false);
+  }
+
+  function sincronizarAnaliticaComEspacoAuditoria_() {
+    const detalhes = document.getElementById('audPerformanceDetails');
+    const tipo = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    const aviso = document.getElementById('audPerformanceAviso');
+    const temposCard = document.getElementById('audPerformanceTemposCard');
+    if (temposCard) temposCard.style.display = tipo === 'CLOSER' ? '' : 'none';
+    if (tipo === 'PLANO') {
+      if (aviso) aviso.textContent = 'A análise de performance individual está disponível para SDR e Closer.';
+      return;
+    }
+    if (detalhes && detalhes.open) carregarAnaliticaAuditoriasFront_(true);
+  }
+
+  function carregarAnaliticaAuditoriasFront_(forcar) {
+    const tipo = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    if (!['SDR','CLOSER'].includes(tipo)) {
+      estado.analiticaAuditorias = null;
+      renderizarAnaliticaAuditorias_();
+      return;
+    }
+    if (estado.carregandoAnaliticaAuditorias) return;
+
+    const idCliente = valor('audPerformanceCliente');
+    const profissional = valor('audPerformanceProfissional');
+    const dias = Number(valor('audPerformancePeriodo') || 90);
+    const chave = [tipo,idCliente,profissional,dias].join('|');
+    estado.analiticaAuditoriasCache = estado.analiticaAuditoriasCache || {};
+    if (!forcar && estado.analiticaAuditoriasCache[chave]) {
+      estado.analiticaAuditorias = estado.analiticaAuditoriasCache[chave];
+      estado.analiticaAuditoriasCarregada = true;
+      renderizarAnaliticaAuditorias_();
+      return;
+    }
+
+    estado.carregandoAnaliticaAuditorias = true;
+    const aviso = document.getElementById('audPerformanceAviso');
+    if (aviso) aviso.textContent = 'Calculando histórico de performance...';
+    google.script.run
+      .withSuccessHandler(dados => {
+        estado.carregandoAnaliticaAuditorias = false;
+        estado.analiticaAuditorias = dados || {};
+        estado.analiticaAuditoriasCache[chave] = estado.analiticaAuditorias;
+        estado.analiticaAuditoriasCarregada = true;
+        atualizarProfissionaisAnaliticaFront_(estado.analiticaAuditorias.profissionais || [], profissional);
+        renderizarAnaliticaAuditorias_();
+      })
+      .withFailureHandler(erro => {
+        estado.carregandoAnaliticaAuditorias = false;
+        if (aviso) aviso.textContent = 'Não foi possível carregar a análise agora.';
+        tratarErro(erro);
+      })
+      .carregarAnaliticaAuditoriasV3({
+        tipoAuditoria: tipo,
+        idCliente: idCliente,
+        profissional: profissional,
+        dias: dias
+      });
+  }
+
+  function atualizarProfissionaisAnaliticaFront_(profissionais, selecionado) {
+    const select = document.getElementById('audPerformanceProfissional');
+    if (!select) return;
+    const atual = String(selecionado || select.value || '');
+    select.replaceChildren();
+    select.add(new Option('Todos os profissionais', ''));
+    (profissionais || []).forEach(item => {
+      const rotulo = item.mediaScore === null || item.mediaScore === undefined
+        ? item.nome + ' · ' + item.auditorias + ' auditoria(s)'
+        : item.nome + ' · média ' + Number(item.mediaScore).toFixed(1);
+      select.add(new Option(rotulo, item.nome));
+    });
+    if (atual && (profissionais || []).some(item => String(item.nome) === atual)) select.value = atual;
+  }
+
+  function graficoLinhaPerformanceFront_(pontos) {
+    pontos = Array.isArray(pontos) ? pontos : [];
+    if (!pontos.length) return '<div class="empty" style="margin-top:12px">Ainda não há pontuações no período selecionado.</div>';
+    const largura = 620, altura = 190, margemX = 28, topo = 20, base = 155;
+    const coords = pontos.map((item, indice) => {
+      const x = pontos.length === 1 ? largura / 2 : margemX + indice * ((largura - margemX * 2) / (pontos.length - 1));
+      const score = Math.max(0, Math.min(5, Number(item.score || 0)));
+      const y = base - (score / 5) * (base - topo);
+      return { x, y, score, data:item.data, auditorias:item.auditorias };
+    });
+    const poly = coords.map(p => p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
+    const circulos = coords.map(p => '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="4" fill="#60a5fa"><title>'+escapeHtml(String(p.data||''))+' · '+p.score.toFixed(1)+'/5 · '+p.auditorias+' auditoria(s)</title></circle>').join('');
+    const primeiro = pontos[0] || {}, ultimo = pontos[pontos.length-1] || {};
+    return '<svg viewBox="0 0 '+largura+' '+altura+'" role="img" aria-label="Evolução do score" style="width:100%;height:190px;margin-top:10px">' +
+      '<line x1="'+margemX+'" y1="'+topo+'" x2="'+(largura-margemX)+'" y2="'+topo+'" stroke="#334155"/>' +
+      '<line x1="'+margemX+'" y1="'+((topo+base)/2)+'" x2="'+(largura-margemX)+'" y2="'+((topo+base)/2)+'" stroke="#334155"/>' +
+      '<line x1="'+margemX+'" y1="'+base+'" x2="'+(largura-margemX)+'" y2="'+base+'" stroke="#334155"/>' +
+      '<text x="2" y="'+(topo+4)+'" font-size="10" fill="#94a3b8">5</text><text x="2" y="'+(base+4)+'" font-size="10" fill="#94a3b8">0</text>' +
+      '<polyline points="'+poly+'" fill="none" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>'+circulos+
+      '<text x="'+margemX+'" y="180" font-size="10" fill="#94a3b8">'+escapeHtml(String(primeiro.data||'').slice(5))+'</text>' +
+      '<text x="'+(largura-margemX)+'" y="180" text-anchor="end" font-size="10" fill="#94a3b8">'+escapeHtml(String(ultimo.data||'').slice(5))+'</text></svg>';
+  }
+
+  function barrasPerformanceFront_(itens, valorFn, sufixo, vazio) {
+    itens = Array.isArray(itens) ? itens : [];
+    if (!itens.length) return '<div class="empty" style="margin-top:12px">'+escapeHtml(vazio || 'Sem dados no período.')+'</div>';
+    const valores = itens.map(item => Math.max(0, Number(valorFn(item) || 0)));
+    const maximo = Math.max.apply(null, valores.concat([1]));
+    return '<div class="performance-bars">'+itens.map((item, indice) => {
+      const valorItem = valores[indice];
+      const largura = Math.max(2, Math.min(100, valorItem / maximo * 100));
+      return '<div class="performance-bar-row"><div class="performance-bar-head"><span title="'+escapeHtml(item.nome||'')+'">'+escapeHtml(item.nome||item.id||'Item')+'</span><strong>'+escapeHtml(String(valorItem))+(sufixo||'')+'</strong></div><div class="performance-track"><div class="performance-fill" style="width:'+largura.toFixed(1)+'%"></div></div></div>';
+    }).join('')+'</div>';
+  }
+
+  function renderizarAnaliticaAuditorias_() {
+    const dados = estado.analiticaAuditorias || {};
+    const tipo = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    const resumo = dados.resumo || {};
+    const aviso = document.getElementById('audPerformanceAviso');
+    const temposCard = document.getElementById('audPerformanceTemposCard');
+    if (temposCard) temposCard.style.display = tipo === 'CLOSER' ? '' : 'none';
+
+    if (!['SDR','CLOSER'].includes(tipo)) {
+      if (aviso) aviso.textContent = 'A análise de performance individual está disponível para SDR e Closer.';
+      document.getElementById('audPerformanceResumo').innerHTML = '';
+      document.getElementById('audPerformanceScore').innerHTML = '<div class="empty">Selecione SDR ou Closer.</div>';
+      document.getElementById('audPerformanceErros').innerHTML = '<div class="empty">Selecione SDR ou Closer.</div>';
+      document.getElementById('audPerformanceCoaching').innerHTML = '<div class="empty">Selecione SDR ou Closer.</div>';
+      return;
+    }
+
+    if (aviso) {
+      const profissional = valor('audPerformanceProfissional');
+      aviso.textContent = (profissional ? 'Profissional: '+profissional+' · ' : '') +
+        (resumo.auditorias || 0) + ' auditoria(s) consideradas na análise.';
+    }
+
+    const media = resumo.mediaScore === null || resumo.mediaScore === undefined ? '-' : Number(resumo.mediaScore).toFixed(1)+'/5';
+    const ultimo = resumo.ultimoScore === null || resumo.ultimoScore === undefined ? '-' : Number(resumo.ultimoScore).toFixed(1)+'/5';
+    const variacao = resumo.variacaoScore === null || resumo.variacaoScore === undefined ? '-' : (Number(resumo.variacaoScore)>0?'+':'')+Number(resumo.variacaoScore).toFixed(1);
+    const metricas = [
+      ['Auditorias', resumo.auditorias || 0],
+      ['Média', media],
+      ['Última nota', ultimo],
+      ['Variação', variacao]
+    ];
+    if (tipo === 'CLOSER') metricas.push(['Cobertura de tempo', (resumo.coberturaTemporal || 0)+'%']);
+    document.getElementById('audPerformanceResumo').innerHTML = metricas.map(item => '<div class="card metric"><strong>'+escapeHtml(item[1])+'</strong><span>'+escapeHtml(item[0])+'</span></div>').join('');
+
+    document.getElementById('audPerformanceScore').innerHTML = graficoLinhaPerformanceFront_(dados.linhaTempo || []);
+
+    const erros = (dados.erros || []).slice(0,8);
+    document.getElementById('audPerformanceErros').innerHTML = barrasPerformanceFront_(erros, item => item.taxaDesvio, '%', 'Nenhum desvio mensurável no período.');
+
+    if (tipo === 'CLOSER') {
+      const tempos = (dados.tempos || []).filter(item => item.mediaMinutos !== null && item.mediaMinutos !== undefined);
+      document.getElementById('audPerformanceTempos').innerHTML = barrasPerformanceFront_(tempos, item => item.mediaMinutos, ' min', 'Os tempos aparecerão quando as auditorias tiverem timestamps suficientes.') +
+        (tempos.length ? '<div class="small muted" style="margin-top:10px">'+tempos.map(item => escapeHtml(item.nome)+': '+item.amostras+' amostra(s), mediana '+(item.medianaMinutos===null?'-':item.medianaMinutos+' min')).join(' · ')+'</div>' : '');
+    }
+
+    const top = erros.slice(0,3);
+    const coaching = [];
+    if (top.length) coaching.push('<strong>Prioridade de ajuste</strong><p class="small muted" style="margin-top:6px">'+top.map((item,idx) => (idx+1)+'. '+escapeHtml(item.nome)+' ('+item.taxaDesvio+'% de desvio)').join('<br>')+'</p>');
+    if (tipo === 'CLOSER' && (dados.tempos || []).length) {
+      const medidos = (dados.tempos || []).filter(item => item.mediaMinutos !== null);
+      if (medidos.length) {
+        const maior = medidos.slice().sort((a,b)=>Number(b.mediaMinutos)-Number(a.mediaMinutos))[0];
+        const menor = medidos.slice().sort((a,b)=>Number(a.mediaMinutos)-Number(b.mediaMinutos))[0];
+        coaching.push('<strong>Distribuição de tempo</strong><p class="small muted" style="margin-top:6px">Mais tempo: '+escapeHtml(maior.nome)+' · '+maior.mediaMinutos+' min<br>Menos tempo: '+escapeHtml(menor.nome)+' · '+menor.mediaMinutos+' min</p>');
+      }
+    }
+    if (!coaching.length) coaching.push('<div class="empty">Ainda não há dados suficientes para uma leitura de coaching.</div>');
+    document.getElementById('audPerformanceCoaching').innerHTML = coaching.join('<div style="height:10px"></div>');
   }
 
   function extrairIdRdFront_(valor) {
@@ -7727,28 +8040,116 @@
   }
 
     function preencherSelectIntegracaoClientes() {
+      const clientes = Array.isArray(estado.clientes) ? estado.clientes : [];
+      const atual = valor('integracaoCliente');
       const select = document.getElementById('integracaoCliente');
       if (!select) return;
-
-      const valorAtual = select.value;
-      const clientes = Array.isArray(estado.clientes) ? estado.clientes : [];
-
       if (!clientes.length) {
-        select.innerHTML = '<option value="">Nenhum cliente disponível</option>';
+        select.replaceChildren();
+        select.add(new Option('Nenhum cliente disponível', ''));
         select.disabled = true;
         return;
       }
-
       select.disabled = false;
-      select.innerHTML = '<option value="">Selecione o cliente</option>' +
-        clientes.map(cliente => `
-          <option value="${escapeAtributo(cliente.idCliente)}">${escapeHtml(cliente.nomeCliente)}</option>
-        `).join('');
-
-      if (clientes.some(cliente => String(cliente.idCliente) === String(valorAtual))) {
-        select.value = valorAtual;
-      }
+      preencherSelectClienteFiltrado_('integracaoCliente', clientes, valor('integracaoClienteBusca'), 'Selecione o cliente', atual);
     }
+
+    function filtrarClientesIntegracaoFront_() {
+      preencherSelectIntegracaoClientes();
+    }
+
+    function integracaoRdCliente_(idCliente) {
+      return (estado.integracoesClientes || []).find(item =>
+        String(item.idCliente || '') === String(idCliente || '') &&
+        String(item.tipoIntegracao || '').toUpperCase() === 'RD_STATION'
+      ) || null;
+    }
+
+    function renderizarMatrizRdClientes_() {
+      const alvo = document.getElementById('integracaoRdRapida');
+      if (!alvo) return;
+      const busca = normalizarBuscaClienteFront_(valor('integracaoRdBusca'));
+      const clientes = (estado.clientes || []).filter(cliente =>
+        !busca || normalizarBuscaClienteFront_(cliente.nomeCliente || '').includes(busca)
+      );
+      if (!clientes.length) {
+        alvo.innerHTML = '<div class="empty">Nenhum cliente encontrado.</div>';
+        return;
+      }
+      alvo.innerHTML = clientes.map(cliente => {
+        const rd = integracaoRdCliente_(cliente.idCliente);
+        const status = rd ? String(rd.status || (rd.configurado ? 'CONFIGURADO' : 'SEM TOKEN')).toUpperCase() : 'SEM TOKEN';
+        const configurado = Boolean(rd && rd.configurado);
+        const classe = status === 'CONECTADO' ? 'success' : status === 'ERRO' ? 'danger' : configurado ? 'warning' : '';
+        return '<div class="rd-quick-row">' +
+          '<div><strong>'+escapeHtml(cliente.nomeCliente || cliente.idCliente)+'</strong><div class="small muted">'+(configurado?'Token já configurado':'Ainda sem token do RD')+'</div></div>' +
+          '<div><span class="status '+classe+'">'+escapeHtml(status)+'</span></div>' +
+          '<input id="rdTokenQuick_'+escapeAtributo(cliente.idCliente)+'" type="password" placeholder="'+(configurado?'Cole apenas para substituir':'Cole o token do RD')+'" autocomplete="new-password">' +
+          '<div class="actions"><button class="btn secondary" type="button" onclick="salvarTokenRdRapido_(\''+escapeAtributo(cliente.idCliente)+'\',this)">Salvar</button><button class="btn secondary" type="button" onclick="testarRdRapido_(\''+escapeAtributo(cliente.idCliente)+'\',this)">Testar</button></div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function salvarTokenRdRapido_(idCliente, botao) {
+      const campo = document.getElementById('rdTokenQuick_' + idCliente);
+      const token = String((campo || {}).value || '').trim();
+      if (!token) return mostrarToast('Cole o token do RD para salvar ou substituir a credencial.', 'error');
+      const existente = integracaoRdCliente_(idCliente);
+      const config = existente && existente.config && typeof existente.config === 'object'
+        ? existente.config
+        : { modo:'RESUMIDO_DIARIO' };
+      if (botao) { botao.disabled = true; botao.textContent = 'Salvando...'; }
+      google.script.run
+        .withSuccessHandler(resposta => {
+          estado.clientes = resposta.clientes || estado.clientes;
+          estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
+          if (campo) campo.value = '';
+          renderizarMatrizRdClientes_();
+          renderizarIntegracoesClientes();
+          if (botao) { botao.disabled = false; botao.textContent = 'Salvar'; }
+          mostrarToast('Token do RD salvo para o cliente.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (botao) { botao.disabled = false; botao.textContent = 'Salvar'; }
+          tratarErro(erro);
+        })
+        .salvarIntegracaoCliente({
+          idCliente: idCliente,
+          tipoIntegracao: 'RD_STATION',
+          ativo: true,
+          token: token,
+          config: config
+        });
+    }
+
+    function testarRdRapido_(idCliente, botao) {
+      const campo = document.getElementById('rdTokenQuick_' + idCliente);
+      const token = String((campo || {}).value || '').trim();
+      const existente = integracaoRdCliente_(idCliente);
+      const config = existente && existente.config && typeof existente.config === 'object'
+        ? existente.config
+        : { modo:'RESUMIDO_DIARIO' };
+      if (botao) { botao.disabled = true; botao.textContent = 'Testando...'; }
+      google.script.run
+        .withSuccessHandler(resposta => {
+          estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
+          renderizarMatrizRdClientes_();
+          renderizarIntegracoesClientes();
+          if (botao) { botao.disabled = false; botao.textContent = 'Testar'; }
+          mostrarToast(resposta.mensagem || 'Conexão do RD testada.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (botao) { botao.disabled = false; botao.textContent = 'Testar'; }
+          tratarErro(erro);
+        })
+        .testarIntegracaoCliente({
+          idCliente: idCliente,
+          tipoIntegracao: 'RD_STATION',
+          token: token,
+          config: config
+        });
+    }
+
 
     function atualizarCamposIntegracao() {
       const tipo = valor('integracaoTipo');
@@ -7813,6 +8214,7 @@
           estado.clientes = resposta.clientes || estado.clientes;
           estado.integracoesClientes = resposta.integracoesClientes || [];
           preencherSelectIntegracaoClientes();
+          renderizarMatrizRdClientes_();
           renderizarIntegracoesClientes();
           limparFormularioIntegracao();
           esconderLoading();
@@ -7845,6 +8247,7 @@
       google.script.run
         .withSuccessHandler(resposta => {
           estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
+          renderizarMatrizRdClientes_();
           renderizarIntegracoesClientes();
           document.getElementById('integracaoToken').value = '';
           esconderLoading();
@@ -7909,6 +8312,7 @@
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || estado.clientes;
           estado.integracoesClientes = resposta.integracoesClientes || [];
+          renderizarMatrizRdClientes_();
           renderizarIntegracoesClientes();
           esconderLoading();
           mostrarToast(resposta.mensagem, 'success');
