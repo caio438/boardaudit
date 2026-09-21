@@ -272,6 +272,18 @@ function obterVersaoFrontend() {
   return audBuildAtual_();
 }
 
+/**
+ * Sonda estritamente somente leitura para validar a Apps Script Execution API.
+ * Não consulta integrações e não cria auditorias, documentos, tarefas ou registros.
+ */
+function QA_EXECUTION_API_READ_ONLY_PROBE() {
+  return {
+    sucesso: true,
+    versao: String(APP.versao || ''),
+    timestamp: new Date().toISOString()
+  };
+}
+
 function audBuildAtual_() {
   return {
     id: String(AUDIT_BUILD_ID_FRONTEND || APP.versao || ''),

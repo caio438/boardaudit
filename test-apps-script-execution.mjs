@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   loadStoredCredential,
   validateExecutionResponse
@@ -46,5 +47,17 @@ assert.throws(
   () => validateExecutionResponse(200,{response:{result:{sucesso:false}}},'sucesso'),
   /EXECUTION_SUCCESS_MARKER_MISSING/
 );
+
+const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
+const workflow = fs.readFileSync(new URL('./.github/workflows/qa-hitecnet-force-verified.yml', import.meta.url), 'utf8');
+const probe = code.match(/function\s+QA_EXECUTION_API_READ_ONLY_PROBE\s*\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+
+assert.match(probe, /sucesso:\s*true/);
+assert.match(probe, /versao:/);
+assert.match(probe, /timestamp:/);
+assert.doesNotMatch(probe, /SpreadsheetApp|DriveApp|DocumentApp|UrlFetchApp|PropertiesService|Gemini|RD|auditoria|tarefa/i);
+assert.match(workflow, /--function QA_EXECUTION_API_READ_ONLY_PROBE/);
+assert.doesNotMatch(workflow, /QA_HITECNET_STEC_FORCAR_AUDITORIA/);
+assert.doesNotMatch(workflow, /^\s*push:/m);
 
 console.log('Verified Apps Script execution parser validated.');
