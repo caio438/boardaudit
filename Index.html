@@ -3728,10 +3728,13 @@
     function aplicarAuditoriaExistenteJornadaPendente_(tentativa) {
       const idAuditoria = String(window.__auditoriaExistenteJornadaPendente || '');
       if (!idAuditoria) return;
-      if (!estado.carregado.auditorias || !(estado.auditorias || []).some(item => String(item.idAuditoria) === idAuditoria)) {
+      const auditoria = (estado.auditorias || []).find(item => String(item.idAuditoria) === idAuditoria) || null;
+      if (!estado.carregado.auditorias || !auditoria) {
         if (tentativa < 40) setTimeout(() => aplicarAuditoriaExistenteJornadaPendente_(tentativa + 1), 250);
         return;
       }
+      const tipo = String(auditoria.tipoAuditoria || 'SDR').toUpperCase();
+      if (['SDR', 'CLOSER', 'PLANO'].includes(tipo)) selecionarEspacoAuditoriaFront_(tipo, true);
       window.__auditoriaExistenteJornadaPendente = '';
       abrirAuditoriaHistoricoV3(idAuditoria);
     }
@@ -3762,8 +3765,8 @@
       }
       document.getElementById('audCliente').value = pendente.idCliente || '';
       const tipo = String(pendente.escopo || '').toUpperCase();
-      if (['SDR','CLOSER'].includes(tipo)) document.getElementById('audTipo').value = tipo;
-      atualizarSeletoresAuditoria();
+      if (['SDR', 'CLOSER', 'PLANO'].includes(tipo)) selecionarEspacoAuditoriaFront_(tipo, true);
+      else atualizarSeletoresAuditoria();
       window.__auditoriaJornadaPendente = null;
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
