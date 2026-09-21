@@ -230,9 +230,13 @@ function audRdTextoCloser_(c) {
     var s = normCloser((x || {}).cor || (x || {}).status);
     return s === 'VERDE' || s === 'CONFORME';
   }
+  function naoAplicavelCloser(x) {
+    var s = normCloser((x || {}).cor || (x || {}).status);
+    return s === 'NAO_APLICAVEL' || s === 'NAO_EVIDENCIADO';
+  }
 
   var aderentes = momentos.filter(conforme);
-  var desvios = momentos.filter(function(x) { return !conforme(x); });
+  var desvios = momentos.filter(function(x) { return !conforme(x) && !naoAplicavelCloser(x); });
 
   var acertos = aderentes.slice(0, 4).map(function(x) {
     return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 190);
@@ -274,6 +278,7 @@ function audRdTextoCloser_(c) {
     'CENÁRIO DA REUNIÃO',
     curtoCloser(co.resumo_conversa || 'Não evidenciado', 450),
     co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 250) : '',
+    co.impacto_principal ? 'Impacto principal: ' + curtoCloser(co.impacto_principal, 250) : '',
     co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 260) : '',
     '',
     'EXECUÇÕES ADERENTES AO PROCESSO',
@@ -379,6 +384,7 @@ function audRdTextoSdr_(c) {
     'CENÁRIO DA LIGAÇÃO',
     curto(co.resumo_conversa || 'Não evidenciado', 450),
     co.motivacao_contato ? 'Motivação do contato: ' + curto(co.motivacao_contato, 260) : '',
+    co.necessidade_principal ? 'Necessidade principal: ' + curto(co.necessidade_principal, 260) : '',
     co.resultado_contato ? 'Resultado do contato: ' + curto(co.resultado_contato, 260) : '',
     '',
     'EXECUÇÕES ADERENTES AO PROCESSO',
