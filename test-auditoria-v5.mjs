@@ -20,6 +20,20 @@ assert.ok(front.includes('Gerar e concluir auditoria'), 'A interface ainda apres
 assert.ok(front.includes('A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.'), 'A interface não informa o fluxo automático.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
 
+for (const bloco of [
+  'Cenário da ligação',
+  'Execuções aderentes ao processo',
+  'Desvios em relação ao pitch/processo',
+  'Próximos passos conforme o pitch/processo',
+  'Conclusão'
+]) {
+  assert.ok(front.includes(bloco), 'Bloco executivo SDR ausente: ' + bloco);
+}
+assert.ok(front.includes('function renderizarResumoExecutivoSdrV3_'), 'Resumo executivo SDR não foi implementado.');
+assert.ok(front.includes('function renderizarConclusaoObjetivaSdrFront_'), 'Conclusão objetiva SDR não foi implementada.');
+assert.ok(front.includes('Análise detalhada da auditoria SDR'), 'Detalhamento SDR não foi preservado em seção própria.');
+
+
 for (const tipo of ['SDR', 'CLOSER', 'PLANO']) {
   assert.ok(front.includes('data-audit-space="' + tipo + '"'), 'Espaço visual ausente para ' + tipo + '.');
 }
