@@ -146,6 +146,8 @@ const retomadaBoa = {
     etapas_aplicaveis: ['Valorização da Reunião', 'Dupla Escolha de Horários'],
     etapas_ja_concluidas: ['Pergunta de Segmento', 'Validação de LMV'],
     etapas_nao_aplicaveis: ['Introdução completa'],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'Histórico local da mesma oportunidade.',
     necessita_revisao: false,
     motivo_revisao: ''
   },
@@ -169,6 +171,13 @@ const retomadaBoa = {
 };
 const gateRetomada = contexto.apiV5.validateBoard(retomadaBoa, 'SDR');
 assert.notEqual(gateRetomada.status, 'BLOQUEADO', 'Retomada com coaching executável não deve ser bloqueada.');
+
+
+const retomadaSemProva = JSON.parse(JSON.stringify(retomadaBoa));
+retomadaSemProva.contexto_interacao.continuidade_confirmada = false;
+retomadaSemProva.contexto_interacao.evidencia_continuidade = '';
+const gateSemProva = contexto.apiV5.validateBoard(retomadaSemProva, 'SDR');
+assert.equal(gateSemProva.status, 'BLOQUEADO', 'Etapas já concluídas sem continuidade comprovada devem bloquear publicação.');
 
 const coachingVago = JSON.parse(JSON.stringify(retomadaBoa));
 coachingVago.criterios_avaliados[0].correcao_pratica = 'Melhorar a condução e revisar o pitch.';
