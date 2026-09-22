@@ -2767,6 +2767,55 @@ function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
     alertas.push('Nenhuma etapa aplicável foi explicitada para o contexto.');
   }
 
+  const falasLead = [];
+  if (tipo === 'SDR') {
+    const perguntasLead = resultado.perguntas_qualificacao || {};
+    ['corretas', 'com_desvio'].forEach(function(chave) {
+      (Array.isArray(perguntasLead[chave]) ? perguntasLead[chave] : []).forEach(function(item) {
+        if ((item || {}).resposta_lead) falasLead.push(String(item.resposta_lead));
+      });
+    });
+    (Array.isArray(resultado.manejo_objecoes) ? resultado.manejo_objecoes : []).forEach(function(item) {
+      if ((item || {}).objecao) falasLead.push(String(item.objecao));
+    });
+  } else {
+    const perguntasLead = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
+    (Array.isArray(perguntasLead) ? perguntasLead : []).forEach(function(item) {
+      if ((item || {}).resposta_lead) falasLead.push(String(item.resposta_lead));
+    });
+    (Array.isArray(resultado.objecoes_respostas) ? resultado.objecoes_respostas : []).forEach(function(item) {
+      if ((item || {}).objecao_ou_pergunta_lead) falasLead.push(String(item.objecao_ou_pergunta_lead));
+    });
+  }
+
+  const falasProfissional = [];
+  (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+    if ((item || {}).o_que_foi_dito) falasProfissional.push(String(item.o_que_foi_dito));
+  });
+  if (tipo === 'SDR') {
+    (Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : []).forEach(function(item) {
+      if ((item || {}).fato_transcricao) falasProfissional.push(String(item.fato_transcricao));
+    });
+  } else {
+    (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(item) {
+      if ((item || {}).o_que_foi_dito) falasProfissional.push(String(item.o_que_foi_dito));
+    });
+  }
+
+  const conflitosAutoria = [];
+  falasProfissional.forEach(function(falaProf) {
+    const p = audV3NormalizarTrechoRastreavel_(falaProf);
+    if (!p || p.indexOf('nao evidenciado') === 0 || p.length < 18) return;
+    falasLead.forEach(function(falaLead) {
+      const l = audV3NormalizarTrechoRastreavel_(falaLead);
+      if (!l || l.length < 18) return;
+      if (l.indexOf(p) >= 0 || p.indexOf(l) >= 0) conflitosAutoria.push(falaProf);
+    });
+  });
+  if (conflitosAutoria.length) {
+    bloqueios.push('Uma evidência atribuída ao ' + tipo + ' também aparece como fala/resposta do lead. Revisar autoria: ' + String(conflitosAutoria[0]).slice(0, 180));
+  }
+
   const coaching = [];
   (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
     if (item && item.aplicavel !== false && String(item.status || '').toUpperCase() !== 'CONFORME') coaching.push(item.correcao_pratica);
