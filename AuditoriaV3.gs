@@ -785,6 +785,7 @@ function formalContextoAuditorias_(idCliente) {
   const cliente = String(idCliente || '').trim();
   if (!cliente) return { auditorias: [], formalizacoes_anteriores: [] };
   const auditorias = audV3Ler_('AUDITORIAS')
+    .filter(item => audV3EhAuditoriaVisivelOperacao_(item))
     .filter(item => String(item.ID_CLIENTE || '') === cliente && item.RESULTADO_JSON)
     .sort((a, b) => new Date(b.CONCLUIDO_EM || b.SOLICITADO_EM || 0) - new Date(a.CONCLUIDO_EM || a.SOLICITADO_EM || 0))
     .slice(0, 8)
@@ -2657,7 +2658,8 @@ function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
   const historico = anteriores.map(function(item) {
     const idInteracao = String(item.ID_INTERACAO || '');
     const audit = auditorias.filter(function(a) {
-      return String(a.ID_INTERACAO || '') === idInteracao &&
+      return audV3EhAuditoriaVisivelOperacao_(a) &&
+        String(a.ID_INTERACAO || '') === idInteracao &&
         ['EM_REVISAO', 'APROVADA'].includes(String(a.STATUS || '').toUpperCase()) &&
         String(a.RESULTADO_JSON || '').trim();
     }).slice(-1)[0] || {};
@@ -4598,7 +4600,7 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
 
   const historico = [];
   audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
-    if (!auditoria || !auditoria.ID_AUDITORIA) return;
+    if (!audV3EhAuditoriaVisivelOperacao_(auditoria)) return;
     if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
     if (String(auditoria.ID_CLIENTE || '') !== idCliente) return;
     if (String(auditoria.ID_INTERACAO || '') === idInteracaoAtual) return;
@@ -5509,7 +5511,10 @@ function audV3FilaAutomacaoLigacoes_(config) {
   });
   const auditoriasValidas = {};
   audV3Ler_('AUDITORIAS').forEach(function(item) {
-    if (item.ID_INTERACAO && ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 && String(item.RESULTADO_JSON || '').trim()) {
+    if (audV3EhAuditoriaVisivelOperacao_(item) &&
+        item.ID_INTERACAO &&
+        ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&
+        String(item.RESULTADO_JSON || '').trim()) {
       auditoriasValidas[String(item.ID_INTERACAO)] = item;
     }
   });
@@ -5874,6 +5879,22 @@ function audV3EhGrupoSinergiaCrm_(auditoria, interacao) {
   return responsavel === 'juliana' || responsavel === 'juliana ingee';
 }
 
+function audV3EhAuditoriaLegadaBase_(auditoria) {
+  auditoria = auditoria || {};
+  const hash = String(auditoria.HASH_FONTE || '').trim();
+  const temResultado = Boolean(String(auditoria.RESULTADO_JSON || auditoria.RESULTADO_COMPLETO || '').trim());
+  const automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
+  return Boolean((temResultado && !hash) || /^SUBSTITUIDA_PARA_/.test(automacao));
+}
+
+function audV3EhAuditoriaVisivelOperacao_(auditoria) {
+  auditoria = auditoria || {};
+  if (!String(auditoria.ID_AUDITORIA || '').trim()) return false;
+  if (String(auditoria.STATUS || '').toUpperCase() === 'DESCARTADA') return false;
+  if (audV3EhAuditoriaLegadaBase_(auditoria)) return false;
+  return true;
+}
+
 function audV3EstadoIntegridadeAuditoria_(auditoria) {
   auditoria = auditoria || {};
   const status = String(auditoria.STATUS || '').toUpperCase();
@@ -6004,8 +6025,7 @@ function audV3ListarAuditoriasFront_() {
   });
   const contexto = { clientes: clientes, interacoes: interacoes };
   return audV3Ler_('AUDITORIAS')
-    .filter(item => item.ID_AUDITORIA)
-    .filter(item => String(item.STATUS || '').toUpperCase() !== 'DESCARTADA')
+    .filter(item => audV3EhAuditoriaVisivelOperacao_(item))
     .slice(-200)
     .map(item => audV3AuditoriaFront_(item, contexto))
     .reverse();
@@ -6111,9 +6131,8 @@ function carregarAnaliticaAuditoriasV3(dados) {
   const registros = [];
   const profissionaisTodos = {};
   audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
-    if (!auditoria.ID_AUDITORIA) return;
+    if (!audV3EhAuditoriaVisivelOperacao_(auditoria)) return;
     if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
-    if (String(auditoria.STATUS || '').toUpperCase() === 'DESCARTADA') return;
     if (idCliente && String(auditoria.ID_CLIENTE || '') !== idCliente) return;
     if (!String(auditoria.RESULTADO_JSON || '').trim() && !String(auditoria.SCORES_DIMENSOES_JSON || '').trim()) return;
 
