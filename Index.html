@@ -825,6 +825,16 @@
 
     .audit-executive-block p:last-child { margin-bottom: 0; }
 
+    .audit-executive-good { border-left: 4px solid #12b76a; }
+    .audit-executive-gap { border-left: 4px solid #f04438; }
+    .audit-executive-action { border-left: 4px solid #f79009; background: #fffcf5; }
+    .audit-executive-conclusion { border-left: 4px solid #6172f3; }
+    .audit-score-average {
+      margin-top: -10px;
+      padding-top: 4px;
+      font-size: 14px;
+    }
+
     .audit-executive-list {
       margin: 0;
       padding-left: 20px;
@@ -6653,9 +6663,13 @@
 
   function renderizarResumoExecutivoSdrV3_(r) {
     r = r || {};
-    const contexto = r.resumo_contato || {};
+    const resumoContato = r.resumo_contato || {};
+    const contextoInteracao = r.contexto_interacao || {};
     const etapas = Array.isArray(r.etapas_pitch) ? r.etapas_pitch : [];
     const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+    const perguntas = r.perguntas_qualificacao || {};
+    const objecoes = Array.isArray(r.manejo_objecoes) ? r.manejo_objecoes : [];
+    const objecoesForaPitch = Array.isArray(r.objecoes_fora_pitch) ? r.objecoes_fora_pitch : [];
     const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
 
     const aderentesEtapas = etapas.filter(item => statusConformeAuditoriaFront_(item.status));
@@ -6666,88 +6680,161 @@
 
     const aderentes = aderentesEtapas.length ? aderentesEtapas.map(item => ({
       titulo: item.etapa || 'Etapa do pitch',
-      evidencia: item.fato_transcricao || item.o_que_foi_dito || '',
-      regra: item.regra_pitch || ''
-    })) : criterios.filter(item => statusConformeAuditoriaFront_(item.status)).map(item => ({
+      evidencia: item.fato_transcricao || item.o_que_foi_dito || ''
+    })) : criterios.filter(item => item && item.aplicavel !== false && statusConformeAuditoriaFront_(item.status)).map(item => ({
       titulo: item.nome || item.id || 'Critério',
-      evidencia: item.o_que_foi_dito || '',
-      regra: item.regra_pitch || ''
+      evidencia: item.o_que_foi_dito || ''
     }));
 
     const desvios = desviosEtapas.length ? desviosEtapas.map(item => ({
       titulo: item.etapa || 'Etapa do pitch',
       divergencia: item.desvio || 'Desvio registrado.',
       evidencia: item.fato_transcricao || item.o_que_foi_dito || '',
+      regra: item.regra_pitch || '',
       correcao: item.correcao_pratica || ''
     })) : criterios.filter(item =>
+      item && item.aplicavel !== false &&
       !statusConformeAuditoriaFront_(item.status) &&
       !statusNaoAplicavelAuditoriaFront_(item.status)
     ).map(item => ({
       titulo: item.nome || item.id || 'Critério',
       divergencia: item.divergencia || 'Desvio registrado.',
       evidencia: item.o_que_foi_dito || '',
-      correcao: ''
+      regra: item.regra_pitch || '',
+      correcao: item.correcao_pratica || ''
     }));
 
     const listaAderentes = aderentes.length
-      ? '<ul class="audit-executive-list">' + aderentes.map(item =>
+      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(item =>
           '<li><strong>' + escapeHtml(item.titulo) + '</strong>' +
           (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.regra ? '<br><span class="muted">Referência do pitch:</span> ' + escapeHtml(item.regra) : '') +
           '</li>'
         ).join('') + '</ul>'
-      : '<p class="muted">Nenhuma execução aderente foi registrada com a evidência disponível.</p>';
+      : '<p class="muted">Nenhuma execução aderente foi registrada com segurança.</p>';
+
+    const perguntasCorretas = Array.isArray(perguntas.corretas) ? perguntas.corretas : [];
+    const perguntasDesvio = Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : [];
+    const perguntasAusentes = Array.isArray(perguntas.ausentes) ? perguntas.ausentes : [];
+    const temPerguntas = perguntasCorretas.length || perguntasDesvio.length || perguntasAusentes.length;
+
+    const blocoPerguntas = temPerguntas ? `
+      <section class="audit-executive-block">
+        <h3>Perguntas de qualificação</h3>
+        ${perguntasCorretas.length ? '<h4>Corretas</h4>' + tabelaAuditoriaV3(
+          ['Pergunta do SDR', 'Resposta do lead'],
+          perguntasCorretas.slice(0, 6).map(item => [
+            item.pergunta || 'Não evidenciado',
+            item.resposta_lead || 'Não evidenciado'
+          ])
+        ) : ''}
+        ${perguntasDesvio.length ? '<h4>Com desvio</h4>' + tabelaAuditoriaV3(
+          ['Pergunta do SDR', 'Resposta do lead', 'Ajuste objetivo'],
+          perguntasDesvio.slice(0, 6).map(item => [
+            item.pergunta || 'Não evidenciado',
+            item.resposta_lead || 'Não evidenciado',
+            item.correcao_pratica || item.erro_ou_desvio || 'Não evidenciado'
+          ])
+        ) : ''}
+        ${perguntasAusentes.length ? '<h4>Aplicáveis e não realizadas</h4>' + tabelaAuditoriaV3(
+          ['Pergunta esperada', 'Como executar'],
+          perguntasAusentes.slice(0, 6).map(item => [
+            item.pergunta_esperada || 'Não evidenciado',
+            item.como_perguntar || item.regra_pitch || 'Não evidenciado'
+          ])
+        ) : ''}
+      </section>
+    ` : '';
 
     const listaDesvios = desvios.length
-      ? '<ul class="audit-executive-list">' + desvios.map(item =>
+      ? '<ul class="audit-executive-list">' + desvios.slice(0, 6).map(item =>
           '<li><strong>' + escapeHtml(item.titulo) + '</strong>: ' + escapeHtml(item.divergencia) +
           (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.correcao ? '<br><span class="muted">Correção prática:</span> ' + escapeHtml(item.correcao) : '') +
+          (item.regra ? '<br><span class="muted">Pitch/processo:</span> ' + escapeHtml(item.regra) : '') +
           '</li>'
         ).join('') + '</ul>'
-      : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
+      : '<p>Nenhum desvio aplicável foi identificado.</p>';
 
-    const listaPassos = passos.length
-      ? '<ul class="audit-executive-list">' + passos.map(item =>
-          '<li><strong>' + escapeHtml(item.acao || 'Ação') + '</strong>' +
-          (item.responsavel ? ' · ' + escapeHtml(item.responsavel) : '') +
-          (item.criterio_conclusao ? '<br><span class="muted">Critério de conclusão:</span> ' + escapeHtml(item.criterio_conclusao) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p class="muted">Nenhum próximo passo foi definido na análise.</p>';
+    const acoes = [];
+    const vistosAcoes = {};
+    const adicionarAcao = valor => {
+      const texto = String(valor || '').replace(/^[-•]\s*/, '').trim();
+      if (!texto) return;
+      const chave = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      if (!chave || vistosAcoes[chave]) return;
+      vistosAcoes[chave] = true;
+      acoes.push(texto);
+    };
+
+    perguntasDesvio.forEach(item => adicionarAcao(item && item.correcao_pratica));
+    perguntasAusentes.forEach(item => adicionarAcao(item && item.como_perguntar ? 'Pergunte: "' + item.como_perguntar + '"' : ''));
+    objecoes.forEach(item => adicionarAcao(item && item.correcao_pratica));
+    objecoesForaPitch.forEach(item => adicionarAcao(item && item.sugestao_tratamento));
+    desvios.forEach(item => adicionarAcao(item && item.correcao));
+    passos.forEach(item => adicionarAcao(item && item.acao));
+
+    const listaAcoes = acoes.length
+      ? '<ol class="audit-executive-list">' + acoes.slice(0, 7).map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
+      : '<p class="muted">Manter a execução conforme observada nesta ligação.</p>';
+
+    const criteriosAplicaveis = criterios.filter(item =>
+      item && item.aplicavel !== false &&
+      item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== ''
+    );
+    const mediaCriterios = criteriosAplicaveis.length
+      ? Math.round((criteriosAplicaveis.reduce((total, item) => total + Number(item.pontuacao || 0), 0) / criteriosAplicaveis.length) * 100) / 100
+      : null;
+    const tabelaNotas = criterios.length
+      ? tabelaAuditoriaV3(
+          ['Critério', 'Nota', 'Status'],
+          criterios.map(item => [
+            item.nome || item.id || 'Critério',
+            item.aplicavel === false ? 'N/A' : ((item.pontuacao === null || item.pontuacao === undefined || item.pontuacao === '') ? '-' : item.pontuacao + '/5'),
+            item.aplicavel === false ? 'Não aplicável' : formatarStatusAuditoriaV3(item.status || 'Não evidenciado')
+          ])
+        )
+      : '<p class="muted">Pontuação por critério indisponível.</p>';
 
     const conclusao = renderizarConclusaoObjetivaSdrFront_(r);
 
     return `
-      <div class="audit-executive">
+      <div class="audit-executive audit-executive-sdr">
         ${renderizarContextoAuditoriaFront_(r)}
         ${renderizarGateAuditoriaFront_(r)}
+
         <section class="audit-executive-block">
           <h3>Cenário da ligação</h3>
-          <p>${escapeHtml(contexto.resumo_conversa || 'Não evidenciado.')}</p>
+          <p>${escapeHtml(resumoContato.resumo_conversa || 'Não evidenciado.')}</p>
           <div class="audit-executive-facts">
-            <div class="audit-executive-fact"><small>Motivação</small><strong>${escapeHtml(contexto.motivacao_contato || 'Não evidenciado')}</strong></div>
-            <div class="audit-executive-fact"><small>Necessidade principal</small><strong>${escapeHtml(contexto.necessidade_principal || 'Não evidenciado')}</strong></div>
-            <div class="audit-executive-fact"><small>Resultado do contato</small><strong>${escapeHtml(contexto.resultado_contato || 'Não evidenciado')}</strong></div>
+            <div class="audit-executive-fact"><small>Motivação</small><strong>${escapeHtml(resumoContato.motivacao_contato || 'Não evidenciado')}</strong></div>
+            <div class="audit-executive-fact"><small>Necessidade principal</small><strong>${escapeHtml(resumoContato.necessidade_principal || 'Não evidenciado')}</strong></div>
+            <div class="audit-executive-fact"><small>Resultado do contato</small><strong>${escapeHtml(resumoContato.resultado_contato || 'Não evidenciado')}</strong></div>
           </div>
         </section>
 
-        <section class="audit-executive-block">
-          <h3>Execuções aderentes ao processo</h3>
+        <section class="audit-executive-block audit-executive-good">
+          <h3>O que foi executado corretamente</h3>
           ${listaAderentes}
         </section>
 
-        <section class="audit-executive-block">
+        ${blocoPerguntas}
+
+        <section class="audit-executive-block audit-executive-gap">
           <h3>Desvios em relação ao pitch/processo</h3>
           ${listaDesvios}
         </section>
 
-        <section class="audit-executive-block">
-          <h3>Próximos passos conforme o pitch/processo</h3>
-          ${listaPassos}
+        <section class="audit-executive-block audit-executive-action">
+          <h3>Se eu fosse o SDR, faria assim</h3>
+          ${listaAcoes}
         </section>
 
         <section class="audit-executive-block">
+          <h3>Pontuação por critério</h3>
+          ${tabelaNotas}
+          <p class="audit-score-average"><strong>Média dos critérios aplicáveis:</strong> ${mediaCriterios === null ? 'Não disponível' : escapeHtml(String(mediaCriterios) + '/5')} · ${criteriosAplicaveis.length} critério(s) aplicável(is)</p>
+        </section>
+
+        <section class="audit-executive-block audit-executive-conclusion">
           <h3>Conclusão</h3>
           ${conclusao.map(paragrafo => '<p>' + escapeHtml(paragrafo) + '</p>').join('')}
         </section>
