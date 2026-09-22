@@ -570,6 +570,10 @@ function audRdTextoSdr_(c) {
   var co = r.resumo_contato || {};
   var pc = r.pontuacao_calculada || {};
   var feedback = r.feedback || {};
+  var contexto = r.contexto_interacao || {};
+  var perguntas = r.perguntas_qualificacao || {};
+  var objecoes = Array.isArray(r.manejo_objecoes) ? r.manejo_objecoes : [];
+  var objecoesForaPitch = Array.isArray(r.objecoes_fora_pitch) ? r.objecoes_fora_pitch : [];
   var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
 
   function norm(v) {
@@ -587,6 +591,18 @@ function audRdTextoSdr_(c) {
     var t = semPonto(v);
     return t ? t.charAt(0).toLowerCase() + t.slice(1) : '';
   }
+  function rotuloContexto(v) {
+    var t = String(v || '').trim().replace(/_/g, ' ').toLowerCase();
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+  }
+  function adicionarUnico(lista, vistos, valor) {
+    var texto = String(valor || '').trim();
+    if (!texto) return;
+    var chave = norm(texto).replace(/[^A-Z0-9]+/g, ' ').trim();
+    if (!chave || vistos[chave]) return;
+    vistos[chave] = true;
+    lista.push(texto);
+  }
 
   var conformes = ep.filter(function(x) {
     return norm((x || {}).status) === 'CONFORME';
@@ -596,62 +612,117 @@ function audRdTextoSdr_(c) {
     return s === 'DESVIO_EXECUCAO' || s === 'NAO_EXECUTADO';
   });
 
-  var acertos = conformes.slice(0, 6).map(function(x) {
+  var acertos = conformes.slice(0, 5).map(function(x) {
     return '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.fato_transcricao || 'Execução evidenciada na transcrição.', 180);
   });
-  var erros = desvios.slice(0, 6).map(function(x) {
-    return '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.desvio || 'Execução não evidenciada.', 180) +
-      (x.regra_pitch ? ' | Pitch: ' + curto(x.regra_pitch, 150) : '');
+  var erros = desvios.slice(0, 5).map(function(x) {
+    var linha = '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.desvio || 'Execução não evidenciada.', 180);
+    if (x.regra_pitch) linha += ' | Pitch: ' + curto(x.regra_pitch, 150);
+    return linha;
   });
+
+  var perguntasCorretas = (Array.isArray(perguntas.corretas) ? perguntas.corretas : []).slice(0, 5).map(function(x) {
+    var linha = '- SDR: "' + curto(x.pergunta, 190) + '"';
+    if (x.resposta_lead && !/^n[aã]o evidenciado/i.test(String(x.resposta_lead))) linha += ' | Lead: ' + curto(x.resposta_lead, 170);
+    return linha;
+  });
+  var perguntasDesvio = (Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : []).slice(0, 5).map(function(x) {
+    var linha = '- SDR: "' + curto(x.pergunta, 190) + '"';
+    if (x.resposta_lead && !/^n[aã]o evidenciado/i.test(String(x.resposta_lead))) linha += ' | Lead: ' + curto(x.resposta_lead, 150);
+    if (x.correcao_pratica) linha += ' | Ajuste: ' + curto(x.correcao_pratica, 190);
+    return linha;
+  });
+  var perguntasAusentes = (Array.isArray(perguntas.ausentes) ? perguntas.ausentes : []).slice(0, 5).map(function(x) {
+    var linha = '- Faltou: "' + curto(x.pergunta_esperada, 200) + '"';
+    if (x.como_perguntar) linha += ' | Como executar: "' + curto(x.como_perguntar, 190) + '"';
+    return linha;
+  });
+
+  var ajustes = [];
+  var vistosAjustes = {};
+  (Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : []).forEach(function(x) {
+    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Pergunta: ' + curto(x.correcao_pratica, 230) : '');
+  });
+  (Array.isArray(perguntas.ausentes) ? perguntas.ausentes : []).forEach(function(x) {
+    adicionarUnico(ajustes, vistosAjustes, x && x.como_perguntar ? '- Pergunte: "' + curto(x.como_perguntar, 220) + '"' : '');
+  });
+  objecoes.forEach(function(x) {
+    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Objeção: ' + curto(x.correcao_pratica, 230) : '');
+  });
+  objecoesForaPitch.forEach(function(x) {
+    adicionarUnico(ajustes, vistosAjustes, x && x.sugestao_tratamento ? '- Enablement: ' + curto(x.sugestao_tratamento, 230) : '');
+  });
+  desvios.forEach(function(x) {
+    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.correcao_pratica, 230) : '');
+  });
+  passos.forEach(function(x) {
+    if (!x || !String(x.acao || '').trim()) return;
+    adicionarUnico(
+      ajustes,
+      vistosAjustes,
+      '- Próximo passo: ' + curto(x.acao, 220) +
+        (x.criterio_conclusao ? ' | Concluído quando: ' + curto(x.criterio_conclusao, 150) : '')
+    );
+  });
+  ajustes = ajustes.slice(0, 6);
 
   var principal = desvios[0] || {};
-  var proximos = passos.filter(function(x) {
-    return x && String(x.acao || '').trim();
-  }).slice(0, 5).map(function(x) {
-    return '- ' + curto(x.acao, 190) +
-      (x.criterio_conclusao ? ' | Concluído quando: ' + curto(x.criterio_conclusao, 150) : '');
-  });
-
   var fortes = Array.isArray(feedback.pontos_fortes) ? feedback.pontos_fortes.filter(Boolean) : [];
-  var melhorias = Array.isArray(feedback.areas_melhoria) ? feedback.areas_melhoria.filter(Boolean) : [];
   var nomesConformes = conformes.slice(0, 3).map(function(x) { return String(x.etapa || '').trim(); }).filter(Boolean);
   var nomesDesvios = desvios.slice(0, 2).map(function(x) { return String(x.etapa || '').trim(); }).filter(Boolean);
-  var primeiroPasso = passos.find(function(x) { return x && String(x.acao || '').trim(); }) || {};
 
   var p1 = nomesConformes.length
     ? 'A SDR executou corretamente ' + nomesConformes.join(', ') + '.'
-    : (fortes.length ? 'A SDR apresentou execução aderente em ' + fortes.slice(0, 2).map(semPonto).join('; ') + '.' : 'A auditoria não identificou etapa plenamente conforme para destacar nesta conclusão.');
+    : (fortes.length ? 'A SDR apresentou execução aderente em ' + fortes.slice(0, 2).map(semPonto).join('; ') + '.' : 'Não houve etapa plenamente conforme para destacar com segurança.');
 
   var p2 = nomesDesvios.length
     ? 'O principal ajuste está em ' + nomesDesvios.join(' e ') + '.'
-    : (melhorias.length ? 'O principal ajuste está em ' + melhorias.slice(0, 2).map(fraseMin).join(' e ') + '.' : 'Não foi identificado desvio prioritário nesta auditoria.');
+    : 'Não foi identificado desvio prioritário nesta interação.';
 
-  var p3 = primeiroPasso.acao
-    ? 'Na prática, ' + fraseMin(primeiroPasso.acao) + '.'
-    : 'Na prática, a próxima ligação deve manter as etapas conformes e corrigir os desvios indicados acima.';
+  var p3 = ajustes.length
+    ? 'Na prática, a próxima execução deve começar por: ' + fraseMin(ajustes[0].replace(/^[-•]\s*/, '')) + '.'
+    : 'Na prática, mantenha as etapas conformes e repita o mesmo padrão na próxima ligação.';
 
   var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
   var pct = pc.score_percentual != null ? pc.score_percentual : c.a.SCORE_PERCENTUAL;
+  var contextoLinha = rotuloContexto(contexto.classificacao || '');
+  var aplicaveis = Array.isArray(contexto.etapas_aplicaveis) ? contexto.etapas_aplicaveis.filter(Boolean).slice(0, 6) : [];
+  var concluidas = Array.isArray(contexto.etapas_ja_concluidas) ? contexto.etapas_ja_concluidas.filter(Boolean).slice(0, 6) : [];
+
   var linhas = [
     'AUDITORIA SDR — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
     'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
     'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     '',
+    contextoLinha ? 'CONTEXTO DA INTERAÇÃO' : '',
+    contextoLinha ? 'Tipo: ' + contextoLinha : '',
+    contexto.objetivo_principal ? 'Objetivo: ' + curto(contexto.objetivo_principal, 260) : '',
+    aplicaveis.length ? 'Aplicável nesta ligação: ' + aplicaveis.map(curto).join(' | ') : '',
+    concluidas.length ? 'Já concluído anteriormente: ' + concluidas.map(curto).join(' | ') : '',
+    contextoLinha ? '' : '',
     'CENÁRIO DA LIGAÇÃO',
-    curto(co.resumo_conversa || 'Não evidenciado', 450),
-    co.motivacao_contato ? 'Motivação do contato: ' + curto(co.motivacao_contato, 260) : '',
-    co.necessidade_principal ? 'Necessidade principal: ' + curto(co.necessidade_principal, 260) : '',
-    co.resultado_contato ? 'Resultado do contato: ' + curto(co.resultado_contato, 260) : '',
+    curto(co.resumo_conversa || 'Não evidenciado', 430),
+    co.motivacao_contato ? 'Motivação: ' + curto(co.motivacao_contato, 240) : '',
+    co.necessidade_principal ? 'Necessidade: ' + curto(co.necessidade_principal, 240) : '',
+    co.resultado_contato ? 'Resultado: ' + curto(co.resultado_contato, 240) : '',
     '',
-    'EXECUÇÕES ADERENTES AO PROCESSO',
+    'O QUE FOI EXECUTADO CORRETAMENTE',
     acertos.length ? acertos.join(n) : '- Nenhuma etapa foi classificada como plenamente conforme.',
     '',
+    (perguntasCorretas.length || perguntasDesvio.length || perguntasAusentes.length) ? 'PERGUNTAS DE QUALIFICAÇÃO' : '',
+    perguntasCorretas.length ? 'Corretas:' : '',
+    perguntasCorretas.length ? perguntasCorretas.join(n) : '',
+    perguntasDesvio.length ? 'Com desvio:' : '',
+    perguntasDesvio.length ? perguntasDesvio.join(n) : '',
+    perguntasAusentes.length ? 'Aplicáveis e não realizadas:' : '',
+    perguntasAusentes.length ? perguntasAusentes.join(n) : '',
+    (perguntasCorretas.length || perguntasDesvio.length || perguntasAusentes.length) ? '' : '',
     'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO',
     erros.length ? erros.join(n) : '- Nenhum desvio de execução foi identificado.',
-    principal.fato_transcricao ? 'Evidência do principal desvio: "' + curto(principal.fato_transcricao, 220) + '"' : '',
+    principal.fato_transcricao ? 'Evidência principal: "' + curto(principal.fato_transcricao, 210) + '"' : '',
     '',
-    'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO',
-    proximos.length ? proximos.join(n) : '- Manter a execução conforme e acompanhar os critérios da próxima ligação.',
+    'SE EU FOSSE O SDR, FARIA ASSIM',
+    ajustes.length ? ajustes.join(n) : '- Manteria a execução conforme observada nesta ligação.',
     '',
     'CONCLUSÃO',
     p1,
@@ -668,4 +739,5 @@ function audRdTextoSdr_(c) {
     return x !== '' || (i > 0 && a[i - 1] !== '');
   }).join(n).trim();
 }
+
 function audRdJsonSeguro_(v){return JSON.stringify(v).replace(/[\u007f-\uffff]/g,function(ch){return '\\u'+('0000'+ch.charCodeAt(0).toString(16)).slice(-4);});}
