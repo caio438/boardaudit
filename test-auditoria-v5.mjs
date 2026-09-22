@@ -99,6 +99,10 @@ assert.ok(audit.includes("audV3Titulo_(body, 'Panorama de evolução'"), 'Google
 assert.ok(audit.includes("audV3Titulo_(body, 'Resultados recentes'"), 'Google Docs não mostra resultados históricos recentes.');
 assert.ok(audit.includes("audV3Titulo_(body, 'Melhorias já atingidas'"), 'Google Docs não destaca melhorias conquistadas.');
 assert.ok(audit.includes("audV3Titulo_(body, 'Pontos que seguem em evolução'"), 'Google Docs não destaca pontos ainda em evolução.');
+assert.ok(audit.includes('const AUDV3_PALETA_VOLUM'), 'Google Docs não possui paleta visual centralizada.');
+assert.ok(audit.includes('setBorderColor(AUDV3_PALETA_VOLUM.borda)'), 'Tabelas do Google Docs não usam borda da paleta VOLUM.');
+assert.ok(audit.includes('setBackgroundColor(AUDV3_PALETA_VOLUM.navyEscuro)'), 'Cabeçalhos das tabelas não usam o navy VOLUM.');
+assert.ok(audit.includes('registro.getCell(0).editAsText().setBold(true)'), 'Critérios da tabela de resultado não recebem hierarquia em negrito.');
 assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r)"), 'Doc SDR não inclui evolução perto do topo.');
 assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r)"), 'Doc Closer não inclui evolução perto do topo.');
 
