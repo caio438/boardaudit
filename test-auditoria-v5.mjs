@@ -5,6 +5,7 @@ const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf
 const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
+const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 
 for (const coluna of ['AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de automação ausente: ' + coluna);
@@ -85,6 +86,9 @@ assert.ok(audit.includes('contexto_interacao'), 'Resultado estruturado não cont
 assert.ok(front.includes('JSON estruturado da auditoria'), 'Board não permite inspecionar o JSON antes da publicação.');
 assert.ok(front.includes('BLOQUEADA PELO GATE'), 'Board não bloqueia visualmente uma auditoria reprovada pelo gate.');
 assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovação explícita antes da publicação.');
+assert.ok(rd.includes('CONTEXTO DA INTERAÇÃO'), 'RD SDR não publica o contexto da interação.');
+assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
+assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
 
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de integridade ausente: ' + coluna);
