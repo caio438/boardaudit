@@ -24,6 +24,42 @@ assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não tr
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
+assert.match(audit, /versao:\s*'6\.0\.2'/, 'O engine não foi versionado para o autorreparo de coaching genérico.');
+assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
+assert.ok(audit.includes('audV3MotivoAutorreparoGate_((processado.resultado || {}).validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
+assert.ok(audit.includes('Gate da auditoria bloqueado somente por coaching genérico. Executando uma tentativa única de autorreparo.'), 'A geração não registra a tentativa única de autorreparo do gate.');
+assert.ok(audit.includes("tipo === 'PLANO' || contextoIa.correcaoValidacao"), 'O autorreparo pode criar uma terceira tentativa ou atingir Plano indevidamente.');
+
+const inicioAutorreparoGate = audit.indexOf('function audV3MotivoAutorreparoGate_');
+const fimAutorreparoGate = audit.indexOf('function audV3ValidarQualidadeBoard_', inicioAutorreparoGate);
+assert.ok(inicioAutorreparoGate >= 0 && fimAutorreparoGate > inicioAutorreparoGate, 'Não foi possível isolar o classificador de autorreparo do gate.');
+const motivoAutorreparoGate = new Function(
+  audit.slice(inicioAutorreparoGate, fimAutorreparoGate) +
+    '\nreturn audV3MotivoAutorreparoGate_;'
+)();
+const bloqueioGenerico = 'Há orientação genérica sem comportamento observável: Melhorar a condução e revisar o pitch.';
+assert.match(
+  motivoAutorreparoGate({ status: 'BLOQUEADO', bloqueios: [bloqueioGenerico] }),
+  /corrija exclusivamente as orientações/i,
+  'Coaching genérico isolado não aciona o autorreparo controlado.'
+);
+assert.equal(
+  motivoAutorreparoGate({
+    status: 'BLOQUEADO',
+    bloqueios: [bloqueioGenerico, 'Uma evidência atribuída ao SDR também aparece como fala/resposta do lead.']
+  }),
+  '',
+  'Autorreparo não pode tentar corrigir automaticamente bloqueios de autoria junto com coaching.'
+);
+assert.equal(
+  motivoAutorreparoGate({
+    status: 'BLOQUEADO',
+    bloqueios: ['Há etapas marcadas como já concluídas sem continuidade comprovada por histórico ou evidência objetiva.']
+  }),
+  '',
+  'Autorreparo não pode alterar automaticamente bloqueios de continuidade.'
+);
+
 assert.ok(audit.includes('function audV3EstadoCrmGrupoSinergia_'), 'Auditorias do Grupo Sinergia não possuem estado específico para CRM.');
 assert.ok(audit.includes('function regenerarAuditoriaGrupoSinergiaParaCrmV3'), 'Auditorias legadas do Grupo Sinergia não podem ser regeneradas com as travas atuais.');
 assert.ok(audit.includes("'CLI-20260806105306-25F3490A'"), 'Fluxo do Grupo Sinergia não aponta para o cliente canônico INGEE.');
@@ -56,7 +92,7 @@ const criarFiltroOperacional = new Function(
   audit.slice(inicioFiltroOperacional, fimFiltroOperacional) +
     '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_ };'
 );
-const filtroOperacional = criarFiltroOperacional({ versao: '6.0.1' }).filtrar;
+const filtroOperacional = criarFiltroOperacional({ versao: '6.0.2' }).filtrar;
 const atualValida = (id, interacao, status = 'APROVADA') => ({
   ID_AUDITORIA: id,
   ID_INTERACAO: interacao,
