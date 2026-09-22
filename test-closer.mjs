@@ -235,6 +235,22 @@ const negociacaoValida = {
 const gateNegociacao = context.api.validateBoard(negociacaoValida, 'CLOSER');
 assert.notEqual(gateNegociacao.status, 'BLOQUEADO', 'Negociação com coaching específico não deve ser bloqueada.');
 
+
+const autoriaErrada = JSON.parse(JSON.stringify(negociacaoValida));
+autoriaErrada.perguntas_diagnostico = {
+  perguntas_realizadas: [
+    {
+      pergunta: 'Você tem um teto de orçamento?',
+      resposta_lead: 'Ainda não está fechado, mas esse valor ficou bem alto do que comentaram internamente.'
+    }
+  ],
+  perguntas_esperadas_nao_realizadas: []
+};
+autoriaErrada.criterios_avaliados[0].o_que_foi_dito = 'esse valor ficou bem alto do que comentaram internamente';
+const gateAutoria = context.api.validateBoard(autoriaErrada, 'CLOSER');
+assert.equal(gateAutoria.status, 'BLOQUEADO', 'Fala do lead atribuída ao Closer precisa bloquear publicação.');
+assert.match(gateAutoria.bloqueios.join(' '), /autoria/i);
+
 const negociacaoCobradaComoDiagnostico = JSON.parse(JSON.stringify(negociacaoValida));
 negociacaoCobradaComoDiagnostico.perguntas_diagnostico.perguntas_esperadas_nao_realizadas = Array.from({ length: 7 }, (_, i) => ({ pergunta: 'Pergunta ' + i }));
 const gateDiagnosticoIndevido = context.api.validateBoard(negociacaoCobradaComoDiagnostico, 'CLOSER');
