@@ -611,7 +611,7 @@ function audRdTextoSdr_(c) {
     var t = String(v || '').trim().replace(/_/g, ' ').toLowerCase();
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   }
-  function adicionarUnico(lista, vistos, valor) {
+  function adicionarUnicoSdr(lista, vistos, valor) {
     var texto = String(valor || '').trim();
     if (!texto) return;
     var chave = norm(texto).replace(/[^A-Z0-9]+/g, ' ').trim();
@@ -657,23 +657,23 @@ function audRdTextoSdr_(c) {
   var ajustes = [];
   var vistosAjustes = {};
   (Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : []).forEach(function(x) {
-    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Pergunta: ' + curto(x.correcao_pratica, 230) : '');
+    adicionarUnicoSdr(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Pergunta: ' + curto(x.correcao_pratica, 230) : '');
   });
   (Array.isArray(perguntas.ausentes) ? perguntas.ausentes : []).forEach(function(x) {
-    adicionarUnico(ajustes, vistosAjustes, x && x.como_perguntar ? '- Pergunte: "' + curto(x.como_perguntar, 220) + '"' : '');
+    adicionarUnicoSdr(ajustes, vistosAjustes, x && x.como_perguntar ? '- Pergunte: "' + curto(x.como_perguntar, 220) + '"' : '');
   });
   objecoes.forEach(function(x) {
-    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Objeção: ' + curto(x.correcao_pratica, 230) : '');
+    adicionarUnicoSdr(ajustes, vistosAjustes, x && x.correcao_pratica ? '- Objeção: ' + curto(x.correcao_pratica, 230) : '');
   });
   objecoesForaPitch.forEach(function(x) {
-    adicionarUnico(ajustes, vistosAjustes, x && x.sugestao_tratamento ? '- Enablement: ' + curto(x.sugestao_tratamento, 230) : '');
+    adicionarUnicoSdr(ajustes, vistosAjustes, x && x.sugestao_tratamento ? '- Enablement: ' + curto(x.sugestao_tratamento, 230) : '');
   });
   desvios.forEach(function(x) {
-    adicionarUnico(ajustes, vistosAjustes, x && x.correcao_pratica ? '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.correcao_pratica, 230) : '');
+    adicionarUnicoSdr(ajustes, vistosAjustes, x && x.correcao_pratica ? '- ' + String(x.etapa || 'Etapa') + ': ' + curto(x.correcao_pratica, 230) : '');
   });
   passos.forEach(function(x) {
     if (!x || !String(x.acao || '').trim()) return;
-    adicionarUnico(
+    adicionarUnicoSdr(
       ajustes,
       vistosAjustes,
       '- Próximo passo: ' + curto(x.acao, 220) +
