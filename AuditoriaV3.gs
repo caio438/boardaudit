@@ -4633,12 +4633,23 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
 
   const melhorias = [];
   const pendentes = [];
+  const criteriosComparacao = [];
   criteriosAtuais.forEach(function(item) {
     const chaveId = String(item.id || '').trim();
     const chaveNome = 'NOME:' + audV3NormalizarTrechoRastreavel_(item.nome || '');
     const anteriores = (chaveId && mapaHistorico[chaveId] && mapaHistorico[chaveId].length)
       ? mapaHistorico[chaveId]
       : (mapaHistorico[chaveNome] || []);
+    const mediaHistorica = anteriores.length
+      ? Math.round((anteriores.reduce(function(soma, valor) { return soma + Number(valor || 0); }, 0) / anteriores.length) * 100) / 100
+      : null;
+    criteriosComparacao.push({
+      id: item.id,
+      nome: item.nome,
+      atual: item.nota,
+      mediaHistorica: mediaHistorica,
+      amostrasHistoricas: anteriores.length
+    });
     if (!anteriores.length || item.nota === null) {
       if (item.nota !== null && item.nota < 4) pendentes.push({ nome: item.nome, atual: item.nota, anterior: null });
       return;
@@ -4651,6 +4662,22 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
     }
   });
 
+  const linhaEvolucao = historico.slice(-8).map(function(item) {
+    return {
+      data: item.data || '',
+      dataMs: item.dataMs || 0,
+      score: item.score
+    };
+  });
+  if (scoreAtual !== null) {
+    linhaEvolucao.push({
+      data: audV3DataTexto_(interacao.DATA_INTERACAO || new Date()),
+      dataMs: interacao.DATA_INTERACAO ? new Date(interacao.DATA_INTERACAO).getTime() : Date.now(),
+      score: scoreAtual,
+      atual: true
+    });
+  }
+
   return {
     profissional: profissionalAtual,
     totalHistorico: historico.length,
@@ -4662,7 +4689,9 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
       : null,
     mediaTres: mediaTres,
     melhorias: melhorias.slice(0, 5),
-    pendentes: pendentes.slice(0, 5)
+    pendentes: pendentes.slice(0, 5),
+    linhaEvolucao: linhaEvolucao,
+    criteriosComparacao: criteriosComparacao
   };
 }
 
@@ -4679,6 +4708,132 @@ function audV3AplicarFundoTabela_(tabela, linha, cor) {
   for (let coluna = 0; coluna < registro.getNumCells(); coluna++) {
     registro.getCell(coluna).setBackgroundColor(cor);
   }
+}
+
+function audV3RotuloDataGrafico_(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto) return '';
+  const match = texto.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (match) return match[1].padStart(2, '0') + '/' + match[2].padStart(2, '0');
+  const data = new Date(valor);
+  if (!isNaN(data.getTime())) {
+    return Utilities.formatDate(data, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'dd/MM');
+  }
+  return texto.slice(0, 10);
+}
+
+function audV3InserirImagemGrafico_(body, grafico, larguraMaxima) {
+  if (!grafico) return null;
+  try {
+    const imagem = body.appendImage(grafico.getBlob());
+    const larguraOriginal = Number(imagem.getWidth() || 0);
+    const alturaOriginal = Number(imagem.getHeight() || 0);
+    const largura = Math.min(Number(larguraMaxima || 700), larguraOriginal || Number(larguraMaxima || 700));
+    if (larguraOriginal > 0 && alturaOriginal > 0 && largura > 0) {
+      imagem.setWidth(Math.round(largura));
+      imagem.setHeight(Math.round(alturaOriginal * largura / larguraOriginal));
+    }
+    const parent = imagem.getParent();
+    if (parent && parent.getType && parent.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      parent.asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER).setSpacingAfter(12);
+    }
+    return imagem;
+  } catch (erro) {
+    registrarLog_('AUDITORIA', 'GRAFICO_DOCUMENTO', 'Falha ao inserir gráfico no relatório: ' + String(erro && erro.message ? erro.message : erro));
+    return null;
+  }
+}
+
+function audV3GraficoEvolucaoScore_(hist) {
+  const pontos = Array.isArray((hist || {}).linhaEvolucao) ? hist.linhaEvolucao.filter(function(item) {
+    return item && audV3AnaliticaNumero_(item.score) !== null;
+  }) : [];
+  if (pontos.length < 2) return null;
+
+  const builder = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.STRING, 'Auditoria')
+    .addColumn(Charts.ColumnType.NUMBER, 'Nota')
+    .addColumn(Charts.ColumnType.NUMBER, 'Referência 4,0');
+
+  pontos.forEach(function(item) {
+    builder.addRow([
+      audV3RotuloDataGrafico_(item.data),
+      Number(item.score),
+      4
+    ]);
+  });
+
+  return Charts.newLineChart()
+    .setDataTable(builder.build())
+    .setTitle('Evolução da nota geral por auditoria')
+    .setXAxisTitle('Data da auditoria')
+    .setYAxisTitle('Nota')
+    .setRange(0, 5)
+    .setDimensions(720, 300)
+    .setLegendPosition(Charts.Position.BOTTOM)
+    .setOption('colors', [AUDV3_PALETA_VOLUM.azulTexto, AUDV3_PALETA_VOLUM.muted])
+    .setOption('pointSize', 6)
+    .setOption('lineWidth', 3)
+    .setOption('chartArea', { left: 60, top: 45, width: '78%', height: '62%' })
+    .build();
+}
+
+function audV3GraficoCriterios_(hist) {
+  const criterios = (Array.isArray((hist || {}).criteriosComparacao) ? hist.criteriosComparacao : [])
+    .filter(function(item) {
+      return item &&
+        audV3AnaliticaNumero_(item.atual) !== null &&
+        audV3AnaliticaNumero_(item.mediaHistorica) !== null &&
+        Number(item.amostrasHistoricas || 0) > 0;
+    })
+    .slice(0, 10);
+  if (!criterios.length) return null;
+
+  const builder = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.STRING, 'Critério')
+    .addColumn(Charts.ColumnType.NUMBER, 'Atual')
+    .addColumn(Charts.ColumnType.NUMBER, 'Média histórica');
+
+  criterios.forEach(function(item) {
+    const nome = String(item.nome || item.id || 'Critério');
+    builder.addRow([
+      nome.length > 34 ? nome.slice(0, 31) + '...' : nome,
+      Number(item.atual),
+      Number(item.mediaHistorica)
+    ]);
+  });
+
+  const altura = Math.min(520, Math.max(260, 130 + criterios.length * 34));
+  return Charts.newBarChart()
+    .setDataTable(builder.build())
+    .setTitle('Atingimento por critério — atual x média histórica')
+    .setXAxisTitle('Nota')
+    .setYAxisTitle('Critério')
+    .setRange(0, 5)
+    .setDimensions(720, altura)
+    .setLegendPosition(Charts.Position.BOTTOM)
+    .setOption('colors', [AUDV3_PALETA_VOLUM.azulTexto, AUDV3_PALETA_VOLUM.muted])
+    .setOption('chartArea', { left: 205, top: 45, width: '62%', height: '68%' })
+    .build();
+}
+
+function audV3AdicionarGraficosEvolucaoDocumento_(body, hist) {
+  hist = hist || {};
+  const graficoLinha = audV3GraficoEvolucaoScore_(hist);
+  const graficoBarras = audV3GraficoCriterios_(hist);
+  if (!graficoLinha && !graficoBarras) return false;
+
+  audV3Titulo_(body, 'Evolução visual', DocumentApp.ParagraphHeading.HEADING2);
+  if (graficoLinha) {
+    audV3InserirImagemGrafico_(body, graficoLinha, 700);
+  }
+  if (graficoBarras) {
+    audV3InserirImagemGrafico_(body, graficoBarras, 700);
+  }
+  const nota = body.appendParagraph('Os gráficos utilizam somente auditorias validadas do mesmo profissional, cliente e função. Critérios sem histórico comparável não entram na média histórica.');
+  nota.editAsText().setFontSize(8).setForegroundColor(AUDV3_PALETA_VOLUM.muted).setItalic(true);
+  nota.setSpacingAfter(12);
+  return true;
 }
 
 function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado) {
@@ -4736,6 +4891,8 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
       atualRegistro.getCell(i).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
     }
   }
+
+  audV3AdicionarGraficosEvolucaoDocumento_(body, hist);
 
   audV3Titulo_(body, 'Melhorias já atingidas', DocumentApp.ParagraphHeading.HEADING2);
   if (hist.melhorias.length) {
