@@ -59,124 +59,92 @@ function EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5() {
     ].join('\n');
 
     audV3Adicionar_('CLIENTES', {
-      ID_CLIENTE: ids.cliente,
-      NOME_CLIENTE: '[QA] Cliente Auditoria Automática',
-      TIPO_OPERACAO: 'INBOUND',
-      PRODUTO_SERVICO: 'Sistema de gestão industrial',
+      ID_CLIENTE: ids.cliente, NOME_CLIENTE: '[QA] Cliente Auditoria V6',
+      TIPO_OPERACAO: 'INBOUND', PRODUTO_SERVICO: 'Sistema de gestão industrial',
       REGRAS_CLIENTE: 'Registro sintético criado exclusivamente para teste controlado.',
-      STATUS: 'ATIVO',
-      CRIADO_EM: agora,
-      ATUALIZADO_EM: agora
+      STATUS: 'ATIVO', CRIADO_EM: agora, ATUALIZADO_EM: agora
     });
-
     audV3Adicionar_('PITCHES', {
-      ID_PITCH: ids.pitch,
-      ID_CLIENTE: ids.cliente,
-      TIPO_PITCH: 'SDR',
-      NOME_VERSAO: '[QA] Pitch SDR E2E',
-      NUMERO_VERSAO: '1',
-      CONTEUDO_PITCH: pitchTexto,
-      PITCH_ATUAL: 'SIM',
-      STATUS: 'ATIVO',
-      CRIADO_EM: agora,
-      ATUALIZADO_EM: agora
+      ID_PITCH: ids.pitch, ID_CLIENTE: ids.cliente, TIPO_PITCH: 'SDR',
+      NOME_VERSAO: '[QA] Pitch SDR E2E V6', NUMERO_VERSAO: '1',
+      CONTEUDO_PITCH: pitchTexto, PITCH_ATUAL: 'SIM', STATUS: 'ATIVO',
+      CRIADO_EM: agora, ATUALIZADO_EM: agora
     });
-
     audV3Adicionar_('MODELOS_AUDITORIA', {
-      ID_MODELO: ids.modelo,
-      NOME_MODELO: '[QA] Modelo SDR V5',
-      ID_CLIENTE: ids.cliente,
-      TIPO_AUDITORIA: 'SDR',
+      ID_MODELO: ids.modelo, NOME_MODELO: '[QA] Modelo SDR V6',
+      ID_CLIENTE: ids.cliente, TIPO_AUDITORIA: 'SDR',
       PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-      VERSAO_MODELO: '5.0.0-QA',
-      STATUS: 'ATIVO',
-      CRIADO_EM: agora,
-      ATUALIZADO_EM: agora
+      VERSAO_MODELO: '6.0.0-QA', STATUS: 'ATIVO',
+      CRIADO_EM: agora, ATUALIZADO_EM: agora
     });
-
     audV3Adicionar_('INTERACOES', {
-      ID_INTERACAO: ids.interacao,
-      FONTE: 'QA_CONTROLADO',
-      ID_EXTERNO: tag,
-      TIPO_INTERACAO: 'LIGACAO',
-      ID_CLIENTE: ids.cliente,
-      TITULO: '[QA] Ligação sintética de validação automática',
-      OPORTUNIDADE: '[QA] Oportunidade sintética',
-      LEAD: 'Carlos QA',
-      VENDEDOR: 'Ana QA',
-      COLABORADOR: 'Ana QA',
-      FUNCAO: 'SDR',
-      DATA_INTERACAO: agora,
-      STATUS_TRANSCRICAO: 'CONCLUIDA',
-      STATUS_AUDITORIA: 'NAO_AUDITADA',
-      LINK_CRM: '',
-      URL_GRAVACAO: '',
-      IMPORTADO_EM: agora,
-      ATUALIZADO_EM: agora,
-      SCHEMA_VERSAO: AUDITORIA_V3.versao
+      ID_INTERACAO: ids.interacao, FONTE: 'QA_CONTROLADO', ID_EXTERNO: tag,
+      TIPO_INTERACAO: 'LIGACAO', ID_CLIENTE: ids.cliente,
+      TITULO: '[QA] Ligação sintética de validação V6',
+      OPORTUNIDADE: '[QA] Oportunidade sintética', LEAD: 'Carlos QA',
+      VENDEDOR: 'Ana QA', COLABORADOR: 'Ana QA', FUNCAO: 'SDR',
+      DATA_INTERACAO: agora, STATUS_TRANSCRICAO: 'CONCLUIDA',
+      STATUS_AUDITORIA: 'NAO_AUDITADA', LINK_CRM: '', URL_GRAVACAO: '',
+      IMPORTADO_EM: agora, ATUALIZADO_EM: agora, SCHEMA_VERSAO: AUDITORIA_V3.versao
     });
-
     audV3Adicionar_('TRANSCRICOES', {
-      ID_TRANSCRICAO: ids.transcricao,
-      ID_INTERACAO: ids.interacao,
-      FONTE: 'QA_CONTROLADO',
-      IDIOMA: 'pt-BR',
-      CONTEUDO: transcricaoTexto,
-      TAMANHO_CARACTERES: transcricaoTexto.length,
-      STATUS: 'CONCLUIDA',
-      ERRO: '',
-      IMPORTADO_EM: agora,
-      ATUALIZADO_EM: agora
+      ID_TRANSCRICAO: ids.transcricao, ID_INTERACAO: ids.interacao,
+      FONTE: 'QA_CONTROLADO', IDIOMA: 'pt-BR', CONTEUDO: transcricaoTexto,
+      TAMANHO_CARACTERES: transcricaoTexto.length, STATUS: 'CONCLUIDA',
+      ERRO: '', IMPORTADO_EM: agora, ATUALIZADO_EM: agora
     });
 
     resultadoTeste.etapas.dadosSinteticos = true;
-
     const resposta = executarAuditoriaV3({
-      idCliente: ids.cliente,
-      idPitch: ids.pitch,
-      idInteracao: ids.interacao,
-      idModelo: ids.modelo,
-      tipoAuditoria: 'SDR',
-      nomeSdr: 'Ana QA',
+      idCliente: ids.cliente, idPitch: ids.pitch, idInteracao: ids.interacao,
+      idModelo: ids.modelo, tipoAuditoria: 'SDR', nomeSdr: 'Ana QA',
       evitarDuplicidade: false
     });
 
-    const auditorias = audV3Ler_('AUDITORIAS')
+    let auditoria = audV3Ler_('AUDITORIAS')
       .filter(function(item) { return String(item.ID_INTERACAO || '') === ids.interacao; })
-      .sort(function(a, b) { return String(a.SOLICITADO_EM || '').localeCompare(String(b.SOLICITADO_EM || '')); });
-    const auditoria = auditorias[auditorias.length - 1];
+      .sort(function(a, b) { return String(a.SOLICITADO_EM || '').localeCompare(String(b.SOLICITADO_EM || '')); })
+      .slice(-1)[0];
     if (!auditoria) throw new Error('O fluxo não criou a auditoria sintética.');
     ids.auditoria = String(auditoria.ID_AUDITORIA || '');
-    docId = String(auditoria.ID_DOCUMENTO || '');
 
+    const resultadoJson = audV3ParseJson_(String(auditoria.RESULTADO_JSON || '{}'), 'QA sem JSON válido.');
     resultadoTeste.etapas.geracao = Boolean(resposta && resposta.sucesso);
     resultadoTeste.etapas.validacao = String(auditoria.VALIDACAO_STATUS || '').toUpperCase();
-    resultadoTeste.etapas.aprovacao = String(auditoria.STATUS || '').toUpperCase();
-    resultadoTeste.etapas.automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
-    resultadoTeste.etapas.rd = String(auditoria.RD_STATUS || '').toUpperCase();
+    resultadoTeste.etapas.statusAntesAprovacao = String(auditoria.STATUS || '').toUpperCase();
+    resultadoTeste.etapas.automacaoAntesAprovacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
+    resultadoTeste.etapas.rdAntesAprovacao = String(auditoria.RD_STATUS || '').toUpperCase();
+    resultadoTeste.etapas.contexto = String(((resultadoJson || {}).contexto_interacao || {}).classificacao || '');
+    resultadoTeste.etapas.gate = String(((resultadoJson || {}).validacao_board || {}).status || '');
     resultadoTeste.etapas.hashFonte = Boolean(String(auditoria.HASH_FONTE || '').trim());
     resultadoTeste.etapas.modeloIa = String(auditoria.MODELO_IA || '');
-    resultadoTeste.etapas.score = auditoria.SCORE;
-    resultadoTeste.etapas.scorePercentual = auditoria.SCORE_PERCENTUAL;
-    resultadoTeste.etapas.documentoCriado = Boolean(docId && String(auditoria.LINK_DOCUMENTO || '').trim());
-    resultadoTeste.etapas.documentoUrl = String(auditoria.LINK_DOCUMENTO || '');
+    resultadoTeste.etapas.documentoAntesAprovacao = Boolean(String(auditoria.LINK_DOCUMENTO || '').trim());
 
-    if (resultadoTeste.etapas.validacao !== 'VALIDADA') {
-      throw new Error('A auditoria não terminou VALIDADA: ' + resultadoTeste.etapas.validacao);
-    }
-    if (resultadoTeste.etapas.aprovacao !== 'APROVADA') {
-      throw new Error('A auditoria não terminou APROVADA: ' + resultadoTeste.etapas.aprovacao);
-    }
-    if (!['CONCLUIDA', 'CONCLUIDA_AGUARDANDO_RD'].includes(resultadoTeste.etapas.automacao)) {
-      throw new Error('Status inesperado da automação: ' + resultadoTeste.etapas.automacao);
-    }
-    if (resultadoTeste.etapas.rd !== 'AGUARDANDO_VINCULO') {
-      throw new Error('O RD deveria ficar AGUARDANDO_VINCULO no teste controlado, mas ficou: ' + resultadoTeste.etapas.rd);
-    }
+    if (resultadoTeste.etapas.validacao !== 'VALIDADA') throw new Error('A auditoria não terminou VALIDADA.');
+    if (resultadoTeste.etapas.statusAntesAprovacao !== 'EM_REVISAO') throw new Error('A auditoria deveria parar em EM_REVISAO.');
+    if (resultadoTeste.etapas.automacaoAntesAprovacao !== 'AGUARDANDO_REVISAO') throw new Error('A automação deveria aguardar revisão humana.');
+    if (resultadoTeste.etapas.documentoAntesAprovacao) throw new Error('O Google Docs foi criado antes da aprovação humana.');
+    if (!resultadoTeste.etapas.contexto) throw new Error('O contexto da interação não foi classificado.');
+    if (!resultadoTeste.etapas.gate) throw new Error('O gate do Board não foi calculado.');
+    if (resultadoTeste.etapas.gate === 'BLOQUEADO') throw new Error('O fixture saudável foi bloqueado pelo gate.');
     if (!resultadoTeste.etapas.hashFonte) throw new Error('HASH_FONTE não foi gravado.');
     if (!resultadoTeste.etapas.modeloIa) throw new Error('MODELO_IA não foi gravado.');
-    if (!resultadoTeste.etapas.documentoCriado) throw new Error('Google Docs não foi criado automaticamente.');
+
+    const aprovacao = aprovarAuditoriaV3(ids.auditoria);
+    auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', ids.auditoria) || {};
+    docId = String(auditoria.ID_DOCUMENTO || '');
+    resultadoTeste.etapas.aprovacao = String(auditoria.STATUS || '').toUpperCase();
+    resultadoTeste.etapas.automacaoDepoisAprovacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
+    resultadoTeste.etapas.rdDepoisAprovacao = String(auditoria.RD_STATUS || '').toUpperCase();
+    resultadoTeste.etapas.documentoCriado = Boolean(docId && String(auditoria.LINK_DOCUMENTO || '').trim());
+
+    if (!aprovacao || !aprovacao.sucesso) throw new Error('A aprovação humana simulada falhou.');
+    if (resultadoTeste.etapas.aprovacao !== 'APROVADA') throw new Error('A auditoria não terminou APROVADA após aprovação.');
+    if (!resultadoTeste.etapas.documentoCriado) throw new Error('Google Docs não foi criado após aprovação.');
+    if (resultadoTeste.etapas.rdDepoisAprovacao !== 'AGUARDANDO_VINCULO') {
+      throw new Error('O RD deveria ficar AGUARDANDO_VINCULO no QA sem negociação vinculada.');
+    }
 
     const doc = DocumentApp.openById(docId);
     const textoDoc = doc.getBody().getText();
@@ -190,19 +158,14 @@ function EXECUTAR_TESTE_CONTROLADO_AUDITORIA_V5() {
     }
 
     resultadoTeste.sucesso = true;
-    resultadoTeste.mensagem = 'Teste E2E concluído: auditoria validada/aprovada, Doc criado e RD aguardando vínculo, sem publicação real.';
+    resultadoTeste.mensagem = 'QA V6 concluído: análise parou em revisão, contexto/gate presentes e publicação só ocorreu após aprovação humana.';
     return resultadoTeste;
   } catch (erro) {
     resultadoTeste.sucesso = false;
     resultadoTeste.erro = String(erro && erro.message ? erro.message : erro);
     throw new Error('QA_E2E_FALHOU|' + JSON.stringify(resultadoTeste));
   } finally {
-    try {
-      if (docId) DriveApp.getFileById(docId).setTrashed(true);
-    } catch (erroDoc) {
-      resultadoTeste.limpezaDocumentoErro = String(erroDoc && erroDoc.message ? erroDoc.message : erroDoc);
-    }
-
+    try { if (docId) DriveApp.getFileById(docId).setTrashed(true); } catch (erroDoc) {}
     qaAuditoriaRemoverLinha_('AUDITORIAS', 'ID_AUDITORIA', ids.auditoria);
     qaAuditoriaRemoverLinha_('TRANSCRICOES', 'ID_TRANSCRICAO', ids.transcricao);
     qaAuditoriaRemoverLinha_('INTERACOES', 'ID_INTERACAO', ids.interacao);
