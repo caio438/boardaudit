@@ -174,7 +174,7 @@ for (const titulo of [
 ]) {
   assert.ok(closerRd.includes(titulo), 'Bloco da anotação Closer no CRM ausente: ' + titulo);
 }
-for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'EXECUÇÕES ADERENTES AO PROCESSO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO', 'CONCLUSÃO']) {
+for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'O QUE FOI EXECUTADO CORRETAMENTE', 'PERGUNTAS DE QUALIFICAÇÃO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'SE EU FOSSE O SDR, FARIA ASSIM', 'CONCLUSÃO']) {
   assert.ok(rd.includes(titulo), 'Bloco da anotação SDR no CRM ausente: ' + titulo);
 }
 
