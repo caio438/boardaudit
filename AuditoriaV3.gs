@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.0.0',
+  versao: '6.0.1',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1853,17 +1853,18 @@ function executarAuditoriaV3(dados) {
       auditorias: audV3ListarAuditoriasFront_()
     };
   } catch (erro) {
+    const erroTecnico = audV3DescreverErroTecnico_(erro);
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'ERRO',
       VALIDACAO_STATUS: 'ERRO',
       AUTOMACAO_STATUS: 'ERRO',
-      AUTOMACAO_ERRO: erro && erro.message ? erro.message : String(erro),
+      AUTOMACAO_ERRO: erroTecnico,
       AUTOMACAO_ATUALIZADO_EM: new Date(),
-      ERRO: erro && erro.message ? erro.message : String(erro),
+      ERRO: erroTecnico,
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
       CONCLUIDO_EM: new Date()
     });
-    throw erro;
+    throw new Error(erroTecnico);
   }
 }
 
@@ -2524,6 +2525,139 @@ function audV3Identidade_(dados, cliente, interacao) {
   };
 }
 
+function audV3ErroTecnico_(codigo, mensagem, causa) {
+  const chave = String(codigo || 'PROCESSAMENTO_AUDITORIA').trim().toUpperCase();
+  const detalhe = causa && causa.message ? String(causa.message) : String(causa || '');
+  const erro = new Error(chave + ': ' + String(mensagem || '').trim() + (detalhe ? ' Detalhe: ' + detalhe : ''));
+  erro.codigoAuditoria = chave;
+  return erro;
+}
+
+function audV3ExtrairObjetoJsonSeguro_(texto) {
+  let bruto = String(texto || '').replace(/^\uFEFF/, '').trim();
+  bruto = bruto.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const inicio = bruto.indexOf('{');
+  if (inicio < 0) throw audV3ErroTecnico_('JSON_SEM_OBJETO', 'A resposta da IA não contém um objeto JSON.');
+  let profundidade = 0;
+  let emString = false;
+  let escapado = false;
+  for (let indice = inicio; indice < bruto.length; indice++) {
+    const caractere = bruto.charAt(indice);
+    if (emString) {
+      if (escapado) escapado = false;
+      else if (caractere === '\\') escapado = true;
+      else if (caractere === '"') emString = false;
+      continue;
+    }
+    if (caractere === '"') {
+      emString = true;
+      continue;
+    }
+    if (caractere === '{') profundidade++;
+    if (caractere === '}') {
+      profundidade--;
+      if (profundidade === 0) return bruto.slice(inicio, indice + 1);
+    }
+  }
+  throw audV3ErroTecnico_(
+    'RESPOSTA_TRUNCADA',
+    'O objeto JSON da IA terminou antes do fechamento completo. Caracteres recebidos: ' + bruto.length + '.'
+  );
+}
+
+function audV3ParseJsonRespostaSegura_(texto) {
+  const objeto = audV3ExtrairObjetoJsonSeguro_(texto);
+  try {
+    const resultado = JSON.parse(objeto);
+    if (!resultado || Array.isArray(resultado) || typeof resultado !== 'object') {
+      throw new Error('o valor raiz não é um objeto');
+    }
+    return resultado;
+  } catch (erroJson) {
+    throw audV3ErroTecnico_('JSON_INVALIDO', 'O objeto retornado pela IA possui sintaxe inválida.', erroJson);
+  }
+}
+
+function audV3CodigoErroTecnico_(erro) {
+  if (erro && erro.codigoAuditoria) return String(erro.codigoAuditoria);
+  const texto = String(erro && erro.message ? erro.message : erro || '');
+  const prefixo = texto.match(/^([A-Z][A-Z0-9_]+):/);
+  if (prefixo) return prefixo[1];
+  if (/MAX_TOKENS/i.test(texto)) return 'RESPOSTA_MAX_TOKENS';
+  if (/truncad|terminou antes|incomplet/i.test(texto)) return 'RESPOSTA_TRUNCADA';
+  if (/JSON|Unterminated|string/i.test(texto)) return 'JSON_INVALIDO';
+  if (/locutor errado/i.test(texto)) return 'VALIDACAO_LOCUTOR';
+  if (/regra.+pitch|pitch oficial/i.test(texto)) return 'VALIDACAO_REGRA_PITCH';
+  if (/evid.ncia.+transcri|transcri..o original/i.test(texto)) return 'VALIDACAO_EVIDENCIA';
+  if (/score|pontua..o|sem.foro|contradi/i.test(texto)) return 'VALIDACAO_SCORE_STATUS';
+  if (/dimens|momento oficial|estrutura|schema|campo obrigat/i.test(texto)) return 'VALIDACAO_SCHEMA';
+  if (/503|UNAVAILABLE|high demand|temporariamente ocupad/i.test(texto)) return 'MODELO_INDISPONIVEL';
+  return 'PROCESSAMENTO_AUDITORIA';
+}
+
+function audV3DescreverErroTecnico_(erro) {
+  const texto = String(erro && erro.message ? erro.message : erro || '').trim();
+  const codigo = audV3CodigoErroTecnico_(erro);
+  if (!texto) return codigo + ': falha sem mensagem técnica.';
+  return texto.indexOf(codigo + ':') === 0 ? texto : codigo + ': ' + texto;
+}
+
+function audV3RepararJsonComGemini_(ctx, textoDefeituoso, erroJson, modeloApi, chave, consumoBase) {
+  const tipo = String(ctx.tipoAuditoria || ctx.modelo.TIPO_AUDITORIA || 'SDR').toUpperCase();
+  const objetoCompleto = audV3ExtrairObjetoJsonSeguro_(textoDefeituoso);
+  if (objetoCompleto.length > 40000) {
+    throw audV3ErroTecnico_('REPARO_JSON_NAO_SEGURO', 'O JSON inválido excede o limite do reparo sintático controlado.');
+  }
+  const promptReparo = [
+    'Repare SOMENTE a sintaxe do JSON abaixo e responda apenas com um objeto JSON válido.',
+    'Não invente fatos, falas, evidências, regras de pitch, notas ou recomendações.',
+    'Preserve todos os valores existentes. Não complete conteúdo ausente nem refaça a auditoria.',
+    'O reparo é permitido apenas para aspas, escapes, vírgulas, chaves, colchetes e cercas Markdown.',
+    '<ERRO_PARSE>\n' + audV3DescreverErroTecnico_(erroJson) + '\n</ERRO_PARSE>',
+    '<SCHEMA_ESPERADO>\n' + JSON.stringify(audV3SchemaRespostaApi_(tipo)) + '\n</SCHEMA_ESPERADO>',
+    '<JSON_COM_DEFEITO>\n' + objetoCompleto + '\n</JSON_COM_DEFEITO>'
+  ].join('\n\n');
+  const payload = {
+    systemInstruction: { parts: [{ text: 'Você é um reparador determinístico de sintaxe JSON. Nunca crie conteúdo novo.' }] },
+    contents: [{ role: 'user', parts: [{ text: promptReparo }] }],
+    generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 12000 }
+  };
+  const inicioTentativaIa = Date.now();
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modeloApi) + ':generateContent';
+  consumoIaValidarAntes_(modeloApi);
+  let resposta;
+  try {
+    resposta = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': chave },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (erroRede) {
+    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo + '_REPARO_JSON', 0, '', String(erroRede), inicioTentativaIa,
+      Object.assign({}, consumoBase, { tentativa: 1 }));
+    throw audV3ErroTecnico_('REPARO_JSON_INDISPONIVEL', 'Falha de rede durante o reparo sintático.', erroRede);
+  }
+  const status = resposta.getResponseCode();
+  const corpo = resposta.getContentText();
+  registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo + '_REPARO_JSON', status, corpo, '', inicioTentativaIa,
+    Object.assign({}, consumoBase, { tentativa: 1 }));
+  if (status < 200 || status >= 300) {
+    throw audV3ErroTecnico_('REPARO_JSON_INDISPONIVEL', 'O reparo sintático retornou HTTP ' + status + '.');
+  }
+  const envelope = audV3ParseJson_(corpo, 'A resposta HTTP do reparo JSON não é válida.');
+  const candidato = (envelope.candidates || [])[0] || {};
+  const finishReason = String(candidato.finishReason || '').toUpperCase();
+  const textoReparado = (((candidato.content || {}).parts || [])).map(function(item) { return item.text || ''; }).join('').trim();
+  if (finishReason === 'MAX_TOKENS') {
+    throw audV3ErroTecnico_('RESPOSTA_MAX_TOKENS', 'O reparo sintático foi encerrado por MAX_TOKENS.');
+  }
+  const resultado = audV3ParseJsonRespostaSegura_(textoReparado);
+  resultado.__modelo_ia = modeloApi;
+  return resultado;
+}
+
 function audV3ChamarGemini_(ctx) {
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Configure GEMINI_API_KEY nas propriedades do script.');
@@ -2560,6 +2694,7 @@ function audV3ChamarGemini_(ctx) {
     idInteracao: String(((ctx || {}).interacao || {}).ID_INTERACAO || ''),
     tipoAuditoria: tipo
   };
+  let ultimoErroTecnico = null;
 
   for (let indiceModelo = 0; indiceModelo < modelosApi.length; indiceModelo++) {
     const modeloApi = modelosApi[indiceModelo];
@@ -2590,23 +2725,50 @@ function audV3ChamarGemini_(ctx) {
     registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, status, corpo, '', inicioTentativaIa, Object.assign({}, consumoBase, { tentativa: tentativa + 1 }));
     if (status >= 200 && status < 300) {
       const json = audV3ParseJson_(corpo, 'A resposta HTTP do Gemini não é JSON válido.');
-      const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
+      const candidato = (json.candidates || [])[0] || {};
+      const finishReason = String(candidato.finishReason || '').toUpperCase();
+      const partes = ((candidato.content || {}).parts || []);
       const texto = partes.map(item => item.text || '').join('').trim();
+      if (finishReason === 'MAX_TOKENS') {
+        ultimoErroTecnico = audV3ErroTecnico_(
+          'RESPOSTA_MAX_TOKENS',
+          'O Gemini encerrou a resposta por MAX_TOKENS. Modelo: ' + modeloApi + '; caracteres recebidos: ' + texto.length + '.'
+        );
+        console.warn(ultimoErroTecnico.message);
+        if (tentativa < esperasMs.length - 1) {
+          payload.contents[0].parts[0].text = prompt + '\n\nA tentativa anterior terminou por MAX_TOKENS. Gere o JSON COMPLETO com no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres e sem repetir conteúdo.';
+          continue;
+        }
+        break;
+      }
       if (!texto) {
+        ultimoErroTecnico = audV3ErroTecnico_(
+          'RESPOSTA_SEM_TEXTO',
+          'O Gemini encerrou sem conteúdo JSON' + (finishReason ? '. finishReason=' + finishReason : '') + '.'
+        );
         if (tentativa < esperasMs.length - 1) continue;
-        throw new Error('A IA não conseguiu concluir o relatório. Tente gerar a auditoria novamente.');
+        break;
       }
       try {
-        const resultadoParseado = audV3ParseJson_(texto, 'O Gemini retornou um relatório que não é JSON válido.');
+        const resultadoParseado = audV3ParseJsonRespostaSegura_(texto);
         resultadoParseado.__modelo_ia = modeloApi;
         return resultadoParseado;
       } catch (erroJson) {
-        console.warn('JSON incompleto do Gemini na tentativa ' + (tentativa + 1) + '.');
+        ultimoErroTecnico = erroJson;
+        console.warn(audV3DescreverErroTecnico_(erroJson) + ' Modelo: ' + modeloApi + '; tentativa: ' + (tentativa + 1) + '.');
+        if (audV3CodigoErroTecnico_(erroJson) === 'JSON_INVALIDO') {
+          try {
+            return audV3RepararJsonComGemini_(ctx, texto, erroJson, modeloApi, chave, consumoBase);
+          } catch (erroReparo) {
+            ultimoErroTecnico = erroReparo;
+            console.warn(audV3DescreverErroTecnico_(erroReparo));
+          }
+        }
         if (tentativa < esperasMs.length - 1) {
-          payload.contents[0].parts[0].text = prompt + '\n\nA resposta anterior ficou grande demais. Gere novamente o JSON COMPLETO com no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres, sem repetir falas, pitch, justificativas ou recomendações.';
+          payload.contents[0].parts[0].text = prompt + '\n\nA tentativa anterior falhou com ' + audV3DescreverErroTecnico_(erroJson) + ' Gere novamente o JSON COMPLETO com no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres, sem repetir conteúdo.';
           continue;
         }
-        throw new Error('A IA gerou um relatório incompleto. Tente gerar a auditoria novamente.');
+        break;
       }
     }
 
@@ -2630,6 +2792,7 @@ function audV3ChamarGemini_(ctx) {
     }
   }
 
+  if (ultimoErroTecnico) throw ultimoErroTecnico;
   throw new Error('Todos os modelos gratuitos de IA disponíveis estão temporariamente ocupados. Tente novamente mais tarde.');
 }
 
@@ -6064,10 +6227,8 @@ function audV3AuditoriaFront_(a, contexto) {
 function audV3MensagemErroOperador_(erro) {
   const texto = String(erro || '').trim();
   if (!texto) return '';
-  if (/503|UNAVAILABLE|high demand|temporariamente|JSON|Unterminated|string|MAX_TOKENS|incompleto/i.test(texto)) {
-    return 'A geração não foi concluída. Selecione a transcrição e tente gerar a auditoria novamente.';
-  }
-  return texto.length > 240 ? 'Não foi possível concluir esta tentativa. Confira os dados e tente novamente.' : texto;
+  const tecnico = audV3DescreverErroTecnico_(new Error(texto));
+  return tecnico.length > 800 ? tecnico.slice(0, 797) + '...' : tecnico;
 }
 
 function audV3ListarAuditoriasFront_() {

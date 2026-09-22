@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
@@ -56,7 +56,7 @@ const criarFiltroOperacional = new Function(
   audit.slice(inicioFiltroOperacional, fimFiltroOperacional) +
     '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_ };'
 );
-const filtroOperacional = criarFiltroOperacional({ versao: '6.0.0' }).filtrar;
+const filtroOperacional = criarFiltroOperacional({ versao: '6.0.1' }).filtrar;
 const atualValida = (id, interacao, status = 'APROVADA') => ({
   ID_AUDITORIA: id,
   ID_INTERACAO: interacao,
@@ -142,7 +142,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.0\.0'/, 'Engine de auditoria não foi versionado para v6.');
+assert.match(audit, /versao:\s*'6\.0\.1'/, 'Engine de auditoria não foi versionado para o patch v6.0.1.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
