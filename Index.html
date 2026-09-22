@@ -6454,6 +6454,7 @@
       <div class="audit-sheet">
         ${cabecalhoPreview}
         <div class="audit-report">${renderizarConteudoAuditoriaV3(r, tipoAudit, auditoria)}</div>
+        ${renderizarJsonFormatadoAuditoria_(r)}
       </div>
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
@@ -6471,9 +6472,12 @@
                    : `<button id="btnPrepararCircle" class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(auditoria.idAuditoria)}')">Preparar para o Circle</button>`}`
                : ''}`
           : auditoria.status === 'EM_REVISAO'
-            ? `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
-               <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
-               <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
+            ? String(((r.validacao_board || {}).status || '')).toUpperCase() === 'BLOQUEADO'
+              ? `<span class="status danger" style="align-self:center">BLOQUEADA PELO GATE</span>
+                 <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
+              : `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
+                 <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
+                 <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
             : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
                <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
                <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`}
