@@ -2782,6 +2782,15 @@ function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
   if (!(Array.isArray(contexto.etapas_aplicaveis) && contexto.etapas_aplicaveis.length)) {
     alertas.push('Nenhuma etapa aplicável foi explicitada para o contexto.');
   }
+  const concluidasAntes = Array.isArray(contexto.etapas_ja_concluidas) ? contexto.etapas_ja_concluidas : [];
+  if (concluidasAntes.length && contexto.continuidade_confirmada !== true) {
+    bloqueios.push('Há etapas marcadas como já concluídas sem continuidade comprovada por histórico ou evidência objetiva.');
+  }
+  if (/APRESENTACAO_PROPOSTA|FOLLOW_UP_PROPOSTA|NEGOCIACAO|FECHAMENTO|JURIDICO/.test(classificacao) &&
+      contexto.continuidade_confirmada !== true &&
+      tipo === 'CLOSER') {
+    alertas.push('Contexto tardio sem continuidade comprovada: confirmar se esta é a primeira reunião antes de retirar diagnóstico da régua.');
+  }
 
   const falasLead = [];
   if (tipo === 'SDR') {
@@ -3770,10 +3779,12 @@ function audV3SchemaRespostaCloser_() {
           etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
           etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
           etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          continuidade_confirmada: { type: 'BOOLEAN' },
+          evidencia_continuidade: texto,
           necessita_revisao: { type: 'BOOLEAN' },
           motivo_revisao: texto
         },
-        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'necessita_revisao', 'motivo_revisao']
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'continuidade_confirmada', 'evidencia_continuidade', 'necessita_revisao', 'motivo_revisao']
       },
       metadados: {
         type: 'OBJECT',
@@ -3976,10 +3987,12 @@ function audV3SchemaRespostaSdr_() {
           etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
           etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
           etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          continuidade_confirmada: { type: 'BOOLEAN' },
+          evidencia_continuidade: texto,
           necessita_revisao: { type: 'BOOLEAN' },
           motivo_revisao: texto
         },
-        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'necessita_revisao', 'motivo_revisao']
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'continuidade_confirmada', 'evidencia_continuidade', 'necessita_revisao', 'motivo_revisao']
       },
       metadados: {
         type: 'OBJECT',
@@ -5506,6 +5519,8 @@ function audV3PromptSistemaSdr_() {
     'Não invente falas, timestamps, intenções, objeções, resultados, métricas, pesos ou classificações.',
     'Antes de avaliar o pitch, classifique contexto_interacao. Use somente um destes contextos SDR quando aplicável: PRIMEIRO_CONTATO, RETOMADA_QUALIFICACAO, RETOMADA_AGENDAMENTO, RETORNO_SOLICITADO, FOLLOW_UP, NO_SHOW, REAGENDAMENTO, OBJECAO_PENDENTE, DESQUALIFICACAO ou OUTRO. Identifique também o objetivo principal da ligação e a confiança da classificação.',
     'Não trate retomadas como primeiro contato. Etapas comprovadamente concluídas antes devem ir em etapas_ja_concluidas e não podem ser cobradas novamente. Etapas incompatíveis com o objetivo atual devem ir em etapas_nao_aplicaveis. Avalie e pontue somente o que era executável nesta interação.',
+    'NUNCA considere uma pergunta ou etapa como já concluída apenas porque o CRM/tarefa sugere avanço. etapas_ja_concluidas exige evidência de histórico local ou referência inequívoca na fala atual de que aquela qualificação ocorreu antes.',
+    'Defina continuidade_confirmada=true somente com evidência objetiva de interação anterior relevante; registre a fonte curta em evidencia_continuidade. Sem prova, use false e não perdoe uma etapa obrigatória do pitch.',
     'Em uma retomada, use o histórico operacional fornecido apenas para saber o que já aconteceu; toda avaliação da execução atual continua dependendo da transcrição atual. Se o histórico não for suficiente, marque necessita_revisao=true em vez de inventar.',
     'Abra a análise com um resumo factual da conversa, a motivação declarada pelo lead para o contato, a necessidade principal e o resultado da ligação. Se a motivação não estiver explícita, marque NAO_EVIDENCIADO.',
     'O SDR deve seguir o pitch vigente com alta fidelidade. Avalie cada etapa obrigatória separadamente e não compense uma etapa ausente com boa execução em outra.',
@@ -5580,6 +5595,9 @@ function audV3PromptSistemaCloser_() {
     'Atue como especialista em Sales Enablement e auditoria de reuniões comerciais de Closer, utilizando rigorosamente a metodologia VOLUM e o processo Venda Perfeita.',
     'Antes de auditar, classifique contexto_interacao. Use somente um destes contextos Closer quando aplicável: PRIMEIRA_REUNIAO, FOLLOW_UP_DIAGNOSTICO, APRESENTACAO_PROPOSTA, FOLLOW_UP_PROPOSTA, NEGOCIACAO, FECHAMENTO, JURIDICO_CONTRATUAL, REAGENDAMENTO ou OUTRO. Identifique o momento da jornada, o objetivo principal e a confiança da classificação.',
     'Os quatro momentos oficiais continuam como estrutura de referência, mas não force todos como aplicáveis em reuniões de proposta, follow-up, negociação, fechamento ou jurídico. O que já tiver sido concluído anteriormente deve ser registrado em etapas_ja_concluidas; o que não fizer sentido para o objetivo atual deve ser registrado em etapas_nao_aplicaveis e não pode reduzir a nota.',
+    'NUNCA marque Diagnóstico, Apresentação ou outro momento como já concluído apenas porque a reunião atual contém proposta, preço, negociação ou porque o CRM está em etapa avançada. etapas_ja_concluidas exige evidência de uma interação anterior ou referência inequívoca na transcrição atual a uma conversa anterior onde aquilo foi feito.',
+    'Se esta for a primeira reunião Closer comprovada, classifique PRIMEIRA_REUNIAO mesmo que a mesma conversa inclua demonstração, proposta ou preço. Nesse caso, as etapas de diagnóstico exigidas pelo pitch continuam aplicáveis se ainda não foram executadas.',
+    'Defina continuidade_confirmada=true somente quando houver evidência objetiva de interação comercial anterior relevante. Em evidencia_continuidade, cite a fonte curta: histórico local, tarefa/etapa registrada ou fala explícita como conforme conversamos na última reunião. Sem isso, use false.',
     'Em reuniões de proposta, priorize conexão proposta-diagnóstico, escopo, entendimento de valores, dúvidas e próximo passo. Em follow-up de proposta, priorize avanço desde o último acordo, bloqueio real, decisores, pendências e compromisso. Em negociação, priorize impeditivo de fechamento, condição comercial/contratual, contrapartidas, decisão e prazo. Em fechamento/jurídico, priorize aceite comercial, pendências, responsáveis, assinatura/onboarding e prazo.',
     'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento, respeitando a aplicabilidade do contexto atual.',
     'A transcrição é a única fonte de evidência do que aconteceu. O pitch vigente é a referência do comportamento esperado.',
