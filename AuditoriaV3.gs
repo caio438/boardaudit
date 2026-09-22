@@ -2296,7 +2296,7 @@ function audV3NormalizarTranscricaoTexto_(texto, interacao) {
     const trecho = linha.replace(/\s+/g, ' ').trim();
     if (!trecho) return;
     metricas.semRotulo += 1;
-    if (anterior) {
+    if (anterior && anterior.tipo === 'NAO_IDENTIFICADO' && !anterior.timestamp) {
       anterior.fala += ' ' + trecho;
       metricas.continuacoesUnidas += 1;
     } else {
