@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const contexto = vm.createContext({ console });
-vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_};', contexto);
+vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_,normalizeTranscript:audV3NormalizarTranscricaoTexto_,qualityTranscript:audV3AvaliarQualidadeTranscricao_};', contexto);
 
 const resultado = {
   etapas_pitch: [
@@ -193,4 +193,52 @@ retomadaCobradaComoPrimeiroContato.etapas_pitch = retomadaCobradaComoPrimeiroCon
 const gatePitchCompleto = contexto.apiV5.validateBoard(retomadaCobradaComoPrimeiroContato, 'SDR');
 assert.equal(gatePitchCompleto.status, 'REVISAR', 'Retomada cobrada como primeiro contato deve gerar alerta de revisão.');
 
-console.log('Estrutura SDR contextual e gate de publicação validados.');
+
+const transcricaoNormalizada = contexto.apiV5.normalizeTranscript(
+  [
+    'Eline: Oi, tudo bem?',
+    'Eline: Oi, tudo bem?',
+    'Cliente: Tudo certo.',
+    'Eline: Qual é o segmento da empresa?',
+    'Somos uma indústria de alimentos.',
+    'Cliente: Temos 120 colaboradores.'
+  ].join('\n'),
+  { FUNCAO: 'SDR', COLABORADOR: 'Elaine', LEAD: 'Carlos' }
+);
+assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Oi, tudo bem\?/);
+assert.match(transcricaoNormalizada.texto, /LEAD \(Carlos\): Tudo certo\./);
+assert.equal(transcricaoNormalizada.metricas.duplicadasRemovidas, 1, 'Duplicação adjacente deve ser removida sem IA.');
+assert.ok(transcricaoNormalizada.metricas.rotulosCorrigidos >= 2, 'Variações seguras de rótulo devem ser normalizadas.');
+assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Qual é o segmento da empresa\? Somos uma indústria de alimentos\./);
+
+const qualidadeBoa = contexto.apiV5.qualityTranscript(
+  contexto.apiV5.normalizeTranscript(
+    [
+      'Juliana: Bom dia, podemos começar?',
+      'Stephanie: Sim.',
+      'Juliana: O que motivou vocês a buscar a solução?',
+      'Stephanie: Precisamos automatizar o processo.',
+      'Juliana: Qual o impacto disso hoje?',
+      'Stephanie: Temos muito retrabalho.'
+    ].join('\n'),
+    { FUNCAO: 'CLOSER', COLABORADOR: 'Juliana', LEAD: 'Stephanie' }
+  ),
+  'Transcrição de tamanho suficiente para o teste de qualidade.'.repeat(4)
+);
+assert.equal(qualidadeBoa.status, 'BOA', 'Transcrição com locutores conhecidos deve ser considerada boa.');
+
+const qualidadeRuim = contexto.apiV5.qualityTranscript(
+  contexto.apiV5.normalizeTranscript(
+    [
+      'Participante 1: teste',
+      'Participante 2: resposta',
+      'Participante 1: outra fala',
+      'Participante 2: outra resposta'
+    ].join('\n'),
+    { FUNCAO: 'CLOSER', COLABORADOR: 'Juliana', LEAD: 'Stephanie' }
+  ),
+  'Transcrição com locutores desconhecidos e conteúdo suficiente para avaliação.'.repeat(4)
+);
+assert.equal(qualidadeRuim.status, 'BAIXA', 'Muitos locutores não identificados devem marcar qualidade baixa.');
+
+console.log('Estrutura SDR contextual, normalização de transcrição e gate de publicação validados.');
