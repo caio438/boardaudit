@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const contexto = vm.createContext({ console });
-vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_};', contexto);
+vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_,normalizeTranscript:audV3NormalizarTranscricaoTexto_,qualityTranscript:audV3AvaliarQualidadeTranscricao_};', contexto);
 
 const resultado = {
   etapas_pitch: [
@@ -131,4 +131,115 @@ assert.equal(
   promptTeste
 );
 
-console.log('Estrutura SDR da produção atual validada.');
+
+const schemaContexto = contexto.apiV5.schema();
+assert.ok(schemaContexto.properties.contexto_interacao, 'O schema SDR precisa classificar o contexto da interação.');
+assert.ok(schemaContexto.properties.perguntas_qualificacao.properties.corretas.items.properties.resposta_lead, 'Perguntas SDR precisam preservar a resposta do lead.');
+
+const retomadaBoa = {
+  contexto_interacao: {
+    classificacao: 'RETOMADA_AGENDAMENTO',
+    momento_jornada: 'AGENDAMENTO',
+    objetivo_principal: 'Confirmar a reunião',
+    confianca: 'ALTA',
+    evidencias: ['Conforme combinamos, estou retornando para marcar.'],
+    etapas_aplicaveis: ['Valorização da Reunião', 'Dupla Escolha de Horários'],
+    etapas_ja_concluidas: ['Pergunta de Segmento', 'Validação de LMV'],
+    etapas_nao_aplicaveis: ['Introdução completa'],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'Histórico local da mesma oportunidade.',
+    necessita_revisao: false,
+    motivo_revisao: ''
+  },
+  criterios_avaliados: [
+    { aplicavel: true, status: 'DESVIO_EXECUCAO', correcao_pratica: 'Ofereça duas opções objetivas de agenda: "terça às 14h ou quarta às 16h?"' }
+  ],
+  proximos_passos: [
+    { acao: 'Confirme o horário escolhido e registre o compromisso.' }
+  ],
+  etapas_pitch: [
+    { etapa: 'Introdução', status: 'NAO_APLICAVEL' },
+    { etapa: 'Primeira Frase de Qualificação', status: 'NAO_APLICAVEL' },
+    { etapa: 'Pergunta de Segmento', status: 'NAO_APLICAVEL' },
+    { etapa: 'Validação de LMV', status: 'NAO_APLICAVEL' },
+    { etapa: 'Manejo de Objeções', status: 'NAO_APLICAVEL' },
+    { etapa: 'Valorização da Reunião', status: 'CONFORME' },
+    { etapa: 'Dupla Escolha de Horários', status: 'DESVIO_EXECUCAO' },
+    { etapa: 'Encerramento Profissional', status: 'CONFORME' }
+  ],
+  perguntas_qualificacao: { corretas: [], com_desvio: [], ausentes: [] }
+};
+const gateRetomada = contexto.apiV5.validateBoard(retomadaBoa, 'SDR');
+assert.notEqual(gateRetomada.status, 'BLOQUEADO', 'Retomada com coaching executável não deve ser bloqueada.');
+
+
+const retomadaSemProva = JSON.parse(JSON.stringify(retomadaBoa));
+retomadaSemProva.contexto_interacao.continuidade_confirmada = false;
+retomadaSemProva.contexto_interacao.evidencia_continuidade = '';
+const gateSemProva = contexto.apiV5.validateBoard(retomadaSemProva, 'SDR');
+assert.equal(gateSemProva.status, 'BLOQUEADO', 'Etapas já concluídas sem continuidade comprovada devem bloquear publicação.');
+
+const coachingVago = JSON.parse(JSON.stringify(retomadaBoa));
+coachingVago.criterios_avaliados[0].correcao_pratica = 'Melhorar a condução e revisar o pitch.';
+const gateVago = contexto.apiV5.validateBoard(coachingVago, 'SDR');
+assert.equal(gateVago.status, 'BLOQUEADO', 'Coaching genérico deve bloquear publicação.');
+assert.match(gateVago.bloqueios.join(' '), /orientação genérica/i);
+
+const retomadaCobradaComoPrimeiroContato = JSON.parse(JSON.stringify(retomadaBoa));
+retomadaCobradaComoPrimeiroContato.etapas_pitch = retomadaCobradaComoPrimeiroContato.etapas_pitch.map((item, idx) => ({
+  ...item,
+  status: idx < 6 ? 'NAO_EXECUTADO' : item.status
+}));
+const gatePitchCompleto = contexto.apiV5.validateBoard(retomadaCobradaComoPrimeiroContato, 'SDR');
+assert.equal(gatePitchCompleto.status, 'REVISAR', 'Retomada cobrada como primeiro contato deve gerar alerta de revisão.');
+
+
+const transcricaoNormalizada = contexto.apiV5.normalizeTranscript(
+  [
+    'Eline: Oi, tudo bem?',
+    'Eline: Oi, tudo bem?',
+    'Cliente: Tudo certo.',
+    'Eline: Qual é o segmento da empresa?',
+    'Somos uma indústria de alimentos.',
+    'Cliente: Temos 120 colaboradores.'
+  ].join('\n'),
+  { FUNCAO: 'SDR', COLABORADOR: 'Elaine', LEAD: 'Carlos' }
+);
+assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Oi, tudo bem\?/);
+assert.match(transcricaoNormalizada.texto, /LEAD \(Carlos\): Tudo certo\./);
+assert.equal(transcricaoNormalizada.metricas.duplicadasRemovidas, 1, 'Duplicação adjacente deve ser removida sem IA.');
+assert.ok(transcricaoNormalizada.metricas.rotulosCorrigidos >= 2, 'Variações seguras de rótulo devem ser normalizadas.');
+assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Qual é o segmento da empresa\?/);
+assert.match(transcricaoNormalizada.texto, /LOCUTOR_NAO_IDENTIFICADO: Somos uma indústria de alimentos\./, 'Linha sem rótulo nunca deve ser atribuída automaticamente ao profissional.');
+
+const qualidadeBoa = contexto.apiV5.qualityTranscript(
+  contexto.apiV5.normalizeTranscript(
+    [
+      'Juliana: Bom dia, podemos começar?',
+      'Stephanie: Sim.',
+      'Juliana: O que motivou vocês a buscar a solução?',
+      'Stephanie: Precisamos automatizar o processo.',
+      'Juliana: Qual o impacto disso hoje?',
+      'Stephanie: Temos muito retrabalho.'
+    ].join('\n'),
+    { FUNCAO: 'CLOSER', COLABORADOR: 'Juliana', LEAD: 'Stephanie' }
+  ),
+  'Transcrição de tamanho suficiente para o teste de qualidade.'.repeat(4)
+);
+assert.equal(qualidadeBoa.status, 'BOA', 'Transcrição com locutores conhecidos deve ser considerada boa.');
+
+const qualidadeRuim = contexto.apiV5.qualityTranscript(
+  contexto.apiV5.normalizeTranscript(
+    [
+      'Participante 1: teste',
+      'Participante 2: resposta',
+      'Participante 1: outra fala',
+      'Participante 2: outra resposta'
+    ].join('\n'),
+    { FUNCAO: 'CLOSER', COLABORADOR: 'Juliana', LEAD: 'Stephanie' }
+  ),
+  'Transcrição com locutores desconhecidos e conteúdo suficiente para avaliação.'.repeat(4)
+);
+assert.equal(qualidadeRuim.status, 'BAIXA', 'Muitos locutores não identificados devem marcar qualidade baixa.');
+
+console.log('Estrutura SDR contextual, normalização de transcrição e gate de publicação validados.');

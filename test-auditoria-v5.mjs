@@ -21,8 +21,8 @@ assert.ok(rd.includes("publicacao = audRdPublicarAutomaticamente_(id);"), 'Salva
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
 assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
-assert.ok(front.includes('Gerar e concluir auditoria'), 'A interface ainda apresenta a auditoria como geração parcial.');
-assert.ok(front.includes('A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.'), 'A interface não informa o fluxo automático.');
+assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
+assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
 assert.ok(audit.includes('function audV3EstadoCrmGrupoSinergia_'), 'Auditorias do Grupo Sinergia não possuem estado específico para CRM.');
 assert.ok(audit.includes('function regenerarAuditoriaGrupoSinergiaParaCrmV3'), 'Auditorias legadas do Grupo Sinergia não podem ser regeneradas com as travas atuais.');
@@ -77,7 +77,51 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'5\.0\.0'/, 'Engine de auditoria não foi versionado para v5.');
+assert.match(audit, /versao:\s*'6\.0\.0'/, 'Engine de auditoria não foi versionado para v6.');
+
+assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
+assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
+assert.ok(audit.includes('contexto_interacao'), 'Resultado estruturado não contém contexto da interação.');
+assert.ok(front.includes('JSON estruturado da auditoria'), 'Board não permite inspecionar o JSON antes da publicação.');
+assert.ok(front.includes('BLOQUEADA PELO GATE'), 'Board não bloqueia visualmente uma auditoria reprovada pelo gate.');
+assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovação explícita antes da publicação.');
+assert.ok(front.includes('O que foi executado corretamente'), 'Resumo SDR não destaca execuções corretas.');
+assert.ok(front.includes('Perguntas de qualificação'), 'Resumo SDR não mostra as perguntas de qualificação.');
+assert.ok(front.includes('Se eu fosse o SDR, faria assim'), 'Resumo SDR não mostra execução prática recomendada.');
+assert.ok(front.includes('Pontuação por critério'), 'Resumo SDR não mostra tabela de notas.');
+assert.ok(front.includes('Média dos critérios aplicáveis'), 'Resumo SDR não mostra média contextual dos critérios aplicáveis.');
+assert.ok(rd.includes('CONTEXTO DA INTERAÇÃO'), 'RD SDR não publica o contexto da interação.');
+assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
+assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
+assert.ok(rd.includes('PONTUAÇÃO POR CRITÉRIO'), 'RD SDR não publica a tabela de notas por critério.');
+assert.ok(rd.includes('Média dos critérios aplicáveis'), 'RD SDR não apresenta a média dos critérios aplicáveis.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Panorama de evolução'"), 'Google Docs não abre com panorama de evolução.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Resultados recentes'"), 'Google Docs não mostra resultados históricos recentes.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Melhorias já atingidas'"), 'Google Docs não destaca melhorias conquistadas.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Pontos que seguem em evolução'"), 'Google Docs não destaca pontos ainda em evolução.');
+assert.ok(audit.includes('const AUDV3_PALETA_VOLUM'), 'Google Docs não possui paleta visual centralizada.');
+assert.ok(audit.includes('setBorderColor(AUDV3_PALETA_VOLUM.borda)'), 'Tabelas do Google Docs não usam borda da paleta VOLUM.');
+assert.ok(audit.includes('setBackgroundColor(AUDV3_PALETA_VOLUM.navyEscuro)'), 'Cabeçalhos das tabelas não usam o navy VOLUM.');
+assert.ok(audit.includes('registro.getCell(0).editAsText().setBold(true)'), 'Critérios da tabela de resultado não recebem hierarquia em negrito.');
+assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r)"), 'Doc SDR não inclui evolução perto do topo.');
+assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r)"), 'Doc Closer não inclui evolução perto do topo.');
+assert.ok(audit.includes('function audV3GraficoEvolucaoScore_'), 'Doc não possui gráfico de evolução da nota geral.');
+assert.ok(audit.includes('function audV3GraficoCriterios_'), 'Doc não possui gráfico de comparação por critério.');
+assert.ok(audit.includes("setTitle('Evolução da nota geral por auditoria')"), 'Gráfico temporal de nota geral está ausente.');
+assert.ok(audit.includes("setTitle('Atingimento por critério — atual x média histórica')"), 'Gráfico de barras por critério está ausente.');
+assert.ok(audit.includes('audV3AdicionarGraficosEvolucaoDocumento_(body, hist);'), 'Gráficos não são inseridos no bloco de evolução compartilhado entre SDR e Closer.');
+assert.ok(audit.includes("addColumn(Charts.ColumnType.NUMBER, 'Referência 4,0')"), 'Gráfico temporal não possui referência de atingimento 4,0.');
+
+const sdrNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoSdr_'));
+const sdrTabela = rd.indexOf("'PONTUAÇÃO POR CRITÉRIO'", rd.indexOf('function audRdTextoSdr_'));
+const sdrContexto = rd.indexOf("'CONTEXTO DA INTERAÇÃO'", rd.indexOf('function audRdTextoSdr_'));
+assert.ok(sdrNota >= 0 && sdrTabela > sdrNota && sdrContexto > sdrTabela, 'Tabela de notas SDR precisa ficar logo abaixo da nota geral.');
+
+const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoCloser_'));
+const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
+const closerCenario = rd.indexOf("'CENÁRIO DA REUNIÃO'", rd.indexOf('function audRdTextoCloser_'));
+assert.ok(closerNota >= 0 && closerTabela > closerNota && closerCenario > closerTabela, 'Tabela de notas Closer precisa ficar logo abaixo da nota geral.');
+
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de integridade ausente: ' + coluna);
 }
@@ -140,7 +184,7 @@ for (const titulo of [
 ]) {
   assert.ok(closerRd.includes(titulo), 'Bloco da anotação Closer no CRM ausente: ' + titulo);
 }
-for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'EXECUÇÕES ADERENTES AO PROCESSO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'PRÓXIMOS PASSOS CONFORME O PITCH/PROCESSO', 'CONCLUSÃO']) {
+for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'O QUE FOI EXECUTADO CORRETAMENTE', 'PERGUNTAS DE QUALIFICAÇÃO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'SE EU FOSSE O SDR, FARIA ASSIM', 'CONCLUSÃO']) {
   assert.ok(rd.includes(titulo), 'Bloco da anotação SDR no CRM ausente: ' + titulo);
 }
 

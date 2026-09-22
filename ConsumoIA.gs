@@ -31,7 +31,8 @@ const CONSUMO_IA = {
   colunas: [
     'ID_CONSUMO', 'DATA_HORA', 'DATA_DIA_PT', 'MODELO', 'OPERACAO',
     'STATUS_HTTP', 'SUCESSO', 'INPUT_TOKENS', 'OUTPUT_TOKENS',
-    'TOTAL_TOKENS', 'DURACAO_MS', 'ERRO'
+    'TOTAL_TOKENS', 'DURACAO_MS', 'ERRO',
+    'ID_AUDITORIA', 'ID_INTERACAO', 'TIPO_AUDITORIA', 'TENTATIVA'
   ],
   limites: {
     'gemini-3.6-flash': { rpm: 5, tpm: 250000, rpd: 20 },
@@ -147,7 +148,7 @@ function consumoIaGarantirEstrutura_() {
   return aba;
 }
 
-function registrarConsumoIa_(modelo, operacao, statusHttp, corpoResposta, erro, iniciadoEm) {
+function registrarConsumoIa_(modelo, operacao, statusHttp, corpoResposta, erro, iniciadoEm, contexto) {
   try {
     let uso = {};
     try {
@@ -160,6 +161,7 @@ function registrarConsumoIa_(modelo, operacao, statusHttp, corpoResposta, erro, 
     const agora = new Date();
     const status = Number(statusHttp || 0);
     const mensagemErro = String(erro || consumoIaExtrairErro_(corpoResposta) || '').slice(0, 500);
+    contexto = contexto || {};
     const linha = [
       Utilities.getUuid(),
       agora,
@@ -172,7 +174,11 @@ function registrarConsumoIa_(modelo, operacao, statusHttp, corpoResposta, erro, 
       Number(uso.candidatesTokenCount || uso.candidates_token_count || 0),
       Number(uso.totalTokenCount || uso.total_token_count || 0),
       iniciadoEm ? Math.max(0, Date.now() - Number(iniciadoEm)) : 0,
-      mensagemErro
+      mensagemErro,
+      String(contexto.idAuditoria || ''),
+      String(contexto.idInteracao || ''),
+      String(contexto.tipoAuditoria || ''),
+      Number(contexto.tentativa || 0)
     ];
 
     const lock = LockService.getScriptLock();

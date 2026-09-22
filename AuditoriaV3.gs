@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '5.0.0',
+  versao: '6.0.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -993,20 +993,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'SDR',
       PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-      VERSAO_MODELO: '5.0.0',
+      VERSAO_MODELO: '6.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agora,
       ATUALIZADO_EM: agora
     });
   } else {
     const versaoMaiorSdr = Number(String(existente.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 5) {
+    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 6) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloPadrao, {
         NOME_MODELO: 'Auditoria SDR VOLUM',
         TIPO_AUDITORIA: 'SDR',
         PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-        VERSAO_MODELO: '5.0.0',
+        VERSAO_MODELO: '6.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
@@ -1026,20 +1026,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'CLOSER',
       PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-      VERSAO_MODELO: '5.0.0',
+      VERSAO_MODELO: '6.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agoraCloser,
       ATUALIZADO_EM: agoraCloser
     });
   } else {
     const versaoMaior = Number(String(existenteCloser.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 5) {
+    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 6) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloCloserPadrao, {
         NOME_MODELO: 'Auditoria Closer VOLUM',
         TIPO_AUDITORIA: 'CLOSER',
         PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-        VERSAO_MODELO: '5.0.0',
+        VERSAO_MODELO: '6.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
@@ -1420,13 +1420,22 @@ function transcreverAudioMp3V3(dados) {
   if (estadoArquivo !== 'ACTIVE') throw new Error('O áudio não ficou disponível para transcrição (estado ' + estadoArquivo + ').');
 
   const modelos = [consumoIaModeloAudioGratuito_()];
+  const funcaoEsperada = String(dados.funcao || '').trim().toUpperCase();
+  const colaboradorEsperado = String(dados.colaborador || '').trim();
+  const leadEsperado = String(dados.lead || '').trim();
   const prompt = [
     'Transcreva integralmente este áudio de uma ligação comercial em português do Brasil.',
-    'Identifique os participantes como SDR, Closer, Consultor, Lead ou pelo nome quando houver evidência no áudio.',
-    'Preserve perguntas, respostas, objeções, interrupções relevantes e números mencionados.',
-    'Não resuma, não analise e não acrescente informações.',
-    'Retorne somente a transcrição, organizada em falas no formato "Participante: fala".'
-  ].join('\n');
+    'Não resuma, não analise, não corrija o sentido das frases e não acrescente informações.',
+    'Preserve literalmente perguntas, respostas, objeções, interrupções relevantes, valores, datas, percentuais, nomes e números mencionados.',
+    'Cada mudança real de locutor deve iniciar uma nova linha no formato "LOCUTOR: fala".',
+    'Use SDR, CLOSER ou LEAD somente quando houver evidência segura de quem está falando.',
+    'Se não for possível identificar o locutor com segurança, use exatamente LOCUTOR_NAO_IDENTIFICADO. Nunca adivinhe.',
+    'Nunca atribua ao SDR/Closer uma resposta, objeção, condição comercial ou comentário de preço dito pelo comprador.',
+    colaboradorEsperado ? 'Profissional conhecido nos metadados: ' + colaboradorEsperado + (funcaoEsperada ? ' | função esperada: ' + funcaoEsperada : '') + '. Use esse dado apenas para reconhecer o nome/voz; não invente falas.' : '',
+    leadEsperado ? 'Lead conhecido nos metadados: ' + leadEsperado + '. Use esse dado apenas para reconhecer o nome/voz; não invente falas.' : '',
+    'Se o áudio pronunciar uma variação fonética evidente de um nome conhecido, normalize somente o rótulo do participante; nunca altere as palavras faladas.',
+    'Retorne somente a transcrição, sem introdução, resumo ou observações.'
+  ].filter(Boolean).join('\n');
   const payload = {
     contents: [{
       role: 'user',
@@ -1436,7 +1445,7 @@ function transcreverAudioMp3V3(dados) {
       ]
     }],
     generationConfig: {
-      temperature: 0.1,
+      temperature: 0,
       maxOutputTokens: 8192
     }
   };
@@ -1460,7 +1469,11 @@ function transcreverAudioMp3V3(dados) {
       });
       const statusIa = Number(respostaIa.getResponseCode() || 0);
       const corpoIa = String(respostaIa.getContentText() || '');
-      registrarConsumoIa_(modelo, 'TRANSCRICAO_AUDIO', statusIa, corpoIa, '', inicioTentativaIa);
+      registrarConsumoIa_(modelo, 'TRANSCRICAO_AUDIO', statusIa, corpoIa, '', inicioTentativaIa, {
+        idInteracao: String(((audV3LocalizarInteracaoPorAudio_(idCliente, urlAudio) || {}).ID_INTERACAO) || ''),
+        tipoAuditoria: funcaoEsperada || 'TRANSCRICAO',
+        tentativa: tentativa + 1
+      });
       if (statusIa >= 200 && statusIa < 300) {
         const jsonIa = audV3ParseJson_(corpoIa, 'A resposta da transcrição não é válida.');
         const candidato = (jsonIa.candidates || [])[0] || {};
@@ -1593,7 +1606,10 @@ function executarAuditoriaV3(dados) {
   if (!cliente || !pitch || !interacao || !transcricao) {
     throw new Error('Cliente, pitch, interação ou transcrição não encontrados.');
   }
-  transcricao.CONTEUDO = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const transcricaoPreparada = audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao);
+  transcricao.CONTEUDO = transcricaoPreparada.conteudo;
+  transcricao.QUALIDADE_TRANSCRICAO = transcricaoPreparada.qualidade.status;
+  transcricao.QUALIDADE_JSON = JSON.stringify(transcricaoPreparada.qualidade);
   const clienteInteracao = String(interacao.ID_CLIENTE || '').trim();
   if (clienteInteracao && clienteInteracao !== String(cliente.ID_CLIENTE)) {
     if (!dados.reclassificarInteracao) {
@@ -1625,13 +1641,23 @@ function executarAuditoriaV3(dados) {
       )
       .slice(-1)[0];
     if (auditoriaExistente) {
-      return {
-        sucesso: true,
-        reutilizada: true,
-        mensagem: 'Esta gravação já foi analisada. O resultado existente foi reutilizado sem novo consumo de IA.',
-        auditoria: audV3AuditoriaFront_(auditoriaExistente),
-        auditorias: audV3ListarAuditoriasFront_()
-      };
+      let resultadoExistente = {};
+      try { resultadoExistente = JSON.parse(String(auditoriaExistente.RESULTADO_JSON || '{}')); } catch (e) {}
+      const contextoExistente = resultadoExistente.contexto_interacao || {};
+      const gateExistente = resultadoExistente.validacao_board || {};
+      const reutilizavelContextual = tipo === 'PLANO' || (
+        String(contextoExistente.classificacao || '').trim() &&
+        String(gateExistente.status || '').toUpperCase() !== 'BLOQUEADO'
+      );
+      if (reutilizavelContextual) {
+        return {
+          sucesso: true,
+          reutilizada: true,
+          mensagem: 'Esta gravação já foi analisada. O resultado existente foi reutilizado sem novo consumo de IA.',
+          auditoria: audV3AuditoriaFront_(auditoriaExistente),
+          auditorias: audV3ListarAuditoriasFront_()
+        };
+      }
     }
   }
   const criterios = audV3ParseJson_(modelo.CRITERIOS_JSON, 'Os critérios do modelo não contêm um JSON válido.');
@@ -1707,7 +1733,10 @@ function executarAuditoriaV3(dados) {
           })
         : [],
       tipoAuditoria: tipo,
-      equipePlano: equipePlano
+      equipePlano: equipePlano,
+      idAuditoria: idAuditoria,
+      contextoOperacional: audV3ContextoHistoricoOportunidade_(interacao, tipo),
+      qualidadeTranscricao: transcricaoPreparada.qualidade
     };
 
     const processarRespostaIa = function(respostaIa) {
@@ -1721,6 +1750,16 @@ function executarAuditoriaV3(dados) {
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+      normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
+      const qualidadeTranscricao = contextoIa.qualidadeTranscricao || {};
+      if (['BAIXA', 'ATENCAO'].includes(String(qualidadeTranscricao.status || '').toUpperCase())) {
+        normalizado.validacao_board.alertas = normalizado.validacao_board.alertas || [];
+        normalizado.validacao_board.alertas.unshift(
+          'Qualidade da transcrição: ' + String(qualidadeTranscricao.status || '') +
+          (Array.isArray(qualidadeTranscricao.alertas) && qualidadeTranscricao.alertas.length ? ' — ' + qualidadeTranscricao.alertas.join(' | ') : '')
+        );
+        if (normalizado.validacao_board.status === 'OK') normalizado.validacao_board.status = 'REVISAR';
+      }
       return { resultado: normalizado, modeloIaUsado: modeloUsado };
     };
 
@@ -1782,13 +1821,30 @@ function executarAuditoriaV3(dados) {
       ATUALIZADO_EM: new Date()
     });
 
-    const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
+    if (tipo === 'PLANO') {
+      const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
+      const atualizadaPlano = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
+      return {
+        sucesso: true,
+        automatica: true,
+        mensagem: finalizacao.mensagem,
+        publicacaoRd: finalizacao.rd || null,
+        auditoria: audV3AuditoriaFront_(atualizadaPlano),
+        auditorias: audV3ListarAuditoriasFront_()
+      };
+    }
+
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
+      AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
     const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
     return {
       sucesso: true,
-      automatica: true,
-      mensagem: finalizacao.mensagem,
-      publicacaoRd: finalizacao.rd || null,
+      automatica: false,
+      mensagem: 'Auditoria validada e enviada ao Board para revisão humana. Nenhuma publicação no RD foi realizada.',
+      publicacaoRd: null,
       auditoria: audV3AuditoriaFront_(atualizada),
       auditorias: audV3ListarAuditoriasFront_()
     };
@@ -1990,6 +2046,10 @@ function aprovarAuditoriaV3(idAuditoria) {
   }
   const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
   audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
+  const gateBoard = resultado.validacao_board || audV3ValidarQualidadeBoard_(resultado, auditoria.TIPO_AUDITORIA);
+  if (String(gateBoard.status || '').toUpperCase() === 'BLOQUEADO') {
+    throw new Error('A auditoria possui bloqueios de qualidade e não pode ser publicada antes de ser regenerada/corrigida: ' + (gateBoard.bloqueios || []).join(' | '));
+  }
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -2010,11 +2070,33 @@ function aprovarAuditoriaV3(idAuditoria) {
     ATUALIZADO_EM: new Date()
   });
 
+  let publicacaoRd = null;
+  const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (['SDR', 'CLOSER'].includes(tipoAuditoria) && typeof audRdPublicarAutomaticamente_ === 'function') {
+    publicacaoRd = audRdPublicarAutomaticamente_(id);
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: publicacaoRd && publicacaoRd.publicada
+        ? 'CONCLUIDA'
+        : (publicacaoRd && String(publicacaoRd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD'),
+      AUTOMACAO_ERRO: publicacaoRd && publicacaoRd.erro ? String(publicacaoRd.erro) : '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  } else {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: 'CONCLUIDA',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  }
+
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   return {
     sucesso: true,
-    mensagem: 'Auditoria aprovada e Google Docs criado.',
+    mensagem: publicacaoRd && publicacaoRd.publicada
+      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no RD CRM.'
+      : 'Auditoria aprovada e Google Docs criado. ' + (publicacaoRd && publicacaoRd.mensagem ? publicacaoRd.mensagem : ''),
+    publicacaoRd: publicacaoRd,
     auditoria: audV3AuditoriaFront_(atualizada),
     auditorias: audV3ListarAuditoriasFront_()
   };
@@ -2099,6 +2181,215 @@ function excluirAuditoriaV3(dados) {
   if (auditoria.ID_INTERACAO) audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, { STATUS_AUDITORIA: 'NAO_AUDITADA', ATUALIZADO_EM: new Date() });
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
+}
+
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '1.0';
+
+function audV3DistanciaEdicaoCurta_(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const anterior = [];
+  const atual = [];
+  for (let j = 0; j <= b.length; j++) anterior[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    atual[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      atual[j] = Math.min(
+        atual[j - 1] + 1,
+        anterior[j] + 1,
+        anterior[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1)
+      );
+    }
+    for (let j = 0; j <= b.length; j++) anterior[j] = atual[j];
+  }
+  return anterior[b.length];
+}
+
+function audV3RotuloPareceNome_(rotulo, nome) {
+  const r = audV3NormalizarTrechoRastreavel_(rotulo || '').replace(/\b(sdr|closer|consultor|vendedor|lead|cliente|prospect)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const n = audV3NormalizarTrechoRastreavel_(nome || '').replace(/\s+/g, ' ').trim();
+  if (!r || !n) return false;
+  if (r === n || r.indexOf(n) >= 0 || n.indexOf(r) >= 0) return true;
+  const rp = r.split(' ')[0];
+  const np = n.split(' ')[0];
+  if (!rp || !np) return false;
+  const limite = Math.max(rp.length, np.length) >= 7 ? 2 : 1;
+  return Math.min(rp.length, np.length) >= 4 && audV3DistanciaEdicaoCurta_(rp, np) <= limite;
+}
+
+function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
+  const bruto = String(rotulo || '').replace(/^[-*•\s]+/, '').trim();
+  const n = audV3NormalizarTrechoRastreavel_(bruto);
+  const funcao = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
+  const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
+  const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
+  const lead = String((interacao || {}).LEAD || '').trim();
+
+  if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
+  }
+  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
+    return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
+  }
+  if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
+    return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true };
+  }
+  if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
+    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional) };
+  }
+  if (lead && audV3RotuloPareceNome_(bruto, lead)) {
+    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead) };
+  }
+  return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false };
+}
+
+function audV3NormalizarTranscricaoTexto_(texto, interacao) {
+  const original = String(texto || '').replace(/\r\n?/g, '\n').trim();
+  if (!original) return { texto: '', turnos: [], metricas: { linhas: 0, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0 } };
+
+  const linhas = original.split('\n');
+  const turnos = [];
+  const metricas = {
+    linhas: linhas.length,
+    turnos: 0,
+    semRotulo: 0,
+    rotulosDesconhecidos: 0,
+    rotulosCorrigidos: 0,
+    duplicadasRemovidas: 0,
+    continuacoesUnidas: 0
+  };
+
+  linhas.forEach(function(linhaOriginal) {
+    let linha = String(linhaOriginal || '').trim();
+    if (!linha) return;
+    linha = linha.replace(/^[-*•]\s+/, '').trim();
+
+    const match = linha.match(/^(\[[^\]]{1,24}\]\s*)?([^:\n]{1,80}):\s*(.+)$/);
+    if (match) {
+      const timestamp = String(match[1] || '').trim();
+      const info = audV3NormalizarRotuloLocutor_(match[2], interacao || {});
+      const fala = String(match[3] || '').replace(/\s+/g, ' ').trim();
+      if (!fala) return;
+      if (!info.identificado) metricas.rotulosDesconhecidos += 1;
+      if (info.corrigido) metricas.rotulosCorrigidos += 1;
+
+      const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+      const chaveFala = audV3NormalizarTrechoRastreavel_(fala);
+      const chaveAnterior = anterior ? audV3NormalizarTrechoRastreavel_(anterior.fala) : '';
+      if (anterior && anterior.rotulo === info.rotulo && chaveFala && chaveFala === chaveAnterior) {
+        metricas.duplicadasRemovidas += 1;
+        return;
+      }
+      if (anterior && !timestamp && !anterior.timestamp && anterior.rotulo === info.rotulo) {
+        anterior.fala += ' ' + fala;
+        metricas.continuacoesUnidas += 1;
+        return;
+      }
+      turnos.push({ timestamp: timestamp, rotulo: info.rotulo, tipo: info.tipo, fala: fala });
+      return;
+    }
+
+    const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+    const trecho = linha.replace(/\s+/g, ' ').trim();
+    if (!trecho) return;
+    metricas.semRotulo += 1;
+    if (anterior && anterior.tipo === 'NAO_IDENTIFICADO' && !anterior.timestamp) {
+      anterior.fala += ' ' + trecho;
+      metricas.continuacoesUnidas += 1;
+    } else {
+      turnos.push({ timestamp: '', rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', fala: trecho });
+      metricas.rotulosDesconhecidos += 1;
+    }
+  });
+
+  metricas.turnos = turnos.length;
+  const normalizado = turnos.map(function(turno) {
+    return (turno.timestamp ? turno.timestamp + ' ' : '') + turno.rotulo + ': ' + turno.fala;
+  }).join('\n').trim();
+
+  return { texto: normalizado || original, turnos: turnos, metricas: metricas };
+}
+
+function audV3AvaliarQualidadeTranscricao_(normalizacao, original) {
+  normalizacao = normalizacao || { turnos: [], metricas: {} };
+  const turnos = Array.isArray(normalizacao.turnos) ? normalizacao.turnos : [];
+  const metricas = normalizacao.metricas || {};
+  const alertas = [];
+  const total = turnos.length;
+  const naoIdentificados = turnos.filter(function(t) { return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((t || {}).tipo || '')); }).length;
+  const profissionais = turnos.filter(function(t) { return ['SDR', 'CLOSER', 'PROFISSIONAL'].includes(String((t || {}).tipo || '')); }).length;
+  const leads = turnos.filter(function(t) { return String((t || {}).tipo || '') === 'LEAD'; }).length;
+  const tamanho = String(original || '').trim().length;
+
+  let status = 'BOA';
+  if (tamanho < 120 || total < 4) {
+    status = 'BAIXA';
+    alertas.push('Transcrição muito curta para sustentar uma auditoria confiável.');
+  }
+  if (!profissionais) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('Nenhuma fala do profissional foi identificada de forma segura.');
+  }
+  if (!leads) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('Nenhuma fala do lead foi identificada de forma segura.');
+  }
+  if (total && naoIdentificados / total >= 0.30) {
+    status = 'BAIXA';
+    alertas.push('Muitos turnos possuem locutor não identificado.');
+  } else if (total && naoIdentificados / total >= 0.10 && status === 'BOA') {
+    status = 'ATENCAO';
+    alertas.push('Há turnos com locutor não identificado que exigem cautela na autoria das evidências.');
+  }
+  if (Number(metricas.semRotulo || 0) >= Math.max(4, Math.ceil(total * 0.25))) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('A transcrição contém várias linhas sem rótulo explícito de locutor.');
+  }
+
+  return {
+    status: status,
+    alertas: alertas,
+    metricas: {
+      caracteres_original: tamanho,
+      turnos: total,
+      turnos_profissional: profissionais,
+      turnos_lead: leads,
+      turnos_nao_identificados: naoIdentificados,
+      linhas_sem_rotulo: Number(metricas.semRotulo || 0),
+      rotulos_corrigidos: Number(metricas.rotulosCorrigidos || 0),
+      duplicadas_removidas: Number(metricas.duplicadasRemovidas || 0),
+      continuacoes_unidas: Number(metricas.continuacoesUnidas || 0)
+    }
+  };
+}
+
+function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
+  const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {});
+  const qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+  const conteudo = String(normalizacao.texto || original || '').trim();
+
+  if ((transcricao || {}).ID_TRANSCRICAO) {
+    const persistivel = conteudo.length <= 49000 ? conteudo : '';
+    audV3Atualizar_('TRANSCRICOES', 'ID_TRANSCRICAO', transcricao.ID_TRANSCRICAO, {
+      CONTEUDO_NORMALIZADO: persistivel,
+      QUALIDADE_TRANSCRICAO: qualidade.status,
+      QUALIDADE_JSON: JSON.stringify(qualidade),
+      NORMALIZACAO_VERSAO: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO,
+      NORMALIZADA_EM: new Date(),
+      ATUALIZADO_EM: new Date()
+    });
+  }
+
+  return {
+    original: original,
+    conteudo: conteudo,
+    qualidade: qualidade,
+    normalizacaoVersao: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO
+  };
 }
 
 function audV3ConteudoCompletoTranscricao_(transcricao, interacao) {
@@ -2219,6 +2510,11 @@ function audV3ChamarGemini_(ctx) {
   };
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
+  const consumoBase = {
+    idAuditoria: String(ctx.idAuditoria || ''),
+    idInteracao: String(((ctx || {}).interacao || {}).ID_INTERACAO || ''),
+    tipoAuditoria: tipo
+  };
 
   for (let indiceModelo = 0; indiceModelo < modelosApi.length; indiceModelo++) {
     const modeloApi = modelosApi[indiceModelo];
@@ -2238,7 +2534,7 @@ function audV3ChamarGemini_(ctx) {
         muteHttpExceptions: true
       });
     } catch (erroRede) {
-      registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, 0, '', String(erroRede), inicioTentativaIa);
+      registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, 0, '', String(erroRede), inicioTentativaIa, Object.assign({}, consumoBase, { tentativa: tentativa + 1 }));
       console.warn('Gemini indisponível na tentativa ' + (tentativa + 1) + ': ' + String(erroRede));
       if (tentativa < esperasMs.length - 1) continue;
       break;
@@ -2246,7 +2542,7 @@ function audV3ChamarGemini_(ctx) {
 
     const status = resposta.getResponseCode();
     const corpo = resposta.getContentText();
-    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, status, corpo, '', inicioTentativaIa);
+    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, status, corpo, '', inicioTentativaIa, Object.assign({}, consumoBase, { tentativa: tentativa + 1 }));
     if (status >= 200 && status < 300) {
       const json = audV3ParseJson_(corpo, 'A resposta HTTP do Gemini não é JSON válido.');
       const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
@@ -2286,6 +2582,68 @@ function audV3ChamarGemini_(ctx) {
   }
 
   throw new Error('Todos os modelos gratuitos de IA disponíveis estão temporariamente ocupados. Tente novamente mais tarde.');
+}
+
+function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
+  const atual = interacao || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) return { historico: [] };
+
+  const idAtual = String(atual.ID_INTERACAO || '');
+  const cliente = String(atual.ID_CLIENTE || '');
+  const linkAtual = String(atual.LINK_CRM || '').trim();
+  const dealMatch = linkAtual.match(/\/deals\/([0-9a-f]{24})/i);
+  const dealId = dealMatch ? String(dealMatch[1]).toLowerCase() : '';
+  const oportunidade = audV3NormalizarTrechoRastreavel_(atual.OPORTUNIDADE || atual.TITULO || '');
+  const dataAtual = new Date(atual.DATA_INTERACAO || 0).getTime();
+
+  const anteriores = audV3Ler_('INTERACOES').filter(function(item) {
+    if (!item || String(item.ID_INTERACAO || '') === idAtual) return false;
+    if (cliente && String(item.ID_CLIENTE || '') !== cliente) return false;
+    const dataItem = new Date(item.DATA_INTERACAO || 0).getTime();
+    if (dataAtual && dataItem && dataItem >= dataAtual) return false;
+    const link = String(item.LINK_CRM || '').trim();
+    const dm = link.match(/\/deals\/([0-9a-f]{24})/i);
+    const mesmoDeal = dealId && dm && String(dm[1]).toLowerCase() === dealId;
+    const chaveItem = audV3NormalizarTrechoRastreavel_(item.OPORTUNIDADE || item.TITULO || '');
+    const mesmaOportunidade = oportunidade && oportunidade.length >= 8 && chaveItem === oportunidade;
+    return Boolean(mesmoDeal || mesmaOportunidade);
+  }).sort(function(a, b) {
+    return new Date(b.DATA_INTERACAO || 0).getTime() - new Date(a.DATA_INTERACAO || 0).getTime();
+  }).slice(0, 5);
+
+  const auditorias = audV3Ler_('AUDITORIAS');
+  const historico = anteriores.map(function(item) {
+    const idInteracao = String(item.ID_INTERACAO || '');
+    const audit = auditorias.filter(function(a) {
+      return String(a.ID_INTERACAO || '') === idInteracao &&
+        ['EM_REVISAO', 'APROVADA'].includes(String(a.STATUS || '').toUpperCase()) &&
+        String(a.RESULTADO_JSON || '').trim();
+    }).slice(-1)[0] || {};
+    let resultado = {};
+    try { resultado = JSON.parse(String(audit.RESULTADO_JSON || '{}')); } catch (e) {}
+    const resumo = tipo === 'CLOSER' ? (resultado.resumo_reuniao || {}) : (resultado.resumo_contato || {});
+    const contexto = resultado.contexto_interacao || {};
+    return {
+      data: audV3DataIso_(item.DATA_INTERACAO),
+      tipo_interacao: String(item.TIPO_INTERACAO || ''),
+      funcao: String(item.FUNCAO || ''),
+      colaborador: String(item.COLABORADOR || item.VENDEDOR || ''),
+      titulo: String(item.TITULO || ''),
+      oportunidade: String(item.OPORTUNIDADE || ''),
+      contexto_identificado: String(contexto.classificacao || ''),
+      objetivo_identificado: String(contexto.objetivo_principal || ''),
+      resultado_anterior: String(resumo.resultado_reuniao || resumo.resultado_contato || ''),
+      score: audit.SCORE === '' || audit.SCORE === undefined ? null : Number(audit.SCORE)
+    };
+  });
+
+  return {
+    tipo_interacao_atual: String(atual.TIPO_INTERACAO || ''),
+    oportunidade_atual: String(atual.OPORTUNIDADE || atual.TITULO || ''),
+    descricao_origem_atual: String(atual.DESCRICAO_ORIGEM || '').slice(0, 900),
+    historico: historico
+  };
 }
 
 function audV3MontarPrompt_(ctx) {
@@ -2357,6 +2715,8 @@ function audV3MontarPrompt_(ctx) {
     '<CRITERIOS_OFICIAIS>\n' + JSON.stringify(ctx.criterios, null, 2) + '\n</CRITERIOS_OFICIAIS>',
     '<REGRAS_CLIENTE>\n' + String(ctx.cliente.REGRAS_CLIENTE || 'Nenhuma regra adicional cadastrada.') + '\n</REGRAS_CLIENTE>',
     '<METAS_CLIENTE>\n' + JSON.stringify(ctx.metas && ctx.metas.length ? ctx.metas : { informado: false }, null, 2) + '\n</METAS_CLIENTE>',
+    '<CONTEXTO_OPERACIONAL_PREVIO>\n' + JSON.stringify(ctx.contextoOperacional || { historico: [] }, null, 2) + '\n</CONTEXTO_OPERACIONAL_PREVIO>',
+    '<QUALIDADE_TRANSCRICAO>\n' + JSON.stringify(ctx.qualidadeTranscricao || { status: 'NAO_AVALIADA', alertas: [] }, null, 2) + '\n</QUALIDADE_TRANSCRICAO>',
     '<PITCH_VIGENTE>\n' + String(ctx.pitch.CONTEUDO_PITCH || '') + '\n</PITCH_VIGENTE>',
     '<CATALOGO_EVIDENCIAS_TRANSCRICAO>\n' + audV3CatalogarEvidencias_(ctx.transcricao.CONTEUDO || '') + '\n</CATALOGO_EVIDENCIAS_TRANSCRICAO>',
     'Cada código EV identifica um turno literal da transcrição. Para campos de evidência, escolha somente um turno pertinente ao critério e copie um trecho literal contíguo do texto após o código EV. Nunca coloque o código EV no campo de evidência. Se nenhum turno comprovar diretamente o item, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO. Não escolha uma fala apenas para preencher o campo.',
@@ -2370,11 +2730,14 @@ function audV3MontarPrompt_(ctx) {
     'Variações fonéticas ou erros de transcrição em nomes próprios, como Aline/Elaine ou Moisés/Moreira, não constituem desvio do pitch e nunca podem reduzir a nota. Use o responsável informado nos metadados como identidade canônica quando o contexto indicar a mesma pessoa.',
     tipo === 'SDR' ? 'REGRA CANÔNICA DO ARQUIVO: quando nome_arquivo_origem estiver preenchido no padrão nomedaempresa-numero-nomedosdr, considere obrigatoriamente como empresa o texto antes do primeiro hífen, como número da chamada o trecho central e como SDR o texto após o segundo hífen. A transcrição não pode substituir esses dados por aproximações fonéticas.' : '',
     tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica, Maíra e o usuário operacional Sinergia Engenharia são identidades válidas de CLOSER. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
+    'Classifique contexto_interacao antes de definir aplicabilidade. CONTEXTO_OPERACIONAL_PREVIO é apoio de continuidade e não substitui a evidência da transcrição atual.',
+    'A transcrição pode ter sido normalizada deterministicamente apenas em rótulos, espaços, duplicações adjacentes e linhas quebradas; o conteúdo falado não deve ser reinterpretado. LOCUTOR_NAO_IDENTIFICADO ou PARTICIPANTE sem identidade segura nunca pode ser atribuído ao SDR/Closer.',
+    'Se QUALIDADE_TRANSCRICAO estiver BAIXA ou ATENCAO, reduza a força das conclusões dependentes de autoria e use NAO_EVIDENCIADO quando a fala não puder ser atribuída com segurança.',
     tipo === 'SDR' ? 'AUDITORIA SDR OBRIGATÓRIA: examine separadamente apresentação pelo próprio nome, nome da empresa, origem do contato, frase de agilidade e empatia (reconhecer que o lead está corrido e pedir apenas três minutos), primeira frase de qualificação, pergunta de segmento, motivo do contato, todas as perguntas obrigatórias do pitch, validação do LMV, trilha positiva ou negativa correta conforme o LMV, manejo de objeções, valorização da reunião, oferta de dois horários concretos, confirmação do compromisso, aviso de contato prévio/no-show e encerramento profissional.' : '',
-    tipo === 'SDR' ? 'O SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
+    tipo === 'SDR' ? 'Em PRIMEIRO_CONTATO, o SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Em retomadas, cobre apenas perguntas ainda pendentes ou novamente necessárias ao objetivo atual. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
     tipo === 'SDR' ? 'A validação do LMV é obrigatória. Identifique a resposta do lead, determine se o LMV foi positivo ou negativo e verifique se o SDR seguiu a trilha correspondente. LMV positivo deve seguir o pitch positivo. LMV negativo deve seguir o pitch negativo de desqualificação/precificação. Não penalize quando o pitch não definir a trilha; nesse caso use LACUNA_PROCESSO.' : '',
     tipo === 'SDR' ? 'No fechamento, pedido aberto de disponibilidade não equivale a dupla escolha. CONFORME exige duas opções concretas de data ou horário quando houver tentativa de agendamento, valorização objetiva da reunião e indicação ativa do próximo passo. Verifique também se o SDR informou que fará contato antes da reunião conforme a cadência de no-show.' : '',
-    tipo === 'CLOSER' ? 'COACHING CLOSER OBRIGATÓRIO: nenhuma recomendação pode terminar em verbos genéricos como revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o closer deve fazer ou falar. Toda correção prática deve conter pelo menos um comportamento observável: pergunta exata, frase sugerida, sequência de perguntas, duas opções concretas de agenda, confirmação objetiva de próximo passo ou outro comportamento verificável na próxima reunião.' : '',
+    tipo === 'CLOSER' ? 'Não penalize uma reunião de proposta, follow-up, negociação, fechamento ou jurídico pela ausência de descoberta inicial que o histórico indique como já concluída. A ausência só é desvio se o comportamento era aplicável ao objetivo atual. COACHING CLOSER OBRIGATÓRIO: nenhuma recomendação pode terminar em verbos genéricos como revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o closer deve fazer ou falar. Toda correção prática deve conter pelo menos um comportamento observável: pergunta exata, frase sugerida, sequência de perguntas, duas opções concretas de agenda, confirmação objetiva de próximo passo ou outro comportamento verificável na próxima reunião.' : '',
     tipo === 'CLOSER' ? 'Para perguntas_esperadas_nao_realizadas, traga a pergunta exata do pitch quando ela existir e use sugestao_aplicacao para explicar em qual momento fazê-la e qual resposta/decisão ela deve ajudar a obter. Não escreva apenas revisar o diagnóstico, aprofundar a dor ou explorar impacto.' : '',
     tipo === 'CLOSER' ? 'Para analise_impacto_implicacao, identifique especificamente o que ficou sem exploração e converta a lacuna em perguntas executáveis. Priorize impacto operacional, impacto financeiro, risco/custo da inação, urgência, prioridade, resultado desejado e critério de decisão quando fizerem sentido para a conversa. Se a pergunta não existir no pitch, coloque-a somente em repertorio_perguntas_sugeridas com origem=SUGESTAO_ENABLEMENT.' : '',
     tipo === 'CLOSER' ? 'No fechamento, se houver falha de próximo passo, descreva como o closer deve encerrar: proposta de data/horário ou duas opções objetivas, confirmação do responsável, compromisso combinado e registro do próximo contato. Evite recomendações abstratas como alinhar melhor o follow-up.' : '',
@@ -2638,6 +3001,141 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
+  resultado = resultado || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  const alertas = [];
+  const bloqueios = [];
+  if (!['SDR', 'CLOSER'].includes(tipo)) {
+    return { status: 'OK', alertas: [], bloqueios: [], revisao_humana_obrigatoria: false };
+  }
+
+  const contexto = resultado.contexto_interacao || {};
+  const classificacao = String(contexto.classificacao || '').trim().toUpperCase();
+  const confianca = String(contexto.confianca || '').trim().toUpperCase();
+  if (!classificacao) bloqueios.push('Contexto da interação não foi classificado.');
+  if (!String(contexto.objetivo_principal || '').trim()) bloqueios.push('Objetivo principal da interação não foi informado.');
+  if (confianca === 'BAIXA' || contexto.necessita_revisao === true) {
+    alertas.push('Classificação contextual com baixa confiança ou marcada para revisão.');
+  }
+  if (!(Array.isArray(contexto.etapas_aplicaveis) && contexto.etapas_aplicaveis.length)) {
+    alertas.push('Nenhuma etapa aplicável foi explicitada para o contexto.');
+  }
+  const concluidasAntes = Array.isArray(contexto.etapas_ja_concluidas) ? contexto.etapas_ja_concluidas : [];
+  if (concluidasAntes.length && contexto.continuidade_confirmada !== true) {
+    bloqueios.push('Há etapas marcadas como já concluídas sem continuidade comprovada por histórico ou evidência objetiva.');
+  }
+  if (/APRESENTACAO_PROPOSTA|FOLLOW_UP_PROPOSTA|NEGOCIACAO|FECHAMENTO|JURIDICO/.test(classificacao) &&
+      contexto.continuidade_confirmada !== true &&
+      tipo === 'CLOSER') {
+    alertas.push('Contexto tardio sem continuidade comprovada: confirmar se esta é a primeira reunião antes de retirar diagnóstico da régua.');
+  }
+
+  const falasLead = [];
+  if (tipo === 'SDR') {
+    const perguntasLead = resultado.perguntas_qualificacao || {};
+    ['corretas', 'com_desvio'].forEach(function(chave) {
+      (Array.isArray(perguntasLead[chave]) ? perguntasLead[chave] : []).forEach(function(item) {
+        if ((item || {}).resposta_lead) falasLead.push(String(item.resposta_lead));
+      });
+    });
+    (Array.isArray(resultado.manejo_objecoes) ? resultado.manejo_objecoes : []).forEach(function(item) {
+      if ((item || {}).objecao) falasLead.push(String(item.objecao));
+    });
+  } else {
+    const perguntasLead = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
+    (Array.isArray(perguntasLead) ? perguntasLead : []).forEach(function(item) {
+      if ((item || {}).resposta_lead) falasLead.push(String(item.resposta_lead));
+    });
+    (Array.isArray(resultado.objecoes_respostas) ? resultado.objecoes_respostas : []).forEach(function(item) {
+      if ((item || {}).objecao_ou_pergunta_lead) falasLead.push(String(item.objecao_ou_pergunta_lead));
+    });
+  }
+
+  const falasProfissional = [];
+  (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+    if ((item || {}).o_que_foi_dito) falasProfissional.push(String(item.o_que_foi_dito));
+  });
+  if (tipo === 'SDR') {
+    (Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : []).forEach(function(item) {
+      if ((item || {}).fato_transcricao) falasProfissional.push(String(item.fato_transcricao));
+    });
+  } else {
+    (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(item) {
+      if ((item || {}).o_que_foi_dito) falasProfissional.push(String(item.o_que_foi_dito));
+    });
+  }
+
+  const conflitosAutoria = [];
+  falasProfissional.forEach(function(falaProf) {
+    const p = audV3NormalizarTrechoRastreavel_(falaProf);
+    if (!p || p.indexOf('nao evidenciado') === 0 || p.length < 18) return;
+    falasLead.forEach(function(falaLead) {
+      const l = audV3NormalizarTrechoRastreavel_(falaLead);
+      if (!l || l.length < 18) return;
+      if (l.indexOf(p) >= 0 || p.indexOf(l) >= 0) conflitosAutoria.push(falaProf);
+    });
+  });
+  if (conflitosAutoria.length) {
+    bloqueios.push('Uma evidência atribuída ao ' + tipo + ' também aparece como fala/resposta do lead. Revisar autoria: ' + String(conflitosAutoria[0]).slice(0, 180));
+  }
+
+  const coaching = [];
+  (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+    if (item && item.aplicavel !== false && String(item.status || '').toUpperCase() !== 'CONFORME') coaching.push(item.correcao_pratica);
+  });
+  (Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : []).forEach(function(item) {
+    coaching.push((item || {}).acao);
+  });
+  if (tipo === 'SDR') {
+    const perguntas = resultado.perguntas_qualificacao || {};
+    (Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : []).forEach(function(item) { coaching.push((item || {}).correcao_pratica); });
+    (Array.isArray(perguntas.ausentes) ? perguntas.ausentes : []).forEach(function(item) { coaching.push((item || {}).como_perguntar); });
+  } else {
+    (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(item) {
+      if (item && !['VERDE', 'CONFORME'].includes(String(item.status || item.cor || '').toUpperCase())) {
+        coaching.push(item.como_agir || item.o_que_fazer || item.texto_script);
+      }
+    });
+  }
+
+  const genericos = coaching.filter(function(valor) {
+    const bruto = String(valor || '').trim();
+    if (!bruto) return false;
+    const t = audV3NormalizarTrechoRastreavel_(bruto);
+    const verboGenerico = /\b(revisar|melhorar|aprofundar|reforcar|estruturar|ajustar|seguir o pitch|aplicar corretamente|explorar melhor)\b/.test(t);
+    const observavel = /[?"]/g.test(bruto) || /\b(pergunte|diga|confirme|ofereca|envie|marque|agende|registre|data|horario|opcoes|opção|opcoes)\b/.test(t);
+    return verboGenerico && !observavel && bruto.length < 220;
+  });
+  if (genericos.length) {
+    bloqueios.push('Há orientação genérica sem comportamento observável: ' + String(genericos[0]).slice(0, 180));
+  }
+
+  if (tipo === 'SDR' && classificacao && classificacao !== 'PRIMEIRO_CONTATO') {
+    const etapas = Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : [];
+    const naoExecutadas = etapas.filter(function(item) {
+      return ['NAO_EXECUTADO', 'NAO_EXECUTADA'].includes(String((item || {}).status || '').toUpperCase());
+    }).length;
+    if (etapas.length && naoExecutadas >= Math.ceil(etapas.length * 0.6)) {
+      alertas.push('Possível aplicação indevida do pitch completo em uma retomada; revisar aplicabilidade antes de aprovar.');
+    }
+  }
+
+  if (tipo === 'CLOSER' && /PROPOSTA|NEGOCIACAO|FECHAMENTO|JURIDICO/.test(classificacao)) {
+    const perguntasAusentes = (((resultado.perguntas_diagnostico || {}).perguntas_esperadas_nao_realizadas) || []);
+    if (Array.isArray(perguntasAusentes) && perguntasAusentes.length >= 6) {
+      alertas.push('Muitas perguntas de diagnóstico foram cobradas em uma interação tardia da jornada; revisar se eram realmente aplicáveis.');
+    }
+  }
+
+  return {
+    status: bloqueios.length ? 'BLOQUEADO' : (alertas.length ? 'REVISAR' : 'OK'),
+    alertas: alertas,
+    bloqueios: bloqueios,
+    revisao_humana_obrigatoria: true
+  };
 }
 
 function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
@@ -3434,6 +3932,7 @@ function audV3SchemaRespostaApi_(tipoAuditoria) {
 
   const camposIa = [
     'schema_versao',
+    'contexto_interacao',
     'resumo_reuniao',
     'momentos',
     'perguntas_diagnostico',
@@ -3510,6 +4009,24 @@ function audV3SchemaRespostaCloser_() {
     type: 'OBJECT',
     properties: {
       schema_versao: texto,
+      contexto_interacao: {
+        type: 'OBJECT',
+        properties: {
+          classificacao: texto,
+          momento_jornada: texto,
+          objetivo_principal: texto,
+          confianca: texto,
+          evidencias: { type: 'ARRAY', maxItems: 3, items: evidencia },
+          etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          continuidade_confirmada: { type: 'BOOLEAN' },
+          evidencia_continuidade: texto,
+          necessita_revisao: { type: 'BOOLEAN' },
+          motivo_revisao: texto
+        },
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'continuidade_confirmada', 'evidencia_continuidade', 'necessita_revisao', 'motivo_revisao']
+      },
       metadados: {
         type: 'OBJECT',
         properties: { empresa: texto, closer: texto, lead: texto, data_hora: texto, pitch: texto, versao_pitch: texto }
@@ -3652,7 +4169,7 @@ function audV3SchemaRespostaCloser_() {
         required: ['titulo', 'resumo', 'highlights', 'correcoes_prioritarias', 'proximos_passos']
       }
     },
-    required: ['schema_versao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'objecoes_respostas', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
+    required: ['schema_versao', 'contexto_interacao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'objecoes_respostas', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
   };
 }
 
@@ -3674,13 +4191,13 @@ function audV3SchemaRespostaSdr_() {
   };
   const perguntaCorreta = {
     type: 'OBJECT',
-    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
-    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'por_que_esta_correta']
+    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, resposta_lead: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'resposta_lead', 'regra_pitch', 'por_que_esta_correta']
   };
   const perguntaComDesvio = {
     type: 'OBJECT',
-    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
-    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
+    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, resposta_lead: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'resposta_lead', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
   };
   const perguntaAusente = {
     type: 'OBJECT',
@@ -3700,6 +4217,24 @@ function audV3SchemaRespostaSdr_() {
     type: 'OBJECT',
     properties: {
       schema_versao: texto,
+      contexto_interacao: {
+        type: 'OBJECT',
+        properties: {
+          classificacao: texto,
+          momento_jornada: texto,
+          objetivo_principal: texto,
+          confianca: texto,
+          evidencias: { type: 'ARRAY', maxItems: 3, items: evidencia },
+          etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          continuidade_confirmada: { type: 'BOOLEAN' },
+          evidencia_continuidade: texto,
+          necessita_revisao: { type: 'BOOLEAN' },
+          motivo_revisao: texto
+        },
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'continuidade_confirmada', 'evidencia_continuidade', 'necessita_revisao', 'motivo_revisao']
+      },
       metadados: {
         type: 'OBJECT',
         properties: { empresa: texto, sdr: texto, lead: texto, data_hora: texto, pitch: texto, versao_pitch: texto }
@@ -3800,7 +4335,7 @@ function audV3SchemaRespostaSdr_() {
       }
     },
     required: [
-      'schema_versao', 'metadados', 'validacao_entradas', 'resumo_contato', 'resumo_executivo', 'etapas_pitch', 'aderencia_script',
+      'schema_versao', 'contexto_interacao', 'metadados', 'validacao_entradas', 'resumo_contato', 'resumo_executivo', 'etapas_pitch', 'aderencia_script',
       'perguntas_qualificacao', 'manejo_objecoes', 'objecoes_fora_pitch', 'fechamento', 'analise_conversacao',
       'qualidade_perguntas_respostas', 'gestao_objecoes_duvidas', 'conclusao_agendamento',
       'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao'
@@ -3916,7 +4451,36 @@ function audV3TabelaResultadoInicial_(body, resultado, tipo) {
     tipo === 'CLOSER' ? String(((resultado.semaforo_geral || {}).cor) || '') : '',
     pc.score_5 === null || pc.score_5 === undefined ? 'Não calculável' : String(pc.score_5) + '/5 (' + String(pc.score_percentual || 0) + '%)'
   ]);
-  audV3Tabela_(body, linhas, [250, 140, 130]);
+  const tabelaResultado = audV3Tabela_(body, linhas, [250, 140, 130]);
+  if (tabelaResultado) {
+    for (let linha = 1; linha < tabelaResultado.getNumRows(); linha++) {
+      const registro = tabelaResultado.getRow(linha);
+      const status = String(registro.getCell(1).getText() || '').toUpperCase();
+      const criterio = String(registro.getCell(0).getText() || '').toUpperCase();
+      let cor = '#FFFFFF';
+      let corTextoStatus = AUDV3_PALETA_VOLUM.texto;
+      if (/SCORE CONSOLIDADO/.test(criterio)) {
+        cor = AUDV3_PALETA_VOLUM.azulClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.azulTexto;
+      } else if (/CONFORME|VERDE|ATINGIDO|CORRETO|COMPLETO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.verdeClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.verdeTexto;
+      } else if (/DESVIO|NAO EXECUTADO|NÃO EXECUTADO|VERMELHO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.vermelhoClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.vermelhoTexto;
+      } else if (/NAO APLICAVEL|NÃO APLICÁVEL|NAO EVIDENCIADO|NÃO EVIDENCIADO|N\/A/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.cinzaClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.muted;
+      } else if (/PARCIAL|AMARELO|ATENCAO|ATENÇÃO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.amareloClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.amareloTexto;
+      }
+      audV3AplicarFundoTabela_(tabelaResultado, linha, cor);
+      registro.getCell(0).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navy);
+      registro.getCell(1).editAsText().setBold(true).setForegroundColor(corTextoStatus);
+      registro.getCell(2).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+    }
+  }
 }
 
 function audV3ChecklistInicial_(body, resultado, titulo) {
@@ -3973,6 +4537,396 @@ function audV3ConclusaoDocumento_(body, resultado, tipo) {
   });
 }
 
+function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
+  tipo = String(tipo || '').toUpperCase();
+  resultadoAtual = resultadoAtual || {};
+  const metaAtual = resultadoAtual.metadados || {};
+  const profissionalAtual = String(
+    (tipo === 'CLOSER' ? metaAtual.closer : metaAtual.sdr) ||
+    interacao.COLABORADOR ||
+    interacao.VENDEDOR ||
+    ''
+  ).trim();
+  const profissionalChave = audV3NormalizarTrechoRastreavel_(profissionalAtual);
+  const idCliente = String(cliente.ID_CLIENTE || interacao.ID_CLIENTE || '');
+  const idInteracaoAtual = String(interacao.ID_INTERACAO || '');
+  const interacoes = {};
+  audV3Ler_('INTERACOES').forEach(function(item) {
+    if (item && item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item;
+  });
+
+  const historico = [];
+  audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
+    if (!auditoria || !auditoria.ID_AUDITORIA) return;
+    if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
+    if (String(auditoria.ID_CLIENTE || '') !== idCliente) return;
+    if (String(auditoria.ID_INTERACAO || '') === idInteracaoAtual) return;
+    if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') return;
+    if (String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA') return;
+
+    let resultado = {};
+    try { resultado = JSON.parse(String(auditoria.RESULTADO_JSON || '{}')); } catch (erro) { resultado = {}; }
+    const interacaoHistorica = interacoes[String(auditoria.ID_INTERACAO || '')] || {};
+    const meta = resultado.metadados || {};
+    const profissional = String(
+      (tipo === 'CLOSER' ? meta.closer : meta.sdr) ||
+      interacaoHistorica.COLABORADOR ||
+      interacaoHistorica.VENDEDOR ||
+      ''
+    ).trim();
+    if (!profissional || audV3NormalizarTrechoRastreavel_(profissional) !== profissionalChave) return;
+
+    const score = audV3AnaliticaNumero_(
+      auditoria.SCORE !== '' && auditoria.SCORE !== null && auditoria.SCORE !== undefined
+        ? auditoria.SCORE
+        : ((resultado.pontuacao_calculada || {}).score_5)
+    );
+    if (score === null) return;
+
+    historico.push({
+      idAuditoria: String(auditoria.ID_AUDITORIA || ''),
+      dataMs: new Date(interacaoHistorica.DATA_INTERACAO || auditoria.CONCLUIDO_EM || auditoria.SOLICITADO_EM || 0).getTime(),
+      data: audV3DataTexto_(interacaoHistorica.DATA_INTERACAO || auditoria.CONCLUIDO_EM || auditoria.SOLICITADO_EM),
+      score: score,
+      contexto: String(((resultado.contexto_interacao || {}).classificacao) || ''),
+      criterios: audV3AnaliticaCriterios_(auditoria, resultado)
+    });
+  });
+
+  historico.sort(function(a, b) { return a.dataMs - b.dataMs; });
+  const recentes = historico.slice(-4);
+  const scoreAtual = audV3AnaliticaNumero_(
+    ((resultadoAtual.pontuacao_calculada || {}).score_5)
+  );
+  const anterior = recentes.length ? recentes[recentes.length - 1] : null;
+  const ultimosTres = historico.slice(-3).map(function(item) { return item.score; }).filter(function(v) { return v !== null; });
+  const mediaTres = ultimosTres.length
+    ? Math.round((ultimosTres.reduce(function(soma, valor) { return soma + valor; }, 0) / ultimosTres.length) * 100) / 100
+    : null;
+
+  const criteriosAtuais = (Array.isArray(resultadoAtual.criterios_avaliados) ? resultadoAtual.criterios_avaliados : []).filter(function(item) {
+    return item && item.aplicavel !== false;
+  }).map(function(item) {
+    return {
+      id: String(item.id || ''),
+      nome: String(item.nome || item.id || 'Critério'),
+      nota: audV3AnaliticaNumero_(item.pontuacao),
+      status: String(item.status || '')
+    };
+  });
+
+  const mapaHistorico = {};
+  historico.forEach(function(item) {
+    item.criterios.forEach(function(criterio) {
+      const chaves = [
+        String(criterio.id || '').trim(),
+        'NOME:' + audV3NormalizarTrechoRastreavel_(criterio.nome || '')
+      ].filter(Boolean);
+      if (criterio.nota === null || criterio.nota === undefined) return;
+      chaves.forEach(function(chave) {
+        if (!chave || chave === 'NOME:') return;
+        if (!mapaHistorico[chave]) mapaHistorico[chave] = [];
+        mapaHistorico[chave].push(Number(criterio.nota));
+      });
+    });
+  });
+
+  const melhorias = [];
+  const pendentes = [];
+  const criteriosComparacao = [];
+  criteriosAtuais.forEach(function(item) {
+    const chaveId = String(item.id || '').trim();
+    const chaveNome = 'NOME:' + audV3NormalizarTrechoRastreavel_(item.nome || '');
+    const anteriores = (chaveId && mapaHistorico[chaveId] && mapaHistorico[chaveId].length)
+      ? mapaHistorico[chaveId]
+      : (mapaHistorico[chaveNome] || []);
+    const mediaHistorica = anteriores.length
+      ? Math.round((anteriores.reduce(function(soma, valor) { return soma + Number(valor || 0); }, 0) / anteriores.length) * 100) / 100
+      : null;
+    criteriosComparacao.push({
+      id: item.id,
+      nome: item.nome,
+      atual: item.nota,
+      mediaHistorica: mediaHistorica,
+      amostrasHistoricas: anteriores.length
+    });
+    if (!anteriores.length || item.nota === null) {
+      if (item.nota !== null && item.nota < 4) pendentes.push({ nome: item.nome, atual: item.nota, anterior: null });
+      return;
+    }
+    const ultima = anteriores[anteriores.length - 1];
+    if (item.nota >= 4 && ultima < 4 && item.nota > ultima) {
+      melhorias.push({ nome: item.nome, atual: item.nota, anterior: ultima, delta: Math.round((item.nota - ultima) * 10) / 10 });
+    } else if (item.nota < 4) {
+      pendentes.push({ nome: item.nome, atual: item.nota, anterior: ultima, delta: Math.round((item.nota - ultima) * 10) / 10 });
+    }
+  });
+
+  const linhaEvolucao = historico.slice(-8).map(function(item) {
+    return {
+      data: item.data || '',
+      dataMs: item.dataMs || 0,
+      score: item.score
+    };
+  });
+  if (scoreAtual !== null) {
+    linhaEvolucao.push({
+      data: audV3DataTexto_(interacao.DATA_INTERACAO || new Date()),
+      dataMs: interacao.DATA_INTERACAO ? new Date(interacao.DATA_INTERACAO).getTime() : Date.now(),
+      score: scoreAtual,
+      atual: true
+    });
+  }
+
+  return {
+    profissional: profissionalAtual,
+    totalHistorico: historico.length,
+    recentes: recentes,
+    scoreAtual: scoreAtual,
+    scoreAnterior: anterior ? anterior.score : null,
+    variacaoAtual: scoreAtual !== null && anterior && anterior.score !== null
+      ? Math.round((scoreAtual - anterior.score) * 10) / 10
+      : null,
+    mediaTres: mediaTres,
+    melhorias: melhorias.slice(0, 5),
+    pendentes: pendentes.slice(0, 5),
+    linhaEvolucao: linhaEvolucao,
+    criteriosComparacao: criteriosComparacao
+  };
+}
+
+function audV3SinalNumeroDocumento_(numero) {
+  const n = Number(numero);
+  if (!isFinite(n)) return '—';
+  if (n > 0) return '+' + String(n);
+  return String(n);
+}
+
+function audV3AplicarFundoTabela_(tabela, linha, cor) {
+  if (!tabela || linha < 0 || linha >= tabela.getNumRows()) return;
+  const registro = tabela.getRow(linha);
+  for (let coluna = 0; coluna < registro.getNumCells(); coluna++) {
+    registro.getCell(coluna).setBackgroundColor(cor);
+  }
+}
+
+function audV3RotuloDataGrafico_(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto) return '';
+  const match = texto.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (match) return match[1].padStart(2, '0') + '/' + match[2].padStart(2, '0');
+  const data = new Date(valor);
+  if (!isNaN(data.getTime())) {
+    return Utilities.formatDate(data, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'dd/MM');
+  }
+  return texto.slice(0, 10);
+}
+
+function audV3InserirImagemGrafico_(body, grafico, larguraMaxima) {
+  if (!grafico) return null;
+  try {
+    const imagem = body.appendImage(grafico.getBlob());
+    const larguraOriginal = Number(imagem.getWidth() || 0);
+    const alturaOriginal = Number(imagem.getHeight() || 0);
+    const largura = Math.min(Number(larguraMaxima || 700), larguraOriginal || Number(larguraMaxima || 700));
+    if (larguraOriginal > 0 && alturaOriginal > 0 && largura > 0) {
+      imagem.setWidth(Math.round(largura));
+      imagem.setHeight(Math.round(alturaOriginal * largura / larguraOriginal));
+    }
+    const parent = imagem.getParent();
+    if (parent && parent.getType && parent.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      parent.asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER).setSpacingAfter(12);
+    }
+    return imagem;
+  } catch (erro) {
+    registrarLog_('AUDITORIA', 'GRAFICO_DOCUMENTO', 'Falha ao inserir gráfico no relatório: ' + String(erro && erro.message ? erro.message : erro));
+    return null;
+  }
+}
+
+function audV3GraficoEvolucaoScore_(hist) {
+  const pontos = Array.isArray((hist || {}).linhaEvolucao) ? hist.linhaEvolucao.filter(function(item) {
+    return item && audV3AnaliticaNumero_(item.score) !== null;
+  }) : [];
+  if (pontos.length < 2) return null;
+
+  const builder = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.STRING, 'Auditoria')
+    .addColumn(Charts.ColumnType.NUMBER, 'Nota')
+    .addColumn(Charts.ColumnType.NUMBER, 'Referência 4,0');
+
+  pontos.forEach(function(item) {
+    builder.addRow([
+      audV3RotuloDataGrafico_(item.data),
+      Number(item.score),
+      4
+    ]);
+  });
+
+  return Charts.newLineChart()
+    .setDataTable(builder.build())
+    .setTitle('Evolução da nota geral por auditoria')
+    .setXAxisTitle('Data da auditoria')
+    .setYAxisTitle('Nota')
+    .setRange(0, 5)
+    .setDimensions(720, 300)
+    .setLegendPosition(Charts.Position.BOTTOM)
+    .setOption('colors', [AUDV3_PALETA_VOLUM.azulTexto, AUDV3_PALETA_VOLUM.muted])
+    .setOption('pointSize', 6)
+    .setOption('lineWidth', 3)
+    .setOption('chartArea', { left: 60, top: 45, width: '78%', height: '62%' })
+    .build();
+}
+
+function audV3GraficoCriterios_(hist) {
+  const criterios = (Array.isArray((hist || {}).criteriosComparacao) ? hist.criteriosComparacao : [])
+    .filter(function(item) {
+      return item &&
+        audV3AnaliticaNumero_(item.atual) !== null &&
+        audV3AnaliticaNumero_(item.mediaHistorica) !== null &&
+        Number(item.amostrasHistoricas || 0) > 0;
+    })
+    .slice(0, 10);
+  if (!criterios.length) return null;
+
+  const builder = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.STRING, 'Critério')
+    .addColumn(Charts.ColumnType.NUMBER, 'Atual')
+    .addColumn(Charts.ColumnType.NUMBER, 'Média histórica');
+
+  criterios.forEach(function(item) {
+    const nome = String(item.nome || item.id || 'Critério');
+    builder.addRow([
+      nome.length > 34 ? nome.slice(0, 31) + '...' : nome,
+      Number(item.atual),
+      Number(item.mediaHistorica)
+    ]);
+  });
+
+  const altura = Math.min(520, Math.max(260, 130 + criterios.length * 34));
+  return Charts.newBarChart()
+    .setDataTable(builder.build())
+    .setTitle('Atingimento por critério — atual x média histórica')
+    .setXAxisTitle('Nota')
+    .setYAxisTitle('Critério')
+    .setRange(0, 5)
+    .setDimensions(720, altura)
+    .setLegendPosition(Charts.Position.BOTTOM)
+    .setOption('colors', [AUDV3_PALETA_VOLUM.azulTexto, AUDV3_PALETA_VOLUM.muted])
+    .setOption('chartArea', { left: 205, top: 45, width: '62%', height: '68%' })
+    .build();
+}
+
+function audV3AdicionarGraficosEvolucaoDocumento_(body, hist) {
+  hist = hist || {};
+  const graficoLinha = audV3GraficoEvolucaoScore_(hist);
+  const graficoBarras = audV3GraficoCriterios_(hist);
+  if (!graficoLinha && !graficoBarras) return false;
+
+  audV3Titulo_(body, 'Evolução visual', DocumentApp.ParagraphHeading.HEADING2);
+  if (graficoLinha) {
+    audV3InserirImagemGrafico_(body, graficoLinha, 700);
+  }
+  if (graficoBarras) {
+    audV3InserirImagemGrafico_(body, graficoBarras, 700);
+  }
+  const nota = body.appendParagraph('Os gráficos utilizam somente auditorias validadas do mesmo profissional, cliente e função. Critérios sem histórico comparável não entram na média histórica.');
+  nota.editAsText().setFontSize(8).setForegroundColor(AUDV3_PALETA_VOLUM.muted).setItalic(true);
+  nota.setSpacingAfter(12);
+  return true;
+}
+
+function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado) {
+  const hist = audV3HistoricoDocumento_(cliente, interacao, tipo, resultado);
+  audV3Titulo_(body, 'Panorama de evolução', DocumentApp.ParagraphHeading.HEADING1);
+
+  const resumoTabela = audV3Tabela_(body, [
+    ['Nota atual', 'Nota anterior', 'Variação', 'Média das 3 anteriores'],
+    [
+      hist.scoreAtual === null ? 'Não calculável' : String(hist.scoreAtual) + '/5',
+      hist.scoreAnterior === null ? 'Sem histórico' : String(hist.scoreAnterior) + '/5',
+      hist.variacaoAtual === null ? '—' : audV3SinalNumeroDocumento_(hist.variacaoAtual),
+      hist.mediaTres === null ? 'Sem histórico' : String(hist.mediaTres) + '/5'
+    ]
+  ], [190, 190, 150, 240]);
+  if (resumoTabela) {
+    audV3AplicarFundoTabela_(resumoTabela, 1, '#F8FAFC');
+    const linhaValor = resumoTabela.getRow(1);
+    for (let i = 0; i < linhaValor.getNumCells(); i++) {
+      const texto = linhaValor.getCell(i).editAsText();
+      if (texto.getText().length) texto.setFontSize(13).setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+    }
+  }
+
+  if (!hist.totalHistorico) {
+    body.appendParagraph('Esta é a primeira auditoria validada deste profissional neste cliente com histórico comparável. A partir desta análise, o relatório passa a construir a linha de evolução automaticamente.')
+      .setSpacingAfter(12).setLineSpacing(1.15);
+    return;
+  }
+
+  audV3Titulo_(body, 'Resultados recentes', DocumentApp.ParagraphHeading.HEADING2);
+  const linhasHistorico = [['Data', 'Contexto', 'Nota', 'Variação']];
+  hist.recentes.forEach(function(item, indice) {
+    const anterior = indice > 0 ? hist.recentes[indice - 1] : null;
+    const delta = anterior ? Math.round((item.score - anterior.score) * 10) / 10 : null;
+    linhasHistorico.push([
+      item.data || '',
+      String(item.contexto || 'Não classificado').replace(/_/g, ' '),
+      String(item.score) + '/5',
+      delta === null ? '—' : audV3SinalNumeroDocumento_(delta)
+    ]);
+  });
+  linhasHistorico.push([
+    'Atual',
+    String(((resultado.contexto_interacao || {}).classificacao) || 'Não classificado').replace(/_/g, ' '),
+    hist.scoreAtual === null ? 'Não calculável' : String(hist.scoreAtual) + '/5',
+    hist.variacaoAtual === null ? '—' : audV3SinalNumeroDocumento_(hist.variacaoAtual)
+  ]);
+  const tabelaHistorico = audV3Tabela_(body, linhasHistorico, [145, 300, 120, 120]);
+  if (tabelaHistorico && tabelaHistorico.getNumRows() > 1) {
+    const linhaAtual = tabelaHistorico.getNumRows() - 1;
+    audV3AplicarFundoTabela_(tabelaHistorico, linhaAtual, AUDV3_PALETA_VOLUM.azulClaro);
+    const atualRegistro = tabelaHistorico.getRow(linhaAtual);
+    for (let i = 0; i < atualRegistro.getNumCells(); i++) {
+      atualRegistro.getCell(i).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+    }
+  }
+
+  audV3AdicionarGraficosEvolucaoDocumento_(body, hist);
+
+  audV3Titulo_(body, 'Melhorias já atingidas', DocumentApp.ParagraphHeading.HEADING2);
+  if (hist.melhorias.length) {
+    hist.melhorias.forEach(function(item) {
+      const p = body.appendListItem(item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5');
+      p.setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+      p.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.verdeTexto).setBold(true);
+    });
+  } else {
+    const pSemMelhora = body.appendParagraph('Ainda não há melhora comparável consolidada por critério no histórico disponível.');
+    pSemMelhora.editAsText().setForegroundColor('#667085');
+    pSemMelhora.setSpacingAfter(10);
+  }
+
+  audV3Titulo_(body, 'Pontos que seguem em evolução', DocumentApp.ParagraphHeading.HEADING2);
+  if (hist.pendentes.length) {
+    hist.pendentes.forEach(function(item) {
+      const comparacao = item.anterior === null
+        ? item.nome + ': nota atual ' + item.atual + '/5'
+        : item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5';
+      const pPendente = body.appendListItem(comparacao);
+      pPendente.setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+      pPendente.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.amareloTexto);
+      const textoPendente = pPendente.editAsText();
+      const nome = String(item.nome || '');
+      if (nome && textoPendente.getText().indexOf(nome) === 0) textoPendente.setBold(0, Math.max(0, nome.length - 1), true);
+    });
+  } else {
+    const pSemPendencia = body.appendParagraph('Nenhum critério aplicável ficou abaixo de 4/5 nesta auditoria.');
+    pSemPendencia.editAsText().setForegroundColor('#116329');
+    pSemPendencia.setSpacingAfter(10);
+  }
+}
+
 function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const m = r.metadados || {};
   const data = audV3DataTexto_(interacao.DATA_INTERACAO).replace(/[/:]/g, '-');
@@ -3982,6 +4936,9 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de ' + tipoInteracao + ' do SDR', DocumentApp.ParagraphHeading.TITLE);
+  const subtituloSdr = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
+  subtituloSdr.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.muted).setFontSize(10);
+  subtituloSdr.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
@@ -3994,6 +4951,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   ]);
   audV3AdicionarLinkGravacao_(body, interacao);
   audV3EspacoDocumento_(body, 8);
+  audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r);
   audV3TabelaResultadoInicial_(body, r, 'SDR');
   audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Script');
 
@@ -4075,6 +5033,9 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de reunião do Closer', DocumentApp.ParagraphHeading.TITLE);
+  const subtituloCloser = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
+  subtituloCloser.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.muted).setFontSize(10);
+  subtituloCloser.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
@@ -4087,6 +5048,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   ]);
   audV3AdicionarLinkGravacao_(body, interacao);
   audV3EspacoDocumento_(body, 8);
+  audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r);
   audV3TabelaResultadoInicial_(body, r, 'CLOSER');
   audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Processo');
 
@@ -4301,9 +5263,31 @@ function audV3PerguntasSdr_(body, item) {
   else body.appendParagraph('Nenhuma pergunta obrigatória ausente foi identificada.');
 }
 
+const AUDV3_PALETA_VOLUM = {
+  navy: '#172033',
+  navyEscuro: '#111827',
+  texto: '#344054',
+  muted: '#667085',
+  borda: '#D0D5DD',
+  superficie: '#F8FAFC',
+  azulClaro: '#EEF4FF',
+  azulTexto: '#3538CD',
+  verdeClaro: '#ECFDF3',
+  verdeTexto: '#116329',
+  amareloClaro: '#FFFAEB',
+  amareloTexto: '#934F00',
+  vermelhoClaro: '#FEF3F2',
+  vermelhoTexto: '#B42318',
+  cinzaClaro: '#F2F4F7'
+};
+
 function audV3Titulo_(body, texto, nivel) {
   const paragrafo = body.appendParagraph(audV3TextoDocumento_(texto, 'Seção')).setHeading(nivel);
-  paragrafo.editAsText().setForegroundColor('#111111');
+  const textoElemento = paragrafo.editAsText();
+  textoElemento.setForegroundColor(AUDV3_PALETA_VOLUM.navy).setBold(true);
+  if (nivel === DocumentApp.ParagraphHeading.TITLE) textoElemento.setFontSize(22);
+  else if (nivel === DocumentApp.ParagraphHeading.HEADING1) textoElemento.setFontSize(15);
+  else if (nivel === DocumentApp.ParagraphHeading.HEADING2) textoElemento.setFontSize(12);
   paragrafo.setSpacingBefore(nivel === DocumentApp.ParagraphHeading.TITLE ? 0 : 14).setSpacingAfter(8);
   return paragrafo;
 }
@@ -4312,8 +5296,10 @@ function audV3RotuloTexto_(body, rotulo, texto) {
   const rotuloSeguro = audV3TextoDocumento_(rotulo, 'Informação');
   const textoSeguro = audV3TextoDocumento_(texto, 'Não evidenciado.');
   const p = body.appendParagraph(rotuloSeguro + ': ');
-  p.editAsText().setBold(0, rotuloSeguro.length, true);
-  p.appendText(textoSeguro);
+  const base = p.editAsText();
+  base.setBold(0, Math.max(0, rotuloSeguro.length), true);
+  base.setForegroundColor(0, Math.max(0, rotuloSeguro.length), AUDV3_PALETA_VOLUM.navy);
+  p.appendText(textoSeguro).setForegroundColor(AUDV3_PALETA_VOLUM.texto);
   p.setSpacingAfter(8).setLineSpacing(1.15);
   return p;
 }
@@ -4730,6 +5716,10 @@ function audV3Tabela_(body, linhas, larguras) {
     return null;
   }
   const tabela = body.appendTable(dados);
+  try {
+    tabela.setBorderColor(AUDV3_PALETA_VOLUM.borda);
+    tabela.setBorderWidth(0.8);
+  } catch (erroBorda) {}
   const colunas = tabela.getRow(0).getNumCells();
   const largurasAplicadas = audV3LargurasTabela_(dados[0], larguras, 770);
   const tamanhoFonte = colunas >= 6 ? 8 : (colunas >= 4 ? 9 : 10);
@@ -4739,8 +5729,17 @@ function audV3Tabela_(body, linhas, larguras) {
       const celula = registro.getCell(coluna);
       if (coluna < largurasAplicadas.length) celula.setWidth(largurasAplicadas[coluna]);
       celula.setVerticalAlignment(DocumentApp.VerticalAlignment.TOP);
+      if (linha > 0) {
+        celula.setBackgroundColor(linha % 2 === 0 ? AUDV3_PALETA_VOLUM.superficie : '#FFFFFF');
+      }
       const textoCelula = celula.editAsText();
-      if (textoCelula.getText().length) textoCelula.setFontSize(tamanhoFonte);
+      if (textoCelula.getText().length) {
+        textoCelula.setFontSize(tamanhoFonte).setForegroundColor(AUDV3_PALETA_VOLUM.texto);
+        if (linha > 0 && colunas === 2 && coluna === 0) {
+          textoCelula.setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navy);
+          celula.setBackgroundColor(AUDV3_PALETA_VOLUM.azulClaro);
+        }
+      }
       for (let filho = 0; filho < celula.getNumChildren(); filho++) {
         const elemento = celula.getChild(filho);
         if (elemento.getType() === DocumentApp.ElementType.PARAGRAPH) {
@@ -4752,8 +5751,8 @@ function audV3Tabela_(body, linhas, larguras) {
   if (tabela.getNumRows()) {
     const cabecalho = tabela.getRow(0);
     for (let i = 0; i < cabecalho.getNumCells(); i++) {
-      cabecalho.getCell(i).setBackgroundColor('#202124');
-      cabecalho.getCell(i).editAsText().setForegroundColor('#ffffff').setBold(true);
+      cabecalho.getCell(i).setBackgroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+      cabecalho.getCell(i).editAsText().setForegroundColor('#FFFFFF').setBold(true);
     }
   }
   body.appendParagraph('').setSpacingAfter(8);
@@ -5223,6 +6222,11 @@ function audV3PromptSistemaSdr_() {
     'Identifique o locutor antes de extrair a evidência. Respostas e objeções do lead devem ficar exclusivamente em resposta_lead ou evidencia_lead. Se não houver fala do SDR para comprovar um item, escreva Não evidenciado na fala do SDR e use locutor_evidencia=NAO_IDENTIFICADO.',
     'Nenhum status, nota, ponto forte ou desvio pode existir sem evidência rastreável. Para CONFORME ou DESVIO_EXECUCAO, cite uma fala literal do SDR. Para comportamento ausente, descreva a regra esperada e marque explicitamente que não foi evidenciado na fala.',
     'Não invente falas, timestamps, intenções, objeções, resultados, métricas, pesos ou classificações.',
+    'Antes de avaliar o pitch, classifique contexto_interacao. Use somente um destes contextos SDR quando aplicável: PRIMEIRO_CONTATO, RETOMADA_QUALIFICACAO, RETOMADA_AGENDAMENTO, RETORNO_SOLICITADO, FOLLOW_UP, NO_SHOW, REAGENDAMENTO, OBJECAO_PENDENTE, DESQUALIFICACAO ou OUTRO. Identifique também o objetivo principal da ligação e a confiança da classificação.',
+    'Não trate retomadas como primeiro contato. Etapas comprovadamente concluídas antes devem ir em etapas_ja_concluidas e não podem ser cobradas novamente. Etapas incompatíveis com o objetivo atual devem ir em etapas_nao_aplicaveis. Avalie e pontue somente o que era executável nesta interação.',
+    'NUNCA considere uma pergunta ou etapa como já concluída apenas porque o CRM/tarefa sugere avanço. etapas_ja_concluidas exige evidência de histórico local ou referência inequívoca na fala atual de que aquela qualificação ocorreu antes.',
+    'Defina continuidade_confirmada=true somente com evidência objetiva de interação anterior relevante; registre a fonte curta em evidencia_continuidade. Sem prova, use false e não perdoe uma etapa obrigatória do pitch.',
+    'Em uma retomada, use o histórico operacional fornecido apenas para saber o que já aconteceu; toda avaliação da execução atual continua dependendo da transcrição atual. Se o histórico não for suficiente, marque necessita_revisao=true em vez de inventar.',
     'Abra a análise com um resumo factual da conversa, a motivação declarada pelo lead para o contato, a necessidade principal e o resultado da ligação. Se a motivação não estiver explícita, marque NAO_EVIDENCIADO.',
     'O SDR deve seguir o pitch vigente com alta fidelidade. Avalie cada etapa obrigatória separadamente e não compense uma etapa ausente com boa execução em outra.',
     'Alta fidelidade significa preservar intenção, elementos obrigatórios e sequência comercial; não significa recitar o texto palavra por palavra. Uma formulação semanticamente equivalente deve ser considerada CONFORME.',
@@ -5230,7 +6234,8 @@ function audV3PromptSistemaSdr_() {
     'Não registre como divergência expressões como pequena variação de estrutura, mudança de ordem das palavras ou redação diferente quando a intenção e os elementos obrigatórios estiverem preservados.',
     'ADERENCIA AO PITCH representa a cobertura do pitch completo e a conformidade de todas as etapas obrigatórias, não a comparação de uma única frase. O sistema calculará os percentuais a partir de etapas_pitch; não estime percentuais.',
     'Dentro de aderencia_script, avalie a INTRODUCAO separadamente: liste os elementos exigidos pelo pitch, os identificados, os ausentes, uma evidência curta, o desvio e a correção prática. Não use uma pergunta de segmento como evidência da introdução.',
-    'Em perguntas_qualificacao, classifique individualmente: corretas para perguntas feitas conforme o pitch; com_desvio para perguntas feitas de forma errada, incompleta, fora de ordem ou induzida; ausentes para perguntas obrigatórias do pitch que não foram feitas. Não repita a mesma pergunta em mais de uma lista.',
+    'Em perguntas_qualificacao, classifique individualmente: corretas para perguntas feitas conforme o pitch; com_desvio para perguntas feitas de forma errada, incompleta, fora de ordem ou induzida; ausentes somente para perguntas obrigatórias ainda aplicáveis e não realizadas. Não repita a mesma pergunta em mais de uma lista.',
+    'Para perguntas realizadas, preserve também resposta_lead quando houver resposta literal na transcrição. Para perguntas já respondidas em uma interação anterior, não as marque como ausentes na retomada; registre-as como já concluídas no contexto da interação.',
     'Para cada pergunta, confronte a fala real com a regra exata do pitch. Não considere pequenas diferenças de redação como erro quando preservarem o objetivo e a sequência da pergunta.',
     'A entrega de SDR ao CRM deve sempre sustentar seis blocos fixos: apresentação e abertura; condução até a qualificação; perguntas e LMV; objeções e contornos; valorização da reunião; agendamento com dupla escolha.',
     'Na apresentação e abertura, avalie obrigatoriamente quatro elementos distintos: o SDR disse o próprio nome, disse o nome da empresa, contextualizou a origem do contato e usou a frase estratégica de agilidade/empatia para pedir cerca de três minutos. Não considere a introdução completa se um desses elementos obrigatórios estiver ausente.',
@@ -5250,6 +6255,7 @@ function audV3PromptSistemaSdr_() {
     'Todo erro precisa de evidência curta, texto exato do pitch quando existir e aplicação prática para a situação.',
     'Se surgir uma objeção não prevista no pitch, avalie a resposta do SDR, proponha um tratamento como SUGESTAO_ENABLEMENT e sinalize se vale incluir a objeção na próxima versão do pitch. Não apresente a sugestão como regra vigente.',
     'Se o pitch não orientar o cenário, não crie uma fala oficial. Registre a lacuna de processo.',
+    'COACHING SDR OBRIGATÓRIO: nenhuma recomendação pode terminar em revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o SDR deve fazer ou falar. Use pergunta exata, frase sugerida, sequência, trilha de LMV, contorno, duas opções concretas de agenda, confirmação ou outro comportamento verificável.',
     'As correções devem ser comportamentos observáveis e treináveis, com critério claro de conclusão.',
     'Para cada critério não atingido, explique o impacto provável de não executar corretamente e o benefício comercial de corrigir. Não prometa resultado nem invente causalidade.',
     'O resumo_publicacao deve destacar somente os achados prioritários comprovados pela análise completa.',
@@ -5292,7 +6298,13 @@ function audV3CriteriosSdr_() {
 function audV3PromptSistemaCloser_() {
   return [
     'Atue como especialista em Sales Enablement e auditoria de reuniões comerciais de Closer, utilizando rigorosamente a metodologia VOLUM e o processo Venda Perfeita.',
-    'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento.',
+    'Antes de auditar, classifique contexto_interacao. Use somente um destes contextos Closer quando aplicável: PRIMEIRA_REUNIAO, FOLLOW_UP_DIAGNOSTICO, APRESENTACAO_PROPOSTA, FOLLOW_UP_PROPOSTA, NEGOCIACAO, FECHAMENTO, JURIDICO_CONTRATUAL, REAGENDAMENTO ou OUTRO. Identifique o momento da jornada, o objetivo principal e a confiança da classificação.',
+    'Os quatro momentos oficiais continuam como estrutura de referência, mas não force todos como aplicáveis em reuniões de proposta, follow-up, negociação, fechamento ou jurídico. O que já tiver sido concluído anteriormente deve ser registrado em etapas_ja_concluidas; o que não fizer sentido para o objetivo atual deve ser registrado em etapas_nao_aplicaveis e não pode reduzir a nota.',
+    'NUNCA marque Diagnóstico, Apresentação ou outro momento como já concluído apenas porque a reunião atual contém proposta, preço, negociação ou porque o CRM está em etapa avançada. etapas_ja_concluidas exige evidência de uma interação anterior ou referência inequívoca na transcrição atual a uma conversa anterior onde aquilo foi feito.',
+    'Se esta for a primeira reunião Closer comprovada, classifique PRIMEIRA_REUNIAO mesmo que a mesma conversa inclua demonstração, proposta ou preço. Nesse caso, as etapas de diagnóstico exigidas pelo pitch continuam aplicáveis se ainda não foram executadas.',
+    'Defina continuidade_confirmada=true somente quando houver evidência objetiva de interação comercial anterior relevante. Em evidencia_continuidade, cite a fonte curta: histórico local, tarefa/etapa registrada ou fala explícita como conforme conversamos na última reunião. Sem isso, use false.',
+    'Em reuniões de proposta, priorize conexão proposta-diagnóstico, escopo, entendimento de valores, dúvidas e próximo passo. Em follow-up de proposta, priorize avanço desde o último acordo, bloqueio real, decisores, pendências e compromisso. Em negociação, priorize impeditivo de fechamento, condição comercial/contratual, contrapartidas, decisão e prazo. Em fechamento/jurídico, priorize aceite comercial, pendências, responsáveis, assinatura/onboarding e prazo.',
+    'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento, respeitando a aplicabilidade do contexto atual.',
     'A transcrição é a única fonte de evidência do que aconteceu. O pitch vigente é a referência do comportamento esperado.',
         'Compare o comportamento por equivalência semântica: preserve como CONFORME toda fala que cumpra a intenção e os elementos obrigatórios, mesmo com palavras ou ordem diferentes do pitch. Não exija recitação literal.',
             'Nunca penalize variações fonéticas, grafias incorretas ou confusão de nomes causada pela transcrição. Quando o contexto for compatível, trate a variação como o mesmo participante informado nos metadados. Se a autoria não puder ser confirmada, sinalize a incerteza sem reduzir a nota.',

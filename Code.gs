@@ -549,7 +549,9 @@ function obterCabecalhosOficiais_() {
 
   estruturas[APP.sheets.transcricoes] = [
     'ID_TRANSCRICAO', 'ID_INTERACAO', 'FONTE', 'IDIOMA', 'CONTEUDO',
-    'TAMANHO_CARACTERES', 'STATUS', 'ERRO', 'IMPORTADO_EM', 'ATUALIZADO_EM'
+    'TAMANHO_CARACTERES', 'STATUS', 'ERRO', 'IMPORTADO_EM', 'ATUALIZADO_EM',
+    'CONTEUDO_NORMALIZADO', 'QUALIDADE_TRANSCRICAO', 'QUALIDADE_JSON',
+    'NORMALIZACAO_VERSAO', 'NORMALIZADA_EM'
   ];
 
   estruturas[APP.sheets.auditorias] = [
