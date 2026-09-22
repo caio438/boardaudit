@@ -4508,6 +4508,215 @@ function audV3ConclusaoDocumento_(body, resultado, tipo) {
   });
 }
 
+function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
+  tipo = String(tipo || '').toUpperCase();
+  resultadoAtual = resultadoAtual || {};
+  const metaAtual = resultadoAtual.metadados || {};
+  const profissionalAtual = String(
+    (tipo === 'CLOSER' ? metaAtual.closer : metaAtual.sdr) ||
+    interacao.COLABORADOR ||
+    interacao.VENDEDOR ||
+    ''
+  ).trim();
+  const profissionalChave = audV3NormalizarTrechoRastreavel_(profissionalAtual);
+  const idCliente = String(cliente.ID_CLIENTE || interacao.ID_CLIENTE || '');
+  const idInteracaoAtual = String(interacao.ID_INTERACAO || '');
+  const interacoes = {};
+  audV3Ler_('INTERACOES').forEach(function(item) {
+    if (item && item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item;
+  });
+
+  const historico = [];
+  audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
+    if (!auditoria || !auditoria.ID_AUDITORIA) return;
+    if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
+    if (String(auditoria.ID_CLIENTE || '') !== idCliente) return;
+    if (String(auditoria.ID_INTERACAO || '') === idInteracaoAtual) return;
+    if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA') return;
+    if (String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA') return;
+
+    let resultado = {};
+    try { resultado = JSON.parse(String(auditoria.RESULTADO_JSON || '{}')); } catch (erro) { resultado = {}; }
+    const interacaoHistorica = interacoes[String(auditoria.ID_INTERACAO || '')] || {};
+    const meta = resultado.metadados || {};
+    const profissional = String(
+      (tipo === 'CLOSER' ? meta.closer : meta.sdr) ||
+      interacaoHistorica.COLABORADOR ||
+      interacaoHistorica.VENDEDOR ||
+      ''
+    ).trim();
+    if (!profissional || audV3NormalizarTrechoRastreavel_(profissional) !== profissionalChave) return;
+
+    const score = audV3AnaliticaNumero_(
+      auditoria.SCORE !== '' && auditoria.SCORE !== null && auditoria.SCORE !== undefined
+        ? auditoria.SCORE
+        : ((resultado.pontuacao_calculada || {}).score_5)
+    );
+    if (score === null) return;
+
+    historico.push({
+      idAuditoria: String(auditoria.ID_AUDITORIA || ''),
+      dataMs: new Date(interacaoHistorica.DATA_INTERACAO || auditoria.CONCLUIDO_EM || auditoria.SOLICITADO_EM || 0).getTime(),
+      data: audV3DataTexto_(interacaoHistorica.DATA_INTERACAO || auditoria.CONCLUIDO_EM || auditoria.SOLICITADO_EM),
+      score: score,
+      contexto: String(((resultado.contexto_interacao || {}).classificacao) || ''),
+      criterios: audV3AnaliticaCriterios_(auditoria, resultado)
+    });
+  });
+
+  historico.sort(function(a, b) { return a.dataMs - b.dataMs; });
+  const recentes = historico.slice(-4);
+  const scoreAtual = audV3AnaliticaNumero_(
+    ((resultadoAtual.pontuacao_calculada || {}).score_5)
+  );
+  const anterior = recentes.length ? recentes[recentes.length - 1] : null;
+  const ultimosTres = historico.slice(-3).map(function(item) { return item.score; }).filter(function(v) { return v !== null; });
+  const mediaTres = ultimosTres.length
+    ? Math.round((ultimosTres.reduce(function(soma, valor) { return soma + valor; }, 0) / ultimosTres.length) * 100) / 100
+    : null;
+
+  const criteriosAtuais = (Array.isArray(resultadoAtual.criterios_avaliados) ? resultadoAtual.criterios_avaliados : []).filter(function(item) {
+    return item && item.aplicavel !== false;
+  }).map(function(item) {
+    return {
+      id: String(item.id || ''),
+      nome: String(item.nome || item.id || 'Critério'),
+      nota: audV3AnaliticaNumero_(item.pontuacao),
+      status: String(item.status || '')
+    };
+  });
+
+  const mapaHistorico = {};
+  historico.forEach(function(item) {
+    item.criterios.forEach(function(criterio) {
+      const chave = String(criterio.id || audV3NormalizarTrechoRastreavel_(criterio.nome || ''));
+      if (!chave || criterio.nota === null || criterio.nota === undefined) return;
+      if (!mapaHistorico[chave]) mapaHistorico[chave] = [];
+      mapaHistorico[chave].push(Number(criterio.nota));
+    });
+  });
+
+  const melhorias = [];
+  const pendentes = [];
+  criteriosAtuais.forEach(function(item) {
+    const chave = String(item.id || audV3NormalizarTrechoRastreavel_(item.nome || ''));
+    const anteriores = mapaHistorico[chave] || [];
+    if (!anteriores.length || item.nota === null) {
+      if (item.nota !== null && item.nota < 4) pendentes.push({ nome: item.nome, atual: item.nota, anterior: null });
+      return;
+    }
+    const ultima = anteriores[anteriores.length - 1];
+    if (item.nota >= 4 && ultima < 4 && item.nota > ultima) {
+      melhorias.push({ nome: item.nome, atual: item.nota, anterior: ultima, delta: Math.round((item.nota - ultima) * 10) / 10 });
+    } else if (item.nota < 4) {
+      pendentes.push({ nome: item.nome, atual: item.nota, anterior: ultima, delta: Math.round((item.nota - ultima) * 10) / 10 });
+    }
+  });
+
+  return {
+    profissional: profissionalAtual,
+    totalHistorico: historico.length,
+    recentes: recentes,
+    scoreAtual: scoreAtual,
+    scoreAnterior: anterior ? anterior.score : null,
+    variacaoAtual: scoreAtual !== null && anterior && anterior.score !== null
+      ? Math.round((scoreAtual - anterior.score) * 10) / 10
+      : null,
+    mediaTres: mediaTres,
+    melhorias: melhorias.slice(0, 5),
+    pendentes: pendentes.slice(0, 5)
+  };
+}
+
+function audV3SinalNumeroDocumento_(numero) {
+  const n = Number(numero);
+  if (!isFinite(n)) return '—';
+  if (n > 0) return '+' + String(n);
+  return String(n);
+}
+
+function audV3AplicarFundoTabela_(tabela, linha, cor) {
+  if (!tabela || linha < 0 || linha >= tabela.getNumRows()) return;
+  const registro = tabela.getRow(linha);
+  for (let coluna = 0; coluna < registro.getNumCells(); coluna++) {
+    registro.getCell(coluna).setBackgroundColor(cor);
+  }
+}
+
+function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado) {
+  const hist = audV3HistoricoDocumento_(cliente, interacao, tipo, resultado);
+  audV3Titulo_(body, 'Panorama de evolução', DocumentApp.ParagraphHeading.HEADING1);
+
+  const resumoTabela = audV3Tabela_(body, [
+    ['Nota atual', 'Nota anterior', 'Variação', 'Média das 3 anteriores'],
+    [
+      hist.scoreAtual === null ? 'Não calculável' : String(hist.scoreAtual) + '/5',
+      hist.scoreAnterior === null ? 'Sem histórico' : String(hist.scoreAnterior) + '/5',
+      hist.variacaoAtual === null ? '—' : audV3SinalNumeroDocumento_(hist.variacaoAtual),
+      hist.mediaTres === null ? 'Sem histórico' : String(hist.mediaTres) + '/5'
+    ]
+  ], [190, 190, 150, 240]);
+  if (resumoTabela) {
+    audV3AplicarFundoTabela_(resumoTabela, 1, '#F8FAFC');
+    const linhaValor = resumoTabela.getRow(1);
+    for (let i = 0; i < linhaValor.getNumCells(); i++) {
+      const texto = linhaValor.getCell(i).editAsText();
+      if (texto.getText().length) texto.setFontSize(13).setBold(true);
+    }
+  }
+
+  if (!hist.totalHistorico) {
+    body.appendParagraph('Esta é a primeira auditoria validada deste profissional neste cliente com histórico comparável. A partir desta análise, o relatório passa a construir a linha de evolução automaticamente.')
+      .setSpacingAfter(12).setLineSpacing(1.15);
+    return;
+  }
+
+  audV3Titulo_(body, 'Resultados recentes', DocumentApp.ParagraphHeading.HEADING2);
+  const linhasHistorico = [['Data', 'Contexto', 'Nota', 'Variação']];
+  hist.recentes.forEach(function(item, indice) {
+    const anterior = indice > 0 ? hist.recentes[indice - 1] : null;
+    const delta = anterior ? Math.round((item.score - anterior.score) * 10) / 10 : null;
+    linhasHistorico.push([
+      item.data || '',
+      String(item.contexto || 'Não classificado').replace(/_/g, ' '),
+      String(item.score) + '/5',
+      delta === null ? '—' : audV3SinalNumeroDocumento_(delta)
+    ]);
+  });
+  linhasHistorico.push([
+    'Atual',
+    String(((resultado.contexto_interacao || {}).classificacao) || 'Não classificado').replace(/_/g, ' '),
+    hist.scoreAtual === null ? 'Não calculável' : String(hist.scoreAtual) + '/5',
+    hist.variacaoAtual === null ? '—' : audV3SinalNumeroDocumento_(hist.variacaoAtual)
+  ]);
+  audV3Tabela_(body, linhasHistorico, [145, 300, 120, 120]);
+
+  audV3Titulo_(body, 'Melhorias já atingidas', DocumentApp.ParagraphHeading.HEADING2);
+  if (hist.melhorias.length) {
+    hist.melhorias.forEach(function(item) {
+      const p = body.appendListItem(item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5');
+      p.setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+      p.editAsText().setForegroundColor('#116329');
+    });
+  } else {
+    body.appendParagraph('Ainda não há melhora comparável consolidada por critério no histórico disponível.')
+      .setForegroundColor('#667085').setSpacingAfter(10);
+  }
+
+  audV3Titulo_(body, 'Pontos que seguem em evolução', DocumentApp.ParagraphHeading.HEADING2);
+  if (hist.pendentes.length) {
+    hist.pendentes.forEach(function(item) {
+      const comparacao = item.anterior === null
+        ? item.nome + ': nota atual ' + item.atual + '/5'
+        : item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5';
+      body.appendListItem(comparacao).setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+    });
+  } else {
+    body.appendParagraph('Nenhum critério aplicável ficou abaixo de 4/5 nesta auditoria.')
+      .setForegroundColor('#116329').setSpacingAfter(10);
+  }
+}
+
 function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const m = r.metadados || {};
   const data = audV3DataTexto_(interacao.DATA_INTERACAO).replace(/[/:]/g, '-');
@@ -4529,6 +4738,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   ]);
   audV3AdicionarLinkGravacao_(body, interacao);
   audV3EspacoDocumento_(body, 8);
+  audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r);
   audV3TabelaResultadoInicial_(body, r, 'SDR');
   audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Script');
 
@@ -4622,6 +4832,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   ]);
   audV3AdicionarLinkGravacao_(body, interacao);
   audV3EspacoDocumento_(body, 8);
+  audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r);
   audV3TabelaResultadoInicial_(body, r, 'CLOSER');
   audV3ChecklistInicial_(body, r, 'Checklist de Adesão ao Processo');
 
