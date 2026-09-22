@@ -4451,7 +4451,20 @@ function audV3TabelaResultadoInicial_(body, resultado, tipo) {
     tipo === 'CLOSER' ? String(((resultado.semaforo_geral || {}).cor) || '') : '',
     pc.score_5 === null || pc.score_5 === undefined ? 'Não calculável' : String(pc.score_5) + '/5 (' + String(pc.score_percentual || 0) + '%)'
   ]);
-  audV3Tabela_(body, linhas, [250, 140, 130]);
+  const tabelaResultado = audV3Tabela_(body, linhas, [250, 140, 130]);
+  if (tabelaResultado) {
+    for (let linha = 1; linha < tabelaResultado.getNumRows(); linha++) {
+      const status = String(tabelaResultado.getRow(linha).getCell(1).getText() || '').toUpperCase();
+      const criterio = String(tabelaResultado.getRow(linha).getCell(0).getText() || '').toUpperCase();
+      let cor = '#FFFFFF';
+      if (/SCORE CONSOLIDADO/.test(criterio)) cor = '#EEF4FF';
+      else if (/CONFORME|VERDE|ATINGIDO|CORRETO|COMPLETO/.test(status)) cor = '#ECFDF3';
+      else if (/DESVIO|NAO EXECUTADO|NÃO EXECUTADO|VERMELHO/.test(status)) cor = '#FEF3F2';
+      else if (/NAO APLICAVEL|NÃO APLICÁVEL|NAO EVIDENCIADO|NÃO EVIDENCIADO|N\/A/.test(status)) cor = '#F2F4F7';
+      else if (/PARCIAL|AMARELO|ATENCAO|ATENÇÃO/.test(status)) cor = '#FFFAEB';
+      audV3AplicarFundoTabela_(tabelaResultado, linha, cor);
+    }
+  }
 }
 
 function audV3ChecklistInicial_(body, resultado, titulo) {
@@ -4726,6 +4739,8 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de ' + tipoInteracao + ' do SDR', DocumentApp.ParagraphHeading.TITLE);
+  body.appendParagraph('Resumo executivo · evolução · aderência ao processo')
+    .setForegroundColor('#667085').setFontSize(10).setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
@@ -4820,6 +4835,8 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de reunião do Closer', DocumentApp.ParagraphHeading.TITLE);
+  body.appendParagraph('Resumo executivo · evolução · aderência ao processo')
+    .setForegroundColor('#667085').setFontSize(10).setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
