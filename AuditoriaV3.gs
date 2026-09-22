@@ -2370,8 +2370,9 @@ function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
     const link = String(item.LINK_CRM || '').trim();
     const dm = link.match(/\/deals\/([0-9a-f]{24})/i);
     const mesmoDeal = dealId && dm && String(dm[1]).toLowerCase() === dealId;
-    const mesmaOportunidade = oportunidade && audV3NormalizarTrechoRastreavel_(item.OPORTUNIDADE || item.TITULO || '') === oportunidade;
-    return Boolean(mesmoDeal || (!dealId && mesmaOportunidade));
+    const chaveItem = audV3NormalizarTrechoRastreavel_(item.OPORTUNIDADE || item.TITULO || '');
+    const mesmaOportunidade = oportunidade && oportunidade.length >= 8 && chaveItem === oportunidade;
+    return Boolean(mesmoDeal || mesmaOportunidade);
   }).sort(function(a, b) {
     return new Date(b.DATA_INTERACAO || 0).getTime() - new Date(a.DATA_INTERACAO || 0).getTime();
   }).slice(0, 5);
@@ -2391,6 +2392,8 @@ function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
     return {
       data: audV3DataIso_(item.DATA_INTERACAO),
       tipo_interacao: String(item.TIPO_INTERACAO || ''),
+      funcao: String(item.FUNCAO || ''),
+      colaborador: String(item.COLABORADOR || item.VENDEDOR || ''),
       titulo: String(item.TITULO || ''),
       oportunidade: String(item.OPORTUNIDADE || ''),
       contexto_identificado: String(contexto.classificacao || ''),
