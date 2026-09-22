@@ -215,6 +215,8 @@ const negociacaoValida = {
     etapas_aplicaveis: ['Negociação', 'Confirmação da decisão', 'Próximo passo'],
     etapas_ja_concluidas: ['Diagnóstico', 'Apresentação da solução'],
     etapas_nao_aplicaveis: ['Descoberta inicial'],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'Histórico local registra apresentação anterior.',
     necessita_revisao: false,
     motivo_revisao: ''
   },
@@ -235,6 +237,31 @@ const negociacaoValida = {
 const gateNegociacao = context.api.validateBoard(negociacaoValida, 'CLOSER');
 assert.notEqual(gateNegociacao.status, 'BLOQUEADO', 'Negociação com coaching específico não deve ser bloqueada.');
 
+
+
+const negociacaoSemContinuidade = JSON.parse(JSON.stringify(negociacaoValida));
+negociacaoSemContinuidade.contexto_interacao.continuidade_confirmada = false;
+negociacaoSemContinuidade.contexto_interacao.evidencia_continuidade = '';
+const gateSemContinuidade = context.api.validateBoard(negociacaoSemContinuidade, 'CLOSER');
+assert.equal(gateSemContinuidade.status, 'BLOQUEADO', 'Etapas anteriores não podem ser dispensadas sem prova de continuidade.');
+
+const primeiraReuniaoComProposta = JSON.parse(JSON.stringify(negociacaoValida));
+primeiraReuniaoComProposta.contexto_interacao = {
+  classificacao: 'PRIMEIRA_REUNIAO',
+  momento_jornada: 'PROPOSTA',
+  objetivo_principal: 'Diagnosticar, demonstrar e apresentar proposta na mesma reunião',
+  confianca: 'ALTA',
+  evidencias: ['Não há reunião Closer anterior no histórico local.'],
+  etapas_aplicaveis: ['Diagnóstico', 'Apresentação da solução', 'Fechamento'],
+  etapas_ja_concluidas: [],
+  etapas_nao_aplicaveis: [],
+  continuidade_confirmada: false,
+  evidencia_continuidade: '',
+  necessita_revisao: false,
+  motivo_revisao: ''
+};
+const gatePrimeiraComProposta = context.api.validateBoard(primeiraReuniaoComProposta, 'CLOSER');
+assert.notEqual(gatePrimeiraComProposta.status, 'BLOQUEADO', 'Primeira reunião pode conter proposta sem dispensar diagnóstico.');
 
 const autoriaErrada = JSON.parse(JSON.stringify(negociacaoValida));
 autoriaErrada.perguntas_diagnostico = {
