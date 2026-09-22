@@ -89,6 +89,8 @@ assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovaçã
 assert.ok(rd.includes('CONTEXTO DA INTERAÇÃO'), 'RD SDR não publica o contexto da interação.');
 assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
 assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
+assert.ok(rd.includes('PONTUAÇÃO POR CRITÉRIO'), 'RD SDR não publica a tabela de notas por critério.');
+assert.ok(rd.includes('Média dos critérios aplicáveis'), 'RD SDR não apresenta a média dos critérios aplicáveis.');
 
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de integridade ausente: ' + coluna);
