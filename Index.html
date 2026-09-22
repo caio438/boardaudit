@@ -1702,7 +1702,7 @@
           </div>
 
           <div class="actions">
-            <button id="btnExecutarAuditoria" class="btn success" onclick="executarAuditoriaV3Front()" disabled>Gerar e concluir auditoria</button>
+            <button id="btnExecutarAuditoria" class="btn success" onclick="executarAuditoriaV3Front()" disabled>Gerar para revisão</button>
           </div>
 
           <div id="resultadoAuditoriaAtual" style="display:none;margin-top:18px"></div>
@@ -6343,7 +6343,7 @@
     for (let indice = 0; indice < idsInteracoes.length; indice++) {
       const idInteracao = idsInteracoes[indice];
       const interacao = (estado.interacoesAuditoria || []).find(item => String(item.idInteracao) === String(idInteracao));
-      resultado.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Processando ' + (indice + 1) + ' de ' + idsInteracoes.length + ': ' + escapeHtml(tituloInteracaoAuditoria_(interacao || {})) + '. A validação, o Google Docs e o envio ao RD elegível serão concluídos automaticamente.</div></div>';
+      resultado.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Processando ' + (indice + 1) + ' de ' + idsInteracoes.length + ': ' + escapeHtml(tituloInteracaoAuditoria_(interacao || {})) + '. Para SDR e Closer, o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.</div></div>';
       try {
         const resposta = await analisarAudioLote_({
           idCliente: valor('audCliente'),
@@ -6371,7 +6371,7 @@
     estado.auditoriaAtual = ultimaAuditoria;
     renderizarAuditorias();
     botao.disabled = false;
-    botao.textContent = idsInteracoes.length > 1 ? 'Gerar e concluir ' + idsInteracoes.length + ' auditorias' : 'Gerar e concluir auditoria';
+    botao.textContent = idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão';
     if (ultimaAuditoria) renderizarPreviewAuditoriaV3(ultimaAuditoria);
     else resultado.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível concluir</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagensErro.join(' | ')) + '</div></div>';
     mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
