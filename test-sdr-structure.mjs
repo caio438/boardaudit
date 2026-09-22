@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const contexto = vm.createContext({ console });
-vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_};', contexto);
+vm.runInContext(codigo + '\nthis.apiV5={criteria:audV3CriteriosSdr_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,schema:audV3SchemaRespostaSdr_,promptOfficial:audV3PromptOficial_};', contexto);
 
 const resultado = {
   etapas_pitch: [
@@ -131,4 +131,57 @@ assert.equal(
   promptTeste
 );
 
-console.log('Estrutura SDR da produção atual validada.');
+
+const schemaContexto = contexto.apiV5.schema();
+assert.ok(schemaContexto.properties.contexto_interacao, 'O schema SDR precisa classificar o contexto da interação.');
+assert.ok(schemaContexto.properties.perguntas_qualificacao.properties.corretas.items.properties.resposta_lead, 'Perguntas SDR precisam preservar a resposta do lead.');
+
+const retomadaBoa = {
+  contexto_interacao: {
+    classificacao: 'RETOMADA_AGENDAMENTO',
+    momento_jornada: 'AGENDAMENTO',
+    objetivo_principal: 'Confirmar a reunião',
+    confianca: 'ALTA',
+    evidencias: ['Conforme combinamos, estou retornando para marcar.'],
+    etapas_aplicaveis: ['Valorização da Reunião', 'Dupla Escolha de Horários'],
+    etapas_ja_concluidas: ['Pergunta de Segmento', 'Validação de LMV'],
+    etapas_nao_aplicaveis: ['Introdução completa'],
+    necessita_revisao: false,
+    motivo_revisao: ''
+  },
+  criterios_avaliados: [
+    { aplicavel: true, status: 'DESVIO_EXECUCAO', correcao_pratica: 'Ofereça duas opções objetivas de agenda: "terça às 14h ou quarta às 16h?"' }
+  ],
+  proximos_passos: [
+    { acao: 'Confirme o horário escolhido e registre o compromisso.' }
+  ],
+  etapas_pitch: [
+    { etapa: 'Introdução', status: 'NAO_APLICAVEL' },
+    { etapa: 'Primeira Frase de Qualificação', status: 'NAO_APLICAVEL' },
+    { etapa: 'Pergunta de Segmento', status: 'NAO_APLICAVEL' },
+    { etapa: 'Validação de LMV', status: 'NAO_APLICAVEL' },
+    { etapa: 'Manejo de Objeções', status: 'NAO_APLICAVEL' },
+    { etapa: 'Valorização da Reunião', status: 'CONFORME' },
+    { etapa: 'Dupla Escolha de Horários', status: 'DESVIO_EXECUCAO' },
+    { etapa: 'Encerramento Profissional', status: 'CONFORME' }
+  ],
+  perguntas_qualificacao: { corretas: [], com_desvio: [], ausentes: [] }
+};
+const gateRetomada = contexto.apiV5.validateBoard(retomadaBoa, 'SDR');
+assert.notEqual(gateRetomada.status, 'BLOQUEADO', 'Retomada com coaching executável não deve ser bloqueada.');
+
+const coachingVago = JSON.parse(JSON.stringify(retomadaBoa));
+coachingVago.criterios_avaliados[0].correcao_pratica = 'Melhorar a condução e revisar o pitch.';
+const gateVago = contexto.apiV5.validateBoard(coachingVago, 'SDR');
+assert.equal(gateVago.status, 'BLOQUEADO', 'Coaching genérico deve bloquear publicação.');
+assert.match(gateVago.bloqueios.join(' '), /orientação genérica/i);
+
+const retomadaCobradaComoPrimeiroContato = JSON.parse(JSON.stringify(retomadaBoa));
+retomadaCobradaComoPrimeiroContato.etapas_pitch = retomadaCobradaComoPrimeiroContato.etapas_pitch.map((item, idx) => ({
+  ...item,
+  status: idx < 6 ? 'NAO_EXECUTADO' : item.status
+}));
+const gatePitchCompleto = contexto.apiV5.validateBoard(retomadaCobradaComoPrimeiroContato, 'SDR');
+assert.equal(gatePitchCompleto.status, 'REVISAR', 'Retomada cobrada como primeiro contato deve gerar alerta de revisão.');
+
+console.log('Estrutura SDR contextual e gate de publicação validados.');
