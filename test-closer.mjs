@@ -8,7 +8,7 @@ const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url)
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,validateOfficial:audV3ValidarResultadoOficial_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
 
 const criterios = context.api.criteria();
 const momentos = criterios.momentos.map((item, index) => ({
@@ -200,4 +200,44 @@ assert.match(trechoRdCloser, /REVISAR\|MELHORAR\|APROFUNDAR/, 'O formatter do RD
 assert.match(trechoRdCloser, /execute conforme a regra do pitch/, 'O RD não possui fallback concreto para regra literal do pitch.');
 assert.match(trechoRdCloser, /nenhuma ação adicional foi incluída porque não havia orientação específica/, 'O RD voltou a preencher coaching sem evidência concreta.');
 
-console.log(`Teste Closer válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise e normalização final.`);
+
+const schemaCloserContexto = context.api.schema('CLOSER');
+assert.ok(schemaCloserContexto.properties.contexto_interacao, 'O schema Closer precisa classificar o contexto da reunião.');
+assert.ok(context.api.apiSchema('CLOSER').properties.contexto_interacao, 'O contexto precisa ser solicitado na mesma chamada de IA.');
+
+const negociacaoValida = {
+  contexto_interacao: {
+    classificacao: 'NEGOCIACAO',
+    momento_jornada: 'NEGOCIACAO',
+    objetivo_principal: 'Resolver condição comercial e confirmar decisão',
+    confianca: 'ALTA',
+    evidencias: ['Se chegar nessa condição, conseguimos fechar.'],
+    etapas_aplicaveis: ['Negociação', 'Confirmação da decisão', 'Próximo passo'],
+    etapas_ja_concluidas: ['Diagnóstico', 'Apresentação da solução'],
+    etapas_nao_aplicaveis: ['Descoberta inicial'],
+    necessita_revisao: false,
+    motivo_revisao: ''
+  },
+  criterios_avaliados: [
+    { aplicavel: true, status: 'DESVIO_EXECUCAO', correcao_pratica: 'Pergunte "Se chegarmos nessa condição, existe outro ponto que impediria o fechamento?"' }
+  ],
+  proximos_passos: [
+    { acao: 'Confirme responsável e prazo de decisão antes de encerrar.' }
+  ],
+  momentos: [
+    { status: 'NAO_APLICAVEL' },
+    { status: 'NAO_APLICAVEL' },
+    { status: 'NAO_APLICAVEL' },
+    { status: 'AMARELO', como_agir: 'Confirme condição, contrapartida e prazo de decisão.' }
+  ],
+  perguntas_diagnostico: { perguntas_esperadas_nao_realizadas: [] }
+};
+const gateNegociacao = context.api.validateBoard(negociacaoValida, 'CLOSER');
+assert.notEqual(gateNegociacao.status, 'BLOQUEADO', 'Negociação com coaching específico não deve ser bloqueada.');
+
+const negociacaoCobradaComoDiagnostico = JSON.parse(JSON.stringify(negociacaoValida));
+negociacaoCobradaComoDiagnostico.perguntas_diagnostico.perguntas_esperadas_nao_realizadas = Array.from({ length: 7 }, (_, i) => ({ pergunta: 'Pergunta ' + i }));
+const gateDiagnosticoIndevido = context.api.validateBoard(negociacaoCobradaComoDiagnostico, 'CLOSER');
+assert.equal(gateDiagnosticoIndevido.status, 'REVISAR', 'Negociação com diagnóstico completo cobrado novamente deve exigir revisão.');
+
+console.log(`Teste Closer contextual válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise, contexto e gate.`);
