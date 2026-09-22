@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '5.0.0',
+  versao: '6.0.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -993,20 +993,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'SDR',
       PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-      VERSAO_MODELO: '5.0.0',
+      VERSAO_MODELO: '6.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agora,
       ATUALIZADO_EM: agora
     });
   } else {
     const versaoMaiorSdr = Number(String(existente.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 5) {
+    if (!String(existente.CRITERIOS_JSON || '').trim() || versaoMaiorSdr < 6) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloPadrao, {
         NOME_MODELO: 'Auditoria SDR VOLUM',
         TIPO_AUDITORIA: 'SDR',
         PROMPT_AUDITORIA: audV3PromptSistemaSdr_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosSdr_()),
-        VERSAO_MODELO: '5.0.0',
+        VERSAO_MODELO: '6.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
@@ -1026,20 +1026,20 @@ function INSTALAR_AUDITORIA_V3() {
       TIPO_AUDITORIA: 'CLOSER',
       PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
       CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-      VERSAO_MODELO: '5.0.0',
+      VERSAO_MODELO: '6.0.0',
       STATUS: 'ATIVO',
       CRIADO_EM: agoraCloser,
       ATUALIZADO_EM: agoraCloser
     });
   } else {
     const versaoMaior = Number(String(existenteCloser.VERSAO_MODELO || '0').split('.')[0]) || 0;
-    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 5) {
+    if (!String(existenteCloser.CRITERIOS_JSON || '').trim() || versaoMaior < 6) {
       audV3Atualizar_('MODELOS_AUDITORIA', 'ID_MODELO', AUDITORIA_V3.modeloCloserPadrao, {
         NOME_MODELO: 'Auditoria Closer VOLUM',
         TIPO_AUDITORIA: 'CLOSER',
         PROMPT_AUDITORIA: audV3PromptSistemaCloser_(),
         CRITERIOS_JSON: JSON.stringify(audV3CriteriosCloser_()),
-        VERSAO_MODELO: '5.0.0',
+        VERSAO_MODELO: '6.0.0',
         STATUS: 'ATIVO',
         ATUALIZADO_EM: new Date()
       });
@@ -1625,13 +1625,23 @@ function executarAuditoriaV3(dados) {
       )
       .slice(-1)[0];
     if (auditoriaExistente) {
-      return {
-        sucesso: true,
-        reutilizada: true,
-        mensagem: 'Esta gravação já foi analisada. O resultado existente foi reutilizado sem novo consumo de IA.',
-        auditoria: audV3AuditoriaFront_(auditoriaExistente),
-        auditorias: audV3ListarAuditoriasFront_()
-      };
+      let resultadoExistente = {};
+      try { resultadoExistente = JSON.parse(String(auditoriaExistente.RESULTADO_JSON || '{}')); } catch (e) {}
+      const contextoExistente = resultadoExistente.contexto_interacao || {};
+      const gateExistente = resultadoExistente.validacao_board || {};
+      const reutilizavelContextual = tipo === 'PLANO' || (
+        String(contextoExistente.classificacao || '').trim() &&
+        String(gateExistente.status || '').toUpperCase() !== 'BLOQUEADO'
+      );
+      if (reutilizavelContextual) {
+        return {
+          sucesso: true,
+          reutilizada: true,
+          mensagem: 'Esta gravação já foi analisada. O resultado existente foi reutilizado sem novo consumo de IA.',
+          auditoria: audV3AuditoriaFront_(auditoriaExistente),
+          auditorias: audV3ListarAuditoriasFront_()
+        };
+      }
     }
   }
   const criterios = audV3ParseJson_(modelo.CRITERIOS_JSON, 'Os critérios do modelo não contêm um JSON válido.');
