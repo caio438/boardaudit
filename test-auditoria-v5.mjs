@@ -178,7 +178,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.0\.1'/, 'Engine de auditoria não foi versionado para o patch v6.0.1.');
+assert.match(audit, /versao:\s*'6\.0\.2'/, 'Engine de auditoria não foi versionado para o patch v6.0.2.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
