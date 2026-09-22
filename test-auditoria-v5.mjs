@@ -86,6 +86,11 @@ assert.ok(audit.includes('contexto_interacao'), 'Resultado estruturado não cont
 assert.ok(front.includes('JSON estruturado da auditoria'), 'Board não permite inspecionar o JSON antes da publicação.');
 assert.ok(front.includes('BLOQUEADA PELO GATE'), 'Board não bloqueia visualmente uma auditoria reprovada pelo gate.');
 assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovação explícita antes da publicação.');
+assert.ok(front.includes('O que foi executado corretamente'), 'Resumo SDR não destaca execuções corretas.');
+assert.ok(front.includes('Perguntas de qualificação'), 'Resumo SDR não mostra as perguntas de qualificação.');
+assert.ok(front.includes('Se eu fosse o SDR, faria assim'), 'Resumo SDR não mostra execução prática recomendada.');
+assert.ok(front.includes('Pontuação por critério'), 'Resumo SDR não mostra tabela de notas.');
+assert.ok(front.includes('Média dos critérios aplicáveis'), 'Resumo SDR não mostra média contextual dos critérios aplicáveis.');
 assert.ok(rd.includes('CONTEXTO DA INTERAÇÃO'), 'RD SDR não publica o contexto da interação.');
 assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
 assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
