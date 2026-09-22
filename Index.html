@@ -6498,7 +6498,9 @@
           : auditoria.status === 'EM_REVISAO'
             ? String(((r.validacao_board || {}).status || '')).toUpperCase() === 'BLOQUEADO'
               ? `<span class="status danger" style="align-self:center">BLOQUEADA PELO GATE</span>
-                 <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
+                 ${!((r.validacao_board || {}).reparo_coaching || {}).tentativa
+                   ? `<button id="btnRepararCoaching" class="btn secondary" type="button" onclick="repararCoachingAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Corrigir orientações</button>`
+                   : '<span class="small muted">O reparo automático foi tentado. Consulte os bloqueios para intervenção humana.</span>'}`
               : `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
                  <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
                  <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
@@ -7162,7 +7164,7 @@
         ${item.o_que_fazer ? `<p><strong>O que fazer:</strong> ${escapeHtml(item.o_que_fazer)}</p>` : ''}
         ${item.texto_script ? `<p class="line-tip">💡 <strong>Texto exato do pitch:</strong> ${escapeHtml(item.texto_script)}</p>` : ''}
         ${item.como_agir ? `<p><strong>Como agir:</strong> ${escapeHtml(item.como_agir)}</p>` : ''}
-        ${(item.aulas_revisar || []).length ? `<p><strong>Aulas a revisar:</strong> ${escapeHtml(item.aulas_revisar.join(', '))}</p>` : ''}
+        ${(item.aulas_revisar || []).length ? `<p><strong>Material complementar — aulas:</strong> ${escapeHtml(item.aulas_revisar.join(', '))}</p>` : ''}
       `;
     }).join('');
 
@@ -7406,6 +7408,21 @@
 
   function tabelaAuditoriaV3(cabecalhos, linhas) {
     return `<table><thead><tr>${cabecalhos.map(item => `<th>${escapeHtml(item)}</th>`).join('')}</tr></thead><tbody>${(linhas || []).map(linha => `<tr>${linha.map(celula => `<td>${escapeHtml(formatarStatusAuditoriaV3(celula === null || celula === undefined || celula === '' ? '-' : celula))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+
+  function repararCoachingAuditoriaFront(idAuditoria) {
+    const botao = document.getElementById('btnRepararCoaching');
+    if (botao) { botao.disabled = true; botao.textContent = 'Corrigindo orientações...'; }
+    google.script.run.withSuccessHandler(resposta => {
+      estado.auditorias = resposta.auditorias || [];
+      estado.auditoriaAtual = resposta.auditoria || null;
+      renderizarAuditorias();
+      renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
+      mostrarToast(resposta.mensagem, resposta.sucesso ? 'success' : 'error');
+    }).withFailureHandler(erro => {
+      if (botao) { botao.disabled = false; botao.textContent = 'Corrigir orientações'; }
+      tratarErro(erro);
+    }).repararCoachingAuditoriaV3(idAuditoria);
   }
 
   function aprovarAuditoriaV3Front(idAuditoria) {

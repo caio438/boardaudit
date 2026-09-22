@@ -152,6 +152,7 @@ function audRdCtx_(id) {
   var resultado = audV3ParseJson_(a.RESULTADO_JSON, 'Resultado JSON inválido.');
   var criterios = audV3ParseJson_(String(a.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Critérios da auditoria inválidos.');
   audV3ValidarResultadoOficial_(resultado, a.TIPO_AUDITORIA, criterios, transcricao.CONTEUDO, a.CONTEUDO_PITCH_SNAPSHOT || '');
+  audV3ExigirGatePublicavel_(resultado, a.TIPO_AUDITORIA);
 
   var dealId = audRdDeal_(i);
   if (!dealId) throw new Error('A interação não possui negociação do RD vinculada. Informe o vínculo manualmente quando necessário.');
@@ -285,6 +286,7 @@ function audRdTextoCloser_(c) {
   }
   function curtoCloser(v, max) {
     var t = String(v || '').replace(/\s+/g, ' ').trim();
+    if (/Comportamento faltante:.*Critério verificável:/.test(t)) return t;
     max = max || 220;
     return t.length > max ? t.slice(0, max - 1).trim() + '…' : t;
   }
@@ -326,6 +328,7 @@ function audRdTextoCloser_(c) {
   function coachingAcionavelCloser(v) {
     var bruto = String(v || '').trim();
     if (!bruto) return false;
+    if (audV3TemRecomendacaoGenerica_(bruto)) return false;
     var t = normCloser(bruto);
     if (/[?"]/g.test(bruto)) return true;
     if (/(PERGUNTE|DIGA|CONFIRME|OFERECA|OFEREÇA|ENVIE|MARQUE|AGEND|CONVITE|DUAS OPCOES|DUAS OPÇÕES|DATA|HORARIO|HORÁRIO|REGISTRE|VALIDAR COM O LEAD|PERGUNTA DO PITCH)/.test(t)) return true;
@@ -409,8 +412,8 @@ function audRdTextoCloser_(c) {
 
   desviosMomentos.slice(0, 4).forEach(function(item) {
     var nome = String(item.nome || item.id || 'Momento');
-    if (String(item.texto_script || '').trim()) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': use a formulação do pitch "' + curtoCloser(item.texto_script, 240) + '"');
+    if (String(item.texto_script || '').trim() && coachingAcionavelCloser(item.texto_script)) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': orientação prática — ' + curtoCloser(item.texto_script, 240));
       return;
     }
     if (String(item.como_agir || '').trim() && coachingAcionavelCloser(item.como_agir)) {
@@ -433,7 +436,7 @@ function audRdTextoCloser_(c) {
       adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(criterioRelacionado.correcao_pratica, 240));
       return;
     }
-    if (criterioRelacionado && String(criterioRelacionado.regra_pitch || '').trim() && !/^n[aã]o previsto/i.test(String(criterioRelacionado.regra_pitch || ''))) {
+    if (criterioRelacionado && /\?/.test(String(criterioRelacionado.regra_pitch || '')) && !audV3TemRecomendacaoGenerica_(criterioRelacionado.regra_pitch)) {
       adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a regra do pitch "' + curtoCloser(criterioRelacionado.regra_pitch, 240) + '"');
     }
   });
@@ -595,6 +598,7 @@ function audRdTextoSdr_(c) {
     return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   }
   function curto(v, max) {
+    if (/Comportamento faltante:.*Critério verificável:/.test(String(v || ''))) return String(v);
     var t = String(v || '').replace(/\s+/g, ' ').trim();
     max = max || 220;
     return t.length > max ? t.slice(0, max - 1).trim() + '…' : t;

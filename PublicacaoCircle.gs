@@ -400,6 +400,9 @@ function circleValidarTipoAuditoriaPublicavel_(auditoria) {
   if (['SDR', 'CLOSER', 'PLANO'].indexOf(tipo) < 0) {
     throw new Error('Esta auditoria não possui um tipo compatível com a publicação no Circle.');
   }
+  if (['SDR', 'CLOSER'].includes(tipo) && auditoria.RESULTADO_JSON) {
+    audV3ExigirGatePublicavel_(JSON.parse(auditoria.RESULTADO_JSON), tipo);
+  }
   return tipo;
 }
 
