@@ -721,7 +721,7 @@ function audRdTextoSdr_(c) {
     'CENÁRIO DA LIGAÇÃO',
     curto(co.resumo_conversa || 'Não evidenciado', 430),
     co.motivacao_contato ? 'Motivação: ' + curto(co.motivacao_contato, 240) : '',
-    co.necessidade_principal ? 'Necessidade: ' + curto(co.necessidade_principal, 240) : '',
+    co.necessidade_principal ? 'Necessidade principal: ' + curto(co.necessidade_principal, 240) : '',
     co.resultado_contato ? 'Resultado: ' + curto(co.resultado_contato, 240) : '',
     '',
     'O QUE FOI EXECUTADO CORRETAMENTE',
