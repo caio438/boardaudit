@@ -4454,15 +4454,31 @@ function audV3TabelaResultadoInicial_(body, resultado, tipo) {
   const tabelaResultado = audV3Tabela_(body, linhas, [250, 140, 130]);
   if (tabelaResultado) {
     for (let linha = 1; linha < tabelaResultado.getNumRows(); linha++) {
-      const status = String(tabelaResultado.getRow(linha).getCell(1).getText() || '').toUpperCase();
-      const criterio = String(tabelaResultado.getRow(linha).getCell(0).getText() || '').toUpperCase();
+      const registro = tabelaResultado.getRow(linha);
+      const status = String(registro.getCell(1).getText() || '').toUpperCase();
+      const criterio = String(registro.getCell(0).getText() || '').toUpperCase();
       let cor = '#FFFFFF';
-      if (/SCORE CONSOLIDADO/.test(criterio)) cor = '#EEF4FF';
-      else if (/CONFORME|VERDE|ATINGIDO|CORRETO|COMPLETO/.test(status)) cor = '#ECFDF3';
-      else if (/DESVIO|NAO EXECUTADO|NÃO EXECUTADO|VERMELHO/.test(status)) cor = '#FEF3F2';
-      else if (/NAO APLICAVEL|NÃO APLICÁVEL|NAO EVIDENCIADO|NÃO EVIDENCIADO|N\/A/.test(status)) cor = '#F2F4F7';
-      else if (/PARCIAL|AMARELO|ATENCAO|ATENÇÃO/.test(status)) cor = '#FFFAEB';
+      let corTextoStatus = AUDV3_PALETA_VOLUM.texto;
+      if (/SCORE CONSOLIDADO/.test(criterio)) {
+        cor = AUDV3_PALETA_VOLUM.azulClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.azulTexto;
+      } else if (/CONFORME|VERDE|ATINGIDO|CORRETO|COMPLETO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.verdeClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.verdeTexto;
+      } else if (/DESVIO|NAO EXECUTADO|NÃO EXECUTADO|VERMELHO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.vermelhoClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.vermelhoTexto;
+      } else if (/NAO APLICAVEL|NÃO APLICÁVEL|NAO EVIDENCIADO|NÃO EVIDENCIADO|N\/A/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.cinzaClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.muted;
+      } else if (/PARCIAL|AMARELO|ATENCAO|ATENÇÃO/.test(status)) {
+        cor = AUDV3_PALETA_VOLUM.amareloClaro;
+        corTextoStatus = AUDV3_PALETA_VOLUM.amareloTexto;
+      }
       audV3AplicarFundoTabela_(tabelaResultado, linha, cor);
+      registro.getCell(0).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navy);
+      registro.getCell(1).editAsText().setBold(true).setForegroundColor(corTextoStatus);
+      registro.getCell(2).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
     }
   }
 }
@@ -4683,7 +4699,7 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
     const linhaValor = resumoTabela.getRow(1);
     for (let i = 0; i < linhaValor.getNumCells(); i++) {
       const texto = linhaValor.getCell(i).editAsText();
-      if (texto.getText().length) texto.setFontSize(13).setBold(true);
+      if (texto.getText().length) texto.setFontSize(13).setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
     }
   }
 
@@ -4711,14 +4727,22 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
     hist.scoreAtual === null ? 'Não calculável' : String(hist.scoreAtual) + '/5',
     hist.variacaoAtual === null ? '—' : audV3SinalNumeroDocumento_(hist.variacaoAtual)
   ]);
-  audV3Tabela_(body, linhasHistorico, [145, 300, 120, 120]);
+  const tabelaHistorico = audV3Tabela_(body, linhasHistorico, [145, 300, 120, 120]);
+  if (tabelaHistorico && tabelaHistorico.getNumRows() > 1) {
+    const linhaAtual = tabelaHistorico.getNumRows() - 1;
+    audV3AplicarFundoTabela_(tabelaHistorico, linhaAtual, AUDV3_PALETA_VOLUM.azulClaro);
+    const atualRegistro = tabelaHistorico.getRow(linhaAtual);
+    for (let i = 0; i < atualRegistro.getNumCells(); i++) {
+      atualRegistro.getCell(i).editAsText().setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+    }
+  }
 
   audV3Titulo_(body, 'Melhorias já atingidas', DocumentApp.ParagraphHeading.HEADING2);
   if (hist.melhorias.length) {
     hist.melhorias.forEach(function(item) {
       const p = body.appendListItem(item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5');
       p.setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
-      p.editAsText().setForegroundColor('#116329');
+      p.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.verdeTexto).setBold(true);
     });
   } else {
     const pSemMelhora = body.appendParagraph('Ainda não há melhora comparável consolidada por critério no histórico disponível.');
@@ -4732,7 +4756,12 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
       const comparacao = item.anterior === null
         ? item.nome + ': nota atual ' + item.atual + '/5'
         : item.nome + ': ' + item.anterior + '/5 → ' + item.atual + '/5';
-      body.appendListItem(comparacao).setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+      const pPendente = body.appendListItem(comparacao);
+      pPendente.setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
+      pPendente.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.amareloTexto);
+      const textoPendente = pPendente.editAsText();
+      const nome = String(item.nome || '');
+      if (nome && textoPendente.getText().indexOf(nome) === 0) textoPendente.setBold(0, Math.max(0, nome.length - 1), true);
     });
   } else {
     const pSemPendencia = body.appendParagraph('Nenhum critério aplicável ficou abaixo de 4/5 nesta auditoria.');
@@ -4751,7 +4780,7 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de ' + tipoInteracao + ' do SDR', DocumentApp.ParagraphHeading.TITLE);
   const subtituloSdr = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
-  subtituloSdr.editAsText().setForegroundColor('#667085').setFontSize(10);
+  subtituloSdr.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.muted).setFontSize(10);
   subtituloSdr.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
@@ -4848,7 +4877,7 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de reunião do Closer', DocumentApp.ParagraphHeading.TITLE);
   const subtituloCloser = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
-  subtituloCloser.editAsText().setForegroundColor('#667085').setFontSize(10);
+  subtituloCloser.editAsText().setForegroundColor(AUDV3_PALETA_VOLUM.muted).setFontSize(10);
   subtituloCloser.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
@@ -5077,9 +5106,31 @@ function audV3PerguntasSdr_(body, item) {
   else body.appendParagraph('Nenhuma pergunta obrigatória ausente foi identificada.');
 }
 
+const AUDV3_PALETA_VOLUM = {
+  navy: '#172033',
+  navyEscuro: '#111827',
+  texto: '#344054',
+  muted: '#667085',
+  borda: '#D0D5DD',
+  superficie: '#F8FAFC',
+  azulClaro: '#EEF4FF',
+  azulTexto: '#3538CD',
+  verdeClaro: '#ECFDF3',
+  verdeTexto: '#116329',
+  amareloClaro: '#FFFAEB',
+  amareloTexto: '#934F00',
+  vermelhoClaro: '#FEF3F2',
+  vermelhoTexto: '#B42318',
+  cinzaClaro: '#F2F4F7'
+};
+
 function audV3Titulo_(body, texto, nivel) {
   const paragrafo = body.appendParagraph(audV3TextoDocumento_(texto, 'Seção')).setHeading(nivel);
-  paragrafo.editAsText().setForegroundColor('#111111');
+  const textoElemento = paragrafo.editAsText();
+  textoElemento.setForegroundColor(AUDV3_PALETA_VOLUM.navy).setBold(true);
+  if (nivel === DocumentApp.ParagraphHeading.TITLE) textoElemento.setFontSize(22);
+  else if (nivel === DocumentApp.ParagraphHeading.HEADING1) textoElemento.setFontSize(15);
+  else if (nivel === DocumentApp.ParagraphHeading.HEADING2) textoElemento.setFontSize(12);
   paragrafo.setSpacingBefore(nivel === DocumentApp.ParagraphHeading.TITLE ? 0 : 14).setSpacingAfter(8);
   return paragrafo;
 }
@@ -5088,8 +5139,10 @@ function audV3RotuloTexto_(body, rotulo, texto) {
   const rotuloSeguro = audV3TextoDocumento_(rotulo, 'Informação');
   const textoSeguro = audV3TextoDocumento_(texto, 'Não evidenciado.');
   const p = body.appendParagraph(rotuloSeguro + ': ');
-  p.editAsText().setBold(0, rotuloSeguro.length, true);
-  p.appendText(textoSeguro);
+  const base = p.editAsText();
+  base.setBold(0, Math.max(0, rotuloSeguro.length), true);
+  base.setForegroundColor(0, Math.max(0, rotuloSeguro.length), AUDV3_PALETA_VOLUM.navy);
+  p.appendText(textoSeguro).setForegroundColor(AUDV3_PALETA_VOLUM.texto);
   p.setSpacingAfter(8).setLineSpacing(1.15);
   return p;
 }
@@ -5506,6 +5559,10 @@ function audV3Tabela_(body, linhas, larguras) {
     return null;
   }
   const tabela = body.appendTable(dados);
+  try {
+    tabela.setBorderColor(AUDV3_PALETA_VOLUM.borda);
+    tabela.setBorderWidth(0.8);
+  } catch (erroBorda) {}
   const colunas = tabela.getRow(0).getNumCells();
   const largurasAplicadas = audV3LargurasTabela_(dados[0], larguras, 770);
   const tamanhoFonte = colunas >= 6 ? 8 : (colunas >= 4 ? 9 : 10);
@@ -5515,8 +5572,17 @@ function audV3Tabela_(body, linhas, larguras) {
       const celula = registro.getCell(coluna);
       if (coluna < largurasAplicadas.length) celula.setWidth(largurasAplicadas[coluna]);
       celula.setVerticalAlignment(DocumentApp.VerticalAlignment.TOP);
+      if (linha > 0) {
+        celula.setBackgroundColor(linha % 2 === 0 ? AUDV3_PALETA_VOLUM.superficie : '#FFFFFF');
+      }
       const textoCelula = celula.editAsText();
-      if (textoCelula.getText().length) textoCelula.setFontSize(tamanhoFonte);
+      if (textoCelula.getText().length) {
+        textoCelula.setFontSize(tamanhoFonte).setForegroundColor(AUDV3_PALETA_VOLUM.texto);
+        if (linha > 0 && colunas === 2 && coluna === 0) {
+          textoCelula.setBold(true).setForegroundColor(AUDV3_PALETA_VOLUM.navy);
+          celula.setBackgroundColor(AUDV3_PALETA_VOLUM.azulClaro);
+        }
+      }
       for (let filho = 0; filho < celula.getNumChildren(); filho++) {
         const elemento = celula.getChild(filho);
         if (elemento.getType() === DocumentApp.ElementType.PARAGRAPH) {
@@ -5528,8 +5594,8 @@ function audV3Tabela_(body, linhas, larguras) {
   if (tabela.getNumRows()) {
     const cabecalho = tabela.getRow(0);
     for (let i = 0; i < cabecalho.getNumCells(); i++) {
-      cabecalho.getCell(i).setBackgroundColor('#202124');
-      cabecalho.getCell(i).editAsText().setForegroundColor('#ffffff').setBold(true);
+      cabecalho.getCell(i).setBackgroundColor(AUDV3_PALETA_VOLUM.navyEscuro);
+      cabecalho.getCell(i).editAsText().setForegroundColor('#FFFFFF').setBold(true);
     }
   }
   body.appendParagraph('').setSpacingAfter(8);
