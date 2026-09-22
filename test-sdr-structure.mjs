@@ -209,7 +209,8 @@ assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Oi, tudo bem\?/);
 assert.match(transcricaoNormalizada.texto, /LEAD \(Carlos\): Tudo certo\./);
 assert.equal(transcricaoNormalizada.metricas.duplicadasRemovidas, 1, 'Duplicação adjacente deve ser removida sem IA.');
 assert.ok(transcricaoNormalizada.metricas.rotulosCorrigidos >= 2, 'Variações seguras de rótulo devem ser normalizadas.');
-assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Qual é o segmento da empresa\? Somos uma indústria de alimentos\./);
+assert.match(transcricaoNormalizada.texto, /SDR \(Elaine\): Qual é o segmento da empresa\?/);
+assert.match(transcricaoNormalizada.texto, /LOCUTOR_NAO_IDENTIFICADO: Somos uma indústria de alimentos\./, 'Linha sem rótulo nunca deve ser atribuída automaticamente ao profissional.');
 
 const qualidadeBoa = contexto.apiV5.qualityTranscript(
   contexto.apiV5.normalizeTranscript(
