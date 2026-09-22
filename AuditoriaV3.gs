@@ -1718,6 +1718,7 @@ function executarAuditoriaV3(dados) {
         : [],
       tipoAuditoria: tipo,
       equipePlano: equipePlano,
+      idAuditoria: idAuditoria,
       contextoOperacional: audV3ContextoHistoricoOportunidade_(interacao, tipo)
     };
 
@@ -2274,6 +2275,11 @@ function audV3ChamarGemini_(ctx) {
   };
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
+  const consumoBase = {
+    idAuditoria: String(ctx.idAuditoria || ''),
+    idInteracao: String(((ctx || {}).interacao || {}).ID_INTERACAO || ''),
+    tipoAuditoria: tipo
+  };
 
   for (let indiceModelo = 0; indiceModelo < modelosApi.length; indiceModelo++) {
     const modeloApi = modelosApi[indiceModelo];
@@ -2293,7 +2299,7 @@ function audV3ChamarGemini_(ctx) {
         muteHttpExceptions: true
       });
     } catch (erroRede) {
-      registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, 0, '', String(erroRede), inicioTentativaIa);
+      registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, 0, '', String(erroRede), inicioTentativaIa, Object.assign({}, consumoBase, { tentativa: tentativa + 1 }));
       console.warn('Gemini indisponível na tentativa ' + (tentativa + 1) + ': ' + String(erroRede));
       if (tentativa < esperasMs.length - 1) continue;
       break;
@@ -2301,7 +2307,7 @@ function audV3ChamarGemini_(ctx) {
 
     const status = resposta.getResponseCode();
     const corpo = resposta.getContentText();
-    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, status, corpo, '', inicioTentativaIa);
+    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo, status, corpo, '', inicioTentativaIa, Object.assign({}, consumoBase, { tentativa: tentativa + 1 }));
     if (status >= 200 && status < 300) {
       const json = audV3ParseJson_(corpo, 'A resposta HTTP do Gemini não é JSON válido.');
       const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
