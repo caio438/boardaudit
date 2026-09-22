@@ -1707,7 +1707,8 @@ function executarAuditoriaV3(dados) {
           })
         : [],
       tipoAuditoria: tipo,
-      equipePlano: equipePlano
+      equipePlano: equipePlano,
+      contextoOperacional: audV3ContextoHistoricoOportunidade_(interacao, tipo)
     };
 
     const processarRespostaIa = function(respostaIa) {
@@ -1721,6 +1722,7 @@ function executarAuditoriaV3(dados) {
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+      normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
       return { resultado: normalizado, modeloIaUsado: modeloUsado };
     };
 
@@ -1782,13 +1784,30 @@ function executarAuditoriaV3(dados) {
       ATUALIZADO_EM: new Date()
     });
 
-    const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
+    if (tipo === 'PLANO') {
+      const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
+      const atualizadaPlano = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
+      return {
+        sucesso: true,
+        automatica: true,
+        mensagem: finalizacao.mensagem,
+        publicacaoRd: finalizacao.rd || null,
+        auditoria: audV3AuditoriaFront_(atualizadaPlano),
+        auditorias: audV3ListarAuditoriasFront_()
+      };
+    }
+
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
+      AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
     const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
     return {
       sucesso: true,
-      automatica: true,
-      mensagem: finalizacao.mensagem,
-      publicacaoRd: finalizacao.rd || null,
+      automatica: false,
+      mensagem: 'Auditoria validada e enviada ao Board para revisão humana. Nenhuma publicação no RD foi realizada.',
+      publicacaoRd: null,
       auditoria: audV3AuditoriaFront_(atualizada),
       auditorias: audV3ListarAuditoriasFront_()
     };
@@ -1990,6 +2009,10 @@ function aprovarAuditoriaV3(idAuditoria) {
   }
   const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
   audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
+  const gateBoard = resultado.validacao_board || audV3ValidarQualidadeBoard_(resultado, auditoria.TIPO_AUDITORIA);
+  if (String(gateBoard.status || '').toUpperCase() === 'BLOQUEADO') {
+    throw new Error('A auditoria possui bloqueios de qualidade e não pode ser publicada antes de ser regenerada/corrigida: ' + (gateBoard.bloqueios || []).join(' | '));
+  }
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -2010,11 +2033,33 @@ function aprovarAuditoriaV3(idAuditoria) {
     ATUALIZADO_EM: new Date()
   });
 
+  let publicacaoRd = null;
+  const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (['SDR', 'CLOSER'].includes(tipoAuditoria) && typeof audRdPublicarAutomaticamente_ === 'function') {
+    publicacaoRd = audRdPublicarAutomaticamente_(id);
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: publicacaoRd && publicacaoRd.publicada
+        ? 'CONCLUIDA'
+        : (publicacaoRd && String(publicacaoRd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD'),
+      AUTOMACAO_ERRO: publicacaoRd && publicacaoRd.erro ? String(publicacaoRd.erro) : '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  } else {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: 'CONCLUIDA',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  }
+
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   return {
     sucesso: true,
-    mensagem: 'Auditoria aprovada e Google Docs criado.',
+    mensagem: publicacaoRd && publicacaoRd.publicada
+      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no RD CRM.'
+      : 'Auditoria aprovada e Google Docs criado. ' + (publicacaoRd && publicacaoRd.mensagem ? publicacaoRd.mensagem : ''),
+    publicacaoRd: publicacaoRd,
     auditoria: audV3AuditoriaFront_(atualizada),
     auditorias: audV3ListarAuditoriasFront_()
   };
@@ -2288,6 +2333,65 @@ function audV3ChamarGemini_(ctx) {
   throw new Error('Todos os modelos gratuitos de IA disponíveis estão temporariamente ocupados. Tente novamente mais tarde.');
 }
 
+function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
+  const atual = interacao || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) return { historico: [] };
+
+  const idAtual = String(atual.ID_INTERACAO || '');
+  const cliente = String(atual.ID_CLIENTE || '');
+  const linkAtual = String(atual.LINK_CRM || '').trim();
+  const dealMatch = linkAtual.match(/\/deals\/([0-9a-f]{24})/i);
+  const dealId = dealMatch ? String(dealMatch[1]).toLowerCase() : '';
+  const oportunidade = audV3NormalizarTrechoRastreavel_(atual.OPORTUNIDADE || atual.TITULO || '');
+  const dataAtual = new Date(atual.DATA_INTERACAO || 0).getTime();
+
+  const anteriores = audV3Ler_('INTERACOES').filter(function(item) {
+    if (!item || String(item.ID_INTERACAO || '') === idAtual) return false;
+    if (cliente && String(item.ID_CLIENTE || '') !== cliente) return false;
+    const dataItem = new Date(item.DATA_INTERACAO || 0).getTime();
+    if (dataAtual && dataItem && dataItem >= dataAtual) return false;
+    const link = String(item.LINK_CRM || '').trim();
+    const dm = link.match(/\/deals\/([0-9a-f]{24})/i);
+    const mesmoDeal = dealId && dm && String(dm[1]).toLowerCase() === dealId;
+    const mesmaOportunidade = oportunidade && audV3NormalizarTrechoRastreavel_(item.OPORTUNIDADE || item.TITULO || '') === oportunidade;
+    return Boolean(mesmoDeal || (!dealId && mesmaOportunidade));
+  }).sort(function(a, b) {
+    return new Date(b.DATA_INTERACAO || 0).getTime() - new Date(a.DATA_INTERACAO || 0).getTime();
+  }).slice(0, 5);
+
+  const auditorias = audV3Ler_('AUDITORIAS');
+  const historico = anteriores.map(function(item) {
+    const idInteracao = String(item.ID_INTERACAO || '');
+    const audit = auditorias.filter(function(a) {
+      return String(a.ID_INTERACAO || '') === idInteracao &&
+        ['EM_REVISAO', 'APROVADA'].includes(String(a.STATUS || '').toUpperCase()) &&
+        String(a.RESULTADO_JSON || '').trim();
+    }).slice(-1)[0] || {};
+    let resultado = {};
+    try { resultado = JSON.parse(String(audit.RESULTADO_JSON || '{}')); } catch (e) {}
+    const resumo = tipo === 'CLOSER' ? (resultado.resumo_reuniao || {}) : (resultado.resumo_contato || {});
+    const contexto = resultado.contexto_interacao || {};
+    return {
+      data: audV3DataIso_(item.DATA_INTERACAO),
+      tipo_interacao: String(item.TIPO_INTERACAO || ''),
+      titulo: String(item.TITULO || ''),
+      oportunidade: String(item.OPORTUNIDADE || ''),
+      contexto_identificado: String(contexto.classificacao || ''),
+      objetivo_identificado: String(contexto.objetivo_principal || ''),
+      resultado_anterior: String(resumo.resultado_reuniao || resumo.resultado_contato || ''),
+      score: audit.SCORE === '' || audit.SCORE === undefined ? null : Number(audit.SCORE)
+    };
+  });
+
+  return {
+    tipo_interacao_atual: String(atual.TIPO_INTERACAO || ''),
+    oportunidade_atual: String(atual.OPORTUNIDADE || atual.TITULO || ''),
+    descricao_origem_atual: String(atual.DESCRICAO_ORIGEM || '').slice(0, 900),
+    historico: historico
+  };
+}
+
 function audV3MontarPrompt_(ctx) {
   const i = ctx.identidade;
   const tipo = String(ctx.tipoAuditoria || ctx.modelo.TIPO_AUDITORIA || 'SDR').toUpperCase();
@@ -2357,6 +2461,7 @@ function audV3MontarPrompt_(ctx) {
     '<CRITERIOS_OFICIAIS>\n' + JSON.stringify(ctx.criterios, null, 2) + '\n</CRITERIOS_OFICIAIS>',
     '<REGRAS_CLIENTE>\n' + String(ctx.cliente.REGRAS_CLIENTE || 'Nenhuma regra adicional cadastrada.') + '\n</REGRAS_CLIENTE>',
     '<METAS_CLIENTE>\n' + JSON.stringify(ctx.metas && ctx.metas.length ? ctx.metas : { informado: false }, null, 2) + '\n</METAS_CLIENTE>',
+    '<CONTEXTO_OPERACIONAL_PREVIO>\n' + JSON.stringify(ctx.contextoOperacional || { historico: [] }, null, 2) + '\n</CONTEXTO_OPERACIONAL_PREVIO>',
     '<PITCH_VIGENTE>\n' + String(ctx.pitch.CONTEUDO_PITCH || '') + '\n</PITCH_VIGENTE>',
     '<CATALOGO_EVIDENCIAS_TRANSCRICAO>\n' + audV3CatalogarEvidencias_(ctx.transcricao.CONTEUDO || '') + '\n</CATALOGO_EVIDENCIAS_TRANSCRICAO>',
     'Cada código EV identifica um turno literal da transcrição. Para campos de evidência, escolha somente um turno pertinente ao critério e copie um trecho literal contíguo do texto após o código EV. Nunca coloque o código EV no campo de evidência. Se nenhum turno comprovar diretamente o item, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO. Não escolha uma fala apenas para preencher o campo.',
@@ -2370,11 +2475,12 @@ function audV3MontarPrompt_(ctx) {
     'Variações fonéticas ou erros de transcrição em nomes próprios, como Aline/Elaine ou Moisés/Moreira, não constituem desvio do pitch e nunca podem reduzir a nota. Use o responsável informado nos metadados como identidade canônica quando o contexto indicar a mesma pessoa.',
     tipo === 'SDR' ? 'REGRA CANÔNICA DO ARQUIVO: quando nome_arquivo_origem estiver preenchido no padrão nomedaempresa-numero-nomedosdr, considere obrigatoriamente como empresa o texto antes do primeiro hífen, como número da chamada o trecho central e como SDR o texto após o segundo hífen. A transcrição não pode substituir esses dados por aproximações fonéticas.' : '',
     tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica, Maíra e o usuário operacional Sinergia Engenharia são identidades válidas de CLOSER. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
+    'Classifique contexto_interacao antes de definir aplicabilidade. CONTEXTO_OPERACIONAL_PREVIO é apoio de continuidade e não substitui a evidência da transcrição atual.',
     tipo === 'SDR' ? 'AUDITORIA SDR OBRIGATÓRIA: examine separadamente apresentação pelo próprio nome, nome da empresa, origem do contato, frase de agilidade e empatia (reconhecer que o lead está corrido e pedir apenas três minutos), primeira frase de qualificação, pergunta de segmento, motivo do contato, todas as perguntas obrigatórias do pitch, validação do LMV, trilha positiva ou negativa correta conforme o LMV, manejo de objeções, valorização da reunião, oferta de dois horários concretos, confirmação do compromisso, aviso de contato prévio/no-show e encerramento profissional.' : '',
-    tipo === 'SDR' ? 'O SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
+    tipo === 'SDR' ? 'Em PRIMEIRO_CONTATO, o SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Em retomadas, cobre apenas perguntas ainda pendentes ou novamente necessárias ao objetivo atual. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
     tipo === 'SDR' ? 'A validação do LMV é obrigatória. Identifique a resposta do lead, determine se o LMV foi positivo ou negativo e verifique se o SDR seguiu a trilha correspondente. LMV positivo deve seguir o pitch positivo. LMV negativo deve seguir o pitch negativo de desqualificação/precificação. Não penalize quando o pitch não definir a trilha; nesse caso use LACUNA_PROCESSO.' : '',
     tipo === 'SDR' ? 'No fechamento, pedido aberto de disponibilidade não equivale a dupla escolha. CONFORME exige duas opções concretas de data ou horário quando houver tentativa de agendamento, valorização objetiva da reunião e indicação ativa do próximo passo. Verifique também se o SDR informou que fará contato antes da reunião conforme a cadência de no-show.' : '',
-    tipo === 'CLOSER' ? 'COACHING CLOSER OBRIGATÓRIO: nenhuma recomendação pode terminar em verbos genéricos como revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o closer deve fazer ou falar. Toda correção prática deve conter pelo menos um comportamento observável: pergunta exata, frase sugerida, sequência de perguntas, duas opções concretas de agenda, confirmação objetiva de próximo passo ou outro comportamento verificável na próxima reunião.' : '',
+    tipo === 'CLOSER' ? 'Não penalize uma reunião de proposta, follow-up, negociação, fechamento ou jurídico pela ausência de descoberta inicial que o histórico indique como já concluída. A ausência só é desvio se o comportamento era aplicável ao objetivo atual. COACHING CLOSER OBRIGATÓRIO: nenhuma recomendação pode terminar em verbos genéricos como revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o closer deve fazer ou falar. Toda correção prática deve conter pelo menos um comportamento observável: pergunta exata, frase sugerida, sequência de perguntas, duas opções concretas de agenda, confirmação objetiva de próximo passo ou outro comportamento verificável na próxima reunião.' : '',
     tipo === 'CLOSER' ? 'Para perguntas_esperadas_nao_realizadas, traga a pergunta exata do pitch quando ela existir e use sugestao_aplicacao para explicar em qual momento fazê-la e qual resposta/decisão ela deve ajudar a obter. Não escreva apenas revisar o diagnóstico, aprofundar a dor ou explorar impacto.' : '',
     tipo === 'CLOSER' ? 'Para analise_impacto_implicacao, identifique especificamente o que ficou sem exploração e converta a lacuna em perguntas executáveis. Priorize impacto operacional, impacto financeiro, risco/custo da inação, urgência, prioridade, resultado desejado e critério de decisão quando fizerem sentido para a conversa. Se a pergunta não existir no pitch, coloque-a somente em repertorio_perguntas_sugeridas com origem=SUGESTAO_ENABLEMENT.' : '',
     tipo === 'CLOSER' ? 'No fechamento, se houver falha de próximo passo, descreva como o closer deve encerrar: proposta de data/horário ou duas opções objetivas, confirmação do responsável, compromisso combinado e registro do próximo contato. Evite recomendações abstratas como alinhar melhor o follow-up.' : '',
@@ -2638,6 +2744,83 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
+  resultado = resultado || {};
+  const tipo = String(tipoAuditoria || '').toUpperCase();
+  const alertas = [];
+  const bloqueios = [];
+  if (!['SDR', 'CLOSER'].includes(tipo)) {
+    return { status: 'OK', alertas: [], bloqueios: [], revisao_humana_obrigatoria: false };
+  }
+
+  const contexto = resultado.contexto_interacao || {};
+  const classificacao = String(contexto.classificacao || '').trim().toUpperCase();
+  const confianca = String(contexto.confianca || '').trim().toUpperCase();
+  if (!classificacao) bloqueios.push('Contexto da interação não foi classificado.');
+  if (!String(contexto.objetivo_principal || '').trim()) bloqueios.push('Objetivo principal da interação não foi informado.');
+  if (confianca === 'BAIXA' || contexto.necessita_revisao === true) {
+    alertas.push('Classificação contextual com baixa confiança ou marcada para revisão.');
+  }
+  if (!(Array.isArray(contexto.etapas_aplicaveis) && contexto.etapas_aplicaveis.length)) {
+    alertas.push('Nenhuma etapa aplicável foi explicitada para o contexto.');
+  }
+
+  const coaching = [];
+  (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+    if (item && item.aplicavel !== false && String(item.status || '').toUpperCase() !== 'CONFORME') coaching.push(item.correcao_pratica);
+  });
+  (Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos : []).forEach(function(item) {
+    coaching.push((item || {}).acao);
+  });
+  if (tipo === 'SDR') {
+    const perguntas = resultado.perguntas_qualificacao || {};
+    (Array.isArray(perguntas.com_desvio) ? perguntas.com_desvio : []).forEach(function(item) { coaching.push((item || {}).correcao_pratica); });
+    (Array.isArray(perguntas.ausentes) ? perguntas.ausentes : []).forEach(function(item) { coaching.push((item || {}).como_perguntar); });
+  } else {
+    (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(item) {
+      if (item && !['VERDE', 'CONFORME'].includes(String(item.status || item.cor || '').toUpperCase())) {
+        coaching.push(item.como_agir || item.o_que_fazer || item.texto_script);
+      }
+    });
+  }
+
+  const genericos = coaching.filter(function(valor) {
+    const bruto = String(valor || '').trim();
+    if (!bruto) return false;
+    const t = audV3NormalizarTrechoRastreavel_(bruto);
+    const verboGenerico = /\b(revisar|melhorar|aprofundar|reforcar|estruturar|ajustar|seguir o pitch|aplicar corretamente|explorar melhor)\b/.test(t);
+    const observavel = /[?"]/g.test(bruto) || /\b(pergunte|diga|confirme|ofereca|envie|marque|agende|registre|data|horario|opcoes|opção|opcoes)\b/.test(t);
+    return verboGenerico && !observavel && bruto.length < 220;
+  });
+  if (genericos.length) {
+    bloqueios.push('Há orientação genérica sem comportamento observável: ' + String(genericos[0]).slice(0, 180));
+  }
+
+  if (tipo === 'SDR' && classificacao && classificacao !== 'PRIMEIRO_CONTATO') {
+    const etapas = Array.isArray(resultado.etapas_pitch) ? resultado.etapas_pitch : [];
+    const naoExecutadas = etapas.filter(function(item) {
+      return ['NAO_EXECUTADO', 'NAO_EXECUTADA'].includes(String((item || {}).status || '').toUpperCase());
+    }).length;
+    if (etapas.length && naoExecutadas >= Math.ceil(etapas.length * 0.6)) {
+      alertas.push('Possível aplicação indevida do pitch completo em uma retomada; revisar aplicabilidade antes de aprovar.');
+    }
+  }
+
+  if (tipo === 'CLOSER' && /PROPOSTA|NEGOCIACAO|FECHAMENTO|JURIDICO/.test(classificacao)) {
+    const perguntasAusentes = (((resultado.perguntas_diagnostico || {}).perguntas_esperadas_nao_realizadas) || []);
+    if (Array.isArray(perguntasAusentes) && perguntasAusentes.length >= 6) {
+      alertas.push('Muitas perguntas de diagnóstico foram cobradas em uma interação tardia da jornada; revisar se eram realmente aplicáveis.');
+    }
+  }
+
+  return {
+    status: bloqueios.length ? 'BLOQUEADO' : (alertas.length ? 'REVISAR' : 'OK'),
+    alertas: alertas,
+    bloqueios: bloqueios,
+    revisao_humana_obrigatoria: true
+  };
 }
 
 function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
@@ -3434,6 +3617,7 @@ function audV3SchemaRespostaApi_(tipoAuditoria) {
 
   const camposIa = [
     'schema_versao',
+    'contexto_interacao',
     'resumo_reuniao',
     'momentos',
     'perguntas_diagnostico',
@@ -3510,6 +3694,22 @@ function audV3SchemaRespostaCloser_() {
     type: 'OBJECT',
     properties: {
       schema_versao: texto,
+      contexto_interacao: {
+        type: 'OBJECT',
+        properties: {
+          classificacao: texto,
+          momento_jornada: texto,
+          objetivo_principal: texto,
+          confianca: texto,
+          evidencias: { type: 'ARRAY', maxItems: 3, items: evidencia },
+          etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          necessita_revisao: { type: 'BOOLEAN' },
+          motivo_revisao: texto
+        },
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'necessita_revisao', 'motivo_revisao']
+      },
       metadados: {
         type: 'OBJECT',
         properties: { empresa: texto, closer: texto, lead: texto, data_hora: texto, pitch: texto, versao_pitch: texto }
@@ -3652,7 +3852,7 @@ function audV3SchemaRespostaCloser_() {
         required: ['titulo', 'resumo', 'highlights', 'correcoes_prioritarias', 'proximos_passos']
       }
     },
-    required: ['schema_versao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'objecoes_respostas', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
+    required: ['schema_versao', 'contexto_interacao', 'metadados', 'validacao_entradas', 'resumo_reuniao', 'resumo_executivo', 'momentos', 'analise_temporal', 'perguntas_diagnostico', 'objecoes_respostas', 'analise_impacto_implicacao', 'repertorio_perguntas_sugeridas', 'inteligencia_mercado', 'semaforo_geral', 'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao']
   };
 }
 
@@ -3674,13 +3874,13 @@ function audV3SchemaRespostaSdr_() {
   };
   const perguntaCorreta = {
     type: 'OBJECT',
-    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
-    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'por_que_esta_correta']
+    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, resposta_lead: evidencia, regra_pitch: evidencia, por_que_esta_correta: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'resposta_lead', 'regra_pitch', 'por_que_esta_correta']
   };
   const perguntaComDesvio = {
     type: 'OBJECT',
-    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
-    required: ['pergunta', 'locutor', 'evidencia', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
+    properties: { pergunta: texto, locutor: texto, evidencia: evidencia, resposta_lead: evidencia, regra_pitch: evidencia, erro_ou_desvio: texto, correcao_pratica: texto, impacto: texto },
+    required: ['pergunta', 'locutor', 'evidencia', 'resposta_lead', 'regra_pitch', 'erro_ou_desvio', 'correcao_pratica', 'impacto']
   };
   const perguntaAusente = {
     type: 'OBJECT',
@@ -3700,6 +3900,22 @@ function audV3SchemaRespostaSdr_() {
     type: 'OBJECT',
     properties: {
       schema_versao: texto,
+      contexto_interacao: {
+        type: 'OBJECT',
+        properties: {
+          classificacao: texto,
+          momento_jornada: texto,
+          objetivo_principal: texto,
+          confianca: texto,
+          evidencias: { type: 'ARRAY', maxItems: 3, items: evidencia },
+          etapas_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_ja_concluidas: { type: 'ARRAY', maxItems: 12, items: texto },
+          etapas_nao_aplicaveis: { type: 'ARRAY', maxItems: 12, items: texto },
+          necessita_revisao: { type: 'BOOLEAN' },
+          motivo_revisao: texto
+        },
+        required: ['classificacao', 'momento_jornada', 'objetivo_principal', 'confianca', 'evidencias', 'etapas_aplicaveis', 'etapas_ja_concluidas', 'etapas_nao_aplicaveis', 'necessita_revisao', 'motivo_revisao']
+      },
       metadados: {
         type: 'OBJECT',
         properties: { empresa: texto, sdr: texto, lead: texto, data_hora: texto, pitch: texto, versao_pitch: texto }
@@ -3800,7 +4016,7 @@ function audV3SchemaRespostaSdr_() {
       }
     },
     required: [
-      'schema_versao', 'metadados', 'validacao_entradas', 'resumo_contato', 'resumo_executivo', 'etapas_pitch', 'aderencia_script',
+      'schema_versao', 'contexto_interacao', 'metadados', 'validacao_entradas', 'resumo_contato', 'resumo_executivo', 'etapas_pitch', 'aderencia_script',
       'perguntas_qualificacao', 'manejo_objecoes', 'objecoes_fora_pitch', 'fechamento', 'analise_conversacao',
       'qualidade_perguntas_respostas', 'gestao_objecoes_duvidas', 'conclusao_agendamento',
       'criterios_avaliados', 'feedback', 'impactos_nao_conformidades', 'checklist', 'duracao', 'lacunas_processo', 'proximos_passos', 'resumo_publicacao'
@@ -5223,6 +5439,9 @@ function audV3PromptSistemaSdr_() {
     'Identifique o locutor antes de extrair a evidência. Respostas e objeções do lead devem ficar exclusivamente em resposta_lead ou evidencia_lead. Se não houver fala do SDR para comprovar um item, escreva Não evidenciado na fala do SDR e use locutor_evidencia=NAO_IDENTIFICADO.',
     'Nenhum status, nota, ponto forte ou desvio pode existir sem evidência rastreável. Para CONFORME ou DESVIO_EXECUCAO, cite uma fala literal do SDR. Para comportamento ausente, descreva a regra esperada e marque explicitamente que não foi evidenciado na fala.',
     'Não invente falas, timestamps, intenções, objeções, resultados, métricas, pesos ou classificações.',
+    'Antes de avaliar o pitch, classifique contexto_interacao. Use somente um destes contextos SDR quando aplicável: PRIMEIRO_CONTATO, RETOMADA_QUALIFICACAO, RETOMADA_AGENDAMENTO, RETORNO_SOLICITADO, FOLLOW_UP, NO_SHOW, REAGENDAMENTO, OBJECAO_PENDENTE, DESQUALIFICACAO ou OUTRO. Identifique também o objetivo principal da ligação e a confiança da classificação.',
+    'Não trate retomadas como primeiro contato. Etapas comprovadamente concluídas antes devem ir em etapas_ja_concluidas e não podem ser cobradas novamente. Etapas incompatíveis com o objetivo atual devem ir em etapas_nao_aplicaveis. Avalie e pontue somente o que era executável nesta interação.',
+    'Em uma retomada, use o histórico operacional fornecido apenas para saber o que já aconteceu; toda avaliação da execução atual continua dependendo da transcrição atual. Se o histórico não for suficiente, marque necessita_revisao=true em vez de inventar.',
     'Abra a análise com um resumo factual da conversa, a motivação declarada pelo lead para o contato, a necessidade principal e o resultado da ligação. Se a motivação não estiver explícita, marque NAO_EVIDENCIADO.',
     'O SDR deve seguir o pitch vigente com alta fidelidade. Avalie cada etapa obrigatória separadamente e não compense uma etapa ausente com boa execução em outra.',
     'Alta fidelidade significa preservar intenção, elementos obrigatórios e sequência comercial; não significa recitar o texto palavra por palavra. Uma formulação semanticamente equivalente deve ser considerada CONFORME.',
@@ -5230,7 +5449,8 @@ function audV3PromptSistemaSdr_() {
     'Não registre como divergência expressões como pequena variação de estrutura, mudança de ordem das palavras ou redação diferente quando a intenção e os elementos obrigatórios estiverem preservados.',
     'ADERENCIA AO PITCH representa a cobertura do pitch completo e a conformidade de todas as etapas obrigatórias, não a comparação de uma única frase. O sistema calculará os percentuais a partir de etapas_pitch; não estime percentuais.',
     'Dentro de aderencia_script, avalie a INTRODUCAO separadamente: liste os elementos exigidos pelo pitch, os identificados, os ausentes, uma evidência curta, o desvio e a correção prática. Não use uma pergunta de segmento como evidência da introdução.',
-    'Em perguntas_qualificacao, classifique individualmente: corretas para perguntas feitas conforme o pitch; com_desvio para perguntas feitas de forma errada, incompleta, fora de ordem ou induzida; ausentes para perguntas obrigatórias do pitch que não foram feitas. Não repita a mesma pergunta em mais de uma lista.',
+    'Em perguntas_qualificacao, classifique individualmente: corretas para perguntas feitas conforme o pitch; com_desvio para perguntas feitas de forma errada, incompleta, fora de ordem ou induzida; ausentes somente para perguntas obrigatórias ainda aplicáveis e não realizadas. Não repita a mesma pergunta em mais de uma lista.',
+    'Para perguntas realizadas, preserve também resposta_lead quando houver resposta literal na transcrição. Para perguntas já respondidas em uma interação anterior, não as marque como ausentes na retomada; registre-as como já concluídas no contexto da interação.',
     'Para cada pergunta, confronte a fala real com a regra exata do pitch. Não considere pequenas diferenças de redação como erro quando preservarem o objetivo e a sequência da pergunta.',
     'A entrega de SDR ao CRM deve sempre sustentar seis blocos fixos: apresentação e abertura; condução até a qualificação; perguntas e LMV; objeções e contornos; valorização da reunião; agendamento com dupla escolha.',
     'Na apresentação e abertura, avalie obrigatoriamente quatro elementos distintos: o SDR disse o próprio nome, disse o nome da empresa, contextualizou a origem do contato e usou a frase estratégica de agilidade/empatia para pedir cerca de três minutos. Não considere a introdução completa se um desses elementos obrigatórios estiver ausente.',
@@ -5250,6 +5470,7 @@ function audV3PromptSistemaSdr_() {
     'Todo erro precisa de evidência curta, texto exato do pitch quando existir e aplicação prática para a situação.',
     'Se surgir uma objeção não prevista no pitch, avalie a resposta do SDR, proponha um tratamento como SUGESTAO_ENABLEMENT e sinalize se vale incluir a objeção na próxima versão do pitch. Não apresente a sugestão como regra vigente.',
     'Se o pitch não orientar o cenário, não crie uma fala oficial. Registre a lacuna de processo.',
+    'COACHING SDR OBRIGATÓRIO: nenhuma recomendação pode terminar em revisar, melhorar, aprofundar, reforçar, estruturar, seguir o pitch ou aplicar corretamente sem dizer exatamente o que o SDR deve fazer ou falar. Use pergunta exata, frase sugerida, sequência, trilha de LMV, contorno, duas opções concretas de agenda, confirmação ou outro comportamento verificável.',
     'As correções devem ser comportamentos observáveis e treináveis, com critério claro de conclusão.',
     'Para cada critério não atingido, explique o impacto provável de não executar corretamente e o benefício comercial de corrigir. Não prometa resultado nem invente causalidade.',
     'O resumo_publicacao deve destacar somente os achados prioritários comprovados pela análise completa.',
@@ -5292,7 +5513,10 @@ function audV3CriteriosSdr_() {
 function audV3PromptSistemaCloser_() {
   return [
     'Atue como especialista em Sales Enablement e auditoria de reuniões comerciais de Closer, utilizando rigorosamente a metodologia VOLUM e o processo Venda Perfeita.',
-    'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento.',
+    'Antes de auditar, classifique contexto_interacao. Use somente um destes contextos Closer quando aplicável: PRIMEIRA_REUNIAO, FOLLOW_UP_DIAGNOSTICO, APRESENTACAO_PROPOSTA, FOLLOW_UP_PROPOSTA, NEGOCIACAO, FECHAMENTO, JURIDICO_CONTRATUAL, REAGENDAMENTO ou OUTRO. Identifique o momento da jornada, o objetivo principal e a confiança da classificação.',
+    'Os quatro momentos oficiais continuam como estrutura de referência, mas não force todos como aplicáveis em reuniões de proposta, follow-up, negociação, fechamento ou jurídico. O que já tiver sido concluído anteriormente deve ser registrado em etapas_ja_concluidas; o que não fizer sentido para o objetivo atual deve ser registrado em etapas_nao_aplicaveis e não pode reduzir a nota.',
+    'Em reuniões de proposta, priorize conexão proposta-diagnóstico, escopo, entendimento de valores, dúvidas e próximo passo. Em follow-up de proposta, priorize avanço desde o último acordo, bloqueio real, decisores, pendências e compromisso. Em negociação, priorize impeditivo de fechamento, condição comercial/contratual, contrapartidas, decisão e prazo. Em fechamento/jurídico, priorize aceite comercial, pendências, responsáveis, assinatura/onboarding e prazo.',
+    'Audite uma única reunião e organize a análise nos quatro momentos oficiais: Contexto e Rapport, Diagnóstico, Apresentação da Solução e Fechamento, respeitando a aplicabilidade do contexto atual.',
     'A transcrição é a única fonte de evidência do que aconteceu. O pitch vigente é a referência do comportamento esperado.',
         'Compare o comportamento por equivalência semântica: preserve como CONFORME toda fala que cumpra a intenção e os elementos obrigatórios, mesmo com palavras ou ordem diferentes do pitch. Não exija recitação literal.',
             'Nunca penalize variações fonéticas, grafias incorretas ou confusão de nomes causada pela transcrição. Quando o contexto for compatível, trate a variação como o mesmo participante informado nos metadados. Se a autoria não puder ser confirmada, sinalize a incerteza sem reduzir a nota.',
