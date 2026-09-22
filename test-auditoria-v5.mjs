@@ -24,11 +24,11 @@ assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não tr
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
-assert.match(audit, /versao:\s*'6\.0\.2'/, 'O engine não foi versionado para o autorreparo de coaching genérico.');
+assert.match(audit, /versao:\s*'6\.1\.0'/, 'O engine não foi versionado para o autorreparo seletivo de coaching genérico.');
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
-assert.ok(audit.includes('audV3MotivoAutorreparoGate_((processado.resultado || {}).validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
-assert.ok(audit.includes('Gate da auditoria bloqueado somente por coaching genérico. Executando uma tentativa única de autorreparo.'), 'A geração não registra a tentativa única de autorreparo do gate.');
-assert.ok(audit.includes("tipo === 'PLANO' || contextoIa.correcaoValidacao"), 'O autorreparo pode criar uma terceira tentativa ou atingir Plano indevidamente.');
+assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
+assert.ok(audit.includes('audV3AutorrepararCoachingGenerico_('), 'A geração não usa reparo seletivo.');
+assert.ok(!audit.includes('segundaRespostaGate'), 'Coaching não pode regenerar a auditoria inteira.');
 
 const inicioAutorreparoGate = audit.indexOf('function audV3MotivoAutorreparoGate_');
 const fimAutorreparoGate = audit.indexOf('function audV3ValidarQualidadeBoard_', inicioAutorreparoGate);
@@ -178,7 +178,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.0\.2'/, 'Engine de auditoria não foi versionado para o patch v6.0.2.');
+assert.match(audit, /versao:\s*'6\.1\.0'/, 'Engine de auditoria não foi versionado para o autorreparo v6.1.0.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');

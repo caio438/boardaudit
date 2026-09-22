@@ -188,6 +188,7 @@ jobs:
 
           compare_pair "/tmp/boardaudit-deploy/AuditoriaV3.gs" "/tmp/boardaudit-live-after/AuditoriaV3.js"
           compare_pair "/tmp/boardaudit-deploy/RdAuditorias.gs" "/tmp/boardaudit-live-after/RdAuditorias.js"
+          compare_pair "/tmp/boardaudit-deploy/PublicacaoCircle.gs" "/tmp/boardaudit-live-after/PublicacaoCircle.js"
           compare_pair "/tmp/boardaudit-deploy/AutomacaoCentral.gs" "/tmp/boardaudit-live-after/AutomacaoCentral.js"
 
           LIVE_CODE="/tmp/boardaudit-live-after/Code.js"
@@ -225,6 +226,7 @@ jobs:
           URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
           code="$(curl -L -sS -o /tmp/boardaudit-webapp.html -w '%{http_code}' "$URL" || true)"
           echo "WEBAPP_HTTP_STATUS=$code"
+          test "$code" = "200"
           if grep -q "audit-build" /tmp/boardaudit-webapp.html 2>/dev/null; then
             echo "WEBAPP_RENDERED_CURRENT_HTML=1"
           else
