@@ -105,6 +105,12 @@ assert.ok(audit.includes('setBackgroundColor(AUDV3_PALETA_VOLUM.navyEscuro)'), '
 assert.ok(audit.includes('registro.getCell(0).editAsText().setBold(true)'), 'Critérios da tabela de resultado não recebem hierarquia em negrito.');
 assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r)"), 'Doc SDR não inclui evolução perto do topo.');
 assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r)"), 'Doc Closer não inclui evolução perto do topo.');
+assert.ok(audit.includes('function audV3GraficoEvolucaoScore_'), 'Doc não possui gráfico de evolução da nota geral.');
+assert.ok(audit.includes('function audV3GraficoCriterios_'), 'Doc não possui gráfico de comparação por critério.');
+assert.ok(audit.includes("setTitle('Evolução da nota geral por auditoria')"), 'Gráfico temporal de nota geral está ausente.');
+assert.ok(audit.includes("setTitle('Atingimento por critério — atual x média histórica')"), 'Gráfico de barras por critério está ausente.');
+assert.ok(audit.includes('audV3AdicionarGraficosEvolucaoDocumento_(body, hist);'), 'Gráficos não são inseridos no bloco de evolução compartilhado entre SDR e Closer.');
+assert.ok(audit.includes("addColumn(Charts.ColumnType.NUMBER, 'Referência 4,0')"), 'Gráfico temporal não possui referência de atingimento 4,0.');
 
 const sdrNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoSdr_'));
 const sdrTabela = rd.indexOf("'PONTUAÇÃO POR CRITÉRIO'", rd.indexOf('function audRdTextoSdr_'));
