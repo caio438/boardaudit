@@ -6377,6 +6377,49 @@
     mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
   }
 
+  function renderizarContextoAuditoriaFront_(r) {
+    const contexto = (r || {}).contexto_interacao || {};
+    if (!String(contexto.classificacao || '').trim()) return '';
+    const lista = itens => (Array.isArray(itens) && itens.length)
+      ? '<ul class="audit-executive-list">' + itens.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul>'
+      : '<p class="muted">Nenhum item.</p>';
+    return `
+      <section class="audit-executive-block">
+        <h3>Contexto identificado</h3>
+        <div class="audit-executive-facts">
+          <div class="audit-executive-fact"><small>Tipo</small><strong>${escapeHtml(contexto.classificacao || 'Não identificado')}</strong></div>
+          <div class="audit-executive-fact"><small>Momento da jornada</small><strong>${escapeHtml(contexto.momento_jornada || 'Não identificado')}</strong></div>
+          <div class="audit-executive-fact"><small>Objetivo</small><strong>${escapeHtml(contexto.objetivo_principal || 'Não identificado')}</strong></div>
+          <div class="audit-executive-fact"><small>Confiança</small><strong>${escapeHtml(contexto.confianca || 'Não informada')}</strong></div>
+        </div>
+        ${Array.isArray(contexto.evidencias) && contexto.evidencias.length ? '<p><strong>Evidências da classificação:</strong></p>' + lista(contexto.evidencias) : ''}
+        <div class="grid two" style="margin-top:12px">
+          <div><h4>Aplicável agora</h4>${lista(contexto.etapas_aplicaveis)}</div>
+          <div><h4>Já concluído anteriormente</h4>${lista(contexto.etapas_ja_concluidas)}</div>
+        </div>
+        ${Array.isArray(contexto.etapas_nao_aplicaveis) && contexto.etapas_nao_aplicaveis.length ? '<h4>Não aplicável a esta interação</h4>' + lista(contexto.etapas_nao_aplicaveis) : ''}
+        ${contexto.necessita_revisao ? '<p class="line-danger"><strong>Revisão necessária:</strong> ' + escapeHtml(contexto.motivo_revisao || 'A classificação precisa de conferência humana.') + '</p>' : ''}
+      </section>
+    `;
+  }
+
+  function renderizarGateAuditoriaFront_(r) {
+    const gate = (r || {}).validacao_board || {};
+    if (!String(gate.status || '').trim()) return '';
+    const status = String(gate.status || '').toUpperCase();
+    const classe = status === 'OK' ? 'success' : status === 'BLOQUEADO' ? 'danger' : 'warning';
+    const itens = (titulo, lista) => (Array.isArray(lista) && lista.length)
+      ? '<div style="margin-top:8px"><strong>' + escapeHtml(titulo) + '</strong><ul class="audit-executive-list">' + lista.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
+      : '';
+    return `
+      <section class="audit-executive-block">
+        <h3>Validação antes da publicação <span class="status ${classe}">${escapeHtml(status)}</span></h3>
+        <p class="muted">Esta validação roda antes da aprovação e impede publicação quando encontra inconsistência crítica.</p>
+        ${itens('Alertas', gate.alertas)}
+        ${itens('Bloqueios', gate.bloqueios)}
+      </section>
+    `;
+  }
   function renderizarPreviewAuditoriaV3(auditoria) {
     const alvo = document.getElementById('resultadoAuditoriaAtual');
     if (!auditoria) {
@@ -6414,7 +6457,7 @@
       </div>
       <div class="audit-review-actions">
         ${auditoria.status === 'APROVADA'
-          ? `<span class="status success" style="align-self:center">CONCLUÍDA AUTOMATICAMENTE</span>
+          ? `<span class="status success" style="align-self:center">APROVADA</span>
              ${auditoria.linkDocumento ? `<a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
              ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.rdStatus || '').toUpperCase() === 'ERRO'
                ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Reprocessar RD</button>`
@@ -6427,9 +6470,13 @@
                    ? `<a class="btn success" href="${escapeAtributo(auditoria.circlePostUrl)}" target="_blank">Abrir Circle</a>`
                    : `<button id="btnPrepararCircle" class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(auditoria.idAuditoria)}')">Preparar para o Circle</button>`}`
                : ''}`
-          : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
-             <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
-             <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`}
+          : auditoria.status === 'EM_REVISAO'
+            ? `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
+               <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
+               <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
+            : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
+               <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
+               <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`}
       </div>
     `;
   }
@@ -6669,6 +6716,8 @@
 
     return `
       <div class="audit-executive">
+        ${renderizarContextoAuditoriaFront_(r)}
+        ${renderizarGateAuditoriaFront_(r)}
         <section class="audit-executive-block">
           <h3>Cenário da ligação</h3>
           <p>${escapeHtml(contexto.resumo_conversa || 'Não evidenciado.')}</p>
@@ -6905,6 +6954,8 @@
 
     return `
       <div class="audit-executive">
+        ${renderizarContextoAuditoriaFront_(r)}
+        ${renderizarGateAuditoriaFront_(r)}
         <section class="audit-executive-block">
           <h3>Cenário da reunião</h3>
           <p>${escapeHtml(contexto.resumo_conversa || contexto.cenario_atual || 'Não evidenciado.')}</p>
@@ -7234,9 +7285,9 @@
       <p><strong>Status geral:</strong> ${escapeHtml(formatarStatusAuditoriaV3(item.status_geral || 'Não evidenciado'))}</p>
       <p><strong>Resumo:</strong> ${escapeHtml(item.resumo || 'Não evidenciado')}</p>
       <h4>Perguntas feitas corretamente (${corretas.length})</h4>
-      ${corretas.length ? tabelaAuditoriaV3(['Pergunta','Evidência','Regra do pitch','Por que está correta'], corretas.map(p => [p.pergunta, p.evidencia, p.regra_pitch, p.por_que_esta_correta])) : '<p class="muted">Nenhuma pergunta correta foi evidenciada.</p>'}
+      ${corretas.length ? tabelaAuditoriaV3(['Pergunta','Resposta do lead','Evidência','Regra do pitch','Por que está correta'], corretas.map(p => [p.pergunta, p.resposta_lead || 'Não evidenciado', p.evidencia, p.regra_pitch, p.por_que_esta_correta])) : '<p class="muted">Nenhuma pergunta correta foi evidenciada.</p>'}
       <h4>Perguntas feitas com erro ou desvio (${desvios.length})</h4>
-      ${desvios.length ? tabelaAuditoriaV3(['Pergunta','Evidência','Erro ou desvio','Como corrigir','Impacto'], desvios.map(p => [p.pergunta, p.evidencia, p.erro_ou_desvio, p.correcao_pratica, p.impacto])) : '<p class="muted">Nenhuma pergunta com desvio foi evidenciada.</p>'}
+      ${desvios.length ? tabelaAuditoriaV3(['Pergunta','Resposta do lead','Evidência','Erro ou desvio','Como corrigir','Impacto'], desvios.map(p => [p.pergunta, p.resposta_lead || 'Não evidenciado', p.evidencia, p.erro_ou_desvio, p.correcao_pratica, p.impacto])) : '<p class="muted">Nenhuma pergunta com desvio foi evidenciada.</p>'}
       <h4>Perguntas obrigatórias ausentes (${ausentes.length})</h4>
       ${ausentes.length ? tabelaAuditoriaV3(['Pergunta esperada','Regra do pitch','Impacto da ausência','Como perguntar'], ausentes.map(p => [p.pergunta_esperada, p.regra_pitch, p.impacto_ausencia, p.como_perguntar])) : '<p class="muted">Nenhuma pergunta obrigatória ausente foi identificada.</p>'}
     `;
@@ -7256,7 +7307,7 @@
     const botao = document.getElementById('btnAprovarAuditoria');
     if (botao) {
       botao.disabled = true;
-      botao.textContent = 'Gerando Google Docs...';
+      botao.textContent = 'Validando e publicando...';
     }
 
     google.script.run
@@ -7270,7 +7321,7 @@
       .withFailureHandler(erro => {
         if (botao) {
           botao.disabled = false;
-          botao.textContent = 'Aprovar e gerar Google Docs';
+          botao.textContent = 'Aprovar e publicar';
         }
         tratarErro(erro);
       })
