@@ -1760,7 +1760,7 @@ function executarAuditoriaV3(dados) {
       normalizado.metadados.modelo_ia = modeloUsado;
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
       normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
-      if (normalizado.validacao_board.status === 'BLOQUEADO') {
+      if (audV3MotivoAutorreparoGate_(normalizado.validacao_board)) {
         audV3AutorrepararCoachingGenerico_(
           normalizado,
           tipo,
@@ -3687,6 +3687,29 @@ function audV3AutorrepararCoachingGenerico_(resultado, tipoAuditoria, conteudoPi
     }
     return { tentou: true, sucesso: false, campos: campos.map(function(item) { return item.caminho; }), erro: erro };
   }
+}
+
+function audV3MotivoAutorreparoGate_(validacaoBoard) {
+  const gate = validacaoBoard || {};
+  if (String(gate.status || '').toUpperCase() !== 'BLOQUEADO') return '';
+
+  const bloqueios = (Array.isArray(gate.bloqueios) ? gate.bloqueios : [])
+    .map(function(item) { return String(item || '').trim(); })
+    .filter(Boolean);
+  if (!bloqueios.length) return '';
+
+  const bloqueiosCoaching = bloqueios.filter(function(item) {
+    return /^Há orientação genérica sem comportamento observável(?: em [^:]+)?:/i.test(item);
+  });
+  if (!bloqueiosCoaching.length || bloqueiosCoaching.length !== bloqueios.length) return '';
+
+  return [
+    'O gate do Board bloqueou a auditoria somente porque há coaching genérico sem comportamento observável.',
+    bloqueiosCoaching.join(' | '),
+    'Corrija exclusivamente as orientações e recomendações genéricas, tornando cada uma executável e verificável na próxima interação.',
+    'Use pergunta exata, frase sugerida, sequência, confirmação objetiva, duas opções concretas de agenda ou outro comportamento observável quando aplicável.',
+    'Preserve fatos, falas, evidências, regras de pitch, contexto, aplicabilidade, status e conclusões já sustentadas. Não invente evidências nem altere a avaliação apenas para liberar o gate.'
+  ].join(' ');
 }
 
 function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
