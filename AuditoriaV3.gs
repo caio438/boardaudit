@@ -1420,13 +1420,22 @@ function transcreverAudioMp3V3(dados) {
   if (estadoArquivo !== 'ACTIVE') throw new Error('O áudio não ficou disponível para transcrição (estado ' + estadoArquivo + ').');
 
   const modelos = [consumoIaModeloAudioGratuito_()];
+  const funcaoEsperada = String(dados.funcao || '').trim().toUpperCase();
+  const colaboradorEsperado = String(dados.colaborador || '').trim();
+  const leadEsperado = String(dados.lead || '').trim();
   const prompt = [
     'Transcreva integralmente este áudio de uma ligação comercial em português do Brasil.',
-    'Identifique os participantes como SDR, Closer, Consultor, Lead ou pelo nome quando houver evidência no áudio.',
-    'Preserve perguntas, respostas, objeções, interrupções relevantes e números mencionados.',
-    'Não resuma, não analise e não acrescente informações.',
-    'Retorne somente a transcrição, organizada em falas no formato "Participante: fala".'
-  ].join('\n');
+    'Não resuma, não analise, não corrija o sentido das frases e não acrescente informações.',
+    'Preserve literalmente perguntas, respostas, objeções, interrupções relevantes, valores, datas, percentuais, nomes e números mencionados.',
+    'Cada mudança real de locutor deve iniciar uma nova linha no formato "LOCUTOR: fala".',
+    'Use SDR, CLOSER ou LEAD somente quando houver evidência segura de quem está falando.',
+    'Se não for possível identificar o locutor com segurança, use exatamente LOCUTOR_NAO_IDENTIFICADO. Nunca adivinhe.',
+    'Nunca atribua ao SDR/Closer uma resposta, objeção, condição comercial ou comentário de preço dito pelo comprador.',
+    colaboradorEsperado ? 'Profissional conhecido nos metadados: ' + colaboradorEsperado + (funcaoEsperada ? ' | função esperada: ' + funcaoEsperada : '') + '. Use esse dado apenas para reconhecer o nome/voz; não invente falas.' : '',
+    leadEsperado ? 'Lead conhecido nos metadados: ' + leadEsperado + '. Use esse dado apenas para reconhecer o nome/voz; não invente falas.' : '',
+    'Se o áudio pronunciar uma variação fonética evidente de um nome conhecido, normalize somente o rótulo do participante; nunca altere as palavras faladas.',
+    'Retorne somente a transcrição, sem introdução, resumo ou observações.'
+  ].filter(Boolean).join('\n');
   const payload = {
     contents: [{
       role: 'user',
@@ -1436,7 +1445,7 @@ function transcreverAudioMp3V3(dados) {
       ]
     }],
     generationConfig: {
-      temperature: 0.1,
+      temperature: 0,
       maxOutputTokens: 8192
     }
   };
@@ -1460,7 +1469,11 @@ function transcreverAudioMp3V3(dados) {
       });
       const statusIa = Number(respostaIa.getResponseCode() || 0);
       const corpoIa = String(respostaIa.getContentText() || '');
-      registrarConsumoIa_(modelo, 'TRANSCRICAO_AUDIO', statusIa, corpoIa, '', inicioTentativaIa);
+      registrarConsumoIa_(modelo, 'TRANSCRICAO_AUDIO', statusIa, corpoIa, '', inicioTentativaIa, {
+        idInteracao: String(((audV3LocalizarInteracaoPorAudio_(idCliente, urlAudio) || {}).ID_INTERACAO) || ''),
+        tipoAuditoria: funcaoEsperada || 'TRANSCRICAO',
+        tentativa: tentativa + 1
+      });
       if (statusIa >= 200 && statusIa < 300) {
         const jsonIa = audV3ParseJson_(corpoIa, 'A resposta da transcrição não é válida.');
         const candidato = (jsonIa.candidates || [])[0] || {};
@@ -1593,7 +1606,10 @@ function executarAuditoriaV3(dados) {
   if (!cliente || !pitch || !interacao || !transcricao) {
     throw new Error('Cliente, pitch, interação ou transcrição não encontrados.');
   }
-  transcricao.CONTEUDO = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const transcricaoPreparada = audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao);
+  transcricao.CONTEUDO = transcricaoPreparada.conteudo;
+  transcricao.QUALIDADE_TRANSCRICAO = transcricaoPreparada.qualidade.status;
+  transcricao.QUALIDADE_JSON = JSON.stringify(transcricaoPreparada.qualidade);
   const clienteInteracao = String(interacao.ID_CLIENTE || '').trim();
   if (clienteInteracao && clienteInteracao !== String(cliente.ID_CLIENTE)) {
     if (!dados.reclassificarInteracao) {
@@ -1719,7 +1735,8 @@ function executarAuditoriaV3(dados) {
       tipoAuditoria: tipo,
       equipePlano: equipePlano,
       idAuditoria: idAuditoria,
-      contextoOperacional: audV3ContextoHistoricoOportunidade_(interacao, tipo)
+      contextoOperacional: audV3ContextoHistoricoOportunidade_(interacao, tipo),
+      qualidadeTranscricao: transcricaoPreparada.qualidade
     };
 
     const processarRespostaIa = function(respostaIa) {
@@ -1734,6 +1751,15 @@ function executarAuditoriaV3(dados) {
       normalizado.metadados.modelo_ia = modeloUsado;
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
       normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
+      const qualidadeTranscricao = contextoIa.qualidadeTranscricao || {};
+      if (['BAIXA', 'ATENCAO'].includes(String(qualidadeTranscricao.status || '').toUpperCase())) {
+        normalizado.validacao_board.alertas = normalizado.validacao_board.alertas || [];
+        normalizado.validacao_board.alertas.unshift(
+          'Qualidade da transcrição: ' + String(qualidadeTranscricao.status || '') +
+          (Array.isArray(qualidadeTranscricao.alertas) && qualidadeTranscricao.alertas.length ? ' — ' + qualidadeTranscricao.alertas.join(' | ') : '')
+        );
+        if (normalizado.validacao_board.status === 'OK') normalizado.validacao_board.status = 'REVISAR';
+      }
       return { resultado: normalizado, modeloIaUsado: modeloUsado };
     };
 
@@ -2157,6 +2183,215 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '1.0';
+
+function audV3DistanciaEdicaoCurta_(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const anterior = [];
+  const atual = [];
+  for (let j = 0; j <= b.length; j++) anterior[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    atual[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      atual[j] = Math.min(
+        atual[j - 1] + 1,
+        anterior[j] + 1,
+        anterior[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1)
+      );
+    }
+    for (let j = 0; j <= b.length; j++) anterior[j] = atual[j];
+  }
+  return anterior[b.length];
+}
+
+function audV3RotuloPareceNome_(rotulo, nome) {
+  const r = audV3NormalizarTrechoRastreavel_(rotulo || '').replace(/\b(sdr|closer|consultor|vendedor|lead|cliente|prospect)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const n = audV3NormalizarTrechoRastreavel_(nome || '').replace(/\s+/g, ' ').trim();
+  if (!r || !n) return false;
+  if (r === n || r.indexOf(n) >= 0 || n.indexOf(r) >= 0) return true;
+  const rp = r.split(' ')[0];
+  const np = n.split(' ')[0];
+  if (!rp || !np) return false;
+  const limite = Math.max(rp.length, np.length) >= 7 ? 2 : 1;
+  return Math.min(rp.length, np.length) >= 4 && audV3DistanciaEdicaoCurta_(rp, np) <= limite;
+}
+
+function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
+  const bruto = String(rotulo || '').replace(/^[-*•\s]+/, '').trim();
+  const n = audV3NormalizarTrechoRastreavel_(bruto);
+  const funcao = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
+  const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
+  const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
+  const lead = String((interacao || {}).LEAD || '').trim();
+
+  if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
+  }
+  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
+    return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
+  }
+  if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
+    return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true };
+  }
+  if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
+    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional) };
+  }
+  if (lead && audV3RotuloPareceNome_(bruto, lead)) {
+    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead) };
+  }
+  return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false };
+}
+
+function audV3NormalizarTranscricaoTexto_(texto, interacao) {
+  const original = String(texto || '').replace(/\r\n?/g, '\n').trim();
+  if (!original) return { texto: '', turnos: [], metricas: { linhas: 0, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0 } };
+
+  const linhas = original.split('\n');
+  const turnos = [];
+  const metricas = {
+    linhas: linhas.length,
+    turnos: 0,
+    semRotulo: 0,
+    rotulosDesconhecidos: 0,
+    rotulosCorrigidos: 0,
+    duplicadasRemovidas: 0,
+    continuacoesUnidas: 0
+  };
+
+  linhas.forEach(function(linhaOriginal) {
+    let linha = String(linhaOriginal || '').trim();
+    if (!linha) return;
+    linha = linha.replace(/^[-*•]\s+/, '').trim();
+
+    const match = linha.match(/^(\[[^\]]{1,24}\]\s*)?([^:\n]{1,80}):\s*(.+)$/);
+    if (match) {
+      const timestamp = String(match[1] || '').trim();
+      const info = audV3NormalizarRotuloLocutor_(match[2], interacao || {});
+      const fala = String(match[3] || '').replace(/\s+/g, ' ').trim();
+      if (!fala) return;
+      if (!info.identificado) metricas.rotulosDesconhecidos += 1;
+      if (info.corrigido) metricas.rotulosCorrigidos += 1;
+
+      const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+      const chaveFala = audV3NormalizarTrechoRastreavel_(fala);
+      const chaveAnterior = anterior ? audV3NormalizarTrechoRastreavel_(anterior.fala) : '';
+      if (anterior && anterior.rotulo === info.rotulo && chaveFala && chaveFala === chaveAnterior) {
+        metricas.duplicadasRemovidas += 1;
+        return;
+      }
+      if (anterior && !timestamp && !anterior.timestamp && anterior.rotulo === info.rotulo) {
+        anterior.fala += ' ' + fala;
+        metricas.continuacoesUnidas += 1;
+        return;
+      }
+      turnos.push({ timestamp: timestamp, rotulo: info.rotulo, tipo: info.tipo, fala: fala });
+      return;
+    }
+
+    const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+    const trecho = linha.replace(/\s+/g, ' ').trim();
+    if (!trecho) return;
+    metricas.semRotulo += 1;
+    if (anterior) {
+      anterior.fala += ' ' + trecho;
+      metricas.continuacoesUnidas += 1;
+    } else {
+      turnos.push({ timestamp: '', rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', fala: trecho });
+      metricas.rotulosDesconhecidos += 1;
+    }
+  });
+
+  metricas.turnos = turnos.length;
+  const normalizado = turnos.map(function(turno) {
+    return (turno.timestamp ? turno.timestamp + ' ' : '') + turno.rotulo + ': ' + turno.fala;
+  }).join('\n').trim();
+
+  return { texto: normalizado || original, turnos: turnos, metricas: metricas };
+}
+
+function audV3AvaliarQualidadeTranscricao_(normalizacao, original) {
+  normalizacao = normalizacao || { turnos: [], metricas: {} };
+  const turnos = Array.isArray(normalizacao.turnos) ? normalizacao.turnos : [];
+  const metricas = normalizacao.metricas || {};
+  const alertas = [];
+  const total = turnos.length;
+  const naoIdentificados = turnos.filter(function(t) { return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((t || {}).tipo || '')); }).length;
+  const profissionais = turnos.filter(function(t) { return ['SDR', 'CLOSER', 'PROFISSIONAL'].includes(String((t || {}).tipo || '')); }).length;
+  const leads = turnos.filter(function(t) { return String((t || {}).tipo || '') === 'LEAD'; }).length;
+  const tamanho = String(original || '').trim().length;
+
+  let status = 'BOA';
+  if (tamanho < 120 || total < 4) {
+    status = 'BAIXA';
+    alertas.push('Transcrição muito curta para sustentar uma auditoria confiável.');
+  }
+  if (!profissionais) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('Nenhuma fala do profissional foi identificada de forma segura.');
+  }
+  if (!leads) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('Nenhuma fala do lead foi identificada de forma segura.');
+  }
+  if (total && naoIdentificados / total >= 0.30) {
+    status = 'BAIXA';
+    alertas.push('Muitos turnos possuem locutor não identificado.');
+  } else if (total && naoIdentificados / total >= 0.10 && status === 'BOA') {
+    status = 'ATENCAO';
+    alertas.push('Há turnos com locutor não identificado que exigem cautela na autoria das evidências.');
+  }
+  if (Number(metricas.semRotulo || 0) >= Math.max(4, Math.ceil(total * 0.25))) {
+    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
+    alertas.push('A transcrição contém várias linhas sem rótulo explícito de locutor.');
+  }
+
+  return {
+    status: status,
+    alertas: alertas,
+    metricas: {
+      caracteres_original: tamanho,
+      turnos: total,
+      turnos_profissional: profissionais,
+      turnos_lead: leads,
+      turnos_nao_identificados: naoIdentificados,
+      linhas_sem_rotulo: Number(metricas.semRotulo || 0),
+      rotulos_corrigidos: Number(metricas.rotulosCorrigidos || 0),
+      duplicadas_removidas: Number(metricas.duplicadasRemovidas || 0),
+      continuacoes_unidas: Number(metricas.continuacoesUnidas || 0)
+    }
+  };
+}
+
+function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
+  const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {});
+  const qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+  const conteudo = String(normalizacao.texto || original || '').trim();
+
+  if ((transcricao || {}).ID_TRANSCRICAO) {
+    const persistivel = conteudo.length <= 49000 ? conteudo : '';
+    audV3Atualizar_('TRANSCRICOES', 'ID_TRANSCRICAO', transcricao.ID_TRANSCRICAO, {
+      CONTEUDO_NORMALIZADO: persistivel,
+      QUALIDADE_TRANSCRICAO: qualidade.status,
+      QUALIDADE_JSON: JSON.stringify(qualidade),
+      NORMALIZACAO_VERSAO: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO,
+      NORMALIZADA_EM: new Date(),
+      ATUALIZADO_EM: new Date()
+    });
+  }
+
+  return {
+    original: original,
+    conteudo: conteudo,
+    qualidade: qualidade,
+    normalizacaoVersao: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO
+  };
+}
+
 function audV3ConteudoCompletoTranscricao_(transcricao, interacao) {
   const armazenado = String((transcricao || {}).CONTEUDO || '').trim();
   const tamanhoOriginal = Number((transcricao || {}).TAMANHO_CARACTERES || armazenado.length || 0);
@@ -2481,6 +2716,7 @@ function audV3MontarPrompt_(ctx) {
     '<REGRAS_CLIENTE>\n' + String(ctx.cliente.REGRAS_CLIENTE || 'Nenhuma regra adicional cadastrada.') + '\n</REGRAS_CLIENTE>',
     '<METAS_CLIENTE>\n' + JSON.stringify(ctx.metas && ctx.metas.length ? ctx.metas : { informado: false }, null, 2) + '\n</METAS_CLIENTE>',
     '<CONTEXTO_OPERACIONAL_PREVIO>\n' + JSON.stringify(ctx.contextoOperacional || { historico: [] }, null, 2) + '\n</CONTEXTO_OPERACIONAL_PREVIO>',
+    '<QUALIDADE_TRANSCRICAO>\n' + JSON.stringify(ctx.qualidadeTranscricao || { status: 'NAO_AVALIADA', alertas: [] }, null, 2) + '\n</QUALIDADE_TRANSCRICAO>',
     '<PITCH_VIGENTE>\n' + String(ctx.pitch.CONTEUDO_PITCH || '') + '\n</PITCH_VIGENTE>',
     '<CATALOGO_EVIDENCIAS_TRANSCRICAO>\n' + audV3CatalogarEvidencias_(ctx.transcricao.CONTEUDO || '') + '\n</CATALOGO_EVIDENCIAS_TRANSCRICAO>',
     'Cada código EV identifica um turno literal da transcrição. Para campos de evidência, escolha somente um turno pertinente ao critério e copie um trecho literal contíguo do texto após o código EV. Nunca coloque o código EV no campo de evidência. Se nenhum turno comprovar diretamente o item, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO. Não escolha uma fala apenas para preencher o campo.',
@@ -2495,6 +2731,8 @@ function audV3MontarPrompt_(ctx) {
     tipo === 'SDR' ? 'REGRA CANÔNICA DO ARQUIVO: quando nome_arquivo_origem estiver preenchido no padrão nomedaempresa-numero-nomedosdr, considere obrigatoriamente como empresa o texto antes do primeiro hífen, como número da chamada o trecho central e como SDR o texto após o segundo hífen. A transcrição não pode substituir esses dados por aproximações fonéticas.' : '',
     tipo === 'CLOSER' && audV3EhClienteIngee_(i) ? 'REGRA DE AUTORIA INGEE: Juliana, Jéssica, Maíra e o usuário operacional Sinergia Engenharia são identidades válidas de CLOSER. Falas de qualquer uma delas podem comprovar execução de CLOSER quando a autoria estiver clara na transcrição. Não trate essas três profissionais como lead.' : '',
     'Classifique contexto_interacao antes de definir aplicabilidade. CONTEXTO_OPERACIONAL_PREVIO é apoio de continuidade e não substitui a evidência da transcrição atual.',
+    'A transcrição pode ter sido normalizada deterministicamente apenas em rótulos, espaços, duplicações adjacentes e linhas quebradas; o conteúdo falado não deve ser reinterpretado. LOCUTOR_NAO_IDENTIFICADO ou PARTICIPANTE sem identidade segura nunca pode ser atribuído ao SDR/Closer.',
+    'Se QUALIDADE_TRANSCRICAO estiver BAIXA ou ATENCAO, reduza a força das conclusões dependentes de autoria e use NAO_EVIDENCIADO quando a fala não puder ser atribuída com segurança.',
     tipo === 'SDR' ? 'AUDITORIA SDR OBRIGATÓRIA: examine separadamente apresentação pelo próprio nome, nome da empresa, origem do contato, frase de agilidade e empatia (reconhecer que o lead está corrido e pedir apenas três minutos), primeira frase de qualificação, pergunta de segmento, motivo do contato, todas as perguntas obrigatórias do pitch, validação do LMV, trilha positiva ou negativa correta conforme o LMV, manejo de objeções, valorização da reunião, oferta de dois horários concretos, confirmação do compromisso, aviso de contato prévio/no-show e encerramento profissional.' : '',
     tipo === 'SDR' ? 'Em PRIMEIRO_CONTATO, o SDR deve fazer todas as perguntas obrigatórias do pitch e não acrescentar perguntas fora dele. Em retomadas, cobre apenas perguntas ainda pendentes ou novamente necessárias ao objetivo atual. Pergunta obrigatória ausente deve aparecer em perguntas_qualificacao.ausentes; pergunta feita com sentido, ordem ou conteúdo materialmente incorreto deve aparecer em com_desvio; pergunta semanticamente equivalente e correta deve aparecer em corretas. Não duplique a mesma pergunta.' : '',
     tipo === 'SDR' ? 'A validação do LMV é obrigatória. Identifique a resposta do lead, determine se o LMV foi positivo ou negativo e verifique se o SDR seguiu a trilha correspondente. LMV positivo deve seguir o pitch positivo. LMV negativo deve seguir o pitch negativo de desqualificação/precificação. Não penalize quando o pitch não definir a trilha; nesse caso use LACUNA_PROCESSO.' : '',
