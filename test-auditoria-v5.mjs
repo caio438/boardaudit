@@ -40,6 +40,14 @@ assert.ok(front.includes('Gerar auditoria atualizada'), 'Board não oferece aç�
 assert.ok(front.includes('function regenerarAuditoriaLegadaFront'), 'Board não possui a ação frontal de regeneração genérica.');
 assert.ok(front.includes('A gravação continua válida, mas este registro foi criado antes das validações atuais.'), 'Mensagem de auditoria legada ainda pode parecer que o Board está desatualizado.');
 assert.ok(audit.includes("return 'AGUARDANDO_REVISAO'"), 'Auditoria atual em revisão humana ainda pode ser confundida com auditoria legada.');
+assert.ok(audit.includes('function audV3EhAuditoriaLegadaBase_'), 'Detector central de auditoria legada não foi implementado.');
+assert.ok(audit.includes('function audV3EhAuditoriaVisivelOperacao_'), 'Filtro operacional de auditorias não foi implementado.');
+assert.ok(audit.includes(".filter(item => audV3EhAuditoriaVisivelOperacao_(item))\n    .slice(-200)"), 'Lista do Board ainda pode consultar auditorias legadas.');
+assert.ok(audit.includes("if (!audV3EhAuditoriaVisivelOperacao_(auditoria)) return;"), 'Analytics/Docs ainda podem misturar auditorias legadas.');
+assert.ok(audit.includes("audV3EhAuditoriaVisivelOperacao_(a) &&"), 'Contexto histórico da IA ainda pode consultar auditoria legada.');
+assert.ok(audit.includes("if (audV3EhAuditoriaVisivelOperacao_(item) &&"), 'Auditoria legada ainda pode bloquear nova geração automática.');
+assert.ok(front.includes("if (item.auditoriaLegada || item.auditoriaSubstituida) return false;"), 'Frontend não possui defesa contra cache antigo de auditorias legadas.');
+assert.ok(front.includes("!item.auditoriaLegada &&\n      !item.auditoriaSubstituida"), 'Resumo do RD ainda pode contabilizar auditorias legadas.');
 
 for (const bloco of [
   'Cenário da ligação',
