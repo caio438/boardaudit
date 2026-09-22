@@ -30,6 +30,16 @@ assert.ok(audit.includes("'CLI-20260806105306-25F3490A'"), 'Fluxo do Grupo Siner
 assert.ok(front.includes('Grupo Sinergia · refazer para CRM'), 'Board não sinaliza auditorias legadas do Grupo Sinergia.');
 assert.ok(front.includes('Grupo Sinergia · vincular RD'), 'Board não sinaliza auditorias do Grupo Sinergia prontas para vínculo RD.');
 assert.ok(front.includes('function regenerarAuditoriaGrupoSinergiaParaCrmFront'), 'Board não oferece regeneração segura da auditoria legada para CRM.');
+assert.ok(audit.includes('function audV3EstadoIntegridadeAuditoria_'), 'Estado de integridade genérico das auditorias não foi implementado.');
+assert.ok(audit.includes("return 'LEGADA_REANALISE'"), 'Auditoria antiga sem HASH_FONTE não é classificada como legada.');
+assert.ok(audit.includes('function regenerarAuditoriaLegadaV3'), 'Regeneração genérica de auditoria legada não foi implementada.');
+assert.ok(audit.includes('audV3PitchAtualAutomatico_(auditoria.ID_CLIENTE, tipo)'), 'Regeneração legada não usa o pitch atual do cliente.');
+assert.ok(audit.includes("AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL'"), 'Versão antiga não é preservada como substituída após regeneração.');
+assert.ok(front.includes('Auditoria legada · regenerar'), 'Board não sinaliza auditorias legadas de qualquer cliente.');
+assert.ok(front.includes('Gerar auditoria atualizada'), 'Board não oferece ação genérica para atualizar auditoria legada.');
+assert.ok(front.includes('function regenerarAuditoriaLegadaFront'), 'Board não possui a ação frontal de regeneração genérica.');
+assert.ok(front.includes('A gravação continua válida, mas este registro foi criado antes das validações atuais.'), 'Mensagem de auditoria legada ainda pode parecer que o Board está desatualizado.');
+assert.ok(audit.includes("return 'AGUARDANDO_REVISAO'"), 'Auditoria atual em revisão humana ainda pode ser confundida com auditoria legada.');
 
 for (const bloco of [
   'Cenário da ligação',
