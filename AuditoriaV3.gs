@@ -4602,18 +4602,27 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
   const mapaHistorico = {};
   historico.forEach(function(item) {
     item.criterios.forEach(function(criterio) {
-      const chave = String(criterio.id || audV3NormalizarTrechoRastreavel_(criterio.nome || ''));
-      if (!chave || criterio.nota === null || criterio.nota === undefined) return;
-      if (!mapaHistorico[chave]) mapaHistorico[chave] = [];
-      mapaHistorico[chave].push(Number(criterio.nota));
+      const chaves = [
+        String(criterio.id || '').trim(),
+        'NOME:' + audV3NormalizarTrechoRastreavel_(criterio.nome || '')
+      ].filter(Boolean);
+      if (criterio.nota === null || criterio.nota === undefined) return;
+      chaves.forEach(function(chave) {
+        if (!chave || chave === 'NOME:') return;
+        if (!mapaHistorico[chave]) mapaHistorico[chave] = [];
+        mapaHistorico[chave].push(Number(criterio.nota));
+      });
     });
   });
 
   const melhorias = [];
   const pendentes = [];
   criteriosAtuais.forEach(function(item) {
-    const chave = String(item.id || audV3NormalizarTrechoRastreavel_(item.nome || ''));
-    const anteriores = mapaHistorico[chave] || [];
+    const chaveId = String(item.id || '').trim();
+    const chaveNome = 'NOME:' + audV3NormalizarTrechoRastreavel_(item.nome || '');
+    const anteriores = (chaveId && mapaHistorico[chaveId] && mapaHistorico[chaveId].length)
+      ? mapaHistorico[chaveId]
+      : (mapaHistorico[chaveNome] || []);
     if (!anteriores.length || item.nota === null) {
       if (item.nota !== null && item.nota < 4) pendentes.push({ nome: item.nome, atual: item.nota, anterior: null });
       return;
@@ -4712,8 +4721,9 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
       p.editAsText().setForegroundColor('#116329');
     });
   } else {
-    body.appendParagraph('Ainda não há melhora comparável consolidada por critério no histórico disponível.')
-      .setForegroundColor('#667085').setSpacingAfter(10);
+    const pSemMelhora = body.appendParagraph('Ainda não há melhora comparável consolidada por critério no histórico disponível.');
+    pSemMelhora.editAsText().setForegroundColor('#667085');
+    pSemMelhora.setSpacingAfter(10);
   }
 
   audV3Titulo_(body, 'Pontos que seguem em evolução', DocumentApp.ParagraphHeading.HEADING2);
@@ -4725,8 +4735,9 @@ function audV3BlocoEvolucaoDocumento_(body, cliente, interacao, tipo, resultado)
       body.appendListItem(comparacao).setGlyphType(DocumentApp.GlyphType.BULLET).setSpacingAfter(5);
     });
   } else {
-    body.appendParagraph('Nenhum critério aplicável ficou abaixo de 4/5 nesta auditoria.')
-      .setForegroundColor('#116329').setSpacingAfter(10);
+    const pSemPendencia = body.appendParagraph('Nenhum critério aplicável ficou abaixo de 4/5 nesta auditoria.');
+    pSemPendencia.editAsText().setForegroundColor('#116329');
+    pSemPendencia.setSpacingAfter(10);
   }
 }
 
@@ -4739,8 +4750,9 @@ function audV3CriarDocumentoSdr_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de ' + tipoInteracao + ' do SDR', DocumentApp.ParagraphHeading.TITLE);
-  body.appendParagraph('Resumo executivo · evolução · aderência ao processo')
-    .setForegroundColor('#667085').setFontSize(10).setSpacingAfter(8);
+  const subtituloSdr = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
+  subtituloSdr.editAsText().setForegroundColor('#667085').setFontSize(10);
+  subtituloSdr.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
@@ -4835,8 +4847,9 @@ function audV3CriarDocumentoCloser_(cliente, interacao, pitch, modelo, r) {
   const body = doc.getBody();
   audV3ConfigurarPaginaAuditoria_(body);
   audV3Titulo_(body, 'Auditoria de reunião do Closer', DocumentApp.ParagraphHeading.TITLE);
-  body.appendParagraph('Resumo executivo · evolução · aderência ao processo')
-    .setForegroundColor('#667085').setFontSize(10).setSpacingAfter(8);
+  const subtituloCloser = body.appendParagraph('Resumo executivo · evolução · aderência ao processo');
+  subtituloCloser.editAsText().setForegroundColor('#667085').setFontSize(10);
+  subtituloCloser.setSpacingAfter(8);
   body.appendHorizontalRule();
   audV3Tabela_(body, [
     ['Campo', 'Informação'],
