@@ -156,6 +156,21 @@ assert.match(source.slice(inicioChamada, source.indexOf('function audV3MontarPro
 assert.match(consumoSource, /function consumoIaModelosTextoDisponiveis_\(\)/, 'A lista de modelos alternativos não está disponível.');
 assert.match(trechoFormalizacao, /consumoIaModelosTextoDisponiveis_\(\)/, 'A formalização não troca de modelo após indisponibilidade temporária.');
 assert.match(trechoChamada, /consumoIaModelosTextoDisponiveis_\(\)/, 'A auditoria não troca de modelo após indisponibilidade temporária.');
+assert.match(trechoFormalizacao, /if \(status === 404\)[\s\S]*?break;/, 'A formalização não abandona modelo indisponível após HTTP 404.');
+assert.match(trechoChamada, /if \(status === 404\)[\s\S]*?break;/, 'A auditoria não abandona modelo indisponível após HTTP 404.');
+const inicioModelosTexto = consumoSource.indexOf('modelosTextoGratuitos:');
+const fimModelosTexto = consumoSource.indexOf('modelosAudioGratuitos:', inicioModelosTexto);
+const poolModelosTexto = consumoSource.slice(inicioModelosTexto, fimModelosTexto);
+assert.ok(!poolModelosTexto.includes('gemini-2.5-flash-lite'), 'Modelo Gemini 2.5 indisponível ainda está no fallback de texto.');
+for (const modelo of ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash']) {
+  assert.ok(poolModelosTexto.includes(modelo), 'Fallback de texto perdeu o modelo ' + modelo + '.');
+}
+const ordemModelosTexto = [...poolModelosTexto.matchAll(/'([^']+)'/g)].map(match => match[1]);
+assert.deepEqual(
+  ordemModelosTexto,
+  ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'],
+  'Ordem do fallback de texto está incorreta.'
+);
 if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
   throw new Error('A configuração Closer vazou para a formalização.');
 }

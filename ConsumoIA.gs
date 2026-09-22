@@ -14,13 +14,11 @@ const CONSUMO_IA = {
   modelosPermitidos: [
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
     'gemini-3.5-flash'
   ],
   modelosTextoGratuitos: [
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
     'gemini-3.5-flash'
   ],
   modelosAudioGratuitos: [
@@ -37,7 +35,6 @@ const CONSUMO_IA = {
   limites: {
     'gemini-3.6-flash': { rpm: 5, tpm: 250000, rpd: 20 },
     'gemini-3.5-flash': { rpm: 5, tpm: 250000, rpd: 20 },
-    'gemini-2.5-flash-lite': { rpm: 10, tpm: 250000, rpd: 20 },
     'gemini-3.1-flash-lite': { rpm: 15, tpm: 250000, rpd: 500 },
     'gemini-3.5-flash-lite': { rpm: 15, tpm: 250000, rpd: 500 }
   }
