@@ -5,7 +5,6 @@ const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf
 const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
-const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 
 for (const coluna of ['AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de automação ausente: ' + coluna);
@@ -96,6 +95,22 @@ assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a an�
 assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
 assert.ok(rd.includes('PONTUAÇÃO POR CRITÉRIO'), 'RD SDR não publica a tabela de notas por critério.');
 assert.ok(rd.includes('Média dos critérios aplicáveis'), 'RD SDR não apresenta a média dos critérios aplicáveis.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Panorama de evolução'"), 'Google Docs não abre com panorama de evolução.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Resultados recentes'"), 'Google Docs não mostra resultados históricos recentes.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Melhorias já atingidas'"), 'Google Docs não destaca melhorias conquistadas.');
+assert.ok(audit.includes("audV3Titulo_(body, 'Pontos que seguem em evolução'"), 'Google Docs não destaca pontos ainda em evolução.');
+assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'SDR', r)"), 'Doc SDR não inclui evolução perto do topo.');
+assert.ok(audit.includes("audV3BlocoEvolucaoDocumento_(body, cliente, interacao, 'CLOSER', r)"), 'Doc Closer não inclui evolução perto do topo.');
+
+const sdrNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoSdr_'));
+const sdrTabela = rd.indexOf("'PONTUAÇÃO POR CRITÉRIO'", rd.indexOf('function audRdTextoSdr_'));
+const sdrContexto = rd.indexOf("'CONTEXTO DA INTERAÇÃO'", rd.indexOf('function audRdTextoSdr_'));
+assert.ok(sdrNota >= 0 && sdrTabela > sdrNota && sdrContexto > sdrTabela, 'Tabela de notas SDR precisa ficar logo abaixo da nota geral.');
+
+const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoCloser_'));
+const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
+const closerCenario = rd.indexOf("'CENÁRIO DA REUNIÃO'", rd.indexOf('function audRdTextoCloser_'));
+assert.ok(closerNota >= 0 && closerTabela > closerNota && closerCenario > closerTabela, 'Tabela de notas Closer precisa ficar logo abaixo da nota geral.');
 
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de integridade ausente: ' + coluna);
