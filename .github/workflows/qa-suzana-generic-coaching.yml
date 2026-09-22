@@ -12,8 +12,6 @@ jobs:
   qa:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: apps-script-production
-
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
