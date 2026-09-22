@@ -756,6 +756,10 @@ function formalChamarGemini_(ctx) {
     }
     if ([429, 500, 502, 503, 504].indexOf(status) >= 0 && tentativa < esperas.length - 1) continue;
     if ([429, 500, 502, 503, 504].indexOf(status) >= 0) break;
+    if (status === 404) {
+      console.warn('Modelo Gemini indisponível na formalização: ' + modelo + '. Tentando próximo modelo configurado.');
+      break;
+    }
     throw new Error([429, 500, 502, 503, 504].indexOf(status) >= 0
       ? 'O serviço de IA continuou ocupado após três tentativas automáticas. Tente novamente mais tarde.'
       : 'Não foi possível acessar o serviço de IA (código ' + status + ').');
@@ -784,8 +788,7 @@ function formalPromptSistema_() {
 function formalContextoAuditorias_(idCliente) {
   const cliente = String(idCliente || '').trim();
   if (!cliente) return { auditorias: [], formalizacoes_anteriores: [] };
-  const auditorias = audV3Ler_('AUDITORIAS')
-    .filter(item => audV3EhAuditoriaVisivelOperacao_(item))
+  const auditorias = audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))
     .filter(item => String(item.ID_CLIENTE || '') === cliente && item.RESULTADO_JSON)
     .sort((a, b) => new Date(b.CONCLUIDO_EM || b.SOLICITADO_EM || 0) - new Date(a.CONCLUIDO_EM || a.SOLICITADO_EM || 0))
     .slice(0, 8)
@@ -2619,6 +2622,10 @@ function audV3ChamarGemini_(ctx) {
     if (status === 400) {
       throw new Error('O Gemini recusou a estrutura desta auditoria. O Board não consumiu tokens. Atualize a página e tente novamente.' + (detalheIa ? ' Detalhe: ' + detalheIa : ''));
     }
+    if (status === 404) {
+      console.warn('Modelo Gemini indisponível: ' + modeloApi + '. Tentando próximo modelo configurado.');
+      break;
+    }
     throw new Error('Não foi possível acessar o serviço de IA (código ' + status + ').' + (detalheIa ? ' ' + detalheIa : ' Confira a configuração do Gemini.'));
     }
   }
@@ -2654,12 +2661,11 @@ function audV3ContextoHistoricoOportunidade_(interacao, tipoAuditoria) {
     return new Date(b.DATA_INTERACAO || 0).getTime() - new Date(a.DATA_INTERACAO || 0).getTime();
   }).slice(0, 5);
 
-  const auditorias = audV3Ler_('AUDITORIAS');
+  const auditorias = audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'));
   const historico = anteriores.map(function(item) {
     const idInteracao = String(item.ID_INTERACAO || '');
     const audit = auditorias.filter(function(a) {
-      return audV3EhAuditoriaVisivelOperacao_(a) &&
-        String(a.ID_INTERACAO || '') === idInteracao &&
+      return String(a.ID_INTERACAO || '') === idInteracao &&
         ['EM_REVISAO', 'APROVADA'].includes(String(a.STATUS || '').toUpperCase()) &&
         String(a.RESULTADO_JSON || '').trim();
     }).slice(-1)[0] || {};
@@ -4599,8 +4605,7 @@ function audV3HistoricoDocumento_(cliente, interacao, tipo, resultadoAtual) {
   });
 
   const historico = [];
-  audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
-    if (!audV3EhAuditoriaVisivelOperacao_(auditoria)) return;
+  audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(auditoria) {
     if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
     if (String(auditoria.ID_CLIENTE || '') !== idCliente) return;
     if (String(auditoria.ID_INTERACAO || '') === idInteracaoAtual) return;
@@ -5510,9 +5515,8 @@ function audV3FilaAutomacaoLigacoes_(config) {
     }
   });
   const auditoriasValidas = {};
-  audV3Ler_('AUDITORIAS').forEach(function(item) {
-    if (audV3EhAuditoriaVisivelOperacao_(item) &&
-        item.ID_INTERACAO &&
+  audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(item) {
+    if (item.ID_INTERACAO &&
         ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&
         String(item.RESULTADO_JSON || '').trim()) {
       auditoriasValidas[String(item.ID_INTERACAO)] = item;
@@ -5887,12 +5891,64 @@ function audV3EhAuditoriaLegadaBase_(auditoria) {
   return Boolean((temResultado && !hash) || /^SUBSTITUIDA_PARA_/.test(automacao));
 }
 
-function audV3EhAuditoriaVisivelOperacao_(auditoria) {
+function audV3MajorVersao_(versao) {
+  const match = String(versao || '').trim().match(/^(\d+)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function audV3EhAuditoriaCicloAtual_(auditoria) {
+  const majorAtual = audV3MajorVersao_(AUDITORIA_V3.versao);
+  const majorRegistro = audV3MajorVersao_((auditoria || {}).ENGINE_VERSAO);
+  return Boolean(majorAtual && majorRegistro === majorAtual);
+}
+
+function audV3EhAuditoriaValidaParaSubstituirErro_(auditoria) {
+  auditoria = auditoria || {};
+  const status = String(auditoria.STATUS || '').toUpperCase();
+  const validacao = String(auditoria.VALIDACAO_STATUS || '').toUpperCase();
+  return audV3EhAuditoriaCicloAtual_(auditoria) &&
+    !audV3EhAuditoriaLegadaBase_(auditoria) &&
+    ['EM_REVISAO', 'APROVADA'].includes(status) &&
+    validacao !== 'ERRO' &&
+    Boolean(String(auditoria.RESULTADO_JSON || auditoria.RESULTADO_COMPLETO || '').trim());
+}
+
+function audV3IndiceVisibilidadeOperacao_(auditorias) {
+  const lista = Array.isArray(auditorias) ? auditorias : [];
+  const posteriorValidaPorInteracao = {};
+  const errosSuperados = {};
+  for (let indice = lista.length - 1; indice >= 0; indice--) {
+    const auditoria = lista[indice] || {};
+    const idInteracao = String(auditoria.ID_INTERACAO || '').trim();
+    const idAuditoria = String(auditoria.ID_AUDITORIA || '').trim();
+    const status = String(auditoria.STATUS || '').toUpperCase();
+    if (idInteracao && idAuditoria && status === 'ERRO' && posteriorValidaPorInteracao[idInteracao]) {
+      errosSuperados[idAuditoria] = true;
+    }
+    if (idInteracao && audV3EhAuditoriaValidaParaSubstituirErro_(auditoria)) {
+      posteriorValidaPorInteracao[idInteracao] = true;
+    }
+  }
+  return { errosSuperados: errosSuperados };
+}
+
+function audV3EhAuditoriaVisivelOperacao_(auditoria, indiceVisibilidade) {
   auditoria = auditoria || {};
   if (!String(auditoria.ID_AUDITORIA || '').trim()) return false;
   if (String(auditoria.STATUS || '').toUpperCase() === 'DESCARTADA') return false;
   if (audV3EhAuditoriaLegadaBase_(auditoria)) return false;
+  if (!audV3EhAuditoriaCicloAtual_(auditoria)) return false;
+  const idAuditoria = String(auditoria.ID_AUDITORIA || '').trim();
+  if (indiceVisibilidade && indiceVisibilidade.errosSuperados && indiceVisibilidade.errosSuperados[idAuditoria]) return false;
   return true;
+}
+
+function audV3FiltrarAuditoriasVisiveisOperacao_(auditorias) {
+  const lista = Array.isArray(auditorias) ? auditorias : [];
+  const indiceVisibilidade = audV3IndiceVisibilidadeOperacao_(lista);
+  return lista.filter(function(auditoria) {
+    return audV3EhAuditoriaVisivelOperacao_(auditoria, indiceVisibilidade);
+  });
 }
 
 function audV3EstadoIntegridadeAuditoria_(auditoria) {
@@ -6024,8 +6080,7 @@ function audV3ListarAuditoriasFront_() {
     if (item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item;
   });
   const contexto = { clientes: clientes, interacoes: interacoes };
-  return audV3Ler_('AUDITORIAS')
-    .filter(item => audV3EhAuditoriaVisivelOperacao_(item))
+  return audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))
     .slice(-200)
     .map(item => audV3AuditoriaFront_(item, contexto))
     .reverse();
@@ -6130,8 +6185,7 @@ function carregarAnaliticaAuditoriasV3(dados) {
 
   const registros = [];
   const profissionaisTodos = {};
-  audV3Ler_('AUDITORIAS').forEach(function(auditoria) {
-    if (!audV3EhAuditoriaVisivelOperacao_(auditoria)) return;
+  audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(auditoria) {
     if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return;
     if (idCliente && String(auditoria.ID_CLIENTE || '') !== idCliente) return;
     if (!String(auditoria.RESULTADO_JSON || '').trim() && !String(auditoria.SCORES_DIMENSOES_JSON || '').trim()) return;
