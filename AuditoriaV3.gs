@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.0.1',
+  versao: '6.0.2',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1779,6 +1779,16 @@ function executarAuditoriaV3(dados) {
       processado = processarRespostaIa(segundaRespostaIa);
     }
 
+    const motivoAutorreparoGate = tipo === 'PLANO' || contextoIa.correcaoValidacao
+      ? ''
+      : audV3MotivoAutorreparoGate_((processado.resultado || {}).validacao_board);
+    if (motivoAutorreparoGate) {
+      contextoIa.correcaoValidacao = motivoAutorreparoGate;
+      console.warn('Gate da auditoria bloqueado somente por coaching genérico. Executando uma tentativa única de autorreparo.');
+      const segundaRespostaGate = audV3ChamarGemini_(contextoIa);
+      processado = processarRespostaIa(segundaRespostaGate);
+    }
+
     const resultado = processado.resultado;
     const modeloIaUsado = processado.modeloIaUsado;
     const texto = audV3ResultadoTexto_(resultado, tipo);
@@ -3213,6 +3223,29 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3MotivoAutorreparoGate_(validacaoBoard) {
+  const gate = validacaoBoard || {};
+  if (String(gate.status || '').toUpperCase() !== 'BLOQUEADO') return '';
+
+  const bloqueios = (Array.isArray(gate.bloqueios) ? gate.bloqueios : [])
+    .map(function(item) { return String(item || '').trim(); })
+    .filter(Boolean);
+  if (!bloqueios.length) return '';
+
+  const bloqueiosCoaching = bloqueios.filter(function(item) {
+    return /^Há orientação genérica sem comportamento observável:/i.test(item);
+  });
+  if (!bloqueiosCoaching.length || bloqueiosCoaching.length !== bloqueios.length) return '';
+
+  return [
+    'O gate do Board bloqueou a auditoria somente porque há coaching genérico sem comportamento observável.',
+    bloqueiosCoaching.join(' | '),
+    'Corrija exclusivamente as orientações e recomendações genéricas, tornando cada uma executável e verificável na próxima interação.',
+    'Use pergunta exata, frase sugerida, sequência, confirmação objetiva, duas opções concretas de agenda ou outro comportamento observável quando aplicável.',
+    'Preserve fatos, falas, evidências, regras de pitch, contexto, aplicabilidade, status e conclusões já sustentadas. Não invente evidências nem altere a avaliação apenas para liberar o gate.'
+  ].join(' ');
 }
 
 function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
