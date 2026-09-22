@@ -7772,6 +7772,7 @@
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
     const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
     const auditorias = (estado.auditorias || []).filter(item => {
+      if (item.auditoriaLegada || item.auditoriaSubstituida) return false;
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
       return String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco &&
         (!idCliente || String(item.idCliente || '') === idCliente) &&
@@ -8095,7 +8096,12 @@
   function renderizarResumoEnviosRdAuditorias_() {
     const alvo = document.getElementById('resumoEnviosRdAuditorias');
     if (!alvo) return;
-    const auditorias = (estado.auditorias || []).filter(item => Boolean(item.resultado) && Boolean(item.linkCrm));
+    const auditorias = (estado.auditorias || []).filter(item =>
+      !item.auditoriaLegada &&
+      !item.auditoriaSubstituida &&
+      Boolean(item.resultado) &&
+      Boolean(item.linkCrm)
+    );
     const enviadas = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
     const erros = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
     const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase()));
