@@ -5905,6 +5905,7 @@ function audV3EstadoCrmGrupoSinergia_(auditoria, interacao) {
   if (integridade === 'DESCARTADA') return 'DESCARTADA';
   if (integridade === 'SUBSTITUIDA') return 'SUBSTITUIDA';
   if (integridade === 'LEGADA_REANALISE') return 'REANALISE_NECESSARIA';
+  if (status === 'EM_REVISAO' && validacao === 'VALIDADA' && hash) return 'AGUARDANDO_REVISAO';
   if (status !== 'APROVADA') return 'REANALISE_NECESSARIA';
   if (validacao !== 'VALIDADA' || !hash) return 'REANALISE_NECESSARIA';
   if (!linkCrm) return 'AGUARDANDO_VINCULO';
