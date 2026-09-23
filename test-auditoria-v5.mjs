@@ -184,7 +184,9 @@ assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer 
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
 assert.ok(audit.includes('contexto_interacao'), 'Resultado estruturado não contém contexto da interação.');
 assert.ok(front.includes('JSON estruturado da auditoria'), 'Board não permite inspecionar o JSON antes da publicação.');
-assert.ok(front.includes('BLOQUEADA PELO GATE'), 'Board não bloqueia visualmente uma auditoria reprovada pelo gate.');
+assert.ok(!front.includes('BLOQUEADA PELO GATE'), 'Board ainda exibe estado visual bloqueado pelo gate.');
+assert.ok(front.includes('Validação de qualidade'), 'Board não exibe o gate como validação informativa.');
+assert.ok(front.includes('Pontos para revisão'), 'Board não preserva os apontamentos do gate para revisão.');
 assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovação explícita antes da publicação.');
 assert.ok(front.includes('O que foi executado corretamente'), 'Resumo SDR não destaca execuções corretas.');
 assert.ok(front.includes('Perguntas de qualificação'), 'Resumo SDR não mostra as perguntas de qualificação.');
