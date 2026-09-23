@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.4',
+  versao: '1.9.5',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -30,6 +30,14 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
     { tipo: 'PLANO', escopo: 'SDR', nome: 'Plano de Otimização SDR', dia: 31 },
     { tipo: 'PLANO', escopo: 'CLOSER', nome: 'Plano de Otimização Closer', dia: 31 }
   ]
+});
+
+const JORNADA_PASTAS_CONFIG = Object.freeze({
+  maxArtefatosPorVarredura: 600,
+  maxPastasPorVarredura: 1000,
+  maxLeiturasDocumento: 80,
+  diasJanelaRecuperacao: 35,
+  margemJanelaMs: 2 * 86400000
 });
 
 const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
@@ -752,6 +760,11 @@ function sincronizarAgendaTodosClientes(dados) {
   const regras = lerObjetos_(APP.sheets.identificadoresClientes)
     .filter(item => String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO' && idsAtivos[String(item.ID_CLIENTE || '')]);
   const intervalo = jornadaIntervalo_('', dados.dataInicio, dados.dataFim);
+  const inicioRecuperacaoPastas = new Date(Date.now() - JORNADA_PASTAS_CONFIG.diasJanelaRecuperacao * 86400000);
+  const intervaloPastas = {
+    inicio: new Date(Math.min(intervalo.inicio.getTime(), inicioRecuperacaoPastas.getTime())),
+    fim: intervalo.fim
+  };
   const tocados = {};
   let encontrados = 0;
   let artefatos = 0;
@@ -799,7 +812,7 @@ function sincronizarAgendaTodosClientes(dados) {
     fontesCliente.forEach(fonte => pastas.push(Object.assign({}, cliente, { NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco })));
     pastas.forEach(origemPasta => {
       try {
-        const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervalo);
+        const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervaloPastas);
         transcricoesPastas += retornoPastas.importadas;
         if (retornoPastas.importadas) tocados[String(cliente.ID_CLIENTE)] = true;
         (retornoPastas.erros || []).forEach(erro => erros.push(erro));
@@ -812,7 +825,7 @@ function sincronizarAgendaTodosClientes(dados) {
   jornadaFontesPasta_().forEach(fonte => {
     if (fonte.idCliente) return;
     try {
-      const retornoPasta = jornadaSincronizarPastasCliente_({ ID_CLIENTE: '', NOME_CLIENTE: fonte.nome || 'Pasta geral', NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco }, intervalo);
+      const retornoPasta = jornadaSincronizarPastasCliente_({ ID_CLIENTE: '', NOME_CLIENTE: fonte.nome || 'Pasta geral', NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco }, intervaloPastas);
       transcricoesPastas += retornoPasta.importadas;
       (retornoPasta.erros || []).forEach(erro => erros.push(erro));
     } catch (erroPastaGeral) {
@@ -863,17 +876,17 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
   const idTranscricoes = jornadaExtrairIdDrive_(cliente.URL_PASTA_TRANSCRICOES);
   if (!idTranscricoes) return { importadas: 0, erros: [] };
   const idGravacoes = jornadaExtrairIdDrive_(cliente.URL_PASTA_GRAVACOES);
-  const arquivosPasta = jornadaListarArquivosPasta_(cliente.URL_PASTA_TRANSCRICOES, intervalo, 200);
+  const limiteArtefatos = JORNADA_PASTAS_CONFIG.maxArtefatosPorVarredura;
+  const arquivosPasta = jornadaListarArquivosPasta_(cliente.URL_PASTA_TRANSCRICOES, intervalo, limiteArtefatos);
   const gravacoes = idGravacoes && idGravacoes === idTranscricoes
     ? arquivosPasta
-    : jornadaListarArquivosPasta_(cliente.URL_PASTA_GRAVACOES, intervalo, 200);
+    : jornadaListarArquivosPasta_(cliente.URL_PASTA_GRAVACOES, intervalo, limiteArtefatos);
   const arquivos = arquivosPasta
     .filter(arquivo => {
       const mime = String(arquivo.getMimeType() || '');
       return mime === MimeType.GOOGLE_DOCS || mime === MimeType.PLAIN_TEXT || mime === 'text/plain';
     })
-    .sort((a, b) => new Date(b.getLastUpdated() || b.getDateCreated() || 0) - new Date(a.getLastUpdated() || a.getDateCreated() || 0))
-    .slice(0, 120);
+    .sort((a, b) => jornadaTimestampDrive_(b) - jornadaTimestampDrive_(a));
   const reunioesCliente = lerObjetos_(APP.sheets.reunioesCalendario)
     .filter(item => !cliente.ID_CLIENTE || String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE || ''));
   const interacoesPorExterno = {};
@@ -882,6 +895,7 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
   lerObjetos_(APP.sheets.transcricoes).forEach(item => { if (item.ID_INTERACAO) transcricoesPorInteracao[String(item.ID_INTERACAO)] = item; });
   let importadas = 0;
   let atualizadas = 0;
+  let leiturasDocumento = 0;
   const erros = [];
   arquivos.forEach(arquivo => {
     try {
@@ -903,7 +917,9 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
         const transcricaoExistente = transcricoesPorInteracao[String(existente.ID_INTERACAO)] || null;
         if (transcricaoExistente && String(transcricaoExistente.CONTEUDO || '').trim().length >= 20) {
           if (!jornadaConteudoPareceTranscricao_(transcricaoExistente.CONTEUDO)) {
+            if (leiturasDocumento >= JORNADA_PASTAS_CONFIG.maxLeiturasDocumento) return;
             leitura = jornadaLerArquivoTranscricaoDetalhe_(arquivo);
+            leiturasDocumento++;
             if (leitura.usouAbaTranscricao && leitura.conteudo.length >= 20 && leitura.conteudo !== String(transcricaoExistente.CONTEUDO || '').trim()) {
               const conteudoPlanilha = jornadaConteudoParaPlanilha_(leitura.conteudo);
               atualizarPorCampo_(APP.sheets.transcricoes, 'ID_TRANSCRICAO', transcricaoExistente.ID_TRANSCRICAO, {
@@ -921,8 +937,14 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
           return;
         }
       }
-      leitura = leitura || jornadaLerArquivoTranscricaoDetalhe_(arquivo);
+      if (!leitura) {
+        if (leiturasDocumento >= JORNADA_PASTAS_CONFIG.maxLeiturasDocumento) return;
+        leitura = jornadaLerArquivoTranscricaoDetalhe_(arquivo);
+        leiturasDocumento++;
+      }
       const conteudo = leitura.conteudo;
+      const mimeArquivo = String(arquivo.getMimeType() || '');
+      if (mimeArquivo === String(MimeType.GOOGLE_DOCS) && !leitura.usouAbaTranscricao) return;
       if (conteudo.length < 20) return;
       const conteudoPlanilha = jornadaConteudoParaPlanilha_(conteudo);
       const agora = new Date();
@@ -1032,24 +1054,73 @@ function jornadaVincularArtefatosPasta_(reuniao, transcricao, gravacao, idIntera
   Object.keys(alteracoes).forEach(chave => { reuniao[chave] = alteracoes[chave]; });
 }
 
+function jornadaTimestampDrive_(item) {
+  const candidatos = [];
+  try {
+    if (item && typeof item.getLastUpdated === 'function') {
+      const valor = new Date(item.getLastUpdated()).getTime();
+      if (isFinite(valor)) candidatos.push(valor);
+    }
+  } catch (erroAtualizacao) {}
+  try {
+    if (item && typeof item.getDateCreated === 'function') {
+      const valor = new Date(item.getDateCreated()).getTime();
+      if (isFinite(valor)) candidatos.push(valor);
+    }
+  } catch (erroCriacao) {}
+  try {
+    const nome = String(item && typeof item.getName === 'function' ? item.getName() : '');
+    const dataNome = nome.match(/(\d{4})[\/-](\d{2})[\/-](\d{2})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if (dataNome) {
+      const valor = new Date(
+        Number(dataNome[1]),
+        Number(dataNome[2]) - 1,
+        Number(dataNome[3]),
+        Number(dataNome[4] || 0),
+        Number(dataNome[5] || 0),
+        0
+      ).getTime();
+      if (isFinite(valor)) candidatos.push(valor);
+    }
+  } catch (erroNome) {}
+  return candidatos.length ? Math.max.apply(Math, candidatos) : 0;
+}
+
+function jornadaPastaDentroJanela_(pasta, inicioMs) {
+  if (!inicioMs) return true;
+  const timestamp = jornadaTimestampDrive_(pasta);
+  if (!timestamp) return true;
+  return timestamp >= inicioMs - JORNADA_PASTAS_CONFIG.margemJanelaMs;
+}
+
 function jornadaListarArquivosPasta_(urlPasta, intervalo, limite) {
   const id = jornadaExtrairIdDrive_(urlPasta);
   if (!id) return [];
-  const arquivos = [];
+
   const inicio = intervalo && intervalo.inicio ? new Date(intervalo.inicio).getTime() : 0;
-  const maximo = Math.max(1, Number(limite || 100));
+  const maximo = Math.max(1, Number(limite || JORNADA_PASTAS_CONFIG.maxArtefatosPorVarredura));
+  const maxPastas = Math.max(1, Number(JORNADA_PASTAS_CONFIG.maxPastasPorVarredura || 1000));
   const fila = [DriveApp.getFolderById(id)];
+  const pastasVistas = {};
+  const arquivosVistos = {};
+  const encontrados = [];
   let pastasVisitadas = 0;
-  while (fila.length && arquivos.length < maximo && pastasVisitadas < 100) {
+
+  while (fila.length && pastasVisitadas < maxPastas) {
     const pasta = fila.shift();
+    let idPasta = '';
+    try { idPasta = String(pasta.getId() || ''); } catch (erroIdPasta) {}
+    if (idPasta && pastasVistas[idPasta]) continue;
+    if (idPasta) pastasVistas[idPasta] = true;
     pastasVisitadas++;
+
     const iteradorArquivos = pasta.getFiles();
-    while (iteradorArquivos.hasNext() && arquivos.length < maximo) {
+    while (iteradorArquivos.hasNext()) {
       let arquivo = iteradorArquivos.next();
-      // Algumas contas organizam as notas do Meet em subpastas contendo
-      // atalhos. O arquivo real continua acessível, mas o MIME do atalho não é
-      // Google Docs e antes era descartado. Resolve o destino para tratar a
-      // transcrição e a gravação como qualquer outro artefato.
+      const timestampAtalho = jornadaTimestampDrive_(arquivo);
+
+      // Algumas contas organizam as notas do Meet em subpastas contendo atalhos.
+      // Resolve o destino e mantém a data do atalho para não perder artefatos recentes.
       if (String(arquivo.getMimeType() || '') === 'application/vnd.google-apps.shortcut') {
         try {
           const destinoId = arquivo.getTargetId();
@@ -1058,13 +1129,36 @@ function jornadaListarArquivosPasta_(urlPasta, intervalo, limite) {
           continue;
         }
       }
-      const atualizado = (arquivo.getLastUpdated() || arquivo.getDateCreated() || new Date(0)).getTime();
-      if (!inicio || atualizado >= inicio) arquivos.push(arquivo);
+
+      let idArquivo = '';
+      try { idArquivo = String(arquivo.getId() || ''); } catch (erroIdArquivo) {}
+      if (idArquivo && arquivosVistos[idArquivo]) continue;
+
+      const atualizado = Math.max(timestampAtalho, jornadaTimestampDrive_(arquivo));
+      if (inicio && atualizado && atualizado < inicio - JORNADA_PASTAS_CONFIG.margemJanelaMs) continue;
+
+      if (idArquivo) arquivosVistos[idArquivo] = true;
+      encontrados.push({ arquivo: arquivo, atualizado: atualizado });
     }
+
+    const filhas = [];
     const iteradorPastas = pasta.getFolders();
-    while (iteradorPastas.hasNext() && fila.length < 100) fila.push(iteradorPastas.next());
+    while (iteradorPastas.hasNext()) {
+      const filha = iteradorPastas.next();
+      if (!jornadaPastaDentroJanela_(filha, inicio)) continue;
+      filhas.push(filha);
+    }
+
+    // DriveApp não garante a ordem das pastas. Priorize explicitamente as mais
+    // recentes para que o histórico crescente nunca empurre reuniões novas para fora.
+    filhas.sort((a, b) => jornadaTimestampDrive_(b) - jornadaTimestampDrive_(a));
+    fila.splice.apply(fila, [0, 0].concat(filhas));
   }
-  return arquivos;
+
+  return encontrados
+    .sort((a, b) => Number(b.atualizado || 0) - Number(a.atualizado || 0))
+    .slice(0, maximo)
+    .map(item => item.arquivo);
 }
 
 function jornadaLerArquivoTranscricao_(arquivo) {
