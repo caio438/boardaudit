@@ -134,9 +134,10 @@ assert.match(front, /!item\.auditoriaLegada\s*&&\s*!item\.auditoriaSubstituida/,
 
 for (const bloco of [
   'Cenário da ligação',
-  'Execuções aderentes ao processo',
+  'O que foi executado corretamente',
   'Desvios em relação ao pitch/processo',
-  'Próximos passos conforme o pitch/processo',
+  'Se eu fosse o SDR, faria assim',
+  'Pontuação por critério',
   'Conclusão'
 ]) {
   assert.ok(front.includes(bloco), 'Bloco executivo SDR ausente: ' + bloco);
