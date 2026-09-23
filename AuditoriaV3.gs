@@ -1754,7 +1754,7 @@ function executarAuditoriaV3(dados) {
       if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
         respostaIa.equipe_analisada = equipePlano;
       }
-      audV3RepararEvidenciasRastreaveis_(respostaIa, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+      audV3RepararEvidenciasRastreaveis_(respostaIa, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH, interacao);
       const normalizado = audV3NormalizarResultado_(respostaIa, criterios, identidade, interacao, pitch, tipo);
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
@@ -3175,11 +3175,28 @@ function audV3RepararRegraPitch_(trecho, conteudoPitch) {
   return audV3RecuperarTrechoLiteral_(regra, conteudoPitch) || 'Não previsto no pitch.';
 }
 
-function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
+function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch, interacao) {
   resultado = resultado || {};
   criterios = criterios || {};
   const tipo = String(tipoAuditoria || '').toUpperCase();
   if (!['SDR', 'CLOSER'].includes(tipo)) return resultado;
+
+  const turnosFonte = (audV3NormalizarTranscricaoTexto_(transcricao, interacao || {}).turnos || []);
+  const resolverLocutorFonte = function(fala) {
+    const trecho = String(fala || '').trim();
+    if (!trecho || /^n[aã]o evidenciado/i.test(trecho)) return '';
+    const tiposEncontrados = {};
+    turnosFonte.forEach(function(turno) {
+      turno = turno || {};
+      if (!audV3TrechoExisteNaFonte_(trecho, turno.fala || '')) return;
+      const tipoTurno = String(turno.tipo || '').trim().toUpperCase();
+      if (tipoTurno) tiposEncontrados[tipoTurno] = true;
+    });
+    const tipos = Object.keys(tiposEncontrados);
+    if (!tipos.length) return '';
+    if (tipos.length !== 1) return 'NAO_IDENTIFICADO';
+    return tipos[0];
+  };
 
   const repararFala = function(valor) {
     const fala = String(valor || '').trim();
@@ -3193,6 +3210,14 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
     item.regra_pitch = audV3RepararRegraPitch_(item.regra_pitch, conteudoPitch);
     if (reparada) {
       item.o_que_foi_dito = reparada;
+      const locutorFonte = resolverLocutorFonte(reparada);
+      if (locutorFonte) item.locutor_evidencia = locutorFonte;
+      if (locutorFonte === 'NAO_IDENTIFICADO') {
+        item.status = 'NAO_EVIDENCIADO';
+        item.aplicavel = false;
+        item.divergencia = 'A autoria da evidência literal não pôde ser determinada com segurança.';
+        item.justificativa_nota = 'Critério excluído da pontuação porque o mesmo trecho não possui autoria inequívoca na transcrição.';
+      }
       return;
     }
     item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
