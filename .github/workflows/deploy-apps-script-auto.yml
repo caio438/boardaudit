@@ -301,10 +301,17 @@ jobs:
           rm -f /tmp/google_access_token_restore /tmp/clasp-versions-restore.txt
 
       - name: Run one-time journey sync
-        if: steps.capacity.outputs.head_only != 'true' && startsWith(github.event.head_commit.message, 'Ops sync jornada once:')
+        if: steps.capacity.outputs.head_only != 'true'
         shell: bash
         run: |
           set -euo pipefail
+
+          subject="$(git log -1 --pretty=%s)"
+          if [[ "$subject" != "Ops sync jornada once:"* ]]; then
+            echo "JORNADA_SYNC_SKIPPED=1"
+            echo "Commit sem marcador de sincronizacao unica: $subject"
+            exit 0
+          fi
 
           node <<'NODE'
           const fs = require('fs');
