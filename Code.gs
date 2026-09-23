@@ -295,6 +295,20 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_sync_jornada || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Sincronizacao operacional permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof SINCRONIZAR_JORNADA_CALENDARIO !== 'function') {
+      throw new Error('Sincronizador de Jornada nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(SINCRONIZAR_JORNADA_CALENDARIO(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_audit_publish || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
