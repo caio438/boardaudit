@@ -1,0 +1,31 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+
+const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
+const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
+const workflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url), 'utf8');
+const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
+
+assert.ok(ops.includes('function OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'Runner operacional nao existe.');
+assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO'"), 'Runner nao ancora no ID da transcricao.');
+assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao exige gate liberado.');
+assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
+assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
+assert.ok(ops.includes('reprocessarAutomacaoAuditoriaV3'), 'Runner nao possui contingencia idempotente para RD.');
+assert.ok(!ops.includes('publicarPlanoCircle'), 'Runner de RD nao pode publicar automaticamente no Circle.');
+
+assert.ok(code.includes("parametros.ops_audit_publish"), 'doGet nao expoe a rota operacional autenticada.');
+assert.ok(code.includes('Session.getActiveUser().getEmail()'), 'Rota operacional nao valida usuario ativo.');
+assert.ok(code.includes('Session.getEffectiveUser().getEmail()'), 'Rota operacional nao valida usuario efetivo.');
+assert.ok(code.includes('OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'doGet nao chama o runner operacional.');
+
+assert.ok(workflow.includes('Deploy Apps Script automatically'), 'Operacao nao aguarda deploy concluido.');
+assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao nao usa ambiente protegido.');
+assert.ok(workflow.includes('Authorization: Bearer $TOKEN'), 'Operacao nao autentica a chamada ao /dev.');
+assert.ok(workflow.includes('ops_audit_publish=1'), 'Workflow nao chama a rota operacional.');
+assert.ok(workflow.includes("Ops audit publish: "), 'Workflow nao exige commit operacional explicito.');
+assert.ok(workflow.includes("rdStatus || '').toUpperCase() !== 'PUBLICADA'"), 'Workflow nao confirma publicacao no RD.');
+
+assert.ok(deploy.includes('if [ "$version_count" -ge 199 ]'), 'Deploy nao preserva a ultima vaga de versao do Apps Script.');
+
+console.log('Runner operacional validado: gate -> preflight RD -> aprovacao -> publicacao idempotente.');
