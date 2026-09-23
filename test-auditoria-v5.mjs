@@ -231,6 +231,9 @@ const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoC
 const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
 const closerCenario = rd.indexOf("'CENÁRIO DA REUNIÃO'", rd.indexOf('function audRdTextoCloser_'));
 assert.ok(closerNota >= 0 && closerTabela > closerNota && closerCenario > closerTabela, 'Tabela de notas Closer precisa ficar logo abaixo da nota geral.');
+const closerFormatter = rd.slice(rd.indexOf('function audRdTextoCloser_'), rd.indexOf('function audRdTextoSdr_'));
+assert.ok(!/\bcurto\(/.test(closerFormatter), 'Formatter Closer chama helper curto inexistente; deve usar somente curtoCloser.');
+
 
 for (const coluna of ['HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM']) {
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de integridade ausente: ' + coluna);
