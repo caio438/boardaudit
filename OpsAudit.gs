@@ -32,6 +32,22 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
     return opsResumoAuditoriaPublicada_(auditoria, interacao, idTranscricaoReal, true);
   }
 
+  let forcarNovaAnalise = false;
+  if (auditoria &&
+      ['EM_REVISAO', 'APROVADA'].includes(String(auditoria.STATUS || '').toUpperCase()) &&
+      String(auditoria.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA') {
+    try {
+      opsValidarAuditoriaNoEngineAtual_(auditoria, interacao);
+    } catch (erroCompatibilidade) {
+      console.warn(
+        'Auditoria existente incompatível com as travas atuais; será preservada no histórico e uma nova análise será gerada. ' +
+        String(erroCompatibilidade && erroCompatibilidade.message ? erroCompatibilidade.message : erroCompatibilidade)
+      );
+      auditoria = null;
+      forcarNovaAnalise = true;
+    }
+  }
+
   if (auditoria &&
       String(auditoria.STATUS || '').toUpperCase() === 'EM_REVISAO' &&
       String(auditoria.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA') {
@@ -60,7 +76,7 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
       tipoAuditoria: tipo,
       nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
       nomeLead: interacao.LEAD || '',
-      evitarDuplicidade: true
+      evitarDuplicidade: !forcarNovaAnalise
     });
     if (!gerada || !gerada.auditoria || !String(gerada.auditoria.idAuditoria || '').trim()) {
       throw new Error('A auditoria nao foi criada corretamente.');
@@ -153,6 +169,26 @@ function opsAuditoriaAtualInteracao_(idInteracao) {
     ? audV3FiltrarAuditoriasVisiveisOperacao_(todas)
     : todas;
   return visiveis.length ? visiveis[visiveis.length - 1] : null;
+}
+
+function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
+  const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) throw new Error('Tipo de auditoria existente inválido.');
+
+  const resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado inválido.');
+  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
+  if (!transcricao) throw new Error('Transcrição original da auditoria existente não encontrada.');
+
+  const conteudo = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const criterios = audV3ParseJson_(auditoria.CRITERIOS_SNAPSHOT_JSON, 'Critérios originais inválidos.');
+  audV3ValidarResultadoOficial_(
+    resultado,
+    tipo,
+    criterios,
+    conteudo,
+    auditoria.CONTEUDO_PITCH_SNAPSHOT || ''
+  );
+  return resultado;
 }
 
 function opsPreflightRd_(auditoria, interacao, resultado) {
