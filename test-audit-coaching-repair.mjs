@@ -24,10 +24,28 @@ this.coachingApi = {
   collect: audV3ColetarOrientacoesGenericas_,
   buildContext: audV3ContextoCampoCoaching_,
   apply: audV3AplicarRespostaReparoCoaching_,
+  textRepair: audV3TextoReparoCoaching_,
   validateBoard: audV3ValidarQualidadeBoard_
 };`, context);
 
 const api = context.coachingApi;
+const criterioNormalizado = api.textRepair({
+  comportamento_faltante: 'Faltou confirmar o impacto financeiro antes de avançar.',
+  acao_pergunta_concreta: 'Pergunte "Qual é o impacto financeiro dessa situação para a operação?"',
+  momento_aplicacao: 'Durante o diagnóstico, antes da demonstração',
+  informacao_obter_confirmar: 'o impacto financeiro relatado pelo lead',
+  criterio_verificavel: 'O lead fornecer uma resposta objetiva sobre o impacto financeiro',
+  origem: 'SUGESTAO_ENABLEMENT'
+}, {
+  caminho: 'momentos.1.pontos_melhorar.0',
+  regra_literal_pitch: 'NAO_PREVISTO_NO_PITCH'
+});
+assert.match(
+  criterioNormalizado,
+  /Critério verificável: Considerar concluído quando estiver registrada ou confirmada de forma explícita a informação: o impacto financeiro relatado pelo lead/,
+  'Critério semanticamente verificável não pode ser rejeitado apenas pela forma verbal.'
+);
+
 const suzanaInteraction = 'TLDV_6aabd63fa6d95700137fadea';
 const pitchLiteral = 'Pergunte qual é o impacto financeiro do problema para a operação.';
 const evidencia = 'Hoje perdemos horas conferindo cada orçamento manualmente.';
