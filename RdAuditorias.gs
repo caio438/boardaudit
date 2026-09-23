@@ -515,22 +515,6 @@ function audRdTextoCloser_(c) {
       rotuloStatus((item || {}).status) + ' | ' + nota;
   });
 
-  var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
-  var notasCriterios = criterios.filter(function(item) {
-    return item && item.aplicavel !== false;
-  }).slice(0, 12).map(function(item) {
-    var nota = item.pontuacao;
-    if (nota === null || nota === undefined || nota === '') nota = '-';
-    var status = String(item.status || '').trim();
-    return '- ' + curto(item.nome || item.id || 'Critério', 110) + ': ' + String(nota) + '/5' + (status ? ' | ' + status.replace(/_/g, ' ') : '');
-  });
-  var mediaCriterios = criterios.filter(function(item) {
-    return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '';
-  });
-  var mediaCalculada = mediaCriterios.length
-    ? Math.round((mediaCriterios.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0) / mediaCriterios.length) * 100) / 100
-    : null;
-
   var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
   var pct = pc.score_percentual != null ? pc.score_percentual : c.a.SCORE_PERCENTUAL;
 
@@ -624,6 +608,22 @@ function audRdTextoSdr_(c) {
     vistos[chave] = true;
     lista.push(texto);
   }
+
+  var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+  var notasCriterios = criterios.filter(function(item) {
+    return item && item.aplicavel !== false;
+  }).slice(0, 12).map(function(item) {
+    var nota = item.pontuacao;
+    if (nota === null || nota === undefined || nota === '') nota = '-';
+    var status = String(item.status || '').trim();
+    return '- ' + curto(item.nome || item.id || 'Critério', 110) + ': ' + String(nota) + '/5' + (status ? ' | ' + status.replace(/_/g, ' ') : '');
+  });
+  var mediaCriterios = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '';
+  });
+  var mediaCalculada = mediaCriterios.length
+    ? Math.round((mediaCriterios.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0) / mediaCriterios.length) * 100) / 100
+    : null;
 
   var conformes = ep.filter(function(x) {
     return norm((x || {}).status) === 'CONFORME';
