@@ -6113,7 +6113,10 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   duracaoPadrao: 105,
   maxDiaPadrao: 15,
   maxPorExecucao: 3,
-  horarios: [7, 10, 13, 16, 19]
+  horarios: [7, 10, 13, 16, 19],
+  chaveErros: 'AUDITORIA_AUTO_LIGACOES_ERROS_V1',
+  atrasoRetryMs: 6 * 60 * 60 * 1000,
+  maxTentativasErro: 3
 });
 
 function audV3ConfigAutomacaoLigacoes_() {
@@ -6140,6 +6143,64 @@ function audV3ConfigAutomacaoLigacoes_() {
     maxPorExecucao: AUTOMACAO_LIGACOES_V3.maxPorExecucao,
     horarios: AUTOMACAO_LIGACOES_V3.horarios.slice()
   };
+}
+
+function audV3EstadoErrosAutomacaoLigacoes_() {
+  try {
+    const bruto = PropertiesService.getScriptProperties().getProperty(AUTOMACAO_LIGACOES_V3.chaveErros) || '{}';
+    const dados = JSON.parse(bruto);
+    return dados && typeof dados === 'object' ? dados : {};
+  } catch (erro) {
+    return {};
+  }
+}
+
+function audV3SalvarEstadoErrosAutomacaoLigacoes_(estado) {
+  PropertiesService.getScriptProperties().setProperty(
+    AUTOMACAO_LIGACOES_V3.chaveErros,
+    JSON.stringify(estado || {})
+  );
+}
+
+function audV3ErroAutomacaoElegivelRetry_(interacao, estado, agoraMs) {
+  if (String((interacao || {}).STATUS_AUDITORIA || '').toUpperCase() !== 'ERRO_AUTOMACAO') return true;
+  const id = String((interacao || {}).ID_INTERACAO || '');
+  const registro = (estado || {})[id] || {};
+  const tentativas = Math.max(1, Number(registro.tentativas || 1));
+  if (tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro) return false;
+
+  let proxima = Number(registro.proximaTentativaEm || 0);
+  if (!proxima) {
+    const atualizado = new Date((interacao || {}).ATUALIZADO_EM || 0).getTime();
+    proxima = (isFinite(atualizado) && atualizado > 0 ? atualizado : 0) + AUTOMACAO_LIGACOES_V3.atrasoRetryMs;
+  }
+  return Number(agoraMs || Date.now()) >= proxima;
+}
+
+function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
+  const id = String(idInteracao || '').trim();
+  if (!id) return;
+  const estado = audV3EstadoErrosAutomacaoLigacoes_();
+  const anterior = estado[id] || {};
+  const tentativas = Math.max(0, Number(anterior.tentativas || 0)) + 1;
+  estado[id] = {
+    tentativas: tentativas,
+    ultimaFalhaEm: Date.now(),
+    proximaTentativaEm: tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro
+      ? 0
+      : Date.now() + AUTOMACAO_LIGACOES_V3.atrasoRetryMs * tentativas,
+    erro: String(mensagem || '').slice(0, 500)
+  };
+  audV3SalvarEstadoErrosAutomacaoLigacoes_(estado);
+}
+
+function audV3LimparErroAutomacaoLigacao_(idInteracao) {
+  const id = String(idInteracao || '').trim();
+  if (!id) return;
+  const estado = audV3EstadoErrosAutomacaoLigacoes_();
+  if (!Object.prototype.hasOwnProperty.call(estado, id)) return;
+  delete estado[id];
+  audV3SalvarEstadoErrosAutomacaoLigacoes_(estado);
 }
 
 function audV3PitchAtualAutomatico_(idCliente, tipo, pitchesInformados) {
@@ -6176,6 +6237,8 @@ function audV3AtualizarPitchDocumentoAutomatico_(pitch) {
 
 function audV3FilaAutomacaoLigacoes_(config) {
   config = config || audV3ConfigAutomacaoLigacoes_();
+  const estadoErros = audV3EstadoErrosAutomacaoLigacoes_();
+  const agoraMs = Date.now();
   const transcricoes = {};
   audV3Ler_('TRANSCRICOES').forEach(function(item) {
     if (item.ID_INTERACAO && String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' && String(item.CONTEUDO || '').trim().length >= 20) {
@@ -6198,7 +6261,7 @@ function audV3FilaAutomacaoLigacoes_(config) {
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       String(item.ID_CLIENTE || '').trim() &&
       !auditoriasValidas[id] &&
-      status !== 'ERRO_AUTOMACAO';
+      audV3ErroAutomacaoElegivelRetry_(item, estadoErros, agoraMs);
   }).map(function(item) {
     return {
       interacao: item,
@@ -6400,9 +6463,11 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
         resultado.processadas++;
         if (transcrita.reutilizada || analisada.reutilizada) resultado.reutilizadas++;
         audV3RegistrarUsoAutomacaoLigacoes_(1);
+        audV3LimparErroAutomacaoLigacao_(interacao.ID_INTERACAO);
       } catch (erroItem) {
         const mensagem = erroItem && erroItem.message ? erroItem.message : String(erroItem);
         resultado.erros.push((interacao.OPORTUNIDADE || interacao.TITULO || interacao.ID_INTERACAO) + ': ' + mensagem);
+        audV3RegistrarErroAutomacaoLigacao_(interacao.ID_INTERACAO, mensagem);
         audV3Atualizar_('INTERACOES', 'ID_INTERACAO', interacao.ID_INTERACAO, {
           STATUS_AUDITORIA: 'ERRO_AUTOMACAO',
           ATUALIZADO_EM: new Date()
