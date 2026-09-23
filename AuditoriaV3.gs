@@ -2170,7 +2170,9 @@ function aprovarAuditoriaV3(idAuditoria) {
   };
   const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
   if (!transcricao) throw new Error('A transcrição original desta auditoria não está disponível.');
-  transcricao.CONTEUDO = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
+  transcricao.CONTEUDO = String(normalizacaoFonte.texto || conteudoOriginal || '').trim();
   if (!String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
   const hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, auditoria.TIPO_AUDITORIA);
   if (!String(auditoria.HASH_FONTE || '').trim()) {
