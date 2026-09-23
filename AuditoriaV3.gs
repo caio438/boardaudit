@@ -2356,12 +2356,10 @@ function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
   const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
   const lead = String((interacao || {}).LEAD || '').trim();
 
-  const papelNormalizado = audV3NormalizarTrechoRastreavel_(papelProfissional);
-  if (n === papelNormalizado || (papelNormalizado && n.indexOf(papelNormalizado + ' ') === 0) ||
-      /^(consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
-    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== papelNormalizado };
+  if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
   }
-  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)(?:\s+.+)?$/.test(n)) {
+  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
     return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
   }
   if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
@@ -3195,8 +3193,9 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
       if (tipoTurno) tiposEncontrados[tipoTurno] = true;
     });
     const tipos = Object.keys(tiposEncontrados);
-    if (tipos.length !== 1) return '';
-    return tipos[0] === 'NAO_IDENTIFICADO' ? '' : tipos[0];
+    if (!tipos.length) return '';
+    if (tipos.length !== 1) return 'NAO_IDENTIFICADO';
+    return tipos[0];
   };
 
   const repararFala = function(valor) {
@@ -3213,6 +3212,12 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
       item.o_que_foi_dito = reparada;
       const locutorFonte = resolverLocutorFonte(reparada);
       if (locutorFonte) item.locutor_evidencia = locutorFonte;
+      if (locutorFonte === 'NAO_IDENTIFICADO') {
+        item.status = 'NAO_EVIDENCIADO';
+        item.aplicavel = false;
+        item.divergencia = 'A autoria da evidência literal não pôde ser determinada com segurança.';
+        item.justificativa_nota = 'Critério excluído da pontuação porque o mesmo trecho não possui autoria inequívoca na transcrição.';
+      }
       return;
     }
     item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
