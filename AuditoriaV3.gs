@@ -1900,7 +1900,9 @@ function repararCoachingAuditoriaV3(idAuditoria) {
     const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
     const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
     if (!interacao || !transcricao) throw new Error('A fonte original não está disponível.');
-    const conteudo = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+    const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+    const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
+    const conteudo = String(normalizacaoFonte.texto || conteudoOriginal || '').trim();
     const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', auditoria.ID_CLIENTE);
     const pitch = {
       ID_PITCH: auditoria.ID_PITCH, NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT,
