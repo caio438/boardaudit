@@ -6430,17 +6430,18 @@
   function renderizarGateAuditoriaFront_(r) {
     const gate = (r || {}).validacao_board || {};
     if (!String(gate.status || '').trim()) return '';
-    const status = String(gate.status || '').toUpperCase();
-    const classe = status === 'OK' ? 'success' : status === 'BLOQUEADO' ? 'danger' : 'warning';
+    const statusOriginal = String(gate.status || '').toUpperCase();
+    const status = statusOriginal === 'BLOQUEADO' ? 'REVISAR' : statusOriginal;
+    const classe = status === 'OK' ? 'success' : 'warning';
     const itens = (titulo, lista) => (Array.isArray(lista) && lista.length)
       ? '<div style="margin-top:8px"><strong>' + escapeHtml(titulo) + '</strong><ul class="audit-executive-list">' + lista.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ul></div>'
       : '';
     return `
       <section class="audit-executive-block">
-        <h3>Validação antes da publicação <span class="status ${classe}">${escapeHtml(status)}</span></h3>
-        <p class="muted">Esta validação roda antes da aprovação e impede publicação quando encontra inconsistência crítica.</p>
+        <h3>Validação de qualidade <span class="status ${classe}">${escapeHtml(status)}</span></h3>
+        <p class="muted">Esta validação aponta itens para revisão, mas não impede aprovação ou publicação.</p>
         ${itens('Alertas', gate.alertas)}
-        ${itens('Bloqueios', gate.bloqueios)}
+        ${itens('Pontos para revisão', gate.bloqueios)}
       </section>
     `;
   }
@@ -6496,14 +6497,9 @@
                    : `<button id="btnPrepararCircle" class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(auditoria.idAuditoria)}')">Preparar para o Circle</button>`}`
                : ''}`
           : auditoria.status === 'EM_REVISAO'
-            ? String(((r.validacao_board || {}).status || '')).toUpperCase() === 'BLOQUEADO'
-              ? `<span class="status danger" style="align-self:center">BLOQUEADA PELO GATE</span>
-                 ${!((r.validacao_board || {}).reparo_coaching || {}).tentativa
-                   ? `<button id="btnRepararCoaching" class="btn secondary" type="button" onclick="repararCoachingAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Corrigir orientações</button>`
-                   : '<span class="small muted">O reparo automático foi tentado. Consulte os bloqueios para intervenção humana.</span>'}`
-              : `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
-                 <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
-                 <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
+            ? `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
+               <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
+               <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
             : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
                <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
                <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`}
