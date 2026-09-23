@@ -32,11 +32,14 @@ assert.ok(code.includes("parametros.ops_audit_publish"), 'doGet nao expoe a rota
 assert.ok(code.includes('Session.getActiveUser().getEmail()'), 'Rota operacional nao valida usuario ativo.');
 assert.ok(code.includes('Session.getEffectiveUser().getEmail()'), 'Rota operacional nao valida usuario efetivo.');
 assert.ok(code.includes('OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'doGet nao chama o runner operacional.');
+assert.ok(code.includes('TRA-[A-Za-z0-9-]+'), 'Rota operacional nao aceita ID interno de transcricao TRA-.');
+assert.ok(code.includes('INT-[A-Za-z0-9-]+'), 'Rota operacional nao aceita ID interno de interacao INT-.');
 
 assert.ok(workflow.includes('Deploy Apps Script automatically'), 'Operacao nao aguarda deploy concluido.');
 assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao nao usa ambiente protegido.');
 assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Operacao nao autentica a chamada ao web app HEAD.');
-assert.ok(workflow.includes('/dev?ops_audit_publish=1'), 'Workflow nao chama o web app HEAD operacional.');
+assert.ok(workflow.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_audit_publish=1'), 'Workflow nao chama o web app de producao para a operacao.');
+assert.ok(!workflow.includes('/dev?ops_audit_publish=1'), 'Workflow operacional ainda depende do endpoint /dev.');
 assert.ok(workflow.includes('--location-trusted'), 'Workflow nao preserva autenticacao OAuth nos redirects do Google.');
 assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Workflow nao envia o OAuth Bearer de forma explicita.');
 assert.ok(workflow.includes("sed -E 's/ \\(#[0-9]+\\)$//'"), 'Workflow nao remove o sufixo de PR adicionado pelo squash merge.');
