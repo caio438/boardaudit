@@ -179,7 +179,43 @@ function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
   const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
   if (!transcricao) throw new Error('Transcrição original da auditoria existente não encontrada.');
 
-  const conteudo = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', auditoria.ID_CLIENTE);
+  if (!cliente) throw new Error('Cliente original da auditoria existente não encontrado.');
+
+  const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const normalizacao = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
+  const conteudo = String(normalizacao.texto || conteudoOriginal || '').trim();
+
+  const pitch = {
+    ID_PITCH: auditoria.ID_PITCH,
+    ID_CLIENTE: auditoria.ID_CLIENTE,
+    TIPO_PITCH: tipo,
+    NOME_VERSAO: auditoria.NOME_PITCH_SNAPSHOT,
+    NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT,
+    CONTEUDO_PITCH: auditoria.CONTEUDO_PITCH_SNAPSHOT,
+    STATUS: 'ATIVO'
+  };
+  const modelo = {
+    ID_MODELO: auditoria.ID_MODELO,
+    ID_CLIENTE: auditoria.ID_CLIENTE,
+    TIPO_AUDITORIA: tipo,
+    NOME_MODELO: auditoria.NOME_MODELO_SNAPSHOT,
+    VERSAO_MODELO: auditoria.VERSAO_MODELO_SNAPSHOT,
+    PROMPT_AUDITORIA: auditoria.PROMPT_SNAPSHOT,
+    CRITERIOS_JSON: auditoria.CRITERIOS_SNAPSHOT_JSON,
+    STATUS: 'ATIVO'
+  };
+  const hashAtual = audV3HashFonte_(
+    cliente,
+    pitch,
+    modelo,
+    Object.assign({}, transcricao, { CONTEUDO: conteudo }),
+    tipo
+  );
+  if (!String(auditoria.HASH_FONTE || '').trim() || String(auditoria.HASH_FONTE) !== String(hashAtual)) {
+    throw new Error('A fonte atual difere da auditoria existente; preserve o histórico e gere uma nova análise.');
+  }
+
   const criterios = audV3ParseJson_(auditoria.CRITERIOS_SNAPSHOT_JSON, 'Critérios originais inválidos.');
   audV3ValidarResultadoOficial_(
     resultado,
