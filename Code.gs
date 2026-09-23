@@ -6,8 +6,8 @@ const APP = {
   timezone: 'America/Sao_Paulo',
   rdBaseUrl: 'https://crm.rdstation.com/api/v1',
   tldvBaseUrl: 'https://pasta.tldv.io/v1alpha1',
-  tldvSyncHours: [19],
-  rdTriggerHour: 19,
+  tldvSyncHours: [6, 10, 12, 14, 16, 18, 20],
+  rdTriggerHour: 6,
   rdPageLimit: 200,
   rdMaxPages: 100,
   rdBatchSize: 3,
@@ -280,6 +280,20 @@ function audBuildAtual_() {
 
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
+
+  if (String(parametros.ops_restore_automation || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Restauracao de automacoes permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof INSTALAR_AUTOMACOES_OPERACIONAIS !== 'function') {
+      throw new Error('Restaurador de automacoes nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(INSTALAR_AUTOMACOES_OPERACIONAIS(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
   if (String(parametros.ops_audit_publish || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
@@ -2784,7 +2798,9 @@ function reconciliarAcionadorRd_() {
   const existentes = ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === nomeFuncao);
 
-  existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  if (existentes.length > 1) {
+    existentes.slice(1).forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  }
 
   if (!clientesAtivos.length) {
     existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
@@ -2794,8 +2810,20 @@ function reconciliarAcionadorRd_() {
     return false;
   }
 
-  instalarAutomacaoCentral19h_();
-  registrarLog_('RD', 'USAR_AUTOMACAO_CENTRAL', 'RD incluído na rotina central das 19h.');
+  if (!existentes.length) {
+    ScriptApp.newTrigger(nomeFuncao)
+      .timeBased()
+      .atHour(APP.rdTriggerHour)
+      .everyDays(1)
+      .inTimezone(APP.timezone)
+      .create();
+
+    registrarLog_(
+      'RD',
+      'CRIAR_ACIONADOR',
+      'Acionador diário criado para aproximadamente ' + APP.rdTriggerHour + 'h.'
+    );
+  }
 
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'SIM');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'SIM');
@@ -3940,23 +3968,37 @@ function testarConexaoTldv() {
 }
 
 /**
- * Inclui o tl;dv na automação central das 19h e remove agendas antigas.
+ * Mantém sete acionadores diários do tl;dv, um para cada horário operacional.
+ * A reinstalação é idempotente: acionadores antigos são removidos antes da
+ * criação da agenda oficial, evitando sincronizações duplicadas.
  */
 function instalarAutomacaoTldv() {
   const nomeFuncao = 'SINCRONIZAR_TLDV_AGENDADO';
+  const horas = APP.tldvSyncHours.slice();
+
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  instalarAutomacaoCentral19h_();
-  const horarios = ['19:00'];
+
+  horas.forEach(hora => {
+    ScriptApp.newTrigger(nomeFuncao)
+      .timeBased()
+      .everyDays(1)
+      .atHour(hora)
+      .nearMinute(0)
+      .inTimezone(APP.timezone)
+      .create();
+  });
+
+  const horarios = horas.map(hora => String(hora).padStart(2, '0') + ':00');
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'SIM');
   salvarConfiguracao_('TLDV_AUTOMACAO_HORARIOS', horarios.join(', '));
   salvarConfiguracao_('TLDV_AUTOMACAO_ATUALIZADA_EM', new Date());
-  registrarLog_('TLDV', 'USAR_AUTOMACAO_CENTRAL', 'tl;dv incluído na rotina central das 19h.');
+  registrarLog_('TLDV', 'CRIAR_ACIONADORES', 'Agenda automática: ' + horarios.join(', ') + '.');
 
   return {
     sucesso: true,
-    mensagem: 'Sincronização automática do tl;dv configurada na rotina central das 19h.',
+    mensagem: 'Sincronização automática do tl;dv configurada em 7 horários diários.',
     automacao: obterStatusAutomacaoTldv_()
   };
 }
@@ -3973,13 +4015,15 @@ function obterStatusAutomacaoTldv_() {
     totalAcionadores = 0;
   }
 
-  const horarios = ['19:00'];
+  const horarios = APP.tldvSyncHours.map(hora =>
+    String(hora).padStart(2, '0') + ':00'
+  );
 
   return {
-    ativa: String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM' && automacaoCentralInstalada_(),
-    totalAcionadores: automacaoCentralInstalada_() ? 1 : 0,
-    acionadoresLegados: totalAcionadores,
-    centralizada: true,
+    ativa: String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM' &&
+      totalAcionadores === horarios.length,
+    totalAcionadores: totalAcionadores,
+    centralizada: false,
     horarios: horarios,
     timezone: APP.timezone,
     ultimaExecucao: serializarData_(obterConfiguracao_('TLDV_ULTIMA_EXECUCAO')),

@@ -6113,7 +6113,7 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   duracaoPadrao: 105,
   maxDiaPadrao: 15,
   maxPorExecucao: 3,
-  horarios: [19]
+  horarios: [7, 10, 13, 16, 19]
 });
 
 function audV3ConfigAutomacaoLigacoes_() {
@@ -6257,8 +6257,10 @@ function obterStatusAutomacaoLigacoesV3() {
     clientesSemPitchAtual: Object.keys(semPitch).map(function(id) { return { idCliente: id, nomeCliente: semPitch[id] }; }),
     ultimaExecucao: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMA_EXECUCAO') || '',
     ultimoResultado: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMO_RESULTADO') || '',
-    gatilhosInstalados: automacaoCentralInstalada_() ? 1 : 0,
-    centralizada: true
+    gatilhosInstalados: ScriptApp.getProjectTriggers().filter(function(trigger) {
+      return trigger.getHandlerFunction() === AUTOMACAO_LIGACOES_V3.handler;
+    }).length,
+    centralizada: false
   };
 }
 
@@ -6266,7 +6268,14 @@ function instalarGatilhosAutomacaoLigacoesV3_() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === AUTOMACAO_LIGACOES_V3.handler) ScriptApp.deleteTrigger(trigger);
   });
-  instalarAutomacaoCentral19h_();
+  AUTOMACAO_LIGACOES_V3.horarios.forEach(function(hora) {
+    ScriptApp.newTrigger(AUTOMACAO_LIGACOES_V3.handler)
+      .timeBased()
+      .atHour(hora)
+      .everyDays(1)
+      .inTimezone(APP.timezone)
+      .create();
+  });
 }
 
 function removerGatilhosAutomacaoLigacoesV3_() {

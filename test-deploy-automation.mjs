@@ -16,7 +16,9 @@ assert.ok(yaml.includes("if: steps.capacity.outputs.head_only != 'true'"), 'Depl
 
 assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Push exact validated source'), 'Limite de versões só é verificado depois do push.');
 assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
-assert.ok(!yaml.includes('/tmp/google_access_token'), 'Deploy ainda extrai access_token diretamente do clasp.');
+assert.ok(yaml.includes('Restore independent automation triggers'), 'Deploy não reinstala os acionadores operacionais após publicar.');
+assert.ok(yaml.includes('ops_restore_automation=1'), 'Deploy não chama o restaurador autenticado de automações.');
+assert.ok(yaml.includes('AUTOMATION_TRIGGERS_RESTORED=1'), 'Deploy não confirma a restauração dos acionadores.');
 
 assert.ok(yaml.includes('Pull current production for preservation'), 'Deploy não preserva a produção atual antes da publicação.');
 assert.ok(yaml.includes('Save rollback snapshot'), 'Deploy não cria snapshot de rollback.');
