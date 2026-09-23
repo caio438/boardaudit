@@ -430,12 +430,12 @@ function instalarAutomacaoJornadaCliente() {
   const funcao = 'SINCRONIZAR_JORNADA_CALENDARIO';
   const existentes = ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === funcao);
   existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  instalarAutomacaoCentral19h_();
+  ScriptApp.newTrigger(funcao).timeBased().everyHours(2).create();
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM') {
     instalarAutomacaoFormalizacoesAgenda_();
   }
   CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'SIM', 21600);
-  return { sucesso: true, mensagem: 'Agenda incluída na rotina central diária das 19h.' };
+  return { sucesso: true, mensagem: 'Sincronização da Agenda configurada para executar a cada duas horas.' };
 }
 
 function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
@@ -464,7 +464,6 @@ function instalarAutomacaoFormalizacoesAgenda_() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === 'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA')
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  instalarAutomacaoCentral19h_();
   ScriptApp.newTrigger(FORMALIZACAO_NOTURNA_CONFIG.handlerDiario)
     .timeBased()
     .everyDays(1)
@@ -692,7 +691,9 @@ function jornadaReuniaoDeveFormalizar_(reuniao) {
 }
 
 function jornadaAutomacaoInstalada_() {
-  return automacaoCentralInstalada_();
+  return ScriptApp.getProjectTriggers().some(trigger =>
+    trigger.getHandlerFunction() === 'SINCRONIZAR_JORNADA_CALENDARIO'
+  );
 }
 
 function jornadaAutomacaoInstaladaCache_() {
