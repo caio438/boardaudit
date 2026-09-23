@@ -111,6 +111,29 @@ context.api.validateOfficial(
   'Comportamento obrigatório descrito no pitch.'
 );
 
+const criteriosComNomeCloser = JSON.parse(JSON.stringify(criteriosAvaliados));
+criteriosComNomeCloser[0].locutor_evidencia = 'Suzana';
+const resultadoComNomeCloser = context.api.normalize(
+  { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosComNomeCloser, checklist: JSON.parse(JSON.stringify(checklist)) },
+  criterios,
+  { empresa: 'Cliente', sdr: 'Suzana', lead: 'Lead' },
+  { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
+  { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
+  'CLOSER'
+);
+context.api.validateOfficial(
+  resultadoComNomeCloser,
+  'CLOSER',
+  criterios,
+  'CLOSER (Suzana): Evidência objetiva da transcrição.\nLEAD (Lead): Outra fala.',
+  'Comportamento obrigatório descrito no pitch.'
+);
+assert.equal(
+  resultadoComNomeCloser.criterios_avaliados[0].locutor_evidencia,
+  'CLOSER',
+  'Nome real do Closer deve ser reconciliado para CLOSER antes da validacao.'
+);
+
 const resultadoComEvidenciaInventada = JSON.parse(JSON.stringify(resultado));
 resultadoComEvidenciaInventada.criterios_avaliados[0].o_que_foi_dito = 'Frase que não existe na transcrição.';
 assert.throws(
