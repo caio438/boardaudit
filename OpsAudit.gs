@@ -13,14 +13,14 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
   const alvo = String(idTranscricao || '').trim();
   if (!alvo) throw new Error('ID da transcricao nao informado.');
 
-  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', alvo);
-  if (!transcricao) throw new Error('Transcricao nao encontrada: ' + alvo);
+  const resolvido = opsResolverAlvoAuditoria_(alvo);
+  const transcricao = resolvido.transcricao;
+  const interacao = resolvido.interacao;
+  const idTranscricaoReal = String(transcricao.ID_TRANSCRICAO || '');
+
   if (String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') {
     throw new Error('A transcricao ainda nao esta concluida.');
   }
-
-  const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', transcricao.ID_INTERACAO);
-  if (!interacao) throw new Error('Interacao da transcricao nao encontrada.');
 
   let auditoria = opsAuditoriaAtualInteracao_(interacao.ID_INTERACAO);
   let tipo = String((auditoria || {}).TIPO_AUDITORIA || interacao.FUNCAO || '').trim().toUpperCase();
@@ -29,7 +29,7 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
   }
 
   if (auditoria && String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA') {
-    return opsResumoAuditoriaPublicada_(auditoria, interacao, alvo, true);
+    return opsResumoAuditoriaPublicada_(auditoria, interacao, idTranscricaoReal, true);
   }
 
   if (auditoria &&
@@ -107,7 +107,40 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
     throw new Error('Auditoria aprovada, mas o RD nao confirmou PUBLICADA: ' + String(auditoria.RD_ERRO || auditoria.RD_STATUS || 'sem status'));
   }
 
-  return opsResumoAuditoriaPublicada_(auditoria, interacao, alvo, false, gate, aprovacao);
+  return opsResumoAuditoriaPublicada_(auditoria, interacao, idTranscricaoReal, false, gate, aprovacao);
+}
+
+function opsResolverAlvoAuditoria_(alvo) {
+  const chave = String(alvo || '').trim();
+  let transcricao = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', chave);
+  let interacao = null;
+
+  if (transcricao) {
+    interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', transcricao.ID_INTERACAO);
+  }
+
+  if (!interacao) {
+    interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', chave);
+  }
+
+  if (!interacao && /^TLDV_/i.test(chave)) {
+    const idExternoTldv = chave.replace(/^TLDV_/i, '');
+    const candidata = audV3Localizar_('INTERACOES', 'ID_EXTERNO', idExternoTldv);
+    if (candidata && String(candidata.FONTE || '').toUpperCase() === 'TLDV') interacao = candidata;
+  }
+
+  if (!interacao) {
+    const candidataExterna = audV3Localizar_('INTERACOES', 'ID_EXTERNO', chave);
+    if (candidataExterna) interacao = candidataExterna;
+  }
+
+  if (!transcricao && interacao) {
+    transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacao.ID_INTERACAO);
+  }
+
+  if (!interacao) throw new Error('Interacao nao encontrada para o alvo operacional: ' + chave);
+  if (!transcricao) throw new Error('Transcricao nao encontrada para a interacao: ' + String(interacao.ID_INTERACAO || chave));
+  return { interacao: interacao, transcricao: transcricao };
 }
 
 function opsAuditoriaAtualInteracao_(idInteracao) {
