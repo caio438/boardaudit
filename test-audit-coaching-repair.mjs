@@ -274,7 +274,17 @@ let released = 0;
 context.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => released++ }) };
 context.audV3Localizar_ = table => table === 'AUDITORIAS' ? existing : { ID_INTERACAO: suzanaInteraction };
 context.audV3ConteudoCompletoTranscricao_ = () => evidencia;
-context.audV3HashFonte_ = () => 'unchanged';
+let normalizacoesFonteReparo = 0;
+context.audV3NormalizarTranscricaoTexto_ = (conteudoOriginal, interacaoAtual) => {
+  assert.equal(conteudoOriginal, evidencia);
+  assert.equal(interacaoAtual.ID_INTERACAO, suzanaInteraction);
+  normalizacoesFonteReparo++;
+  return { texto: 'FONTE NORMALIZADA DO REPARO' };
+};
+context.audV3HashFonte_ = (cliente, pitch, modelo, transcricaoHash) => {
+  assert.equal(transcricaoHash.CONTEUDO, 'FONTE NORMALIZADA DO REPARO');
+  return 'unchanged';
+};
 context.audV3ValidarResultadoOficial_ = () => true;
 context.audV3ResultadoTexto_ = value => JSON.stringify(value);
 context.audV3Atualizar_ = (table, key, id, patch) => {
@@ -286,6 +296,7 @@ context.audV3Atualizar_ = (table, key, id, patch) => {
 context.audV3AuditoriaFront_ = value => value;
 context.audV3ListarAuditoriasFront_ = () => [existing];
 assert.equal(context.repararCoachingAuditoriaV3(existing.ID_AUDITORIA).sucesso, true);
+assert.equal(normalizacoesFonteReparo, 1, 'O reparo deve normalizar a fonte antes de recalcular o hash.');
 assert.equal(existing.STATUS, 'EM_REVISAO');
 assert.equal(existing.SCORE, 2.5);
 assert.equal(requests, 1);
