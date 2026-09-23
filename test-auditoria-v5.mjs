@@ -134,9 +134,10 @@ assert.match(front, /!item\.auditoriaLegada\s*&&\s*!item\.auditoriaSubstituida/,
 
 for (const bloco of [
   'Cenário da ligação',
-  'Execuções aderentes ao processo',
+  'O que foi executado corretamente',
   'Desvios em relação ao pitch/processo',
-  'Próximos passos conforme o pitch/processo',
+  'Se eu fosse o SDR, faria assim',
+  'Pontuação por critério',
   'Conclusão'
 ]) {
   assert.ok(front.includes(bloco), 'Bloco executivo SDR ausente: ' + bloco);
@@ -154,6 +155,19 @@ assert.ok(!front.includes("['Critério','Status','Nota','Fala do SDR','Regra do 
 
 
 assert.ok(front.includes('function renderizarResumoExecutivoCloserV3_'), 'Resumo executivo Closer não foi implementado.');
+const inicioResumoCloserFront = front.indexOf('function renderizarResumoExecutivoCloserV3_');
+const fimResumoCloserFront = front.indexOf('function renderizarPontuacaoQualidadeCloserFront_', inicioResumoCloserFront);
+assert.ok(inicioResumoCloserFront >= 0 && fimResumoCloserFront > inicioResumoCloserFront, 'Resumo executivo Closer não pôde ser isolado.');
+const resumoCloserFront = front.slice(inicioResumoCloserFront, fimResumoCloserFront);
+assert.ok(resumoCloserFront.includes('audit-executive-good'), 'Closer não usa destaque verde para execuções corretas.');
+assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa destaque vermelho para desvios.');
+assert.ok(resumoCloserFront.includes('audit-executive-action'), 'Closer não usa destaque amarelo para coaching prático.');
+assert.ok(resumoCloserFront.includes('O que foi executado corretamente'), 'Closer não replica o bloco de acertos do SDR.');
+assert.ok(resumoCloserFront.includes('Se eu fosse o Closer, faria assim'), 'Closer não possui o bloco prático equivalente ao SDR.');
+assert.ok(resumoCloserFront.includes('Pontuação por critério'), 'Resumo Closer não mostra a tabela compacta de notas.');
+assert.ok(resumoCloserFront.includes('Média dos critérios aplicáveis'), 'Resumo Closer não mostra a média contextual dos critérios.');
+assert.ok(resumoCloserFront.includes('audit-executive-conclusion'), 'Conclusão do Closer não usa o destaque visual do resumo executivo.');
+assert.ok(!resumoCloserFront.includes('Próximos passos conforme o pitch/processo'), 'Closer ainda usa o bloco neutro antigo de próximos passos.');
 assert.ok(front.includes('function renderizarConclusaoObjetivaCloserFront_'), 'Conclusão objetiva Closer não foi implementada.');
 assert.ok(front.includes('Cenário da reunião'), 'Cenário executivo do Closer está ausente.');
 assert.ok(front.includes('Análise detalhada da auditoria Closer'), 'Detalhamento Closer não foi preservado em seção própria.');

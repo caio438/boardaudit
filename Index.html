@@ -6994,6 +6994,9 @@
     const momentos = Array.isArray(r.momentos) ? r.momentos : [];
     const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
     const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+    const perguntas = r.perguntas_diagnostico || {};
+    const impacto = r.analise_impacto_implicacao || {};
+    const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
 
     const aderentesMomentos = momentos.filter(statusMomentoConformeCloserFront_);
     const desviosMomentos = momentos.filter(item =>
@@ -7005,7 +7008,7 @@
       titulo: item.nome || item.id || 'Momento',
       evidencia: item.o_que_foi_dito || '',
       regra: item.o_que_se_espera || item.texto_script || ''
-    })) : criterios.filter(item => statusConformeAuditoriaFront_(item.status)).map(item => ({
+    })) : criterios.filter(item => item && item.aplicavel !== false && statusConformeAuditoriaFront_(item.status)).map(item => ({
       titulo: item.nome || item.id || 'Critério',
       evidencia: item.o_que_foi_dito || '',
       regra: item.regra_pitch || ''
@@ -7015,19 +7018,20 @@
       titulo: item.nome || item.id || 'Momento',
       divergencia: item.divergencia || ((item.pontos_melhorar || []).join(' • ')) || 'Desvio registrado.',
       evidencia: item.o_que_foi_dito || '',
-      correcao: item.o_que_fazer || item.como_agir || ''
+      correcao: item.o_que_fazer || item.como_agir || item.texto_script || ''
     })) : criterios.filter(item =>
+      item && item.aplicavel !== false &&
       !statusConformeAuditoriaFront_(item.status) &&
       !statusNaoAplicavelAuditoriaFront_(item.status)
     ).map(item => ({
       titulo: item.nome || item.id || 'Critério',
       divergencia: item.divergencia || 'Desvio registrado.',
       evidencia: item.o_que_foi_dito || '',
-      correcao: ''
+      correcao: item.correcao_pratica || item.regra_pitch || ''
     }));
 
     const listaAderentes = aderentes.length
-      ? '<ul class="audit-executive-list">' + aderentes.map(item =>
+      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(item =>
           '<li><strong>' + escapeHtml(item.titulo) + '</strong>' +
           (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
           (item.regra ? '<br><span class="muted">Referência do processo:</span> ' + escapeHtml(item.regra) : '') +
@@ -7036,7 +7040,7 @@
       : '<p class="muted">Nenhuma execução aderente foi registrada com a evidência disponível.</p>';
 
     const listaDesvios = desvios.length
-      ? '<ul class="audit-executive-list">' + desvios.map(item =>
+      ? '<ul class="audit-executive-list">' + desvios.slice(0, 6).map(item =>
           '<li><strong>' + escapeHtml(item.titulo) + '</strong>: ' + escapeHtml(item.divergencia) +
           (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
           (item.correcao ? '<br><span class="muted">Correção prática:</span> ' + escapeHtml(item.correcao) : '') +
@@ -7044,21 +7048,77 @@
         ).join('') + '</ul>'
       : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
 
-    const listaPassos = passos.length
-      ? '<ul class="audit-executive-list">' + passos.map(item =>
-          '<li><strong>' + escapeHtml(item.acao || 'Ação') + '</strong>' +
-          (item.responsavel ? ' · ' + escapeHtml(item.responsavel) : '') +
-          (item.criterio_conclusao ? '<br><span class="muted">Critério de conclusão:</span> ' + escapeHtml(item.criterio_conclusao) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p class="muted">Nenhum próximo passo foi definido na análise.</p>';
+    const acoes = [];
+    const vistosAcoes = {};
+    const adicionarAcao = valor => {
+      const texto = String(valor || '').replace(/^[-•]\s*/, '').trim();
+      if (!texto) return;
+      const chave = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      if (!chave || vistosAcoes[chave]) return;
+      vistosAcoes[chave] = true;
+      acoes.push(texto);
+    };
+
+    const perguntasRealizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
+    const perguntasFaltantes = Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [];
+
+    perguntasRealizadas.forEach(item => {
+      if (!item) return;
+      const avaliacao = normalizarStatusAuditoriaFront_(item.avaliacao || '');
+      if (item.aprofundou === false || ['DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'PARCIAL'].includes(avaliacao)) {
+        adicionarAcao(item.o_que_melhorar);
+      }
+    });
+    perguntasFaltantes.forEach(item => {
+      if (!item) return;
+      if (item.sugestao_aplicacao) adicionarAcao(item.sugestao_aplicacao);
+      else if (item.pergunta) adicionarAcao('Pergunte: "' + item.pergunta + '"');
+    });
+    desvios.forEach(item => adicionarAcao(item && item.correcao));
+    adicionarAcao(impacto.correcao_pratica);
+    criterios.filter(item =>
+      item && item.aplicavel !== false &&
+      !statusConformeAuditoriaFront_(item.status) &&
+      !statusNaoAplicavelAuditoriaFront_(item.status)
+    ).forEach(item => adicionarAcao(item.correcao_pratica));
+    repertorio.filter(item =>
+      item && String(item.origem || '').toUpperCase() === 'SUGESTAO_ENABLEMENT'
+    ).forEach(item => {
+      if (item.pergunta_sugerida) {
+        adicionarAcao('Pergunte: "' + item.pergunta_sugerida + '"' + (item.objetivo ? ' — objetivo: ' + item.objetivo : ''));
+      }
+    });
+    passos.forEach(item => adicionarAcao(item && item.acao));
+
+    const listaAcoes = acoes.length
+      ? '<ol class="audit-executive-list">' + acoes.slice(0, 7).map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
+      : '<p class="muted">Manter a execução aderente e repetir os comportamentos que funcionaram nesta reunião.</p>';
+
+    const criteriosAplicaveis = criterios.filter(item =>
+      item && item.aplicavel !== false &&
+      item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== ''
+    );
+    const mediaCriterios = criteriosAplicaveis.length
+      ? Math.round((criteriosAplicaveis.reduce((total, item) => total + Number(item.pontuacao || 0), 0) / criteriosAplicaveis.length) * 100) / 100
+      : null;
+    const tabelaNotas = criterios.length
+      ? tabelaAuditoriaV3(
+          ['Critério', 'Nota', 'Status'],
+          criterios.map(item => [
+            item.nome || item.id || 'Critério',
+            item.aplicavel === false ? 'N/A' : ((item.pontuacao === null || item.pontuacao === undefined || item.pontuacao === '') ? '-' : item.pontuacao + '/5'),
+            item.aplicavel === false ? 'Não aplicável' : formatarStatusAuditoriaV3(item.status || 'Não evidenciado')
+          ])
+        )
+      : '<p class="muted">Pontuação por critério indisponível.</p>';
 
     const conclusao = renderizarConclusaoObjetivaCloserFront_(r);
 
     return `
-      <div class="audit-executive">
+      <div class="audit-executive audit-executive-closer">
         ${renderizarContextoAuditoriaFront_(r)}
         ${renderizarGateAuditoriaFront_(r)}
+
         <section class="audit-executive-block">
           <h3>Cenário da reunião</h3>
           <p>${escapeHtml(contexto.resumo_conversa || contexto.cenario_atual || 'Não evidenciado.')}</p>
@@ -7069,22 +7129,28 @@
           </div>
         </section>
 
-        <section class="audit-executive-block">
-          <h3>Execuções aderentes ao processo</h3>
+        <section class="audit-executive-block audit-executive-good">
+          <h3>O que foi executado corretamente</h3>
           ${listaAderentes}
         </section>
 
-        <section class="audit-executive-block">
+        <section class="audit-executive-block audit-executive-gap">
           <h3>Desvios em relação ao pitch/processo</h3>
           ${listaDesvios}
         </section>
 
-        <section class="audit-executive-block">
-          <h3>Próximos passos conforme o pitch/processo</h3>
-          ${listaPassos}
+        <section class="audit-executive-block audit-executive-action">
+          <h3>Se eu fosse o Closer, faria assim</h3>
+          ${listaAcoes}
         </section>
 
         <section class="audit-executive-block">
+          <h3>Pontuação por critério</h3>
+          ${tabelaNotas}
+          <p class="audit-score-average"><strong>Média dos critérios aplicáveis:</strong> ${mediaCriterios === null ? 'Não disponível' : escapeHtml(String(mediaCriterios) + '/5')} · ${criteriosAplicaveis.length} critério(s) aplicável(is)</p>
+        </section>
+
+        <section class="audit-executive-block audit-executive-conclusion">
           <h3>Conclusão</h3>
           ${conclusao.map(paragrafo => '<p>' + escapeHtml(paragrafo) + '</p>').join('')}
         </section>
