@@ -6101,7 +6101,7 @@ function audV3PontuacaoQualidade_(body, criterios, papel) {
 
 /* =========================================================
    AUTOMAÇÃO DE LIGAÇÕES RD / API4COM
-   Transcreve e audita, em lotes de até três, as ligações mais longas.
+   Transcreve e audita ligações em lotes com orçamento de tempo seguro.
 ========================================================= */
 
 const AUTOMACAO_LIGACOES_V3 = Object.freeze({
@@ -6113,6 +6113,10 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   duracaoPadrao: 105,
   maxDiaPadrao: 15,
   maxPorExecucao: 3,
+  // Não inicia um novo item quando o lote já consumiu 2 minutos.
+  // A auditoria individual pode levar mais de 3 minutos; este limite evita
+  // estourar a janela do Apps Script depois que um item já foi concluído.
+  orcamentoAntesNovoItemMs: 2 * 60 * 1000,
   horarios: [7, 10, 13, 16, 19],
   chaveErros: 'AUDITORIA_AUTO_LIGACOES_ERROS_V1',
   atrasoRetryMs: 6 * 60 * 60 * 1000,
@@ -6268,6 +6272,9 @@ function audV3FilaAutomacaoLigacoes_(config) {
       transcrita: Boolean(transcricoes[String(item.ID_INTERACAO || '')])
     };
   }).sort(function(a, b) {
+    // Limpa primeiro o backlog que já possui transcrição: estes itens pulam
+    // a etapa mais cara/instável do lote e reduzem a chance de timeout.
+    if (a.transcrita !== b.transcrita) return a.transcrita ? -1 : 1;
     return Number(b.interacao.DURACAO_SEGUNDOS || 0) - Number(a.interacao.DURACAO_SEGUNDOS || 0) ||
       String(b.interacao.DATA_INTERACAO || '').localeCompare(String(a.interacao.DATA_INTERACAO || ''));
   });
@@ -6423,9 +6430,17 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
 
     const fila = audV3FilaAutomacaoLigacoes_(config);
     const pitches = audV3Ler_('PITCHES');
+    const inicioLoteMs = Date.now();
     let tentativas = 0;
     let examinadas = 0;
+    let interrompidoPorTempo = false;
     for (let indice = 0; indice < fila.length && tentativas < limiteLote && examinadas < 100; indice++) {
+      // Depois de pelo menos um item, não inicia outro se o lote já consumiu
+      // o orçamento seguro. O item atual sempre termina no seu próprio try/catch.
+      if (tentativas > 0 && Date.now() - inicioLoteMs >= AUTOMACAO_LIGACOES_V3.orcamentoAntesNovoItemMs) {
+        interrompidoPorTempo = true;
+        break;
+      }
       examinadas++;
       const interacao = fila[indice].interacao;
       const idCliente = String(interacao.ID_CLIENTE || '');
@@ -6477,7 +6492,8 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
     }
     const mensagem = resultado.processadas + ' ligação(ões) preparada(s) para revisão' +
       (resultado.puladasSemPitch ? ' · ' + resultado.puladasSemPitch + ' sem pitch SDR atual' : '') +
-      (resultado.erros.length ? ' · ' + resultado.erros.length + ' erro(s)' : '');
+      (resultado.erros.length ? ' · ' + resultado.erros.length + ' erro(s)' : '') +
+      (interrompidoPorTempo ? ' · lote encerrado pelo orçamento de tempo' : '');
     props.setProperty('AUDITORIA_AUTO_LIGACOES_ULTIMO_RESULTADO', mensagem);
     registrarLog_('AUDITORIA', 'AUTOMACAO_LIGACOES', mensagem);
     if (typeof limparCachesDados_ === 'function') limparCachesDados_();
