@@ -3004,7 +3004,7 @@ function audV3MontarPrompt_(ctx) {
 
   return [
     'Produza UMA auditoria individual de ' + tipo + '. Responda somente no JSON solicitado.',
-    'REGRA OBRIGATÓRIA DE TAMANHO: o JSON completo deve ter no máximo ' + (tipo === 'CLOSER' ? '30.000' : '20.000') + ' caracteres.',
+    'REGRA OBRIGATÓRIA DE TAMANHO: o JSON completo deve ter no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres. Priorize evidências curtas, sem repetir análises entre campos.',
     'O documento deve ser profundo, mas sem repetição. Evidências devem usar trechos curtos e literais da transcrição.',
     'Listas de resumo e publicação devem ter no máximo 3 itens. Listas de análise podem ser maiores quando o schema permitir.',
     'Não repita falas, trechos do pitch, justificativas, recomendações ou informações entre seções.',
