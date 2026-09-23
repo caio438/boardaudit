@@ -12,7 +12,7 @@ assert.ok(ops.includes('function opsResolverAlvoAuditoria_'), 'Runner nao resolv
 assert.ok(ops.includes("audV3Localizar_('INTERACOES', 'ID_INTERACAO', chave)"), 'Runner nao aceita ID_INTERACAO como alvo.');
 assert.ok(ops.includes("audV3Localizar_('INTERACOES', 'ID_EXTERNO', idExternoTldv)"), 'Runner nao resolve o ID externo do TLDV.');
 assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacao.ID_INTERACAO)"), 'Runner nao encontra a transcricao interna pela interacao.');
-assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao exige gate liberado.');
+assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao consulta a validacao de qualidade antes de publicar.');
 assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
 assert.ok(ops.includes('function opsValidarAuditoriaNoEngineAtual_'), 'Runner nao revalida auditoria antiga no engine atual.');
 assert.ok(ops.includes('audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {})'), 'Runner nao recalcula a fonte com a identidade atual da interacao.');
