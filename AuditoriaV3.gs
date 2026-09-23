@@ -27,6 +27,7 @@ const AUDITORIA_V3 = Object.freeze({
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
     'HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM',
     'AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM',
+    'CRM_PROVIDER', 'CRM_STATUS', 'CRM_ACTIVITY_ID', 'CRM_PUBLICADO_EM', 'CRM_ERRO',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
     'COMUNIDADE_PUBLICADO_EM', 'COMUNIDADE_ERRO',
     'CIRCLE_STATUS', 'CIRCLE_POST_ID', 'CIRCLE_POST_URL',
@@ -1225,6 +1226,14 @@ function importarTranscricaoManualV3(dados) {
   const idTranscricao = audV3Id_('TRA');
   const idExterno = fonte + '-MANUAL-' + Utilities.getUuid();
 
+  const vinculoCrm = typeof audCrmVinculoEntrada_ === 'function'
+    ? audCrmVinculoEntrada_(dados, cliente.ID_CLIENTE)
+    : {
+        provider: (dados.rdDealId || dados.linkCrm) ? 'RD_STATION' : '',
+        recordId: '',
+        link: audV3RdLinkNegociacao_(dados.rdDealId || dados.linkCrm || '')
+      };
+
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1251,11 +1260,9 @@ function importarTranscricaoManualV3(dados) {
       COLABORADOR: colaborador || partesArquivo.slice(2).join(' - '),
       FUNCAO: funcao,
       OPORTUNIDADE: String(dados.oportunidade || '').trim(),
-      CRM_PROVIDER: (typeof audCrmVinculoEntrada_ === 'function' ? audCrmVinculoEntrada_(dados, cliente.ID_CLIENTE).provider : ''),
-      CRM_RECORD_ID: (typeof audCrmVinculoEntrada_ === 'function' ? audCrmVinculoEntrada_(dados, cliente.ID_CLIENTE).recordId : ''),
-      LINK_CRM: (typeof audCrmVinculoEntrada_ === 'function'
-        ? audCrmVinculoEntrada_(dados, cliente.ID_CLIENTE).link
-        : audV3RdLinkNegociacao_(dados.rdDealId || dados.linkCrm || '')),
+      CRM_PROVIDER: vinculoCrm.provider || '',
+      CRM_RECORD_ID: vinculoCrm.recordId || '',
+      LINK_CRM: vinculoCrm.link || '',
       SCHEMA_VERSAO: AUDITORIA_V3.versao
     });
 
