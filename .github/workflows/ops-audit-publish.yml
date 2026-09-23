@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           TOKEN="$(cat /tmp/google_access_token)"
           encoded="$(node -e "process.stdout.write(encodeURIComponent(process.env.TARGET))")"
-          URL="https://script.google.com/macros/s/AKfycbxk_jvoxhRCiHKjTSN6wKWH3cbh07ziB6xOYBI5rWuE/dev?ops_audit_publish=1&transcript=$encoded"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_audit_publish=1&transcript=$encoded"
 
           code="$(curl -sS --max-time 380 --location-trusted             --oauth2-bearer "$TOKEN"             -o /tmp/ops-audit-result.txt             -w '%{http_code}'             "$URL" || true)"
           echo "OPS_WEBAPP_HTTP_STATUS=$code"
