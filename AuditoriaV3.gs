@@ -1648,7 +1648,6 @@ function executarAuditoriaV3(dados) {
       let resultadoExistente = {};
       try { resultadoExistente = JSON.parse(String(auditoriaExistente.RESULTADO_JSON || '{}')); } catch (e) {}
       const contextoExistente = resultadoExistente.contexto_interacao || {};
-      const gateExistente = resultadoExistente.validacao_board || {};
       if (['SDR', 'CLOSER'].includes(tipo) &&
           String(auditoriaExistente.STATUS || '') === 'EM_REVISAO' &&
           audV3ColetarOrientacoesGenericas_(resultadoExistente, tipo).length) {
