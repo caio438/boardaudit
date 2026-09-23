@@ -68,6 +68,53 @@ function INSTALAR_AUTOMACAO_CENTRAL_19H() {
   return { sucesso: true, automacao: instalarAutomacaoCentral19h_() };
 }
 
+function desinstalarAutomacaoCentral19h_() {
+  automacaoCentralRemoverAcionadores_([
+    AUTOMACAO_CENTRAL_19H.handlerDiario,
+    AUTOMACAO_CENTRAL_19H.handlerContinuacao
+  ]);
+  const props = PropertiesService.getScriptProperties();
+  [
+    AUTOMACAO_CENTRAL_19H.chaveFase,
+    AUTOMACAO_CENTRAL_19H.chaveDia,
+    AUTOMACAO_CENTRAL_19H.chaveTentativas,
+    AUTOMACAO_CENTRAL_19H.chaveRodandoEm
+  ].forEach(function(chave) { props.deleteProperty(chave); });
+  salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO');
+  salvarConfiguracao_('AUTOMACAO_CENTRAL_ATUALIZADA_EM', new Date());
+  registrarLog_('AUTOMACAO', 'REMOVER_CENTRAL_19H', 'Acionador central removido; agendas operacionais independentes restauradas.');
+}
+
+function INSTALAR_AUTOMACOES_OPERACIONAIS() {
+  desinstalarAutomacaoCentral19h_();
+
+  const resultado = {
+    centralRemovida: true,
+    tldv: null,
+    rd: null,
+    ligacoes: null,
+    agenda: null
+  };
+
+  if (String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() === 'SIM') {
+    resultado.tldv = instalarAutomacaoTldv();
+  }
+
+  if (String(obterConfiguracao_('RD_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() === 'SIM' ||
+      String(obterSegredo_('RD_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() === 'SIM') {
+    resultado.rd = { ativa: reconciliarAcionadorRd_() };
+  }
+
+  if (String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || 'NAO').toUpperCase() === 'SIM') {
+    instalarGatilhosAutomacaoLigacoesV3_();
+    resultado.ligacoes = obterStatusAutomacaoLigacoesV3();
+  }
+
+  resultado.agenda = instalarAutomacaoJornadaCliente();
+  registrarLog_('AUTOMACAO', 'RESTAURAR_AGENDAS_OPERACIONAIS', 'tl;dv, RD, ligações e Agenda reconciliados em acionadores independentes.');
+  return { sucesso: true, resultado: resultado };
+}
+
 function obterStatusAutomacaoCentral19h() {
   const props = PropertiesService.getScriptProperties();
   const triggers = ScriptApp.getProjectTriggers();
