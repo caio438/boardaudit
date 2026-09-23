@@ -236,6 +236,7 @@ assert.ok(audit.includes("resultadoParseado.__modelo_ia = modeloApi"), 'Modelo d
 assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado não recebe status de validação.');
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
+assert.ok(audit.includes("const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});"), 'A aprovação precisa normalizar a transcrição antes de recalcular o hash da fonte.');
 
 assert.ok(audit.includes('function audV3TabelaResultadoInicial_'), 'Documento não possui tabela de resultado no início.');
 assert.ok(audit.includes('function audV3ChecklistInicial_'), 'Documento não possui checklist no início.');
