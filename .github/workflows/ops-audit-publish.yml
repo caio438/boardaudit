@@ -97,18 +97,36 @@ jobs:
         run: |
           set -euo pipefail
           TOKEN="$(cat /tmp/google_access_token)"
-          encoded="$(node -e "process.stdout.write(encodeURIComponent(process.env.TARGET))")"
-          URL="https://script.google.com/macros/s/AKfycbxk_jvoxhRCiHKjTSN6wKWH3cbh07ziB6xOYBI5rWuE/dev?ops_audit_publish=1&transcript=$encoded"
-          code="$(curl -L -sS -H "Authorization: Bearer $TOKEN" -o /tmp/ops-audit-result.txt -w '%{http_code}' "$URL" || true)"
-          echo "OPS_HTTP_STATUS=$code"
+          node <<'NODE'
+          const fs = require('fs');
+          fs.writeFileSync('/tmp/ops-audit-request.json', JSON.stringify({
+            function: 'OPS_AUDITAR_PUBLICAR_TRANSCRICAO',
+            parameters: [process.env.TARGET],
+            devMode: true
+          }));
+          NODE
+
+          code="$(curl -sS --max-time 380             -X POST             -H "Authorization: Bearer $TOKEN"             -H "Content-Type: application/json"             --data-binary @/tmp/ops-audit-request.json             -o /tmp/ops-audit-result.txt             -w '%{http_code}'             "https://script.googleapis.com/v1/scripts/1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9:run" || true)"
+          echo "OPS_EXECUTION_API_HTTP_STATUS=$code"
           test "$code" = "200"
+
           node <<'NODE'
           const fs = require('fs');
           const raw = fs.readFileSync('/tmp/ops-audit-result.txt', 'utf8').trim();
-          const first = raw.indexOf('{');
-          const last = raw.lastIndexOf('}');
-          if (first < 0 || last < first) throw new Error('Resposta do runner nao contem JSON.');
-          const result = JSON.parse(raw.slice(first, last + 1));
+          if (!raw) throw new Error('Execution API retornou resposta vazia.');
+          const envelope = JSON.parse(raw);
+          if (envelope.error) {
+            const detail = Array.isArray(envelope.error.details) ? envelope.error.details[0] : null;
+            throw new Error(
+              (detail && detail.errorMessage) ||
+              envelope.error.message ||
+              'Execution API retornou erro.'
+            );
+          }
+          const result = envelope.response && envelope.response.result;
+          if (!result || typeof result !== 'object') {
+            throw new Error('Execution API nao retornou response.result.');
+          }
           if (result.sucesso !== true) throw new Error('Runner nao retornou sucesso=true.');
           if (String(result.status || '').toUpperCase() !== 'APROVADA') throw new Error('Auditoria nao ficou APROVADA.');
           if (String(result.validacaoStatus || '').toUpperCase() !== 'VALIDADA') throw new Error('Auditoria nao ficou VALIDADA.');
