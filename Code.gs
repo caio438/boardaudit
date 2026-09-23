@@ -281,6 +281,24 @@ function audBuildAtual_() {
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
+  if (String(parametros.ops_audit_publish || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Operacao de auditoria permitida somente para a conta proprietaria autenticada.');
+    }
+    const idTranscricaoOps = String(parametros.transcript || '').trim();
+    if (!/^TLDV_[A-Za-z0-9_-]+$/.test(idTranscricaoOps)) {
+      throw new Error('ID de transcricao operacional invalido.');
+    }
+    if (typeof OPS_AUDITAR_PUBLICAR_TRANSCRICAO !== 'function') {
+      throw new Error('Runner operacional de auditoria nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricaoOps), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.qa_hitecnet_stec || '') === '1') {
     const ativoHitecnet = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoHitecnet = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
