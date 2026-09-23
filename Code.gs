@@ -2604,7 +2604,7 @@ function salvarIntegracaoCliente(dados) {
     sucesso: true,
     mensagem: 'Integração salva com sucesso.',
     clientes: carregarClientesParaIntegracoes().clientes,
-    integracoesClientes: listarIntegracoesClientesBasico_()
+    integracoesClientes: listarIntegracoesClientes_()
   };
 
   if (tipo === 'RD_STATION') {
@@ -2651,6 +2651,22 @@ function testarIntegracaoCliente(dados) {
   if (segredo) salvarSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO, segredo);
   else segredo = obterSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO);
   if (!segredo) throw new Error('Informe a chave ou token da integração.');
+
+  if (tipo === 'PIPEDRIVE' || tipo === 'LEADS2B') {
+    atualizarIntegracaoCliente_(integracao.ID_INTEGRACAO, {
+      STATUS: 'CONFIGURADA',
+      ULTIMO_ERRO: '',
+      ATUALIZADO_EM: new Date()
+    });
+    limparCachesDados_();
+    return {
+      sucesso: true,
+      mensagem: tipo === 'PIPEDRIVE'
+        ? 'Credencial do Pipedrive preservada. O teste remoto será ativado junto com o adapter validado; nenhuma alteração foi feita no CRM.'
+        : 'Credencial da Leads2b preservada. O teste remoto será ativado junto com o adapter validado; nenhuma alteração foi feita no CRM.',
+      integracoesClientes: listarIntegracoesClientes_()
+    };
+  }
 
   try {
     if (tipo === 'TLDV') {
