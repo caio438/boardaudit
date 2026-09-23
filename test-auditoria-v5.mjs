@@ -258,6 +258,7 @@ assert.ok(!audit.includes("['Critério', 'Status', 'Nota', 'Evidências e compar
 assert.match(rd, /String\(a\.STATUS \|\| ''\)\.toUpperCase\(\) !== 'APROVADA'/, 'RD ainda aceita auditoria em revisão.');
 assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VALIDADA'/, 'RD não exige auditoria validada.');
 assert.ok(rd.includes('audV3HashFonte_'), 'RD não reconfirma a integridade da fonte.');
+assert.ok(rd.includes("var normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, i || {});"), 'RD precisa normalizar a transcrição antes de recalcular o hash da auditoria.');
 assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0"), 'Plano de Otimização ainda pode ser enviado ao RD CRM.');
 assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloser_(c);"), 'Closer não usa o modelo objetivo de anotação.');
 assert.ok(rd.includes("if(tipo==='SDR')return audRdTextoSdr_(c);"), 'SDR não usa exclusivamente o modelo objetivo de anotação.');
