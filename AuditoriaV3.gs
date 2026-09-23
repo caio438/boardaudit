@@ -6161,6 +6161,7 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   orcamentoAntesNovoItemMs: 2 * 60 * 1000,
   horarios: [7, 10, 13, 16, 19],
   chaveErros: 'AUDITORIA_AUTO_LIGACOES_ERROS_V1',
+  revisaoRetry: '2026-09-23-runtime-speaker-v1',
   atrasoRetryMs: 6 * 60 * 60 * 1000,
   maxTentativasErro: 3
 });
@@ -6212,6 +6213,11 @@ function audV3ErroAutomacaoElegivelRetry_(interacao, estado, agoraMs) {
   if (String((interacao || {}).STATUS_AUDITORIA || '').toUpperCase() !== 'ERRO_AUTOMACAO') return true;
   const id = String((interacao || {}).ID_INTERACAO || '');
   const registro = (estado || {})[id] || {};
+  const revisaoAtual = String(AUTOMACAO_LIGACOES_V3.revisaoRetry || '');
+  const revisaoRegistro = String(registro.revisaoRetry || '');
+  // Quando a regra de processamento muda, erros acumulados na revisão antiga
+  // recebem uma nova janela de tentativas sem remover o limite por revisão.
+  if (revisaoRegistro !== revisaoAtual) return true;
   const tentativas = Math.max(1, Number(registro.tentativas || 1));
   if (tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro) return false;
 
@@ -6228,8 +6234,11 @@ function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
   if (!id) return;
   const estado = audV3EstadoErrosAutomacaoLigacoes_();
   const anterior = estado[id] || {};
-  const tentativas = Math.max(0, Number(anterior.tentativas || 0)) + 1;
+  const revisaoAtual = String(AUTOMACAO_LIGACOES_V3.revisaoRetry || '');
+  const mesmaRevisao = String(anterior.revisaoRetry || '') === revisaoAtual;
+  const tentativas = (mesmaRevisao ? Math.max(0, Number(anterior.tentativas || 0)) : 0) + 1;
   estado[id] = {
+    revisaoRetry: revisaoAtual,
     tentativas: tentativas,
     ultimaFalhaEm: Date.now(),
     proximaTentativaEm: tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro
