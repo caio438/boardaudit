@@ -8,7 +8,7 @@ const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url)
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,repairEvidence:audV3RepararEvidenciasRastreaveis_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
 
 const criterios = context.api.criteria();
 const momentos = criterios.momentos.map((item, index) => ({
@@ -111,28 +111,90 @@ context.api.validateOfficial(
   'Comportamento obrigatório descrito no pitch.'
 );
 
-const criteriosComNomeCloser = JSON.parse(JSON.stringify(criteriosAvaliados));
-criteriosComNomeCloser[0].locutor_evidencia = 'Suzana';
-const resultadoComNomeCloser = context.api.normalize(
-  { momentos: JSON.parse(JSON.stringify(momentos)), criterios_avaliados: criteriosComNomeCloser, checklist: JSON.parse(JSON.stringify(checklist)) },
+const transcricaoAutoria = [
+  'CLOSER (Suzana): Evidência objetiva da transcrição.',
+  'LEAD (Marcos): Essa fala veio exclusivamente do lead.'
+].join('\n');
+const interacaoAutoria = { FUNCAO: 'CLOSER', COLABORADOR: 'Suzana', LEAD: 'Marcos' };
+
+const respostaNomeCloser = {
+  momentos: JSON.parse(JSON.stringify(momentos)),
+  criterios_avaliados: JSON.parse(JSON.stringify(criteriosAvaliados)),
+  checklist: JSON.parse(JSON.stringify(checklist))
+};
+respostaNomeCloser.criterios_avaliados[0].locutor_evidencia = 'Suzana';
+context.api.repairEvidence(
+  respostaNomeCloser,
+  'CLOSER',
   criterios,
-  { empresa: 'Cliente', sdr: 'Suzana', lead: 'Lead' },
+  transcricaoAutoria,
+  'Comportamento obrigatório descrito no pitch.',
+  interacaoAutoria
+);
+assert.equal(
+  respostaNomeCloser.criterios_avaliados[0].locutor_evidencia,
+  'CLOSER',
+  'O reparo deve reconciliar o nome real do profissional pelo turno literal da transcricao.'
+);
+
+const respostaFalaLead = {
+  momentos: JSON.parse(JSON.stringify(momentos)),
+  criterios_avaliados: JSON.parse(JSON.stringify(criteriosAvaliados)),
+  checklist: JSON.parse(JSON.stringify(checklist))
+};
+respostaFalaLead.criterios_avaliados[0].o_que_foi_dito = 'Essa fala veio exclusivamente do lead.';
+respostaFalaLead.criterios_avaliados[0].locutor_evidencia = 'CLOSER';
+context.api.repairEvidence(
+  respostaFalaLead,
+  'CLOSER',
+  criterios,
+  transcricaoAutoria,
+  'Comportamento obrigatório descrito no pitch.',
+  interacaoAutoria
+);
+assert.equal(
+  respostaFalaLead.criterios_avaliados[0].locutor_evidencia,
+  'LEAD',
+  'Fala localizada apenas no turno do lead nao pode permanecer atribuida ao Closer.'
+);
+const respostaFalaLeadNormalizada = context.api.normalize(
+  respostaFalaLead,
+  criterios,
+  { empresa: 'Cliente', sdr: 'Suzana', lead: 'Marcos' },
   { DATA_INTERACAO: new Date('2026-08-03T12:00:00Z'), DURACAO_SEGUNDOS: 3830 },
   { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
   'CLOSER'
 );
-context.api.validateOfficial(
-  resultadoComNomeCloser,
+assert.throws(
+  () => context.api.validateOfficial(
+    respostaFalaLeadNormalizada,
+    'CLOSER',
+    criterios,
+    transcricaoAutoria,
+    'Comportamento obrigatório descrito no pitch.'
+  ),
+  /locutor errado/,
+  'A validacao oficial deve continuar bloqueando evidencia comprovadamente dita pelo lead.'
+);
+
+const respostaAmbigua = {
+  momentos: JSON.parse(JSON.stringify(momentos)),
+  criterios_avaliados: JSON.parse(JSON.stringify(criteriosAvaliados)),
+  checklist: JSON.parse(JSON.stringify(checklist))
+};
+respostaAmbigua.criterios_avaliados[0].o_que_foi_dito = 'Trecho repetido em dois locutores.';
+respostaAmbigua.criterios_avaliados[0].locutor_evidencia = 'CLOSER';
+context.api.repairEvidence(
+  respostaAmbigua,
   'CLOSER',
   criterios,
-  'CLOSER (Suzana): Evidência objetiva da transcrição.\nLEAD (Lead): Outra fala.',
-  'Comportamento obrigatório descrito no pitch.'
+  'CLOSER (Suzana): Trecho repetido em dois locutores.\nLEAD (Marcos): Trecho repetido em dois locutores.',
+  'Comportamento obrigatório descrito no pitch.',
+  interacaoAutoria
 );
-assert.equal(
-  resultadoComNomeCloser.criterios_avaliados[0].locutor_evidencia,
-  'CLOSER',
-  'Nome real do Closer deve ser reconciliado para CLOSER antes da validacao.'
-);
+assert.equal(respostaAmbigua.criterios_avaliados[0].locutor_evidencia, 'NAO_IDENTIFICADO', 'Trecho ambiguo deve perder autoria.');
+assert.equal(respostaAmbigua.criterios_avaliados[0].aplicavel, false, 'Trecho ambiguo nao pode impactar a nota.');
+assert.equal(respostaAmbigua.criterios_avaliados[0].status, 'NAO_EVIDENCIADO', 'Trecho ambiguo deve ficar fora da avaliacao.');
 
 const resultadoComEvidenciaInventada = JSON.parse(JSON.stringify(resultado));
 resultadoComEvidenciaInventada.criterios_avaliados[0].o_que_foi_dito = 'Frase que não existe na transcrição.';
