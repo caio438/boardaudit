@@ -61,8 +61,8 @@ jobs:
           version_count="$(printf '%s\n' "$versions_output" | sed -n 's/^Found \([0-9][0-9]*\) versions\.$/\1/p' | head -1)"
           test -n "$version_count"
           echo "APPS_SCRIPT_VERSION_COUNT=$version_count"
-          if [ "$version_count" -ge 200 ]; then
-            echo "::error::Apps Script atingiu o limite de 200 versões. Exclua versões antigas não usadas em Project History antes de publicar novamente."
+          if [ "$version_count" -ge 199 ]; then
+            echo "::error::Apps Script está com 199 ou mais versões. Uma vaga foi preservada para recuperação; exclua versões antigas não usadas em Project History antes de publicar novamente."
             exit 1
           fi
 
@@ -190,6 +190,7 @@ jobs:
           compare_pair "/tmp/boardaudit-deploy/RdAuditorias.gs" "/tmp/boardaudit-live-after/RdAuditorias.js"
           compare_pair "/tmp/boardaudit-deploy/PublicacaoCircle.gs" "/tmp/boardaudit-live-after/PublicacaoCircle.js"
           compare_pair "/tmp/boardaudit-deploy/AutomacaoCentral.gs" "/tmp/boardaudit-live-after/AutomacaoCentral.js"
+          compare_pair "/tmp/boardaudit-deploy/OpsAudit.gs" "/tmp/boardaudit-live-after/OpsAudit.js"
 
           LIVE_CODE="/tmp/boardaudit-live-after/Code.js"
           if [ ! -f "$LIVE_CODE" ] && [ -f "/tmp/boardaudit-live-after/Código.js" ]; then
@@ -205,6 +206,7 @@ jobs:
           grep -q "function audV3FinalizarAutomaticamente_" /tmp/boardaudit-live-after/AuditoriaV3.js
           grep -q "function audRdPublicarAutomaticamente_" /tmp/boardaudit-live-after/RdAuditorias.js
           grep -q "AGUARDANDO_VINCULO" /tmp/boardaudit-live-after/RdAuditorias.js
+          grep -q "function OPS_AUDITAR_PUBLICAR_TRANSCRICAO" /tmp/boardaudit-live-after/OpsAudit.js
 
           cat > /tmp/boardaudit-live-after/.clasp.json <<'JSON'
           {
