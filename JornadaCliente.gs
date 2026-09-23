@@ -35,9 +35,14 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
 const JORNADA_PASTAS_CONFIG = Object.freeze({
   maxArtefatosPorVarredura: 600,
   maxPastasPorVarredura: 1000,
-  maxLeiturasDocumento: 80,
+  maxLeiturasDocumento: 25,
   diasJanelaRecuperacao: 35,
-  margemJanelaMs: 2 * 86400000
+  margemJanelaMs: 2 * 86400000,
+  handlerLotes: 'SINCRONIZAR_JORNADA_PASTAS_RECENTES',
+  intervaloLotesMinutos: 30,
+  cursorChave: 'JORNADA_PASTAS_CURSOR_V1',
+  ultimaExecucaoChave: 'JORNADA_PASTAS_ULTIMA_EXECUCAO',
+  ultimoResultadoChave: 'JORNADA_PASTAS_ULTIMO_RESULTADO'
 });
 
 const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
@@ -435,15 +440,25 @@ function salvarConfiguracaoJornadaCliente(dados) {
 }
 
 function instalarAutomacaoJornadaCliente() {
-  const funcao = 'SINCRONIZAR_JORNADA_CALENDARIO';
-  const existentes = ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === funcao);
-  existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  ScriptApp.newTrigger(funcao).timeBased().everyHours(2).create();
+  const handlers = ['SINCRONIZAR_JORNADA_CALENDARIO', JORNADA_PASTAS_CONFIG.handlerLotes];
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => handlers.indexOf(trigger.getHandlerFunction()) >= 0)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+
+  ScriptApp.newTrigger('SINCRONIZAR_JORNADA_CALENDARIO').timeBased().everyHours(2).create();
+  ScriptApp.newTrigger(JORNADA_PASTAS_CONFIG.handlerLotes)
+    .timeBased()
+    .everyMinutes(JORNADA_PASTAS_CONFIG.intervaloLotesMinutos)
+    .create();
+
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM') {
     instalarAutomacaoFormalizacoesAgenda_();
   }
   CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'SIM', 21600);
-  return { sucesso: true, mensagem: 'Sincronização da Agenda configurada para executar a cada duas horas.' };
+  return {
+    sucesso: true,
+    mensagem: 'Agenda configurada a cada 2h e pastas de reuniões em lotes a cada 30 minutos.'
+  };
 }
 
 function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
@@ -720,8 +735,13 @@ function jornadaReuniaoDeveFormalizar_(reuniao) {
 }
 
 function jornadaAutomacaoInstalada_() {
-  return ScriptApp.getProjectTriggers().some(trigger =>
-    trigger.getHandlerFunction() === 'SINCRONIZAR_JORNADA_CALENDARIO'
+  const handlers = {};
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    handlers[trigger.getHandlerFunction()] = true;
+  });
+  return Boolean(
+    handlers.SINCRONIZAR_JORNADA_CALENDARIO &&
+    handlers[JORNADA_PASTAS_CONFIG.handlerLotes]
   );
 }
 
@@ -746,7 +766,12 @@ function SINCRONIZAR_JORNADA_CALENDARIO() {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - 14 * 86400000);
   const fim = new Date(hoje.getTime() + 45 * 86400000);
-  return sincronizarAgendaTodosClientes({ dataInicio: inicio.toISOString(), dataFim: fim.toISOString(), origem: 'AUTOMATICA' });
+  return sincronizarAgendaTodosClientes({
+    dataInicio: inicio.toISOString(),
+    dataFim: fim.toISOString(),
+    origem: 'AUTOMATICA',
+    sincronizarPastas: false
+  });
 }
 
 function sincronizarAgendaTodosClientes(dados) {
@@ -805,33 +830,35 @@ function sincronizarAgendaTodosClientes(dados) {
     });
   });
 
-  clientes.forEach(cliente => {
-    const fontesCliente = jornadaFontesPasta_(cliente.ID_CLIENTE).filter(item => String(item.idCliente || '') === String(cliente.ID_CLIENTE));
-    const pastas = [];
-    if (cliente.URL_PASTA_TRANSCRICOES || cliente.URL_PASTA_GRAVACOES) pastas.push(cliente);
-    fontesCliente.forEach(fonte => pastas.push(Object.assign({}, cliente, { NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco })));
-    pastas.forEach(origemPasta => {
+  if (dados.sincronizarPastas !== false) {
+    clientes.forEach(cliente => {
+      const fontesCliente = jornadaFontesPasta_(cliente.ID_CLIENTE).filter(item => String(item.idCliente || '') === String(cliente.ID_CLIENTE));
+      const pastas = [];
+      if (cliente.URL_PASTA_TRANSCRICOES || cliente.URL_PASTA_GRAVACOES) pastas.push(cliente);
+      fontesCliente.forEach(fonte => pastas.push(Object.assign({}, cliente, { NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco })));
+      pastas.forEach(origemPasta => {
+        try {
+          const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervaloPastas);
+          transcricoesPastas += retornoPastas.importadas;
+          if (retornoPastas.importadas) tocados[String(cliente.ID_CLIENTE)] = true;
+          (retornoPastas.erros || []).forEach(erro => erros.push(erro));
+        } catch (erroPasta) {
+          erros.push(String(cliente.NOME_CLIENTE || cliente.ID_CLIENTE) + ': ' + String(erroPasta.message || erroPasta));
+        }
+      });
+    });
+
+    jornadaFontesPasta_().forEach(fonte => {
+      if (fonte.idCliente) return;
       try {
-        const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervaloPastas);
-        transcricoesPastas += retornoPastas.importadas;
-        if (retornoPastas.importadas) tocados[String(cliente.ID_CLIENTE)] = true;
-        (retornoPastas.erros || []).forEach(erro => erros.push(erro));
-      } catch (erroPasta) {
-        erros.push(String(cliente.NOME_CLIENTE || cliente.ID_CLIENTE) + ': ' + String(erroPasta.message || erroPasta));
+        const retornoPasta = jornadaSincronizarPastasCliente_({ ID_CLIENTE: '', NOME_CLIENTE: fonte.nome || 'Pasta geral', NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco }, intervaloPastas);
+        transcricoesPastas += retornoPasta.importadas;
+        (retornoPasta.erros || []).forEach(erro => erros.push(erro));
+      } catch (erroPastaGeral) {
+        erros.push((fonte.nome || 'Pasta geral') + ': ' + String(erroPastaGeral.message || erroPastaGeral));
       }
     });
-  });
-
-  jornadaFontesPasta_().forEach(fonte => {
-    if (fonte.idCliente) return;
-    try {
-      const retornoPasta = jornadaSincronizarPastasCliente_({ ID_CLIENTE: '', NOME_CLIENTE: fonte.nome || 'Pasta geral', NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco }, intervaloPastas);
-      transcricoesPastas += retornoPasta.importadas;
-      (retornoPasta.erros || []).forEach(erro => erros.push(erro));
-    } catch (erroPastaGeral) {
-      erros.push((fonte.nome || 'Pasta geral') + ': ' + String(erroPastaGeral.message || erroPastaGeral));
-    }
-  });
+  }
 
   Object.keys(tocados).forEach(idCliente => {
     const periodo = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM');
@@ -851,6 +878,84 @@ function sincronizarAgendaTodosClientes(dados) {
     clientesAtualizados: Object.keys(tocados).length,
     erros: erros.slice(0, 20)
   };
+}
+
+function jornadaOrigemPastaPorFonte_(fonte) {
+  fonte = fonte || {};
+  const idCliente = String(fonte.idCliente || '').trim();
+  if (!idCliente) {
+    return {
+      ID_CLIENTE: '',
+      NOME_CLIENTE: fonte.nome || 'Pasta geral',
+      NOME_FONTE: fonte.nome || '',
+      URL_PASTA_TRANSCRICOES: fonte.endereco || '',
+      URL_PASTA_GRAVACOES: fonte.endereco || ''
+    };
+  }
+
+  const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', idCliente);
+  if (!cliente) throw new Error('Cliente da fonte de pasta não encontrado: ' + idCliente);
+  return Object.assign({}, cliente, {
+    NOME_FONTE: fonte.nome || '',
+    URL_PASTA_TRANSCRICOES: fonte.endereco || '',
+    URL_PASTA_GRAVACOES: fonte.endereco || ''
+  });
+}
+
+function jornadaSincronizarFontePastaPorId_(idFonte) {
+  jornadaGarantirEstrutura_();
+  const fontes = jornadaFontesPasta_();
+  const fonte = fontes.find(item => String(item.id || '') === String(idFonte || ''));
+  if (!fonte) throw new Error('Fonte de pasta não encontrada: ' + String(idFonte || ''));
+
+  const agora = new Date();
+  const intervalo = {
+    inicio: new Date(agora.getTime() - JORNADA_PASTAS_CONFIG.diasJanelaRecuperacao * 86400000),
+    fim: new Date(agora.getTime() + 86400000)
+  };
+  const origem = jornadaOrigemPastaPorFonte_(fonte);
+  const retorno = jornadaSincronizarPastasCliente_(origem, intervalo);
+  const resumo = {
+    sucesso: true,
+    fonteId: fonte.id,
+    fonteNome: fonte.nome || '',
+    importadas: Number(retorno.importadas || 0),
+    atualizadas: Number(retorno.atualizadas || 0),
+    erros: (retorno.erros || []).slice(0, 20)
+  };
+  PropertiesService.getScriptProperties().setProperty(
+    JORNADA_PASTAS_CONFIG.ultimaExecucaoChave,
+    new Date().toISOString()
+  );
+  PropertiesService.getScriptProperties().setProperty(
+    JORNADA_PASTAS_CONFIG.ultimoResultadoChave,
+    JSON.stringify(resumo)
+  );
+  registrarLog_(
+    'JORNADA',
+    'SINCRONIZAR_PASTA_LOTE',
+    (fonte.nome || fonte.id) + ': ' + resumo.importadas + ' nova(s), ' + resumo.atualizadas + ' atualizada(s), ' + resumo.erros.length + ' erro(s).'
+  );
+  limparCachesDados_();
+  return resumo;
+}
+
+function SINCRONIZAR_JORNADA_PASTAS_RECENTES() {
+  jornadaGarantirEstrutura_();
+  const fontes = jornadaFontesPasta_().filter(item => item && item.id && item.endereco);
+  if (!fontes.length) return { sucesso: true, mensagem: 'Nenhuma fonte de pasta ativa.', fontes: 0 };
+
+  const props = PropertiesService.getScriptProperties();
+  let cursor = Number(props.getProperty(JORNADA_PASTAS_CONFIG.cursorChave) || 0);
+  if (!isFinite(cursor) || cursor < 0) cursor = 0;
+  const indice = cursor % fontes.length;
+  const fonte = fontes[indice];
+  props.setProperty(JORNADA_PASTAS_CONFIG.cursorChave, String((indice + 1) % fontes.length));
+
+  const retorno = jornadaSincronizarFontePastaPorId_(fonte.id);
+  retorno.cursorAtual = indice;
+  retorno.totalFontes = fontes.length;
+  return retorno;
 }
 
 function jornadaValidarPastaDrive_(url, rotulo) {
