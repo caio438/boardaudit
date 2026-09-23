@@ -154,8 +154,18 @@ context.api.repairEvidence(
 );
 assert.equal(
   respostaFalaLead.criterios_avaliados[0].locutor_evidencia,
-  'LEAD',
-  'Fala localizada apenas no turno do lead nao pode permanecer atribuida ao Closer.'
+  'NAO_IDENTIFICADO',
+  'Fala localizada apenas no turno do lead deve perder autoria profissional.'
+);
+assert.equal(
+  respostaFalaLead.criterios_avaliados[0].aplicavel,
+  false,
+  'Fala comprovadamente dita pelo lead nao pode impactar a nota do Closer.'
+);
+assert.equal(
+  respostaFalaLead.criterios_avaliados[0].status,
+  'NAO_EVIDENCIADO',
+  'Fala comprovadamente dita pelo lead deve ser excluida da avaliacao.'
 );
 const respostaFalaLeadNormalizada = context.api.normalize(
   respostaFalaLead,
@@ -165,7 +175,7 @@ const respostaFalaLeadNormalizada = context.api.normalize(
   { NOME_VERSAO: 'Pitch Closer', NUMERO_VERSAO: '1' },
   'CLOSER'
 );
-assert.throws(
+assert.doesNotThrow(
   () => context.api.validateOfficial(
     respostaFalaLeadNormalizada,
     'CLOSER',
@@ -173,8 +183,7 @@ assert.throws(
     transcricaoAutoria,
     'Comportamento obrigatório descrito no pitch.'
   ),
-  /locutor errado/,
-  'A validacao oficial deve continuar bloqueando evidencia comprovadamente dita pelo lead.'
+  'Evidencia comprovadamente dita pelo lead deve ser excluida do score sem derrubar a auditoria inteira.'
 );
 
 const respostaAmbigua = {

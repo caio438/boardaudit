@@ -3216,13 +3216,25 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
     if (reparada) {
       item.o_que_foi_dito = reparada;
       const locutorFonte = resolverLocutorFonte(reparada);
-      if (locutorFonte) item.locutor_evidencia = locutorFonte;
-      if (locutorFonte === 'NAO_IDENTIFICADO') {
+      if (locutorFonte === tipo || locutorFonte === 'PROFISSIONAL') {
+        item.locutor_evidencia = tipo;
+        return;
+      }
+      if (locutorFonte) {
+        item.locutor_evidencia = 'NAO_IDENTIFICADO';
         item.status = 'NAO_EVIDENCIADO';
         item.aplicavel = false;
-        item.divergencia = 'A autoria da evidência literal não pôde ser determinada com segurança.';
-        item.justificativa_nota = 'Critério excluído da pontuação porque o mesmo trecho não possui autoria inequívoca na transcrição.';
+        item.divergencia = locutorFonte === 'NAO_IDENTIFICADO'
+          ? 'A autoria da evidência literal não pôde ser determinada com segurança.'
+          : 'A evidência literal encontrada pertence a outro locutor e não comprova a execução do profissional auditado.';
+        item.justificativa_nota = 'Critério excluído da pontuação por não haver evidência literal inequívoca na fala do profissional auditado.';
+        return;
       }
+      item.locutor_evidencia = 'NAO_IDENTIFICADO';
+      item.status = 'NAO_EVIDENCIADO';
+      item.aplicavel = false;
+      item.divergencia = 'A autoria da evidência literal não pôde ser confirmada na transcrição.';
+      item.justificativa_nota = 'Critério excluído da pontuação por autoria não confirmada.';
       return;
     }
     item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
@@ -3259,7 +3271,10 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
         item = item || {};
         const reparada = repararFala(item.pergunta);
         if (!reparada) return null;
+        const locutorFonte = resolverLocutorFonte(reparada);
+        if (locutorFonte && locutorFonte !== tipo && locutorFonte !== 'PROFISSIONAL') return null;
         item.pergunta = reparada;
+        item.locutor = locutorFonte ? tipo : 'NAO_IDENTIFICADO';
         return item;
       })
       .filter(Boolean);
@@ -3278,6 +3293,16 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
       item.regra_pitch = audV3RepararRegraPitch_(item.regra_pitch, conteudoPitch);
       if (reparada) {
         item.fato_transcricao = reparada;
+        const locutorFonte = resolverLocutorFonte(reparada);
+        if (locutorFonte === tipo || locutorFonte === 'PROFISSIONAL') {
+          item.locutor_evidencia = tipo;
+        } else {
+          item.locutor_evidencia = 'NAO_IDENTIFICADO';
+          item.status = 'NAO_EVIDENCIADO';
+          item.desvio = locutorFonte
+            ? 'A evidência encontrada pertence a outro locutor e não comprova esta etapa do SDR.'
+            : 'A autoria da evidência não pôde ser confirmada com segurança.';
+        }
       } else {
         item.fato_transcricao = 'Não evidenciado na fala do profissional.';
         item.locutor_evidencia = 'NAO_IDENTIFICADO';
@@ -3285,6 +3310,23 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
         item.desvio = 'Não há evidência literal segura para avaliar esta etapa.';
       }
     });
+
+    const perguntasQualificacao = resultado.perguntas_qualificacao || {};
+    ['corretas', 'com_desvio'].forEach(function(chave) {
+      perguntasQualificacao[chave] = (Array.isArray(perguntasQualificacao[chave]) ? perguntasQualificacao[chave] : [])
+        .map(function(item) {
+          item = item || {};
+          const reparada = repararFala(item.evidencia || item.pergunta);
+          if (!reparada) return null;
+          const locutorFonte = resolverLocutorFonte(reparada);
+          if (locutorFonte && locutorFonte !== tipo && locutorFonte !== 'PROFISSIONAL') return null;
+          item.evidencia = reparada;
+          item.locutor = locutorFonte ? tipo : 'NAO_IDENTIFICADO';
+          return item;
+        })
+        .filter(Boolean);
+    });
+    resultado.perguntas_qualificacao = perguntasQualificacao;
   }
 
   const checklist = Array.isArray(resultado.checklist) ? resultado.checklist : [];
