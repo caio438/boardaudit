@@ -253,6 +253,53 @@ jobs:
             echo "Web app may require an authenticated Google session; source/deployment verification already passed."
           fi
 
+      - name: Restore independent automation triggers
+        if: steps.capacity.outputs.head_only != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npx clasp versions > /tmp/clasp-versions-restore.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token_restore', token, {mode: 0o600});
+          NODE
+
+          TOKEN="$(cat /tmp/google_access_token_restore)"
+          URL="https://script.google.com/macros/s/AKfycbxk_jvoxhRCiHKjTSN6wKWH3cbh07ziB6xOYBI5rWuE/dev?ops_restore_automation=1"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/restore-automation-result.txt -w '%{http_code}' "$URL" || true)"
+          echo "RESTORE_AUTOMATION_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/restore-automation-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Restaurador de automacoes retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Restaurador de automacoes retornou HTML em vez de JSON.');
+          }
+          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+          if (result.sucesso !== true) throw new Error('Restaurador nao retornou sucesso=true.');
+          const data = result.resultado || {};
+          if (data.centralRemovida !== true) throw new Error('Acionador central nao foi removido.');
+          if (data.tldv && Number((data.tldv.automacao || {}).totalAcionadores || 0) !== 7) {
+            throw new Error('tl;dv nao ficou com 7 acionadores.');
+          }
+          if (data.ligacoes && Number(data.ligacoes.gatilhosInstalados || 0) !== 5) {
+            throw new Error('Ligacoes nao ficaram com 5 acionadores.');
+          }
+          if (!data.agenda || data.agenda.sucesso !== true) throw new Error('Agenda nao foi reinstalada.');
+          console.log('AUTOMATION_TRIGGERS_RESTORED=1');
+          NODE
+
+          rm -f /tmp/google_access_token_restore /tmp/clasp-versions-restore.txt
+
       - name: Remove local authentication file
         if: always()
         run: rm -f "$HOME/.clasprc.json"
