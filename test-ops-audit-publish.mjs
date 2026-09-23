@@ -29,7 +29,7 @@ assert.ok(code.includes('OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'doGet nao chama o 
 
 assert.ok(workflow.includes('Deploy Apps Script automatically'), 'Operacao nao aguarda deploy concluido.');
 assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao nao usa ambiente protegido.');
-assert.ok(workflow.includes('Authorization: Bearer $TOKEN'), 'Operacao nao autentica a chamada da Execution API.');
+assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Operacao nao autentica a chamada ao web app HEAD.');
 assert.ok(workflow.includes('/dev?ops_audit_publish=1'), 'Workflow nao chama o web app HEAD operacional.');
 assert.ok(workflow.includes('--location-trusted'), 'Workflow nao preserva autenticacao OAuth nos redirects do Google.');
 assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Workflow nao envia o OAuth Bearer de forma explicita.');
