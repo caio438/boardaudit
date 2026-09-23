@@ -52,7 +52,17 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
       String(auditoria.STATUS || '').toUpperCase() === 'EM_REVISAO' &&
       String(auditoria.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA') {
     const resultadoExistente = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado invalido.');
-    if (audV3ColetarOrientacoesGenericas_(resultadoExistente, tipo).length) {
+    const orientacoesGenericas = audV3ColetarOrientacoesGenericas_(resultadoExistente, tipo);
+    const reparoAnterior = ((resultadoExistente.validacao_board || {}).reparo_coaching || {});
+    const falhaCriterioLegada =
+      String(reparoAnterior.status || '').toUpperCase() === 'FALHOU' &&
+      Number(reparoAnterior.tentativa || 0) >= 1 &&
+      /Critério de conclusão não verificável no reparo/i.test(String(reparoAnterior.erro || ''));
+    if (orientacoesGenericas.length && falhaCriterioLegada) {
+      console.warn('Auditoria preservada no histórico: o reparo anterior falhou apenas no validador legado de critério verificável. Gerando nova análise com a regra corrigida.');
+      auditoria = null;
+      forcarNovaAnalise = true;
+    } else if (orientacoesGenericas.length) {
       repararCoachingAuditoriaV3(auditoria.ID_AUDITORIA);
       auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA);
     }

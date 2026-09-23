@@ -3558,8 +3558,8 @@ function audV3TextoReparoCoaching_(reparo, contexto) {
   if (!/\b(?:antes|apos|durante|quando|no|na|ao)\b/.test(audV3NormalizarTrechoRastreavel_(partes[2]))) {
     throw new Error('Momento de aplicação ausente no reparo.');
   }
-  if (!/\b(?:registrad|confirmad|explicitad|respondid|documentad|definid|obtida|obtido|concluid|validado)/.test(audV3NormalizarTrechoRastreavel_(partes[4]))) {
-    throw new Error('Critério de conclusão não verificável no reparo.');
+  if (!/\b(?:registrad|confirmad|explicitad|respondid|documentad|definid|obtida|obtido|concluid|validado|somente se|ate que|quando o lead|quando a resposta)/.test(audV3NormalizarTrechoRastreavel_(partes[4]))) {
+    partes[4] = 'Considerar concluído quando estiver registrada ou confirmada de forma explícita a informação: ' + partes[3];
   }
   const possuiRegraLiteral = contexto.regra_literal_pitch !== 'NAO_PREVISTO_NO_PITCH';
   const origem = possuiRegraLiteral && origemInformada === 'PITCH' ? 'PITCH' : 'SUGESTAO_ENABLEMENT';
