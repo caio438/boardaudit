@@ -215,6 +215,13 @@ assert.ok(audit.includes("setTitle('Atingimento por critério — atual x média
 assert.ok(audit.includes('audV3AdicionarGraficosEvolucaoDocumento_(body, hist);'), 'Gráficos não são inseridos no bloco de evolução compartilhado entre SDR e Closer.');
 assert.ok(audit.includes("addColumn(Charts.ColumnType.NUMBER, 'Referência 4,0')"), 'Gráfico temporal não possui referência de atingimento 4,0.');
 
+const inicioSdrRd = rd.indexOf('function audRdTextoSdr_');
+const fimSdrRd = rd.length;
+const sdrRd = rd.slice(inicioSdrRd, fimSdrRd);
+assert.ok(sdrRd.includes("var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];"), 'Formatter SDR do RD não declara criterios no próprio escopo.');
+assert.ok(sdrRd.includes('var notasCriterios = criterios.filter(function(item)'), 'Formatter SDR do RD não declara notasCriterios no próprio escopo.');
+assert.ok(sdrRd.includes('var mediaCalculada = mediaCriterios.length'), 'Formatter SDR do RD não calcula a média dos critérios no próprio escopo.');
+
 const sdrNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoSdr_'));
 const sdrTabela = rd.indexOf("'PONTUAÇÃO POR CRITÉRIO'", rd.indexOf('function audRdTextoSdr_'));
 const sdrContexto = rd.indexOf("'CONTEXTO DA INTERAÇÃO'", rd.indexOf('function audRdTextoSdr_'));
