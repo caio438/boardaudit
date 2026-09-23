@@ -29,11 +29,12 @@ assert.ok(code.includes('OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'doGet nao chama o 
 
 assert.ok(workflow.includes('Deploy Apps Script automatically'), 'Operacao nao aguarda deploy concluido.');
 assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao nao usa ambiente protegido.');
-assert.ok(workflow.includes('Authorization: Bearer $TOKEN'), 'Operacao nao autentica a chamada da Execution API.');
-assert.ok(workflow.includes('script.googleapis.com/v1/scripts/1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9:run'), 'Workflow nao usa a Apps Script Execution API.');
-assert.ok(workflow.includes("function: 'OPS_AUDITAR_PUBLICAR_TRANSCRICAO'"), 'Workflow nao chama o runner operacional pela Execution API.');
-assert.ok(workflow.includes('devMode: true'), 'Workflow precisa executar o HEAD sincronizado quando o projeto estiver no limite de versoes.');
-assert.ok(!workflow.includes('/dev?ops_audit_publish=1'), 'Workflow ainda depende da sessao HTML do web app /dev.');
+assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Operacao nao autentica a chamada ao web app HEAD.');
+assert.ok(workflow.includes('/dev?ops_audit_publish=1'), 'Workflow nao chama o web app HEAD operacional.');
+assert.ok(workflow.includes('--location-trusted'), 'Workflow nao preserva autenticacao OAuth nos redirects do Google.');
+assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Workflow nao envia o OAuth Bearer de forma explicita.');
+assert.ok(workflow.includes("sed -E 's/ \\(#[0-9]+\\)$//'"), 'Workflow nao remove o sufixo de PR adicionado pelo squash merge.');
+assert.ok(!workflow.includes('script.googleapis.com/v1/scripts/'), 'Workflow ainda depende da Execution API bloqueada por permissao.');
 assert.ok(workflow.includes("Ops audit publish: "), 'Workflow nao exige commit operacional explicito.');
 assert.ok(workflow.includes("rdStatus || '').toUpperCase() !== 'PUBLICADA'"), 'Workflow nao confirma publicacao no RD.');
 
