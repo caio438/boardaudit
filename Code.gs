@@ -589,8 +589,8 @@ function obterCabecalhosOficiais_() {
     'LINK_ORIGINAL', 'URL_GRAVACAO', 'STATUS_TRANSCRICAO',
     'STATUS_AUDITORIA', 'IMPORTADO_EM', 'ATUALIZADO_EM',
     'NOME_ARQUIVO_ORIGEM', 'EMPRESA_ARQUIVO', 'NUMERO_CHAMADA',
-    'COLABORADOR', 'FUNCAO', 'OPORTUNIDADE', 'LINK_CRM', 'SCHEMA_VERSAO',
-    'PARTICIPANTES_JSON', 'DESCRICAO_ORIGEM'
+    'COLABORADOR', 'FUNCAO', 'OPORTUNIDADE', 'LINK_CRM', 'CRM_PROVIDER',
+    'CRM_RECORD_ID', 'SCHEMA_VERSAO', 'PARTICIPANTES_JSON', 'DESCRICAO_ORIGEM'
   ];
 
   estruturas[APP.sheets.transcricoes] = [
@@ -3432,6 +3432,8 @@ function criarRegistroLigacaoRd_(cliente, tarefa, existente) {
     COLABORADOR: responsavel.nome || '',
     FUNCAO: 'SDR',
     OPORTUNIDADE: oportunidade,
+    CRM_PROVIDER: 'RD_STATION',
+    CRM_RECORD_ID: idDeal,
     LINK_CRM: idDeal ? 'https://crm.rdstation.com/app/deals/' + encodeURIComponent(idDeal) + '?view=pipeline' : '',
     SCHEMA_VERSAO: APP.versao,
     PARTICIPANTES_JSON: existente ? (existente.PARTICIPANTES_JSON || '') : '',
@@ -3863,6 +3865,8 @@ function listarLigacoesRd_() {
         duracaoSegundos: Number(item.DURACAO_SEGUNDOS || 0),
         urlGravacao: item.URL_GRAVACAO || '',
         linkCrm: item.LINK_CRM || '',
+        crmProvider: item.CRM_PROVIDER || (String(item.LINK_CRM || '').indexOf('crm.rdstation.com') >= 0 ? 'RD_STATION' : ''),
+        crmRecordId: item.CRM_RECORD_ID || '',
         statusTranscricao: transcrita ? 'CONCLUIDA' : (item.STATUS_TRANSCRICAO || 'PENDENTE'),
         statusAuditoria: auditoria.STATUS || item.STATUS_AUDITORIA || 'PENDENTE',
         idAuditoria: auditoria.ID_AUDITORIA || ''
