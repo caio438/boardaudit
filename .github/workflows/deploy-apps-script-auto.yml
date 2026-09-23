@@ -351,6 +351,59 @@ jobs:
 
           rm -f /tmp/google_access_token_jornada
 
+      - name: Run one-time Drive folder batches
+        if: steps.capacity.outputs.head_only != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          subject="$(git log -1 --pretty=%s)"
+          if [[ "$subject" != "Ops sync pastas once:"* ]]; then
+            echo "JORNADA_PASTAS_SYNC_SKIPPED=1"
+            echo "Commit sem marcador de sincronizacao unica das pastas: $subject"
+            exit 0
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token_jornada_pastas', token, {mode: 0o600});
+          NODE
+
+          TOKEN="$(cat /tmp/google_access_token_jornada_pastas)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sync_jornada_pastas=1"
+
+          for lote in 1 2 3; do
+            body="/tmp/jornada-pastas-sync-$lote.txt"
+            code="$(curl -sS --max-time 240 --location-trusted --oauth2-bearer "$TOKEN" -o "$body" -w '%{http_code}' "$URL" || true)"
+            echo "JORNADA_PASTAS_SYNC_HTTP_STATUS_$lote=$code"
+            test "$code" = "200"
+
+            LOTE="$lote" BODY="$body" node <<'NODE'
+          const fs = require('fs');
+          const lote = process.env.LOTE;
+          const raw = fs.readFileSync(process.env.BODY, 'utf8').trim();
+          if (!raw) throw new Error('Lote ' + lote + ' retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Lote ' + lote + ' retornou HTML em vez de JSON.');
+          }
+          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+          if (result.sucesso !== true) throw new Error('Lote ' + lote + ' nao retornou sucesso=true.');
+          console.log('JORNADA_PASTAS_LOTE_' + lote + '_FONTE=' + String(result.fonteNome || result.fonteId || ''));
+          console.log('JORNADA_PASTAS_LOTE_' + lote + '_IMPORTADAS=' + Number(result.importadas || 0));
+          console.log('JORNADA_PASTAS_LOTE_' + lote + '_ATUALIZADAS=' + Number(result.atualizadas || 0));
+          console.log('JORNADA_PASTAS_LOTE_' + lote + '_ERROS=' + JSON.stringify(result.erros || []));
+          NODE
+          done
+
+          echo "JORNADA_PASTAS_SYNC_OK=1"
+          rm -f /tmp/google_access_token_jornada_pastas /tmp/jornada-pastas-sync-*.txt
+
       - name: Remove local authentication file
         if: always()
         run: rm -f "$HOME/.clasprc.json"
