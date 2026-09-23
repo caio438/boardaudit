@@ -8506,14 +8506,21 @@
       const token = document.getElementById('integracaoToken');
       const ajuda = document.getElementById('integracaoConfigAjuda');
       if (config) {
-        config.placeholder = tipo === 'CIRCLE'
-          ? 'Cole a URL do espaço. Ex.: https:\u002f\u002fcomunidade.rdigitalconsultoria.com.br/c/feed-volum'
-          : 'Ex.: {"modo":"RESUMIDO_DIARIO"}';
+        if (tipo === 'CIRCLE') {
+          config.placeholder = 'Cole a URL do espaço. Ex.: https:\u002f\u002fcomunidade.rdigitalconsultoria.com.br/c/feed-volum';
+        } else if (tipo === 'PIPEDRIVE') {
+          config.placeholder = '{"recordUrlTemplate":"https:\u002f\u002fSUA-EMPRESA.pipedrive.com/deal/{id}"}';
+        } else if (tipo === 'LEADS2B') {
+          config.placeholder = '{"recordUrlTemplate":"opcional; pode ficar vazio por enquanto"}';
+        } else {
+          config.placeholder = 'Ex.: {"modo":"RESUMIDO_DIARIO"}';
+        }
       }
       if (ajuda) {
-        ajuda.textContent = tipo === 'CIRCLE'
-          ? 'Para o Circle, cole somente a URL completa do espaço. O Board identifica o spaceId automaticamente.'
-          : '';
+        if (tipo === 'CIRCLE') ajuda.textContent = 'Para o Circle, cole somente a URL completa do espaço. O Board identifica o spaceId automaticamente.';
+        else if (tipo === 'PIPEDRIVE') ajuda.textContent = 'O token fica protegido no backend. O template de URL é opcional e serve apenas para montar o atalho do negócio no Board.';
+        else if (tipo === 'LEADS2B') ajuda.textContent = 'O token fica protegido no backend. Por enquanto, o Board armazena somente o ID do lead/oportunidade e não escreve na Leads2b.';
+        else ajuda.textContent = '';
       }
       if (token) {
         token.disabled = tipo === 'CIRCLE';
