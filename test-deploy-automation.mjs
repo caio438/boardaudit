@@ -18,6 +18,14 @@ assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Pus
 assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
 assert.ok(yaml.includes('Restore independent automation triggers'), 'Deploy não reinstala os acionadores operacionais após publicar.');
 assert.ok(yaml.includes('ops_restore_automation=1'), 'Deploy não chama o restaurador autenticado de automações.');
+assert.ok(
+  yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1'),
+  'Restaurador de automações não usa o deployment de produção.'
+);
+assert.ok(
+  !yaml.includes('/dev?ops_restore_automation=1'),
+  'Restaurador de automações ainda depende do endpoint /dev.'
+);
 assert.ok(yaml.includes('AUTOMATION_TRIGGERS_RESTORED=1'), 'Deploy não confirma a restauração dos acionadores.');
 
 assert.ok(yaml.includes('Pull current production for preservation'), 'Deploy não preserva a produção atual antes da publicação.');
