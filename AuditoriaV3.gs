@@ -1754,7 +1754,7 @@ function executarAuditoriaV3(dados) {
       if (tipo === 'PLANO' && ['SDR', 'CLOSER'].includes(equipePlano)) {
         respostaIa.equipe_analisada = equipePlano;
       }
-      audV3RepararEvidenciasRastreaveis_(respostaIa, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+      audV3RepararEvidenciasRastreaveis_(respostaIa, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH, interacao);
       const normalizado = audV3NormalizarResultado_(respostaIa, criterios, identidade, interacao, pitch, tipo);
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
@@ -2356,10 +2356,12 @@ function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
   const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
   const lead = String((interacao || {}).LEAD || '').trim();
 
-  if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
-    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
+  const papelNormalizado = audV3NormalizarTrechoRastreavel_(papelProfissional);
+  if (n === papelNormalizado || (papelNormalizado && n.indexOf(papelNormalizado + ' ') === 0) ||
+      /^(consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== papelNormalizado };
   }
-  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
+  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)(?:\s+.+)?$/.test(n)) {
     return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
   }
   if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
@@ -3175,11 +3177,27 @@ function audV3RepararRegraPitch_(trecho, conteudoPitch) {
   return audV3RecuperarTrechoLiteral_(regra, conteudoPitch) || 'Não previsto no pitch.';
 }
 
-function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch) {
+function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios, transcricao, conteudoPitch, interacao) {
   resultado = resultado || {};
   criterios = criterios || {};
   const tipo = String(tipoAuditoria || '').toUpperCase();
   if (!['SDR', 'CLOSER'].includes(tipo)) return resultado;
+
+  const turnosFonte = (audV3NormalizarTranscricaoTexto_(transcricao, interacao || {}).turnos || []);
+  const resolverLocutorFonte = function(fala) {
+    const trecho = String(fala || '').trim();
+    if (!trecho || /^n[aã]o evidenciado/i.test(trecho)) return '';
+    const tiposEncontrados = {};
+    turnosFonte.forEach(function(turno) {
+      turno = turno || {};
+      if (!audV3TrechoExisteNaFonte_(trecho, turno.fala || '')) return;
+      const tipoTurno = String(turno.tipo || '').trim().toUpperCase();
+      if (tipoTurno) tiposEncontrados[tipoTurno] = true;
+    });
+    const tipos = Object.keys(tiposEncontrados);
+    if (tipos.length !== 1) return '';
+    return tipos[0] === 'NAO_IDENTIFICADO' ? '' : tipos[0];
+  };
 
   const repararFala = function(valor) {
     const fala = String(valor || '').trim();
@@ -3193,6 +3211,8 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
     item.regra_pitch = audV3RepararRegraPitch_(item.regra_pitch, conteudoPitch);
     if (reparada) {
       item.o_que_foi_dito = reparada;
+      const locutorFonte = resolverLocutorFonte(reparada);
+      if (locutorFonte) item.locutor_evidencia = locutorFonte;
       return;
     }
     item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
