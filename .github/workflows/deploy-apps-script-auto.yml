@@ -62,8 +62,13 @@ jobs:
           test -n "$version_count"
           echo "APPS_SCRIPT_VERSION_COUNT=$version_count"
           if [ "$version_count" -ge 199 ]; then
-            echo "::error::Apps Script está com 199 ou mais versões, próximo do limite de 200 versões. Uma vaga foi preservada para recuperação; exclua versões antigas não usadas em Project History antes de publicar novamente."
-            exit 1
+            subject="$(git log -1 --pretty=%s)"
+            if [ "$version_count" -eq 199 ] && [[ "$subject" == "Ops audit publish: "* ]]; then
+              echo "::warning::Usando a ultima vaga reservada do Apps Script para a operacao explicita: $subject"
+            else
+              echo "::error::Apps Script está com 199 ou mais versões, próximo do limite de 200 versões. A última vaga só pode ser usada por uma operação explícita 'Ops audit publish:'. Exclua versões antigas não usadas em Project History antes de publicar novamente."
+              exit 1
+            fi
           fi
 
       - name: Pull current production for preservation
