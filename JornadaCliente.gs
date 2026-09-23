@@ -604,6 +604,11 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     );
     const falhasFila = jornadaLerFalhasFilaFormalizacao_();
     const agoraMs = agora.getTime();
+    const transcricoesPorId = {};
+    lerObjetos_(APP.sheets.transcricoes).forEach(item => {
+      const idTranscricao = String(item.ID_TRANSCRICAO || '').trim();
+      if (idTranscricao) transcricoesPorId[idTranscricao] = item;
+    });
     const diagnosticoFila = { registros: 0, realizadas: 0, periodo: 0, agendas: 0, transcritas: 0, formalizaveis: 0, pendentes: 0 };
     const todasReunioes = lerObjetos_(APP.sheets.reunioesCalendario);
     diagnosticoFila.registros = todasReunioes.length;
@@ -627,6 +632,16 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         return true;
       })
       .filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim()))
+      .filter(item => {
+        const transcricao = transcricoesPorId[String(item.ID_TRANSCRICAO || '')];
+        if (!transcricao || String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') return false;
+        const conteudo = String(transcricao.CONTEUDO || '').trim();
+        if (!conteudo) return false;
+        if (String(transcricao.FONTE || '').toUpperCase() === 'GOOGLE_MEET') {
+          return jornadaConteudoPareceTranscricao_(conteudo);
+        }
+        return true;
+      })
       .filter(jornadaReuniaoDeveFormalizar_)
       .filter(item => !formalizacoes.some(formalizacao =>
         (item.ID_TRANSCRICAO && String(formalizacao.ID_TRANSCRICAO || '') === String(item.ID_TRANSCRICAO)) ||
@@ -639,7 +654,13 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         const aguardandoB = falhaB && agoraMs - Number(falhaB.ultimaTentativa || 0) < FORMALIZACAO_NOTURNA_CONFIG.esperaAposErroMs ? 1 : 0;
         return aguardandoA - aguardandoB || jornadaDataRegistro_(a.INICIO) - jornadaDataRegistro_(b.INICIO);
       });
-    diagnosticoFila.transcritas = todasReunioes.filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim())).length;
+    diagnosticoFila.transcritas = todasReunioes.filter(item => {
+      const transcricao = transcricoesPorId[String(item.ID_TRANSCRICAO || '')];
+      if (!transcricao || String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') return false;
+      const conteudo = String(transcricao.CONTEUDO || '').trim();
+      if (!conteudo) return false;
+      return String(transcricao.FONTE || '').toUpperCase() !== 'GOOGLE_MEET' || jornadaConteudoPareceTranscricao_(conteudo);
+    }).length;
     diagnosticoFila.formalizaveis = todasReunioes.filter(jornadaReuniaoDeveFormalizar_).length;
     diagnosticoFila.pendentes = todasCandidatas.length;
     const limiteLote = Math.min(3, Math.max(1, Number(opcoes.limite || 3)));
