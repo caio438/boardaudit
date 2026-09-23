@@ -7,7 +7,8 @@
  * - se estiver EM_REVISAO e tiver coaching generico, tenta o reparo seletivo uma vez;
  * - nunca aprova se o gate estiver BLOQUEADO;
  * - exige vinculo de negociacao e integracao RD ativa antes da aprovacao;
- * - usa o fluxo oficial aprovarAuditoriaV3 -> audRdPublicarAutomaticamente_.
+ * - usa o fluxo oficial aprovarAuditoriaV3 -> audRdPublicarAutomaticamente_;
+ * - se a auditoria já estiver aprovada com falha de RD, reprocessa somente a publicação de forma idempotente.
  */
 function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
   const alvo = String(idTranscricao || '').trim();
