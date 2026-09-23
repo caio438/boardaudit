@@ -15,6 +15,9 @@ assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interaca
 assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao exige gate liberado.');
 assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
 assert.ok(ops.includes('function opsValidarAuditoriaNoEngineAtual_'), 'Runner nao revalida auditoria antiga no engine atual.');
+assert.ok(ops.includes('audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {})'), 'Runner nao recalcula a fonte com a identidade atual da interacao.');
+assert.ok(ops.includes('const hashAtual = audV3HashFonte_('), 'Runner nao compara o hash atual antes do reparo seletivo.');
+assert.ok(ops.includes('A fonte atual difere da auditoria existente; preserve o histórico e gere uma nova análise.'), 'Runner nao invalida auditoria antiga quando a fonte mudou.');
 assert.ok(ops.includes('forcarNovaAnalise = true'), 'Runner nao força nova análise quando a auditoria antiga viola travas atuais.');
 assert.ok(ops.includes('evitarDuplicidade: !forcarNovaAnalise'), 'Runner pode reutilizar novamente uma auditoria antiga incompatível.');
 assert.ok(ops.includes('será preservada no histórico e uma nova análise será gerada'), 'Runner nao preserva o histórico ao regenerar uma auditoria incompatível.');
