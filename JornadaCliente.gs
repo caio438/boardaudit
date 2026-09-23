@@ -603,6 +603,14 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item =>
       String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'
     );
+    const transcricoesPorId = {};
+    lerObjetos_(APP.sheets.transcricoes).forEach(item => {
+      if (item.ID_TRANSCRICAO) transcricoesPorId[String(item.ID_TRANSCRICAO)] = item;
+    });
+    const interacoesPorId = {};
+    lerObjetos_(APP.sheets.interacoes).forEach(item => {
+      if (item.ID_INTERACAO) interacoesPorId[String(item.ID_INTERACAO)] = item;
+    });
     const falhasFila = jornadaLerFalhasFilaFormalizacao_();
     const agoraMs = agora.getTime();
     const diagnosticoFila = { registros: 0, realizadas: 0, periodo: 0, agendas: 0, transcritas: 0, formalizaveis: 0, pendentes: 0 };
@@ -628,6 +636,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
         return true;
       })
       .filter(item => Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()) && Boolean(String(item.ID_TRANSCRICAO || '').trim()))
+      .filter(item => jornadaTranscricaoFormalizavel_(item, transcricoesPorId, interacoesPorId))
       .filter(jornadaReuniaoDeveFormalizar_)
       .filter(item => !formalizacoes.some(formalizacao =>
         (item.ID_TRANSCRICAO && String(formalizacao.ID_TRANSCRICAO || '') === String(item.ID_TRANSCRICAO)) ||
@@ -1103,6 +1112,40 @@ function jornadaConteudoPareceTranscricao_(conteudo) {
   // A aba de observações do Gemini também contém linhas com dois-pontos.
   // Os timestamps isolados são o sinal confiável da aba literal do Google Meet.
   return marcadoresTempo.length >= 2;
+}
+
+function jornadaTranscricaoFormalizavel_(reuniao, transcricoesPorId, interacoesPorId) {
+  const idTranscricao = String((reuniao || {}).ID_TRANSCRICAO || '').trim();
+  if (!idTranscricao) return false;
+
+  const transcricao = (transcricoesPorId || {})[idTranscricao];
+  if (!transcricao || String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') return false;
+
+  const armazenado = String(transcricao.CONTEUDO || '').trim();
+  const fonte = String(transcricao.FONTE || '').toUpperCase();
+  if (fonte !== 'GOOGLE_MEET') return armazenado.length >= 20;
+  if (jornadaConteudoPareceTranscricao_(armazenado)) return true;
+
+  if (typeof audV3ConteudoCompletoTranscricao_ !== 'function') return false;
+  const interacao = (interacoesPorId || {})[String(transcricao.ID_INTERACAO || '')] || {};
+  try {
+    const completo = String(audV3ConteudoCompletoTranscricao_(transcricao, interacao) || '').trim();
+    if (!jornadaConteudoPareceTranscricao_(completo)) return false;
+
+    const conteudoPlanilha = jornadaConteudoParaPlanilha_(completo);
+    atualizarPorCampo_(APP.sheets.transcricoes, 'ID_TRANSCRICAO', idTranscricao, {
+      CONTEUDO: conteudoPlanilha,
+      TAMANHO_CARACTERES: completo.length,
+      STATUS: 'CONCLUIDA',
+      ERRO: '',
+      ATUALIZADO_EM: new Date()
+    });
+    transcricao.CONTEUDO = conteudoPlanilha;
+    transcricao.TAMANHO_CARACTERES = completo.length;
+    return true;
+  } catch (erro) {
+    return false;
+  }
 }
 
 function jornadaConteudoParaPlanilha_(conteudo) {
