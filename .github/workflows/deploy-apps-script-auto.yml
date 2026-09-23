@@ -300,6 +300,50 @@ jobs:
 
           rm -f /tmp/google_access_token_restore /tmp/clasp-versions-restore.txt
 
+      - name: Run one-time journey sync
+        if: steps.capacity.outputs.head_only != 'true' && startsWith(github.event.head_commit.message, 'Ops sync jornada once:')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token_jornada', token, {mode: 0o600});
+          NODE
+
+          TOKEN="$(cat /tmp/google_access_token_jornada)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sync_jornada=1"
+          code="$(curl -sS --max-time 330 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/jornada-sync-result.txt -w '%{http_code}' "$URL" || true)"
+          echo "JORNADA_SYNC_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/jornada-sync-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Sincronizador da Jornada retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Sincronizador da Jornada retornou HTML em vez de JSON.');
+          }
+          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+          if (result.sucesso !== true) throw new Error('Sincronizacao da Jornada nao retornou sucesso=true.');
+          console.log('JORNADA_SYNC_ENCONTRADOS=' + Number(result.encontrados || 0));
+          console.log('JORNADA_SYNC_ARTEFATOS=' + Number(result.artefatos || 0));
+          console.log('JORNADA_SYNC_TRANSCRICOES_PASTAS=' + Number(result.transcricoesPastas || 0));
+          console.log('JORNADA_SYNC_CLIENTES_ATUALIZADOS=' + Number(result.clientesAtualizados || 0));
+          if (Array.isArray(result.erros) && result.erros.length) {
+            console.log('JORNADA_SYNC_ERROS=' + JSON.stringify(result.erros));
+          }
+          console.log('JORNADA_SYNC_OK=1');
+          NODE
+
+          rm -f /tmp/google_access_token_jornada
+
       - name: Remove local authentication file
         if: always()
         run: rm -f "$HOME/.clasprc.json"
