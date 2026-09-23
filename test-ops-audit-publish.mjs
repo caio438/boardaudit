@@ -8,6 +8,10 @@ const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-a
 
 assert.ok(ops.includes('function OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'Runner operacional nao existe.');
 assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO'"), 'Runner nao ancora no ID da transcricao.');
+assert.ok(ops.includes('function opsResolverAlvoAuditoria_'), 'Runner nao resolve alvo TLDV por interacao.');
+assert.ok(ops.includes("audV3Localizar_('INTERACOES', 'ID_INTERACAO', chave)"), 'Runner nao aceita ID_INTERACAO como alvo.');
+assert.ok(ops.includes("audV3Localizar_('INTERACOES', 'ID_EXTERNO', idExternoTldv)"), 'Runner nao resolve o ID externo do TLDV.');
+assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacao.ID_INTERACAO)"), 'Runner nao encontra a transcricao interna pela interacao.');
 assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao exige gate liberado.');
 assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
 assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
@@ -26,6 +30,8 @@ assert.ok(workflow.includes('ops_audit_publish=1'), 'Workflow nao chama a rota o
 assert.ok(workflow.includes("Ops audit publish: "), 'Workflow nao exige commit operacional explicito.');
 assert.ok(workflow.includes("rdStatus || '').toUpperCase() !== 'PUBLICADA'"), 'Workflow nao confirma publicacao no RD.');
 
-assert.ok(deploy.includes('if [ "$version_count" -ge 199 ]'), 'Deploy nao preserva a ultima vaga de versao do Apps Script.');
+assert.ok(deploy.includes('if [ "$version_count" -ge 200 ]'), 'Deploy nao trata o limite de 200 versoes do Apps Script.');
+assert.ok(deploy.includes('head_only=true'), 'Deploy nao suporta sincronizacao operacional somente no HEAD.');
+assert.ok(deploy.includes("if: steps.capacity.outputs.head_only != 'true'"), 'Operacao HEAD-only ainda tentaria criar uma nova versao.');
 
 console.log('Runner operacional validado: gate -> preflight RD -> aprovacao -> publicacao idempotente.');

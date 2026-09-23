@@ -11,6 +11,9 @@ assert.ok(yaml.includes('environment: apps-script-production'), 'Deploy não usa
 assert.ok(yaml.includes('Check Apps Script version capacity'), 'Deploy não verifica o limite de versões antes de publicar.');
 assert.ok(yaml.includes('APPS_SCRIPT_VERSION_COUNT='), 'Deploy não registra a contagem de versões.');
 assert.ok(yaml.includes('limite de 200 versões'), 'Deploy não explica como corrigir o limite de versões.');
+assert.ok(yaml.includes('head_only=true'), 'Deploy não prevê sincronização HEAD-only no limite de versões.');
+assert.ok(yaml.includes("if: steps.capacity.outputs.head_only != 'true'"), 'Deploy HEAD-only ainda tentaria atualizar o deployment versionado.');
+
 assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Push exact validated source'), 'Limite de versões só é verificado depois do push.');
 assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
 assert.ok(!yaml.includes('/tmp/google_access_token'), 'Deploy ainda extrai access_token diretamente do clasp.');
