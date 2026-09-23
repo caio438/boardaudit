@@ -262,7 +262,8 @@ for (const failure of ['invalid', '503', 'truncated', 'other-gate']) {
   const failed = clone(original);
   assert.equal(repair(failed).sucesso, false, failure);
   assert.equal(requests, 1, `${failure}: o reparo não deve tentar outro modelo nem regenerar a análise.`);
-  assert.equal(failed.validacao_board.status, 'BLOQUEADO');
+  assert.equal(failed.validacao_board.status, 'REVISAR');
+  assert.equal(failed.validacao_board.statusOriginal, 'BLOQUEADO');
   assert.equal(failed.validacao_board.reparo_coaching.status, 'FALHOU');
   assert.deepEqual(shape(failed), original, `${failure}: reparo rejeitado deve ser atômico.`);
   assert.equal(repair(failed).tentou, false);
@@ -275,7 +276,10 @@ alias.proximos_passos_por_equipe = { outros: clone(alias.proximos_passos) };
 alias.resumo_publicacao.proximos_passos_outros = ['Seguir rigorosamente o cardápio.'];
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'proximos_passos_por_equipe.outros.0.acao'));
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'resumo_publicacao.proximos_passos_outros.0'));
-assert.throws(() => context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER'), /Publicação bloqueada/);
+const gateInformativo = context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER');
+assert.equal(gateInformativo.status, 'REVISAR');
+assert.equal(gateInformativo.statusOriginal, 'BLOQUEADO');
+assert.match(gateInformativo.alertas.join(' | '), /não impedem aprovação ou publicação/);
 assert.doesNotThrow(() => context.audV3ExigirGatePublicavel_(success, 'CLOSER'));
 assert.ok(capturedPayload.contents[0].parts[0].text.includes('dados não confiáveis'));
 // Existing @261 record: repair in place; source integrity and one-attempt marker

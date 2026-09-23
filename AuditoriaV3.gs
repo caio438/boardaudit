@@ -1648,15 +1648,13 @@ function executarAuditoriaV3(dados) {
       let resultadoExistente = {};
       try { resultadoExistente = JSON.parse(String(auditoriaExistente.RESULTADO_JSON || '{}')); } catch (e) {}
       const contextoExistente = resultadoExistente.contexto_interacao || {};
-      const gateExistente = resultadoExistente.validacao_board || {};
       if (['SDR', 'CLOSER'].includes(tipo) &&
           String(auditoriaExistente.STATUS || '') === 'EM_REVISAO' &&
           audV3ColetarOrientacoesGenericas_(resultadoExistente, tipo).length) {
         return repararCoachingAuditoriaV3(auditoriaExistente.ID_AUDITORIA);
       }
-      const reutilizavelContextual = tipo === 'PLANO' || (
-        String(contextoExistente.classificacao || '').trim() &&
-        String(gateExistente.status || '').toUpperCase() !== 'BLOQUEADO'
+      const reutilizavelContextual = tipo === 'PLANO' || Boolean(
+        String(contextoExistente.classificacao || '').trim()
       );
       if (reutilizavelContextual) {
         return {
@@ -1932,11 +1930,13 @@ function repararCoachingAuditoriaV3(idAuditoria) {
         AUTOMACAO_ATUALIZADO_EM: new Date()
       });
     }
-    const bloqueado = audV3ValidarQualidadeBoard_(resultado, tipo).status === 'BLOQUEADO';
+    const gateAtual = audV3ValidarQualidadeBoard_(resultado, tipo);
+    const revisaoRecomendada = String(gateAtual.status || '').toUpperCase() === 'BLOQUEADO';
     return {
-      sucesso: !bloqueado,
-      mensagem: bloqueado
-        ? 'Auditoria preservada e bloqueada para intervenção humana. A tentativa única de reparo está registrada.'
+      sucesso: true,
+      revisaoRecomendada: revisaoRecomendada,
+      mensagem: revisaoRecomendada
+        ? 'Auditoria preservada com pontos de revisão. O gate é informativo e não impede aprovação ou publicação.'
         : 'Orientações reparadas e revalidadas. Auditoria em revisão, com notas e evidências preservadas.',
       auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA)),
       auditorias: audV3ListarAuditoriasFront_()
@@ -1948,7 +1948,12 @@ function repararCoachingAuditoriaV3(idAuditoria) {
 
 function audV3ExigirGatePublicavel_(resultado, tipo) {
   const gate = audV3ValidarQualidadeBoard_(resultado, tipo);
-  if (gate.status === 'BLOQUEADO') throw new Error('Publicação bloqueada pelo gate: ' + gate.bloqueios.join(' | '));
+  if (String(gate.status || '').toUpperCase() === 'BLOQUEADO') {
+    gate.statusOriginal = 'BLOQUEADO';
+    gate.status = 'REVISAR';
+    gate.alertas = gate.alertas || [];
+    gate.alertas.unshift('Gate informativo: os pontos abaixo recomendam revisão, mas não impedem aprovação ou publicação.');
+  }
   return gate;
 }
 
@@ -2176,10 +2181,8 @@ function aprovarAuditoriaV3(idAuditoria) {
   }
   const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
   audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
-  const gateBoard = audV3ValidarQualidadeBoard_(resultado, auditoria.TIPO_AUDITORIA);
-  if (String(gateBoard.status || '').toUpperCase() === 'BLOQUEADO') {
-    throw new Error('A auditoria possui bloqueios de qualidade e não pode ser publicada antes de ser regenerada/corrigida: ' + (gateBoard.bloqueios || []).join(' | '));
-  }
+  const gateBoard = audV3ExigirGatePublicavel_(resultado, auditoria.TIPO_AUDITORIA);
+  resultado.validacao_board = Object.assign({}, resultado.validacao_board || {}, gateBoard);
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -3697,9 +3700,10 @@ function audV3AutorrepararCoachingGenerico_(resultado, tipoAuditoria, conteudoPi
     return { tentou: true, sucesso: true, campos: campos.map(function(item) { return item.caminho; }) };
   } catch (erro) {
     resultado.validacao_board = audV3ValidarQualidadeBoard_(resultado, tipoAuditoria);
-    resultado.validacao_board.status = 'BLOQUEADO';
-    resultado.validacao_board.bloqueios = resultado.validacao_board.bloqueios || [];
-    resultado.validacao_board.bloqueios.push('A única tentativa de autorreparo seletivo falhou; intervenção humana necessária: ' + String(erro && erro.message ? erro.message : erro));
+    resultado.validacao_board.statusOriginal = String(resultado.validacao_board.status || '').toUpperCase();
+    resultado.validacao_board.status = 'REVISAR';
+    resultado.validacao_board.alertas = resultado.validacao_board.alertas || [];
+    resultado.validacao_board.alertas.push('O autorreparo seletivo falhou; revise este ponto manualmente se necessário: ' + String(erro && erro.message ? erro.message : erro));
     resultado.validacao_board.reparo_coaching = {
       status: 'FALHOU',
       campos: campos.map(function(item) { return item.caminho; }),
