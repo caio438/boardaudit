@@ -1397,7 +1397,7 @@ function sincronizarAgendaCliente(dados) {
   if (cliente.URL_PASTA_TRANSCRICOES || cliente.URL_PASTA_GRAVACOES) pastas.push(cliente);
   jornadaFontesPasta_(idCliente).forEach(fonte => pastas.push(Object.assign({}, cliente, { NOME_FONTE: fonte.nome || '', URL_PASTA_TRANSCRICOES: fonte.endereco, URL_PASTA_GRAVACOES: fonte.endereco })));
   pastas.forEach(origemPasta => {
-    const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervaloPastas);
+    const retornoPastas = jornadaSincronizarPastasCliente_(origemPasta, intervalo);
     transcricoesPastas += retornoPastas.importadas;
     (retornoPastas.erros || []).forEach(erro => erros.push(erro));
   });
