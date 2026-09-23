@@ -2166,6 +2166,8 @@
                 <label for="integracaoTipo">Integração</label>
                 <select id="integracaoTipo" onchange="atualizarCamposIntegracao()">
                   <option value="RD_STATION">RD Station CRM</option>
+                  <option value="PIPEDRIVE">Pipedrive</option>
+                  <option value="LEADS2B">Leads2b</option>
                   <option value="TLDV">tl;dv</option>
                   <option value="API4COM">API4COM</option>
                   <option value="CIRCLE">Circle</option>
@@ -7869,7 +7871,11 @@
       const circlePublicado = Boolean(item.circlePostUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(item.circleStatus || '').toUpperCase());
       const comunidadePublicada = Boolean(item.comunidadePostUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(String(item.comunidadeStatus || '').toUpperCase());
       const comunidadeErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
-      const rdPublicado = String(item.rdStatus || '').toUpperCase() === 'PUBLICADA';
+      const crmStatus = String(item.crmStatus || item.rdStatus || '').toUpperCase();
+      const rdPublicado = crmStatus === 'PUBLICADA';
+      const crmProvider = crmProviderAuditoriaFront_(item);
+      const crmNome = nomeCrmFront_(crmProvider);
+      const crmRecordId = crmRecordIdAuditoriaFront_(item, crmProvider);
       const crmGrupoSinergiaStatus = String(item.crmGrupoSinergiaStatus || '').toUpperCase();
       const integridadeStatus = String(item.integridadeStatus || '').toUpperCase();
       const auditoriaLegada = integridadeStatus === 'LEGADA_REANALISE';
@@ -7894,16 +7900,15 @@
         DESCARTADA: '<span class="status">Grupo Sinergia · descartada</span>',
         AGUARDANDO_REVISAO: '<span class="status warning">Grupo Sinergia · aguardando revisão</span>'
       })[crmGrupoSinergiaStatus] || '';
-      const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
       const indicadorRd = auditoriaLegada || crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA'
-        ? '<span class="status danger">RD: bloqueado até reanálise</span>'
+        ? `<span class="status danger">${escapeHtml(crmNome)}: bloqueado até reanálise</span>`
         : auditoriaSubstituida || crmGrupoSinergiaStatus === 'SUBSTITUIDA'
-          ? '<span class="status">RD: usar nova versão</span>'
+          ? `<span class="status">${escapeHtml(crmNome)}: usar nova versão</span>`
           : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO'
-            ? '<span class="status warning">RD: aguarda aprovação</span>'
-          : item.linkCrm
-            ? `<span class="status ${rdPublicado ? 'success' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'danger' : 'warning'}">RD: ${rdPublicado ? 'enviado' : String(item.rdStatus || '').toUpperCase() === 'ERRO' ? 'erro' : 'não enviado'}</span>`
-            : `<span class="status">RD: aguardando vínculo</span>`;
+            ? `<span class="status warning">${escapeHtml(crmNome)}: aguarda aprovação</span>`
+          : crmRecordId
+            ? `<span class="status ${rdPublicado ? 'success' : crmStatus === 'ERRO' ? 'danger' : 'warning'}">${escapeHtml(crmNome)}: ${rdPublicado ? 'enviado' : crmStatus === 'ERRO' ? 'erro' : crmStatus === 'AGUARDANDO_ADAPTADOR' ? 'adapter pendente' : 'não enviado'}</span>`
+            : `<span class="status">${escapeHtml(crmNome)}: aguardando vínculo</span>`;
       const indicadorCircle = item.circlePostUrl
         ? `<a class="status success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Circle: publicado</a>`
         : `<span class="status warning">Circle: não publicado</span>`;
@@ -7918,7 +7923,7 @@
         ${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}
         ${item.circleErro ? `<div class="status danger">${escapeHtml(item.circleErro)}</div>` : ''}
         ${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}
-        ${item.rdErro ? `<div class="status danger">RD: ${escapeHtml(item.rdErro)}</div>` : ''}
+        ${(item.crmErro || item.rdErro) ? `<div class="status danger">${escapeHtml(crmNome)}: ${escapeHtml(item.crmErro || item.rdErro)}</div>` : ''}
         <div class="audit-board-link-block">
           <div class="audit-board-link-row">
             <div class="field"><label for="auditCircleLink_${escapeAtributo(item.idAuditoria)}">Link do post no Circle</label><input id="auditCircleLink_${escapeAtributo(item.idAuditoria)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div>
@@ -7927,10 +7932,10 @@
         </div>
         <div class="audit-board-link-block">
           <div class="audit-board-link-row">
-            <div class="field"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? 'disabled' : ''}></div>
-            ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? '' : `<button id="btnAuditRdDealId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarIdRdAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo do RD</button>`}
+            <div class="field"><label for="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no ${escapeHtml(crmNome)}</label><input id="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(crmRecordId)}" placeholder="${crmProvider === 'RD_STATION' ? '24 caracteres ou link completo do RD' : crmProvider === 'PIPEDRIVE' ? 'ID numérico ou link do negócio' : 'ID do lead/oportunidade'}" autocomplete="off" ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? 'disabled' : ''}></div>
+            ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? '' : `<button id="btnAuditCrmRecordId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarIdCrmAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo</button>`}
           </div>
-          <div class="small muted audit-board-link-help">${auditoriaLegada ? 'Esta é uma auditoria legada. A gravação continua válida, mas este registro foi criado antes das validações atuais. Gere uma auditoria atualizada sobre a mesma gravação antes de publicar no RD.' : auditoriaSubstituida ? 'Esta versão legada foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser regenerada antes do envio ao RD.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'A auditoria já usa as validações atuais e está aguardando sua revisão e aprovação antes do envio ao RD.' : crmGrupoSinergiaStatus === 'SUBSTITUIDA' ? 'Esta versão legada foi substituída. Use a nova auditoria sinalizada como “vincular RD”.' : String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div>
+          <div class="small muted audit-board-link-help">${auditoriaLegada ? 'Esta é uma auditoria legada. Gere uma versão atualizada antes de publicar no CRM.' : auditoriaSubstituida ? 'Esta versão legada foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser regenerada antes do envio ao CRM.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'A auditoria está aguardando revisão e aprovação antes do envio ao CRM.' : crmProvider === 'RD_STATION' ? (String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD.' : 'Em ligações RD/API4COM, o vínculo normalmente é preenchido automaticamente; este campo é o fallback manual.') : crmProvider === 'PIPEDRIVE' ? 'Informe somente o ID do negócio. A publicação remota ficará inativa até o adapter do Pipedrive ser validado.' : crmProvider === 'LEADS2B' ? 'Informe somente o ID do lead/oportunidade. A publicação remota ficará inativa até o adapter da Leads2b ser validado.' : 'Configure um CRM para este cliente antes de vincular o registro.'}</div>
         </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
@@ -7941,8 +7946,8 @@
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !auditoriaLegada && !auditoriaSubstituida && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
-          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() === 'ERRO' ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Reprocessar RD</button>` : ''}
-          ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>` : ''}
+          ${item.status === 'APROVADA' && crmRecordId && !rdPublicado && crmStatus === 'ERRO' ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Reprocessar CRM</button>` : ''}
+          ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no ${escapeHtml(crmNome)}</a>` : ''}
         </div>
       </div>`;
     });
@@ -8127,6 +8132,58 @@
     return encontrado ? encontrado[1] : '';
   }
 
+  function nomeCrmFront_(provider) {
+    const tipo = String(provider || '').toUpperCase();
+    if (tipo === 'RD_STATION') return 'RD';
+    if (tipo === 'PIPEDRIVE') return 'Pipedrive';
+    if (tipo === 'LEADS2B') return 'Leads2b';
+    return 'CRM';
+  }
+
+  function crmIntegracoesClienteFront_(idCliente) {
+    return (estado.integracoesClientes || []).filter(item => {
+      const tipo = String(item.tipoIntegracao || '').toUpperCase();
+      return String(item.idCliente || '') === String(idCliente || '') &&
+        ['RD_STATION', 'PIPEDRIVE', 'LEADS2B'].includes(tipo) &&
+        item.ativo !== false;
+    });
+  }
+
+  function crmProviderAuditoriaFront_(item) {
+    const explicito = String((item || {}).crmProvider || '').toUpperCase();
+    if (explicito) return explicito;
+    const link = String((item || {}).linkCrm || '').toLowerCase();
+    if (link.includes('crm.rdstation.com')) return 'RD_STATION';
+    if (link.includes('pipedrive.com')) return 'PIPEDRIVE';
+    if (link.includes('leads2b')) return 'LEADS2B';
+    const integracoes = crmIntegracoesClienteFront_((item || {}).idCliente);
+    if (integracoes.length === 1) return String(integracoes[0].tipoIntegracao || '').toUpperCase();
+    const rd = integracoes.find(integracao => String(integracao.tipoIntegracao || '').toUpperCase() === 'RD_STATION');
+    return rd ? 'RD_STATION' : '';
+  }
+
+  function crmRecordIdAuditoriaFront_(item, provider) {
+    const explicito = String((item || {}).crmRecordId || '').trim();
+    if (explicito) return explicito;
+    const link = String((item || {}).linkCrm || '').trim();
+    if (provider === 'RD_STATION') return extrairIdRdFront_(link);
+    if (provider === 'PIPEDRIVE') {
+      const encontrado = link.match(/\/(?:deal|deals)\/(\d+)(?:\b|\/|\?|#|$)/i);
+      return encontrado ? encontrado[1] : '';
+    }
+    return '';
+  }
+
+  function validarCrmRecordIdFront_(provider, valor) {
+    const tipo = String(provider || '').toUpperCase();
+    const id = String(valor || '').trim();
+    if (!id) return true;
+    if (tipo === 'RD_STATION') return Boolean(extrairIdRdFront_(id));
+    if (tipo === 'PIPEDRIVE') return /^\d+$/.test(id) || /\/(?:deal|deals)\/\d+(?:\b|\/|\?|#|$)/i.test(id);
+    if (tipo === 'LEADS2B') return id.length <= 250 && !/^https?:\/\//i.test(id);
+    return false;
+  }
+
   function regenerarAuditoriaLegadaFront(idAuditoria) {
     if (!window.confirm('Esta auditoria é legada. Será criada uma nova auditoria usando a mesma gravação, o pitch atual e as validações vigentes. O histórico antigo será preservado como substituído. A nova análise usa IA. Continuar?')) return;
     mostrarLoading('Gerando auditoria atualizada...');
@@ -8157,19 +8214,43 @@
       .regenerarAuditoriaGrupoSinergiaParaCrmV3(idAuditoria);
   }
 
-  function salvarIdRdAuditoriaFront(idAuditoria) {
-    const campo = document.getElementById('auditRdDealId_' + idAuditoria);
-    const botao = document.getElementById('btnAuditRdDealId_' + idAuditoria);
+  function salvarIdCrmAuditoriaFront(idAuditoria) {
+    const item = (estado.auditorias || []).find(auditoria => String(auditoria.idAuditoria || '') === String(idAuditoria || '')) || {};
+    const provider = crmProviderAuditoriaFront_(item);
+    if (!provider) return mostrarToast('Configure o CRM deste cliente antes de salvar o vínculo.', 'error');
+    const campo = document.getElementById('auditCrmRecordId_' + idAuditoria);
+    const botao = document.getElementById('btnAuditCrmRecordId_' + idAuditoria);
     if (!campo || !botao || botao.disabled) return;
-    const rdDealId = String(campo.value || '').trim();
-    if (rdDealId && !extrairIdRdFront_(rdDealId)) return mostrarToast('Informe o ID de 24 caracteres ou o link completo da negociação do RD.', 'error');
-    const textoOriginal = botao.textContent; botao.disabled = true; botao.textContent = 'Salvando e publicando...';
+    const crmRecordId = String(campo.value || '').trim();
+    if (!validarCrmRecordIdFront_(provider, crmRecordId)) {
+      const mensagem = provider === 'RD_STATION'
+        ? 'Informe o ID de 24 caracteres ou o link completo da negociação do RD.'
+        : provider === 'PIPEDRIVE'
+          ? 'Informe o ID numérico ou o link do negócio no Pipedrive.'
+          : 'Informe somente o ID do lead/oportunidade na Leads2b.';
+      return mostrarToast(mensagem, 'error');
+    }
+    const textoOriginal = botao.textContent;
+    botao.disabled = true;
+    botao.textContent = 'Salvando...';
     google.script.run.withSuccessHandler(resposta => {
       estado.auditorias = resposta.auditorias || [];
       if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = resposta.auditoria;
-      renderizarAuditorias(); mostrarToast(resposta.mensagem, 'success');
-    }).withFailureHandler(erro => { botao.disabled = false; botao.textContent = textoOriginal; tratarErro(erro); })
-      .salvarIdRdAuditoriaV3({ idAuditoria: idAuditoria, rdDealId: rdDealId });
+      renderizarAuditorias();
+      mostrarToast(resposta.mensagem, 'success');
+    }).withFailureHandler(erro => {
+      botao.disabled = false;
+      botao.textContent = textoOriginal;
+      tratarErro(erro);
+    }).salvarIdCrmAuditoriaV3({
+      idAuditoria: idAuditoria,
+      crmProvider: provider,
+      crmRecordId: crmRecordId
+    });
+  }
+
+  function salvarIdRdAuditoriaFront(idAuditoria) {
+    return salvarIdCrmAuditoriaFront(idAuditoria);
   }
 
   function renderizarResumoEnviosRdAuditorias_() {
@@ -8181,13 +8262,13 @@
       Boolean(item.resultado) &&
       Boolean(item.linkCrm)
     );
-    const enviadas = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
-    const erros = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
-    const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase()));
+    const enviadas = auditorias.filter(item => String(item.crmStatus || item.rdStatus || '').toUpperCase() === 'PUBLICADA');
+    const erros = auditorias.filter(item => String(item.crmStatus || item.rdStatus || '').toUpperCase() === 'ERRO');
+    const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.crmStatus || item.rdStatus || '').toUpperCase()));
     const porFuncao = funcao => auditorias.filter(item => String(item.tipoAuditoria || '').toUpperCase() === funcao);
     const metricas = [
       ['Elegíveis para CRM', auditorias.length, 'Auditorias com resultado e negociação vinculada.'],
-      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas registradas no RD.'],
+      ['Enviadas ao CRM', enviadas.length, 'Resultado registrado no CRM configurado.'],
       ['Pendentes de envio', pendentes.length, 'Aguardando vínculo ou pré-requisito para envio automático.'],
       ['Erros de envio', erros.length, 'Precisam de conferência antes de tentar novamente.'],
       ['SDR vinculadas', porFuncao('SDR').length, 'Auditorias SDR elegíveis ao CRM.'],
