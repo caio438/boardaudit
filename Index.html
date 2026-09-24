@@ -7874,8 +7874,10 @@
       const crmStatus = String(item.crmStatus || item.rdStatus || '').toUpperCase();
       const rdPublicado = crmStatus === 'PUBLICADA';
       const crmProvider = crmProviderAuditoriaFront_(item);
+      const crmProvidersDisponiveis = crmProvidersAuditoriaFront_(item);
       const crmNome = nomeCrmFront_(crmProvider);
       const crmRecordId = crmRecordIdAuditoriaFront_(item, crmProvider);
+      const crmSelecaoMultipla = crmProvidersDisponiveis.length > 1;
       const crmGrupoSinergiaStatus = String(item.crmGrupoSinergiaStatus || '').toUpperCase();
       const integridadeStatus = String(item.integridadeStatus || '').toUpperCase();
       const auditoriaLegada = integridadeStatus === 'LEGADA_REANALISE';
@@ -7931,11 +7933,12 @@
           </div>
         </div>
         <div class="audit-board-link-block">
+          ${crmSelecaoMultipla ? `<div class="field" style="margin-bottom:10px"><label for="auditCrmProvider_${escapeAtributo(item.idAuditoria)}">CRM desta auditoria</label><select id="auditCrmProvider_${escapeAtributo(item.idAuditoria)}" ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? 'disabled' : ''}><option value="">Selecione o CRM</option>${crmProvidersDisponiveis.map(tipo => `<option value="${escapeAtributo(tipo)}" ${tipo === crmProvider ? 'selected' : ''}>${escapeHtml(nomeCrmFront_(tipo))}</option>`).join('')}</select></div>` : ''}
           <div class="audit-board-link-row">
-            <div class="field"><label for="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no ${escapeHtml(crmNome)}</label><input id="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(crmRecordId)}" placeholder="${crmProvider === 'RD_STATION' ? '24 caracteres ou link completo do RD' : crmProvider === 'PIPEDRIVE' ? 'ID numérico ou link do negócio' : 'ID do lead/oportunidade'}" autocomplete="off" ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? 'disabled' : ''}></div>
+            <div class="field"><label for="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação ${crmProvider ? 'no ' + escapeHtml(crmNome) : 'no CRM'}</label><input id="auditCrmRecordId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(crmRecordId)}" placeholder="${crmProvider === 'RD_STATION' ? '24 caracteres ou link completo do RD' : crmProvider === 'PIPEDRIVE' ? 'ID numérico ou link do negócio' : 'ID do lead/oportunidade'}" autocomplete="off" ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? 'disabled' : ''}></div>
             ${rdPublicado || crmGrupoSinergiaBloqueado || integridadeBloqueada ? '' : `<button id="btnAuditCrmRecordId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="salvarIdCrmAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo</button>`}
           </div>
-          <div class="small muted audit-board-link-help">${auditoriaLegada ? 'A gravação continua válida, mas este registro foi criado antes das validações atuais. Gere uma auditoria atualizada antes de publicar no CRM.' : auditoriaSubstituida ? 'Esta versão legada foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser regenerada antes do envio ao CRM.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'A auditoria está aguardando revisão e aprovação antes do envio ao CRM.' : crmProvider === 'RD_STATION' ? (String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD.' : 'Em ligações RD/API4COM, o vínculo normalmente é preenchido automaticamente; este campo é o fallback manual.') : crmProvider === 'PIPEDRIVE' ? 'Informe o ID do negócio. Após aprovação, a auditoria é publicada como nota sem alterar etapa, responsável, status ou campos do negócio.' : crmProvider === 'LEADS2B' ? 'Informe somente o ID do lead/oportunidade. A API pública V2 disponível ainda não expõe um contrato documentado de oportunidade + notas compatível com a publicação da auditoria; por isso o Board não escreve na Leads2b.' : 'Configure um CRM para este cliente antes de vincular o registro.'}</div>
+          <div class="small muted audit-board-link-help">${auditoriaLegada ? 'A gravação continua válida, mas este registro foi criado antes das validações atuais. Gere uma auditoria atualizada antes de publicar no CRM.' : auditoriaSubstituida ? 'Esta versão legada foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser regenerada antes do envio ao CRM.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'A auditoria está aguardando revisão e aprovação antes do envio ao CRM.' : !crmProvider && crmSelecaoMultipla ? 'Este cliente possui mais de um CRM ativo. Selecione explicitamente qual CRM esta auditoria deve usar antes de salvar o vínculo.' : crmProvider === 'RD_STATION' ? (String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD.' : 'Em ligações RD/API4COM, o vínculo normalmente é preenchido automaticamente; este campo é o fallback manual.') : crmProvider === 'PIPEDRIVE' ? 'Informe o ID do negócio. Após aprovação, a auditoria é publicada como nota sem alterar etapa, responsável, status ou campos do negócio.' : crmProvider === 'LEADS2B' ? 'Informe somente o ID do lead/oportunidade. A API pública V2 disponível ainda não expõe um contrato documentado de oportunidade + notas compatível com a publicação da auditoria; por isso o Board não escreve na Leads2b.' : 'Configure um CRM para este cliente antes de vincular o registro.'}</div>
         </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
@@ -8158,8 +8161,14 @@
     if (link.includes('leads2b')) return 'LEADS2B';
     const integracoes = crmIntegracoesClienteFront_((item || {}).idCliente);
     if (integracoes.length === 1) return String(integracoes[0].tipoIntegracao || '').toUpperCase();
-    const rd = integracoes.find(integracao => String(integracao.tipoIntegracao || '').toUpperCase() === 'RD_STATION');
-    return rd ? 'RD_STATION' : '';
+    return '';
+  }
+
+  function crmProvidersAuditoriaFront_(item) {
+    const vistos = {};
+    return crmIntegracoesClienteFront_((item || {}).idCliente)
+      .map(integracao => String(integracao.tipoIntegracao || '').toUpperCase())
+      .filter(tipo => tipo && !vistos[tipo] && (vistos[tipo] = true));
   }
 
   function crmRecordIdAuditoriaFront_(item, provider) {
@@ -8216,8 +8225,9 @@
 
   function salvarIdCrmAuditoriaFront(idAuditoria) {
     const item = (estado.auditorias || []).find(auditoria => String(auditoria.idAuditoria || '') === String(idAuditoria || '')) || {};
-    const provider = crmProviderAuditoriaFront_(item);
-    if (!provider) return mostrarToast('Configure o CRM deste cliente antes de salvar o vínculo.', 'error');
+    const seletorProvider = document.getElementById('auditCrmProvider_' + idAuditoria);
+    const provider = String((seletorProvider && seletorProvider.value) || crmProviderAuditoriaFront_(item) || '').toUpperCase();
+    if (!provider) return mostrarToast('Selecione qual CRM esta auditoria deve usar antes de salvar o vínculo.', 'error');
     const campo = document.getElementById('auditCrmRecordId_' + idAuditoria);
     const botao = document.getElementById('btnAuditCrmRecordId_' + idAuditoria);
     if (!campo || !botao || botao.disabled) return;
