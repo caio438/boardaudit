@@ -9100,6 +9100,99 @@
       }).withFailureHandler(tratarErro).salvarPreferenciasFontesReuniao({ formalizacaoAutomatica: document.getElementById('formalFormalizacaoAutomatica').checked });
     }
 
+    function formalNormalizarResultadoFront_(valor) {
+      const resultado = String(valor || '').trim().toUpperCase();
+      return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+        ? resultado
+        : 'NAO_IDENTIFICADA';
+    }
+
+    function formalRotuloResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      return {
+        REALIZADA: 'REALIZADA',
+        NO_SHOW: 'NO-SHOW',
+        REMARCADA: 'REMARCADA',
+        CANCELADA: 'CANCELADA',
+        NAO_IDENTIFICADA: 'NÃO IDENTIFICADA'
+      }[resultado] || 'NÃO IDENTIFICADA';
+    }
+
+    function formalClasseResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      if (resultado === 'REALIZADA') return 'success';
+      if (resultado === 'NO_SHOW') return 'danger';
+      if (resultado === 'REMARCADA') return 'warning';
+      if (resultado === 'NAO_IDENTIFICADA') return 'info';
+      return '';
+    }
+
+    function formalTituloLimpo_(titulo) {
+      return String(titulo || 'Formalização')
+        .replace(/\s*GMT[+-]\d{2}:\d{2}\s*/gi, ' ')
+        .replace(/\s*-\s*Anota(?:ções|coes) do Gemini\s*$/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+-\s*$/g, '')
+        .trim() || 'Formalização';
+    }
+
+    function formalBadgeResultadoReuniao_(valor) {
+      return '<span class="status ' + formalClasseResultadoReuniao_(valor) + '">' +
+        escapeHtml(formalRotuloResultadoReuniao_(valor)) + '</span>';
+    }
+
+    function formalClassificadorReuniaoHtml_(idReuniao, resultadoAtual) {
+      if (!idReuniao) return '';
+      const atual = formalNormalizarResultadoFront_(resultadoAtual);
+      const opcoes = [
+        ['REALIZADA', 'Realizada', 'realizada'],
+        ['NO_SHOW', 'No-show', 'no-show'],
+        ['REMARCADA', 'Remarcada', 'remarcada'],
+        ['CANCELADA', 'Cancelada', 'cancelada'],
+        ['NAO_IDENTIFICADA', 'Não identificada', 'nao-identificada']
+      ];
+      const botoes = opcoes.map(item =>
+        '<button class="meeting-outcome-btn ' + item[2] + (atual === item[0] ? ' is-active' : '') +
+        '" type="button" onclick="salvarResultadoReuniaoFront(\'' + escapeAtributo(idReuniao) + '\',\'' + item[0] + '\',this)">' +
+        escapeHtml(item[1]) + '</button>'
+      ).join('');
+      return '<details class="meeting-classifier"><summary class="btn secondary">Classificar reunião</summary>' +
+        '<div class="meeting-outcome-panel">' + botoes + '</div></details>';
+    }
+
+    function formalReuniaoAssociadaFront_(formalizacao) {
+      formalizacao = formalizacao || {};
+      return (estado.reunioesFormalizacao || []).find(reuniao =>
+        (formalizacao.idTranscricao && String(reuniao.idTranscricao || '') === String(formalizacao.idTranscricao)) ||
+        (formalizacao.idInteracao && String(reuniao.idInteracao || '') === String(formalizacao.idInteracao))
+      ) || null;
+    }
+
+    function salvarResultadoReuniaoFront(idReuniao, resultadoReuniao, botao) {
+      if (!idReuniao) return mostrarToast('Reunião não localizada para classificação.', 'error');
+      const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel') : null;
+      if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = true; });
+      google.script.run
+        .withSuccessHandler(resposta => {
+          const dados = resposta.dados || {};
+          estado.clientes = dados.clientes || estado.clientes;
+          estado.transcricoesFormalizacao = dados.transcricoes || estado.transcricoesFormalizacao || [];
+          estado.reunioesFormalizacao = dados.reunioes || estado.reunioesFormalizacao || [];
+          estado.formalizacoes = dados.formalizacoes || estado.formalizacoes || [];
+          estado.formalizacoesResumoClientes = estado.formalizacoes;
+          renderizarReunioesAgendaFormal_();
+          renderizarHistoricoFormalizacoes();
+          if (estado.formalizacaoAtual) renderizarEditorFormalizacao(estado.formalizacaoAtual);
+          salvarCacheFormalizacoesFront_();
+          mostrarToast(resposta.mensagem || 'Resultado da reunião atualizado.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = false; });
+          tratarErro(erro);
+        })
+        .salvarResultadoReuniaoFormalizacao({ idReuniao: idReuniao, resultadoReuniao: resultadoReuniao });
+    }
+
     function renderizarReunioesAgendaFormal_() {
       const alvo = document.getElementById('formalReunioesAgenda');
       const idCliente = valor('formalCliente');
@@ -9110,7 +9203,7 @@
         return (!idCliente || String(item.idCliente || '') === String(idCliente)) && (!periodo || String(item.inicio || '').slice(0, 7) === periodo) && (!busca || texto.includes(busca));
       });
       const pagina = paginarItens_('agendaFormal', itens);
-      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
+      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Resultado</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
         const gravacao = Boolean(item.gravacaoUrl);
         const transcricao = Boolean(item.transcricaoUrl || item.idTranscricao);
         const confirmacao = gravacao && transcricao ? 'CONFIRMADA' : (gravacao || transcricao ? 'PARCIAL' : 'SEM EVIDÊNCIA');
@@ -9127,7 +9220,7 @@
         const statusPreFormalizacao = item.idFormalizacao
           ? `<div style="margin-top:7px"><span class="status ${aprovada ? 'success' : 'warning'}">${aprovada ? 'FORMALIZADA' : 'PRÉ-FORMALIZAÇÃO PRONTA'}</span></div>`
           : '';
-        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}</div></td></tr>`;
+        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td>${formalBadgeResultadoReuniao_(item.resultadoReuniao)}${!transcricao ? '<div class="small muted" style="margin-top:6px">Sem transcrição disponível</div>' : ''}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}${formalClassificadorReuniaoHtml_(item.idReuniao, item.resultadoReuniao)}</div></td></tr>`;
       }).join('')}</tbody></table></div>${controlesPaginacao_('agendaFormal', pagina, 'renderizarReunioesAgendaFormal_')}` : '<div class="empty">Nenhuma reunião encontrada para o filtro e período selecionados.</div>';
     }
 
@@ -9148,6 +9241,8 @@
     }
 
     function usarReuniaoNaFormalizacao_(idTranscricao, idCliente, periodo) {
+      const nova = document.getElementById('formalNovaFormalizacao');
+      if (nova) nova.open = true;
       document.getElementById('formalCliente').value = idCliente || '';
       if (periodo) document.getElementById('formalFiltroData').value = periodo;
       document.getElementById('formalFiltroFonte').value = 'GOOGLE_MEET';
@@ -9298,6 +9393,8 @@
           resposta.formalizacao.semGravacao = semGravacao;
           estado.formalizacaoAtual = resposta.formalizacao;
           renderizarEditorFormalizacao(resposta.formalizacao);
+          const novaFormalizacao = document.getElementById('formalNovaFormalizacao');
+          if (novaFormalizacao) novaFormalizacao.open = false;
           estado.carregado.formalizacoes = false;
           botao.disabled = false;
           botao.textContent = 'Gerar formalização';
