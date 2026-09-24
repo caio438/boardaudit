@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
+const opsWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-sync.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
@@ -28,5 +29,10 @@ assert.match(jornada, /function jornadaReconciliarIdentificadoresCatalogo_/);
 assert.match(jornada, /function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES/);
 assert.match(jornada, /String\(cliente\.TIPO_CLIENTE \|\| ''\)\.toUpperCase\(\) === 'GRUPO'/);
 assert.match(jornada, /versao: '1\.9\.7'/);
+
+assert.match(opsWorkflow, /Ops sync client groups:/);
+assert.match(opsWorkflow, /ops_sync_client_groups=1/);
+assert.match(opsWorkflow, /DRY_RUN/);
+assert.doesNotMatch(opsWorkflow, /REPARAR_CONFLITOS|executarReparo|repair_client_groups/i);
 
 console.log('Hierarquia de clientes validada: grupos separados, filhas independentes, VOLUM como fallback e dry-run disponível.');
