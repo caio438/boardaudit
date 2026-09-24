@@ -27,6 +27,7 @@ const AUDITORIA_V3 = Object.freeze({
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
     'HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM',
     'AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM',
+    'CRM_PROVIDER', 'CRM_STATUS', 'CRM_ACTIVITY_ID', 'CRM_PUBLICADO_EM', 'CRM_ERRO',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
     'COMUNIDADE_PUBLICADO_EM', 'COMUNIDADE_ERRO',
     'CIRCLE_STATUS', 'CIRCLE_POST_ID', 'CIRCLE_POST_URL',
@@ -34,8 +35,8 @@ const AUDITORIA_V3 = Object.freeze({
   ],
   colunasInteracao: [
     'NOME_ARQUIVO_ORIGEM', 'EMPRESA_ARQUIVO', 'NUMERO_CHAMADA',
-    'COLABORADOR', 'FUNCAO', 'OPORTUNIDADE', 'LINK_CRM', 'SCHEMA_VERSAO',
-    'PARTICIPANTES_JSON'
+    'COLABORADOR', 'FUNCAO', 'OPORTUNIDADE', 'LINK_CRM', 'CRM_PROVIDER',
+    'CRM_RECORD_ID', 'SCHEMA_VERSAO', 'PARTICIPANTES_JSON'
   ]
 });
 
@@ -1225,6 +1226,14 @@ function importarTranscricaoManualV3(dados) {
   const idTranscricao = audV3Id_('TRA');
   const idExterno = fonte + '-MANUAL-' + Utilities.getUuid();
 
+  const vinculoCrm = typeof audCrmVinculoEntrada_ === 'function'
+    ? audCrmVinculoEntrada_(dados, cliente.ID_CLIENTE)
+    : {
+        provider: (dados.rdDealId || dados.linkCrm) ? 'RD_STATION' : '',
+        recordId: '',
+        link: audV3RdLinkNegociacao_(dados.rdDealId || dados.linkCrm || '')
+      };
+
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1251,7 +1260,9 @@ function importarTranscricaoManualV3(dados) {
       COLABORADOR: colaborador || partesArquivo.slice(2).join(' - '),
       FUNCAO: funcao,
       OPORTUNIDADE: String(dados.oportunidade || '').trim(),
-      LINK_CRM: audV3RdLinkNegociacao_(dados.rdDealId || dados.linkCrm || ''),
+      CRM_PROVIDER: vinculoCrm.provider || '',
+      CRM_RECORD_ID: vinculoCrm.recordId || '',
+      LINK_CRM: vinculoCrm.link || '',
       SCHEMA_VERSAO: AUDITORIA_V3.versao
     });
 
@@ -1576,6 +1587,7 @@ function transcreverAudioMp3V3(dados) {
     linkOriginal: urlAudio,
     urlGravacao: urlAudio,
     nomeArquivoOrigem: String(dados.nomeArquivoOrigem || '').trim() || urlAudio.split('/').pop() || 'gravacao.mp3',
+    crmRecordId: String(dados.crmRecordId || '').trim(),
     rdDealId: String(dados.rdDealId || '').trim(),
     transcricao: texto
   });
@@ -1672,6 +1684,9 @@ function executarAuditoriaV3(dados) {
   const identidade = audV3Identidade_(dados, cliente, interacao);
   const idAuditoria = audV3Id_('AUD');
   const agora = new Date();
+  const crmProviderSnapshot = typeof audCrmProviderPrincipalCliente_ === 'function'
+    ? (audCrmProviderPrincipalCliente_(cliente.ID_CLIENTE) || audCrmResolverProvider_(interacao, {}))
+    : String(interacao.CRM_PROVIDER || '');
 
   audV3Adicionar_('AUDITORIAS', {
     ID_AUDITORIA: idAuditoria,
@@ -1705,6 +1720,7 @@ function executarAuditoriaV3(dados) {
     AUTOMACAO_STATUS: 'PROCESSANDO',
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: agora,
+    CRM_PROVIDER: crmProviderSnapshot,
     RESULTADO_JSON: '',
     SCORE_PERCENTUAL: '',
     ITENS_AVALIADOS: '',
@@ -1964,13 +1980,16 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
-  if (['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_ === 'function') {
-    rd = audRdPublicarAutomaticamente_(id);
+  if (['SDR', 'CLOSER'].includes(tipo)) {
+    if (typeof audCrmPublicarAutomaticamente_ === 'function') rd = audCrmPublicarAutomaticamente_(id);
+    else if (typeof audRdPublicarAutomaticamente_ === 'function') rd = audRdPublicarAutomaticamente_(id);
   }
 
-  const statusAutomacao = rd && rd.aplicavel && !rd.publicada
-    ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
-    : 'CONCLUIDA';
+  const statusAutomacao = typeof audCrmResultadoAutomacao_ === 'function'
+    ? audCrmResultadoAutomacao_(rd)
+    : (rd && rd.aplicavel && !rd.publicada
+      ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
+      : 'CONCLUIDA');
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     AUTOMACAO_STATUS: statusAutomacao,
@@ -1980,10 +1999,14 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
 
   const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
   if (rd && rd.aplicavel) {
-    if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
-    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
-    else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push('RD aguardando a integração do cliente.');
-    else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no RD precisa ser reprocessada.');
+    const providerPublicacao = String(rd.provider || 'RD_STATION').toUpperCase();
+    const nomeCrmPublicacao = providerPublicacao === 'RD_STATION'
+      ? 'RD CRM'
+      : (typeof audCrmNomeProvider_ === 'function' ? audCrmNomeProvider_(providerPublicacao) : 'CRM');
+    if (rd.publicada) partes.push('Resultado registrado automaticamente no ' + nomeCrmPublicacao + '.');
+    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push(nomeCrmPublicacao + ' aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
+    else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push(nomeCrmPublicacao + ' aguardando a integração do cliente.');
+    else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no ' + nomeCrmPublicacao + ' precisa ser reprocessada.');
   }
 
   return {
@@ -2109,13 +2132,17 @@ function reprocessarAutomacaoAuditoriaV3(idAuditoria) {
   if (String(auditoria.STATUS || '').toUpperCase() !== 'APROVADA' || String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA') {
     throw new Error('Somente auditorias aprovadas e validadas podem ser reprocessadas.');
   }
-  const rd = typeof audRdPublicarAutomaticamente_ === 'function'
-    ? audRdPublicarAutomaticamente_(id)
-    : { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'RD não disponível.' };
+  const rd = typeof audCrmPublicarAutomaticamente_ === 'function'
+    ? audCrmPublicarAutomaticamente_(id)
+    : (typeof audRdPublicarAutomaticamente_ === 'function'
+      ? audRdPublicarAutomaticamente_(id)
+      : { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'CRM não disponível.' });
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-    AUTOMACAO_STATUS: rd.aplicavel && !rd.publicada
-      ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
-      : 'CONCLUIDA',
+    AUTOMACAO_STATUS: typeof audCrmResultadoAutomacao_ === 'function'
+      ? audCrmResultadoAutomacao_(rd)
+      : (rd.aplicavel && !rd.publicada
+        ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
+        : 'CONCLUIDA'),
     AUTOMACAO_ERRO: rd.erro || '',
     AUTOMACAO_ATUALIZADO_EM: new Date()
   });
@@ -2207,12 +2234,17 @@ function aprovarAuditoriaV3(idAuditoria) {
 
   let publicacaoRd = null;
   const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
-  if (['SDR', 'CLOSER'].includes(tipoAuditoria) && typeof audRdPublicarAutomaticamente_ === 'function') {
-    publicacaoRd = audRdPublicarAutomaticamente_(id);
+  if (['SDR', 'CLOSER'].includes(tipoAuditoria) &&
+      (typeof audCrmPublicarAutomaticamente_ === 'function' || typeof audRdPublicarAutomaticamente_ === 'function')) {
+    publicacaoRd = typeof audCrmPublicarAutomaticamente_ === 'function'
+      ? audCrmPublicarAutomaticamente_(id)
+      : audRdPublicarAutomaticamente_(id);
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-      AUTOMACAO_STATUS: publicacaoRd && publicacaoRd.publicada
-        ? 'CONCLUIDA'
-        : (publicacaoRd && String(publicacaoRd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD'),
+      AUTOMACAO_STATUS: typeof audCrmResultadoAutomacao_ === 'function'
+        ? audCrmResultadoAutomacao_(publicacaoRd)
+        : (publicacaoRd && publicacaoRd.publicada
+          ? 'CONCLUIDA'
+          : (publicacaoRd && String(publicacaoRd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')),
       AUTOMACAO_ERRO: publicacaoRd && publicacaoRd.erro ? String(publicacaoRd.erro) : '',
       AUTOMACAO_ATUALIZADO_EM: new Date()
     });
@@ -2229,7 +2261,10 @@ function aprovarAuditoriaV3(idAuditoria) {
   return {
     sucesso: true,
     mensagem: publicacaoRd && publicacaoRd.publicada
-      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no RD CRM.'
+      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no ' +
+        (String(publicacaoRd.provider || 'RD_STATION').toUpperCase() === 'RD_STATION'
+          ? 'RD CRM.'
+          : (typeof audCrmNomeProvider_ === 'function' ? audCrmNomeProvider_(publicacaoRd.provider) : 'CRM') + '.')
       : 'Auditoria aprovada e Google Docs criado. ' + (publicacaoRd && publicacaoRd.mensagem ? publicacaoRd.mensagem : ''),
     publicacaoRd: publicacaoRd,
     auditoria: audV3AuditoriaFront_(atualizada),
@@ -2244,7 +2279,9 @@ function descartarAuditoriaV3(dados) {
   if (!auditoria) throw new Error('Auditoria não encontrada.');
 
   const status = String(auditoria.STATUS || '').toUpperCase();
-  const publicadaRd = String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA';
+  const publicadaRd = typeof audCrmAuditoriaPublicada_ === 'function'
+    ? audCrmAuditoriaPublicada_(auditoria)
+    : String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA';
   const publicadaCircle = Boolean(String(auditoria.CIRCLE_POST_URL || '').trim());
   const publicadaComunidade = Boolean(String(auditoria.COMUNIDADE_POST_URL || '').trim());
 
@@ -2261,18 +2298,29 @@ function descartarAuditoriaV3(dados) {
   }
 
   const agora = new Date();
-  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+  const providerCrm = typeof audCrmResolverProvider_ === 'function'
+    ? audCrmResolverProvider_(audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {}, auditoria)
+    : '';
+  const descarteCrm = {
     STATUS: 'DESCARTADA',
     CONCLUIDO_EM: agora,
     ERRO: '',
     AUTOMACAO_STATUS: 'CONCLUIDA_DESCARTADA',
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: agora,
-    RD_STATUS: 'DESCARTADA',
-    RD_ACTIVITY_ID: '',
-    RD_ERRO: '',
-    RD_PUBLICADO_EM: ''
-  });
+    CRM_PROVIDER: auditoria.CRM_PROVIDER || providerCrm || '',
+    CRM_STATUS: 'DESCARTADA',
+    CRM_ACTIVITY_ID: '',
+    CRM_ERRO: '',
+    CRM_PUBLICADO_EM: ''
+  };
+  if (providerCrm === 'RD_STATION' || (!providerCrm && String(auditoria.RD_STATUS || '').trim())) {
+    descarteCrm.RD_STATUS = 'DESCARTADA';
+    descarteCrm.RD_ACTIVITY_ID = '';
+    descarteCrm.RD_ERRO = '';
+    descarteCrm.RD_PUBLICADO_EM = '';
+  }
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, descarteCrm);
 
   if (auditoria.ID_INTERACAO) {
     const outrasAtivas = audV3Ler_('AUDITORIAS').filter(function(item) {
@@ -2303,7 +2351,9 @@ function excluirAuditoriaV3(dados) {
   if (!auditoria) throw new Error('Auditoria não encontrada.');
   const status = String(auditoria.STATUS || '').toUpperCase();
   if (status === 'PROCESSANDO') throw new Error('Aguarde a auditoria terminar antes de excluí-la.');
-  const publicadaRd = String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA';
+  const publicadaRd = typeof audCrmAuditoriaPublicada_ === 'function'
+    ? audCrmAuditoriaPublicada_(auditoria)
+    : String(auditoria.RD_STATUS || '').toUpperCase() === 'PUBLICADA';
   const publicadaCircle = Boolean(String(auditoria.CIRCLE_POST_URL || '').trim());
   const publicadaComunidade = Boolean(String(auditoria.COMUNIDADE_POST_URL || '').trim());
   if (publicadaRd || publicadaCircle || publicadaComunidade) throw new Error('Esta auditoria já foi publicada e não pode ser excluída pelo Board.');
@@ -6766,15 +6816,18 @@ function audV3EstadoIntegridadeAuditoria_(auditoria) {
   auditoria = auditoria || {};
   const status = String(auditoria.STATUS || '').toUpperCase();
   const rdStatus = String(auditoria.RD_STATUS || '').toUpperCase();
+  const crmStatus = typeof audCrmStatusAuditoria_ === 'function'
+    ? audCrmStatusAuditoria_(auditoria)
+    : rdStatus;
   const automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
   const hash = String(auditoria.HASH_FONTE || '').trim();
   const temResultado = Boolean(String(auditoria.RESULTADO_JSON || auditoria.RESULTADO_COMPLETO || '').trim());
-  const publicada = rdStatus === 'PUBLICADA' ||
+  const publicada = crmStatus === 'PUBLICADA' ||
     Boolean(String(auditoria.CIRCLE_POST_URL || '').trim()) ||
     Boolean(String(auditoria.COMUNIDADE_POST_URL || '').trim());
 
   if (publicada) return 'PUBLICADA';
-  if (status === 'DESCARTADA' || rdStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
+  if (status === 'DESCARTADA' || crmStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
   if (/^SUBSTITUIDA_PARA_/.test(automacao)) return 'SUBSTITUIDA';
   if (temResultado && !hash && ['APROVADA', 'EM_REVISAO', 'ERRO'].includes(status)) return 'LEGADA_REANALISE';
   return 'ATUAL';
@@ -6836,6 +6889,10 @@ function audV3AuditoriaFront_(a, contexto) {
     titulo: interacao.TITULO || '',
     oportunidade: interacao.OPORTUNIDADE || interacao.EMPRESA_ARQUIVO || '',
     linkCrm: interacao.LINK_CRM || '',
+    crmProvider: (typeof audCrmResolverProvider_ === 'function' ? audCrmResolverProvider_(interacao, a) : (interacao.CRM_PROVIDER || a.CRM_PROVIDER || '')),
+    crmRecordId: (typeof audCrmExtrairRecordId_ === 'function'
+      ? audCrmExtrairRecordId_(interacao, (typeof audCrmResolverProvider_ === 'function' ? audCrmResolverProvider_(interacao, a) : interacao.CRM_PROVIDER))
+      : (interacao.CRM_RECORD_ID || '')),
     linkGravacao: interacao.URL_GRAVACAO || interacao.LINK_ORIGINAL || '',
     duracaoSegundos: Number(interacao.DURACAO_SEGUNDOS || 0),
     vendedor: interacao.COLABORADOR || interacao.VENDEDOR || '',
@@ -6859,6 +6916,10 @@ function audV3AuditoriaFront_(a, contexto) {
     rdActivityId: a.RD_ACTIVITY_ID || '',
     rdPublicadoEm: audV3DataIso_(a.RD_PUBLICADO_EM),
     rdErro: a.RD_ERRO || '',
+    crmStatus: a.CRM_STATUS || a.RD_STATUS || '',
+    crmActivityId: a.CRM_ACTIVITY_ID || a.RD_ACTIVITY_ID || '',
+    crmPublicadoEm: audV3DataIso_(a.CRM_PUBLICADO_EM || a.RD_PUBLICADO_EM),
+    crmErro: a.CRM_ERRO || a.RD_ERRO || '',
     comunidadeStatus: a.COMUNIDADE_STATUS || '',
     comunidadePostId: a.COMUNIDADE_POST_ID || '',
     comunidadePostUrl: a.COMUNIDADE_POST_URL || '',
