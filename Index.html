@@ -389,6 +389,132 @@
       color: var(--danger);
     }
 
+    .formal-collapsible > summary,
+    .formal-editor-section > summary,
+    .formal-card-details > summary,
+    .meeting-classifier > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .formal-collapsible > summary::-webkit-details-marker,
+    .formal-editor-section > summary::-webkit-details-marker,
+    .formal-card-details > summary::-webkit-details-marker,
+    .meeting-classifier > summary::-webkit-details-marker { display: none; }
+
+    .formal-collapsible > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-weight: 800;
+      font-size: 17px;
+    }
+
+    .formal-collapsible > summary::after,
+    .formal-editor-section > summary::after,
+    .formal-card-details > summary::after {
+      content: '⌄';
+      color: var(--muted);
+      font-weight: 800;
+      transition: transform .18s ease;
+    }
+
+    .formal-collapsible[open] > summary::after,
+    .formal-editor-section[open] > summary::after,
+    .formal-card-details[open] > summary::after { transform: rotate(180deg); }
+
+    .formal-editor-section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-top: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .formal-editor-section > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      font-weight: 800;
+      background: rgba(148,163,184,.07);
+    }
+
+    .formal-editor-section > .form-grid { padding: 16px; }
+
+    .formal-editor-actions {
+      position: sticky;
+      bottom: 12px;
+      z-index: 3;
+      padding: 12px;
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(15,23,42,.10);
+    }
+
+    .formal-history-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+
+    .formal-card-details {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .formal-card-details > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .meeting-classifier { position: relative; }
+    .meeting-classifier > summary.btn { display: inline-flex; align-items: center; }
+    .meeting-outcome-panel {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(108px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .meeting-outcome-btn {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-weight: 800;
+      cursor: pointer;
+      background: #eef2f6;
+      color: #475467;
+    }
+    .meeting-outcome-btn.realizada { background:#ecfdf3; color:#027a48; }
+    .meeting-outcome-btn.no-show { background:#fef3f2; color:#b42318; }
+    .meeting-outcome-btn.remarcada { background:#fffaeb; color:#b54708; }
+    .meeting-outcome-btn.cancelada { background:#f2f4f7; color:#475467; }
+    .meeting-outcome-btn.nao-identificada { background:#eff8ff; color:#175cd3; }
+    .meeting-outcome-btn.is-active { box-shadow: inset 0 0 0 2px currentColor; }
+    .meeting-outcome-btn:disabled { opacity:.55; cursor:wait; }
+
+    .status.info { background:#eff8ff; color:#175cd3; }
+
+    @media (max-width: 980px) {
+      .meeting-outcome-panel { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+
     .automation {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1490,13 +1616,9 @@
           <div id="formalReunioesAgenda" style="margin-top:18px"></div>
         </div>
 
-        <div class="card" style="margin-top:18px">
-          <div class="section-title">
-            <div>
-              <h3>Nova formalização de reunião</h3>
-              <p>Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
-            </div>
-          </div>
+        <details id="formalNovaFormalizacao" class="card formal-collapsible" style="margin-top:18px" open>
+          <summary><span>Nova formalização de reunião</span><span class="small muted">Selecionar transcrição</span></summary>
+          <p class="muted" style="margin-top:10px">Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
 
           <div class="toolbar">
             <div class="filters" style="width:100%">
@@ -1543,7 +1665,7 @@
           <div class="actions">
             <button id="btnGerarFormalizacao" class="btn success" type="button" onclick="gerarFormalizacaoFront()" disabled>Gerar formalização</button>
           </div>
-        </div>
+        </details>
 
         <details id="formalImportacaoManual" class="card" style="margin-top:18px">
           <summary style="cursor:pointer;font-weight:700">+ Adicionar transcrição manual sem classificar</summary>
@@ -1569,6 +1691,14 @@
                 <option value="APROVADA">Aprovadas</option>
                 <option value="EM_REVISAO">Em revisão</option>
                 <option value="ERRO">Com erro</option>
+              </select>
+              <select id="formalHistoricoResultado" aria-label="Filtrar por resultado da reunião" onchange="renderizarHistoricoFormalizacoes()">
+                <option value="">Todos os resultados</option>
+                <option value="REALIZADA">Realizada</option>
+                <option value="NO_SHOW">No-show</option>
+                <option value="REMARCADA">Remarcada</option>
+                <option value="CANCELADA">Cancelada</option>
+                <option value="NAO_IDENTIFICADA">Não identificada</option>
               </select>
               <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoFormalizacoes_()">Mostrar todas as datas</button>
             </div>
