@@ -81,6 +81,15 @@ assert.match(truncatedRecoverySource, /priorizando Problema, Implicação e Nece
 assert.match(truncatedRecoverySource, /Situação só quando faltar contexto essencial/, 'Situação não pode inflar a recuperação do Closer.');
 assert.match(callSource, /codigoErroJson === 'RESPOSTA_TRUNCADA'/, 'RESPOSTA_TRUNCADA precisa acionar tratamento dedicado.');
 assert.match(callSource, /audV3PromptRecuperacaoTruncada_\(prompt, tipo, erroJson\)/, 'A nova tentativa precisa usar o prompt compacto de recuperação.');
+const sameModelRecoveryStart = source.indexOf('function audV3RecuperarTruncamentoNoMesmoModelo_');
+assert.ok(sameModelRecoveryStart >= 0, 'A última tentativa truncada precisa ter recuperação no mesmo modelo.');
+const sameModelRecoveryEnd = source.indexOf('function audV3ChamarGemini_', sameModelRecoveryStart);
+const sameModelRecoverySource = source.slice(sameModelRecoveryStart, sameModelRecoveryEnd);
+assert.match(sameModelRecoverySource, /AUDITORIA_' \+ tipo \+ '_RECUPERACAO_TRUNCADA'/, 'A tentativa extra deve ser registrada separadamente no consumo de IA.');
+assert.match(sameModelRecoverySource, /audV3PromptRecuperacaoTruncada_\(promptOriginal, tipo, erroAnterior\)/, 'A tentativa extra precisa usar o prompt compacto.');
+assert.match(callSource, /return audV3RecuperarTruncamentoNoMesmoModelo_\(/, 'A última tentativa truncada deve repetir no mesmo modelo antes do fallback.');
+assert.match(callSource, /tentativa \+ 2/, 'A recuperação extra deve ser registrada como tentativa adicional.');
+
 
 
 for (const legacyFixture of ['WISETEC-ERRO', 'WISETEC-OK', 'STEC-90', 'STEC-91', 'STEC-92']) {
