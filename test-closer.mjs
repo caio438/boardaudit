@@ -262,7 +262,7 @@ for (const modelo of ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-
 const ordemModelosTexto = [...poolModelosTexto.matchAll(/'([^']+)'/g)].map(match => match[1]);
 assert.deepEqual(
   ordemModelosTexto,
-  ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'],
+  ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'],
   'Ordem do fallback de texto está incorreta.'
 );
 if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
