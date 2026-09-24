@@ -1,0 +1,39 @@
+name: Smoke clasp run
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: contains(github.event.head_commit.message, 'Smoke: test clasp run')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: apps-script-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Configure clasp
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+      - name: Run read-only Apps Script function
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run obterVersaoFrontend | tee /tmp/clasp-run.txt
+          grep -q "versao" /tmp/clasp-run.txt
+      - if: always()
+        run: rm -f "$HOME/.clasprc.json"
