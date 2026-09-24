@@ -7945,6 +7945,41 @@
     return lista.filter(Boolean);
   }
 
+  function resumoAuditoriasCrmFront_(auditorias, espaco) {
+    const tipo = String(espaco || 'SDR').toUpperCase();
+    const auditoriasDoEspaco = (Array.isArray(auditorias) ? auditorias : []).filter(item =>
+      item &&
+      !item.auditoriaLegada &&
+      !item.auditoriaSubstituida &&
+      Boolean(item.resultado || item.resultadoCompleto) &&
+      String(item.tipoAuditoria || 'SDR').toUpperCase() === tipo
+    );
+    const realizadas = auditoriasDoEspaco.filter(item =>
+      ['EM_REVISAO', 'APROVADA'].includes(String(item.status || '').toUpperCase())
+    );
+    const aprovadas = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
+    const vinculadas = aprovadas.filter(item => Boolean(item.linkCrm));
+    const aguardandoVinculo = aprovadas.filter(item =>
+      !item.linkCrm && String(item.rdStatus || '').toUpperCase() !== 'PUBLICADA'
+    );
+    const enviadas = aprovadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
+    const erros = vinculadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
+    const pendentes = vinculadas.filter(item =>
+      !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase())
+    );
+    return {
+      tipo,
+      realizadas: realizadas.length,
+      aprovadas: aprovadas.length,
+      emRevisao: realizadas.length - aprovadas.length,
+      vinculadas: vinculadas.length,
+      aguardandoVinculo: aguardandoVinculo.length,
+      enviadas: enviadas.length,
+      pendentes: pendentes.length,
+      erros: erros.length
+    };
+  }
+
   function selecionarEspacoAuditoriaFront_(tipo, silencioso) {
     const chave = String(tipo || '').toUpperCase();
     if (!['SDR', 'CLOSER', 'PLANO'].includes(chave)) return;
@@ -8302,46 +8337,25 @@
     if (!alvo) return;
 
     const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
-    const auditoriasDoEspaco = auditoriasOperacionaisFront_().filter(item =>
-      !item.auditoriaLegada &&
-      !item.auditoriaSubstituida &&
-      Boolean(item.resultado || item.resultadoCompleto) &&
-      String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco
-    );
-    const realizadas = auditoriasDoEspaco.filter(item =>
-      ['EM_REVISAO', 'APROVADA'].includes(String(item.status || '').toUpperCase())
-    );
+    const resumo = resumoAuditoriasCrmFront_(auditoriasOperacionaisFront_(), espaco);
 
     if (espaco === 'PLANO') {
-      const aprovadasPlano = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
-      const revisaoPlano = realizadas.filter(item => String(item.status || '').toUpperCase() === 'EM_REVISAO');
       const metricasPlano = [
-        ['Planos realizados', realizadas.length, 'Planos com resultado registrado no Board.'],
-        ['Aprovados', aprovadasPlano.length, 'Planos já aprovados.'],
-        ['Em revisão', revisaoPlano.length, 'Planos aguardando revisão humana.']
+        ['Planos realizados', resumo.realizadas, 'Planos com resultado registrado no Board.'],
+        ['Aprovados', resumo.aprovadas, 'Planos já aprovados.'],
+        ['Em revisão', resumo.emRevisao, 'Planos aguardando revisão humana.']
       ];
       alvo.innerHTML = metricasPlano.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
       return;
     }
 
-    const aprovadas = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
-    const vinculadas = aprovadas.filter(item => Boolean(item.linkCrm));
-    const aguardandoVinculo = aprovadas.filter(item =>
-      !item.linkCrm && String(item.rdStatus || '').toUpperCase() !== 'PUBLICADA'
-    );
-    const enviadas = aprovadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
-    const erros = vinculadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
-    const pendentes = vinculadas.filter(item =>
-      !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase())
-    );
-
     const metricas = [
-      ['Auditorias realizadas', realizadas.length, 'Com resultado no Board, independentemente de vínculo com CRM.'],
-      ['Com vínculo CRM', vinculadas.length, 'Auditorias aprovadas com negociação vinculada.'],
-      ['Aguardando vínculo', aguardandoVinculo.length, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
-      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas já registradas no CRM.'],
-      ['Pendentes de envio', pendentes.length, 'Já vinculadas e aguardando publicação automática.'],
-      ['Erros de envio', erros.length, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
+      ['Auditorias realizadas', resumo.realizadas, 'Com resultado no Board, independentemente de vínculo com CRM.'],
+      ['Com vínculo CRM', resumo.vinculadas, 'Auditorias aprovadas com negociação vinculada.'],
+      ['Aguardando vínculo', resumo.aguardandoVinculo, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
+      ['Enviadas ao CRM', resumo.enviadas, 'Anotação e tarefas já registradas no CRM.'],
+      ['Pendentes de envio', resumo.pendentes, 'Já vinculadas e aguardando publicação automática.'],
+      ['Erros de envio', resumo.erros, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
   }
