@@ -39,6 +39,37 @@ npm ci
 npm test
 ```
 
+## GitHub-only patch runner
+
+O workflow `.github/workflows/apply-chatgpt-patch.yml` permite aplicar uma alteração preparada em uma Issue sem escrever direto na `main`.
+
+A Issue precisa ser criada por `caio438` e conter um único patch unificado entre os marcadores:
+
+```text
+<!-- PATCH_START -->
+```diff
+diff --git a/arquivo b/arquivo
+...
+```
+<!-- PATCH_END -->
+```
+
+Depois de revisar o conteúdo da Issue, comente exatamente:
+
+```text
+/apply-patch
+```
+
+O workflow:
+- valida e aplica o patch em branch isolada;
+- bloqueia mudanças em workflows, actions, secrets, credenciais e no próprio runner;
+- executa `git apply --check`, `git diff --check`, `npm ci` e `npm test`;
+- abre um Draft PR somente se tudo passar;
+- nunca faz merge;
+- nunca faz deploy.
+
+Comentários de outros usuários, Issues criadas por outros usuários e comentários em PRs não acionam o runner.
+
 ## Integração segura com o Apps Script
 
 - `.clasp.json` aponta para o projeto correto do Apps Script.

@@ -1,0 +1,105 @@
+name: Apply ChatGPT patch
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+jobs:
+  apply-patch:
+    if: >-
+      ${{ github.event.comment.body == '/apply-patch' &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.issue.user.login == 'caio438' &&
+          github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      BRANCH_NAME: chatgpt/issue-${{ github.event.issue.number }}-${{ github.run_id }}
+
+    steps:
+      - name: Checkout main without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Read current issue body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/issue-body.md"
+
+      - name: Extract and validate patch
+        run: |
+          node scripts/extract-issue-patch.mjs "${RUNNER_TEMP}/issue-body.md" "${RUNNER_TEMP}/issue.patch"
+          git apply --check "${RUNNER_TEMP}/issue.patch"
+
+      - name: Create isolated branch and apply patch
+        run: |
+          git checkout -b "${BRANCH_NAME}"
+          git apply "${RUNNER_TEMP}/issue.patch"
+          git diff --check
+          test -n "$(git diff --name-only)"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run project tests
+        run: npm test
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Patch não gerou alterações versionadas."; exit 1; }
+          git commit -m "Apply patch from issue #${ISSUE_NUMBER}"
+
+      - name: Push isolated branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --set-upstream origin "${BRANCH_NAME}"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Open draft pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" --jq '.title')"
+          PR_URL="$(gh pr create             --draft             --base main             --head "${BRANCH_NAME}"             --title "Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}"             --body "Patch aplicado automaticamente a partir da issue #${ISSUE_NUMBER}.\n\nValidações executadas antes do push:\n- git apply --check\n- git diff --check\n- npm ci\n- npm test\n\nNenhum merge ou deploy é executado por este workflow.")"
+          echo "url=${PR_URL}" >> "${GITHUB_OUTPUT}"
+
+      - name: Report success on issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: |
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          gh issue comment "${ISSUE_NUMBER}" --body "Patch aplicado com sucesso.\n\n- Branch: \`${BRANCH_NAME}\`\n- Commit: \`${COMMIT_SHA}\`\n- Draft PR: ${PR_URL}\n- Testes: \`npm test\` aprovado\n\nSem merge e sem deploy."
+
+      - name: Report failure on issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${ISSUE_NUMBER}" --body "A aplicação automática do patch falhou antes da conclusão. Nenhum merge ou deploy foi executado.\n\nRun: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
