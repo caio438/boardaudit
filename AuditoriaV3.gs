@@ -2293,18 +2293,29 @@ function descartarAuditoriaV3(dados) {
   }
 
   const agora = new Date();
-  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+  const providerCrm = typeof audCrmResolverProvider_ === 'function'
+    ? audCrmResolverProvider_(audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {}, auditoria)
+    : '';
+  const descarteCrm = {
     STATUS: 'DESCARTADA',
     CONCLUIDO_EM: agora,
     ERRO: '',
     AUTOMACAO_STATUS: 'CONCLUIDA_DESCARTADA',
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: agora,
-    RD_STATUS: 'DESCARTADA',
-    RD_ACTIVITY_ID: '',
-    RD_ERRO: '',
-    RD_PUBLICADO_EM: ''
-  });
+    CRM_PROVIDER: auditoria.CRM_PROVIDER || providerCrm || '',
+    CRM_STATUS: 'DESCARTADA',
+    CRM_ACTIVITY_ID: '',
+    CRM_ERRO: '',
+    CRM_PUBLICADO_EM: ''
+  };
+  if (providerCrm === 'RD_STATION' || (!providerCrm && String(auditoria.RD_STATUS || '').trim())) {
+    descarteCrm.RD_STATUS = 'DESCARTADA';
+    descarteCrm.RD_ACTIVITY_ID = '';
+    descarteCrm.RD_ERRO = '';
+    descarteCrm.RD_PUBLICADO_EM = '';
+  }
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, descarteCrm);
 
   if (auditoria.ID_INTERACAO) {
     const outrasAtivas = audV3Ler_('AUDITORIAS').filter(function(item) {
@@ -6800,15 +6811,18 @@ function audV3EstadoIntegridadeAuditoria_(auditoria) {
   auditoria = auditoria || {};
   const status = String(auditoria.STATUS || '').toUpperCase();
   const rdStatus = String(auditoria.RD_STATUS || '').toUpperCase();
+  const crmStatus = typeof audCrmStatusAuditoria_ === 'function'
+    ? audCrmStatusAuditoria_(auditoria)
+    : rdStatus;
   const automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
   const hash = String(auditoria.HASH_FONTE || '').trim();
   const temResultado = Boolean(String(auditoria.RESULTADO_JSON || auditoria.RESULTADO_COMPLETO || '').trim());
-  const publicada = rdStatus === 'PUBLICADA' ||
+  const publicada = crmStatus === 'PUBLICADA' ||
     Boolean(String(auditoria.CIRCLE_POST_URL || '').trim()) ||
     Boolean(String(auditoria.COMUNIDADE_POST_URL || '').trim());
 
   if (publicada) return 'PUBLICADA';
-  if (status === 'DESCARTADA' || rdStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
+  if (status === 'DESCARTADA' || crmStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
   if (/^SUBSTITUIDA_PARA_/.test(automacao)) return 'SUBSTITUIDA';
   if (temResultado && !hash && ['APROVADA', 'EM_REVISAO', 'ERRO'].includes(status)) return 'LEGADA_REANALISE';
   return 'ATUAL';
