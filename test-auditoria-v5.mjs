@@ -13,6 +13,12 @@ assert.ok(audit.includes('function audV3FinalizarAutomaticamente_'), 'A auditori
 assert.ok(audit.includes('const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);'), 'A geração não chama a finalização automática.');
 assert.ok(audit.includes('aprovarAuditoriaV3(id);'), 'A finalização automática não cria/aprova o documento.');
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'PROCESSANDO'"), 'O pipeline automático não registra início.');
+assert.match(audit, /processamentoExpiraMinutos:\s*8/, 'O motor precisa ter um limite explícito para PROCESSANDO expirado.');
+assert.ok(audit.includes('function audV3EncerrarProcessamentosExpirados_'), 'PROCESSANDO expirado precisa de autorrecuperação.');
+assert.match(audit, /TEMPO_PROCESSAMENTO_EXPIRADO/, 'O erro de processamento expirado precisa ficar rastreável.');
+assert.match(audit, /function audV3ListarAuditoriasFront_\(\)[\s\S]*?audV3EncerrarProcessamentosExpirados_\(\)/, 'A listagem deve encerrar processamentos expirados.');
+assert.match(audit, /function executarAuditoriaV3\(dados\)[\s\S]*?audV3EncerrarProcessamentosExpirados_\(\)/, 'Uma nova execução deve limpar processamentos expirados antes de começar.');
+
 assert.ok(rd.includes('function audRdPublicarAutomaticamente_'), 'A publicação automática no RD não foi implementada.');
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
