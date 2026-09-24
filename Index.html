@@ -7934,6 +7934,17 @@
     if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
   }
 
+  function auditoriasOperacionaisFront_() {
+    const lista = Array.isArray(estado.auditorias) ? estado.auditorias.slice() : [];
+    const atual = estado.auditoriaAtual || null;
+    if (atual && atual.idAuditoria) {
+      const indice = lista.findIndex(item => String((item || {}).idAuditoria || '') === String(atual.idAuditoria));
+      if (indice >= 0) lista[indice] = Object.assign({}, lista[indice] || {}, atual);
+      else lista.unshift(atual);
+    }
+    return lista.filter(Boolean);
+  }
+
   function selecionarEspacoAuditoriaFront_(tipo, silencioso) {
     const chave = String(tipo || '').toUpperCase();
     if (!['SDR', 'CLOSER', 'PLANO'].includes(chave)) return;
@@ -7963,7 +7974,8 @@
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
     const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
-    const auditorias = (estado.auditorias || []).filter(item => {
+    const auditoriasFonte = auditoriasOperacionaisFront_();
+    const auditorias = auditoriasFonte.filter(item => {
       if (item.auditoriaLegada || item.auditoriaSubstituida) return false;
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
       return String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco &&
@@ -7973,7 +7985,7 @@
     });
     if (!auditorias.length) {
       const rotulo = rotuloEspacoAuditoria_(espaco);
-      alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhum registro de ' + escapeHtml(rotulo) + ' encontrado para os filtros selecionados.' : 'Nenhum registro executado.'}</div>`;
+      alvo.innerHTML = `<div class="empty">${auditoriasFonte.length ? 'Nenhum registro de ' + escapeHtml(rotulo) + ' encontrado para os filtros selecionados.' : 'Nenhum registro executado.'}</div>`;
       return;
     }
 
@@ -8288,23 +8300,48 @@
   function renderizarResumoEnviosRdAuditorias_() {
     const alvo = document.getElementById('resumoEnviosRdAuditorias');
     if (!alvo) return;
-    const auditorias = (estado.auditorias || []).filter(item =>
+
+    const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    const auditoriasDoEspaco = auditoriasOperacionaisFront_().filter(item =>
       !item.auditoriaLegada &&
       !item.auditoriaSubstituida &&
-      Boolean(item.resultado) &&
-      Boolean(item.linkCrm)
+      Boolean(item.resultado || item.resultadoCompleto) &&
+      String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco
     );
-    const enviadas = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
-    const erros = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
-    const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase()));
-    const porFuncao = funcao => auditorias.filter(item => String(item.tipoAuditoria || '').toUpperCase() === funcao);
+    const realizadas = auditoriasDoEspaco.filter(item =>
+      ['EM_REVISAO', 'APROVADA'].includes(String(item.status || '').toUpperCase())
+    );
+
+    if (espaco === 'PLANO') {
+      const aprovadasPlano = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
+      const revisaoPlano = realizadas.filter(item => String(item.status || '').toUpperCase() === 'EM_REVISAO');
+      const metricasPlano = [
+        ['Planos realizados', realizadas.length, 'Planos com resultado registrado no Board.'],
+        ['Aprovados', aprovadasPlano.length, 'Planos já aprovados.'],
+        ['Em revisão', revisaoPlano.length, 'Planos aguardando revisão humana.']
+      ];
+      alvo.innerHTML = metricasPlano.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
+      return;
+    }
+
+    const aprovadas = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
+    const vinculadas = aprovadas.filter(item => Boolean(item.linkCrm));
+    const aguardandoVinculo = aprovadas.filter(item =>
+      !item.linkCrm && String(item.rdStatus || '').toUpperCase() !== 'PUBLICADA'
+    );
+    const enviadas = aprovadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
+    const erros = vinculadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
+    const pendentes = vinculadas.filter(item =>
+      !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase())
+    );
+
     const metricas = [
-      ['Elegíveis para CRM', auditorias.length, 'Auditorias com resultado e negociação vinculada.'],
-      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas registradas no RD.'],
-      ['Pendentes de envio', pendentes.length, 'Aguardando vínculo ou pré-requisito para envio automático.'],
-      ['Erros de envio', erros.length, 'Precisam de conferência antes de tentar novamente.'],
-      ['SDR vinculadas', porFuncao('SDR').length, 'Auditorias SDR elegíveis ao CRM.'],
-      ['Closer vinculadas', porFuncao('CLOSER').length, 'Auditorias Closer processadas pelo fluxo automático.']
+      ['Auditorias realizadas', realizadas.length, 'Com resultado no Board, independentemente de vínculo com CRM.'],
+      ['Com vínculo CRM', vinculadas.length, 'Auditorias aprovadas com negociação vinculada.'],
+      ['Aguardando vínculo', aguardandoVinculo.length, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
+      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas já registradas no CRM.'],
+      ['Pendentes de envio', pendentes.length, 'Já vinculadas e aguardando publicação automática.'],
+      ['Erros de envio', erros.length, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
   }
