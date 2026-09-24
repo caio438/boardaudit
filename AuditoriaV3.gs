@@ -337,9 +337,12 @@ function formalNormalizarResultadoReuniao_(valor) {
 function salvarResultadoReuniaoFormalizacao(dados) {
   dados = dados || {};
   const idReuniao = String(dados.idReuniao || '').trim();
-  const resultado = formalNormalizarResultadoReuniao_(dados.resultadoReuniao);
+  const resultadoInformado = String(dados.resultadoReuniao || '').trim().toUpperCase();
+  const permitidos = ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'];
   if (!idReuniao) throw new Error('Reunião não informada.');
-  if (!String(dados.resultadoReuniao || '').trim()) throw new Error('Selecione o resultado da reunião.');
+  if (!permitidos.includes(resultadoInformado)) throw new Error('Selecione um resultado de reunião válido.');
+  if (typeof jornadaGarantirEstrutura_ === 'function') jornadaGarantirEstrutura_();
+  const resultado = resultadoInformado;
   const reuniao = audV3Localizar_('REUNIOES_CALENDARIO', 'ID_REUNIAO', idReuniao);
   if (!reuniao) throw new Error('Reunião não encontrada.');
   const agora = new Date();
