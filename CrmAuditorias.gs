@@ -40,6 +40,49 @@ function audCrmNomeProvider_(valor) {
   return tipo || 'CRM';
 }
 
+function audCrmCapacidadesProvider_(valor) {
+  var tipo = audCrmNormalizarProvider_(valor);
+  if (tipo === AUD_CRM_PROVIDERS.RD_STATION) {
+    return {
+      provider: tipo,
+      testarConexao: true,
+      lerRegistro: true,
+      lerAtividades: true,
+      lerNotas: true,
+      publicarAuditoria: true
+    };
+  }
+  if (tipo === AUD_CRM_PROVIDERS.PIPEDRIVE) {
+    return {
+      provider: tipo,
+      testarConexao: true,
+      lerRegistro: true,
+      lerAtividades: true,
+      lerNotas: true,
+      publicarAuditoria: true
+    };
+  }
+  if (tipo === AUD_CRM_PROVIDERS.LEADS2B) {
+    return {
+      provider: tipo,
+      testarConexao: false,
+      lerRegistro: false,
+      lerAtividades: false,
+      lerNotas: false,
+      publicarAuditoria: false,
+      motivo: 'A API publica V2 consultada nao expoe um contrato documentado de lead/oportunidade + notas compativel com a publicacao de auditorias.'
+    };
+  }
+  return {
+    provider: tipo,
+    testarConexao: false,
+    lerRegistro: false,
+    lerAtividades: false,
+    lerNotas: false,
+    publicarAuditoria: false
+  };
+}
+
 function audCrmConfigIntegracao_(integracao) {
   var bruto = String((integracao || {}).CONFIG_JSON || '').trim();
   if (!bruto) return {};
@@ -89,11 +132,20 @@ function audCrmResolverProvider_(interacao, auditoria) {
 
   if (integracoes.length === 1) return audCrmNormalizarProvider_(integracoes[0].TIPO_INTEGRACAO);
 
-  // Retrocompatibilidade: clientes antigos podem ter RD ativo sem CRM_PROVIDER gravado.
-  var rd = integracoes.find(function(item) {
-    return audCrmNormalizarProvider_(item.TIPO_INTEGRACAO) === AUD_CRM_PROVIDERS.RD_STATION;
-  });
-  if (rd) return AUD_CRM_PROVIDERS.RD_STATION;
+  // Se houver mais de um CRM ativo, nao escolhemos um provider por preferencia.
+  // A unica excecao e o fluxo legado inequivocamente originado do RD/API4COM.
+  if (integracoes.length > 1) {
+    var fonte = String(interacao.FONTE || '').toUpperCase();
+    var idExterno = String(interacao.ID_EXTERNO || '').toUpperCase();
+    var origemRdLegada = fonte === 'API4COM' || /^RD_TASK_/.test(idExterno);
+    if (origemRdLegada) {
+      var rdLegado = integracoes.find(function(item) {
+        return audCrmNormalizarProvider_(item.TIPO_INTEGRACAO) === AUD_CRM_PROVIDERS.RD_STATION;
+      });
+      if (rdLegado) return AUD_CRM_PROVIDERS.RD_STATION;
+    }
+    return '';
+  }
 
   return '';
 }
@@ -290,10 +342,12 @@ function audCrmPublicarAutomaticamente_(idAuditoria) {
     return audPipePublicarAutomaticamente_(id);
   }
 
-  // Leads2b permanece preparado, mas sem escrita remota ate existir contrato validado.
+  // Leads2b permanece preparada, mas sem escrita remota enquanto o contrato
+  // publico nao expuser os recursos necessarios para auditorias.
+  var capacidades = audCrmCapacidadesProvider_(provider);
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     CRM_PROVIDER: provider,
-    CRM_STATUS: 'AGUARDANDO_ADAPTADOR',
+    CRM_STATUS: 'AGUARDANDO_API_COMPATIVEL',
     CRM_ACTIVITY_ID: '',
     CRM_PUBLICADO_EM: '',
     CRM_ERRO: ''
@@ -303,9 +357,11 @@ function audCrmPublicarAutomaticamente_(idAuditoria) {
     aplicavel: true,
     publicada: false,
     provider: provider,
-    status: 'AGUARDANDO_ADAPTADOR',
+    status: 'AGUARDANDO_API_COMPATIVEL',
     automacaoStatus: 'CONCLUIDA_AGUARDANDO_CRM',
-    mensagem: 'Vinculo com ' + audCrmNomeProvider_(provider) + ' preparado. O adapter de publicacao ainda nao foi ativado; nenhuma alteracao foi feita no CRM.'
+    mensagem: 'Vinculo com ' + audCrmNomeProvider_(provider) + ' preparado. ' +
+      (capacidades.motivo || 'A publicacao remota ainda nao foi habilitada.') +
+      ' Nenhuma alteracao foi feita no CRM.'
   };
 }
 
