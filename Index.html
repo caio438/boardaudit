@@ -9628,8 +9628,10 @@
     function limparFiltrosHistoricoFormalizacoes_() {
       const mes = document.getElementById('formalHistoricoMes');
       const status = document.getElementById('formalHistoricoStatus');
+      const resultado = document.getElementById('formalHistoricoResultado');
       if (mes) mes.value = '';
       if (status) status.value = '';
+      if (resultado) resultado.value = '';
       renderizarHistoricoFormalizacoes();
     }
 
@@ -9638,9 +9640,14 @@
       if (!alvo) return;
       const mes = String((document.getElementById('formalHistoricoMes') || {}).value || '');
       const statusFiltro = String((document.getElementById('formalHistoricoStatus') || {}).value || '').toUpperCase();
+      const resultadoFiltro = String((document.getElementById('formalHistoricoResultado') || {}).value || '').toUpperCase();
       const formalizacoes = (estado.formalizacoes || []).filter(item => {
         const chave = chaveDataHistorico_(item.dataReuniao || item.atualizadoEm || item.solicitadoEm);
-        return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+        const reuniao = formalReuniaoAssociadaFront_(item);
+        const resultado = formalNormalizarResultadoFront_(reuniao && reuniao.resultadoReuniao);
+        return (!mes || chave.slice(0, 7) === mes)
+          && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro)
+          && (!resultadoFiltro || resultado === resultadoFiltro);
       });
       if (!formalizacoes.length) {
         alvo.innerHTML = `<div class="empty">${(estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.'}</div>`;
@@ -9667,7 +9674,9 @@
           ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
           : '';
         const podeAprovar = item.status !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const reuniaoAssociada = formalReuniaoAssociadaFront_(item);
+        const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+        return `<div class="formal-history-card"><div class="section-title"><div><strong>${escapeHtml(formalTituloLimpo_(item.titulo || 'Formalização'))}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<details class="formal-card-details"><summary>Detalhes e publicação</summary><div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div></details><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Revisar</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar agora</button>` : ''}${reuniaoAssociada ? formalClassificadorReuniaoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       });
       salvarCacheFormalizacoesFront_();
     }
@@ -9693,7 +9702,7 @@
           mostrarToast(resposta.mensagem || 'Formalização aprovada.', 'success');
         })
         .withFailureHandler(erro => {
-          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar'; }
+          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar agora'; }
           tratarErro(erro);
         })
         .salvarFormalizacaoReuniao({
