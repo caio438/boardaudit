@@ -2747,6 +2747,34 @@ function audV3RepararJsonComGemini_(ctx, textoDefeituoso, erroJson, modeloApi, c
   return resultado;
 }
 
+function audV3PromptRecuperacaoTruncada_(promptOriginal, tipoAuditoria, erroAnterior) {
+  const tipo = String(tipoAuditoria || 'SDR').toUpperCase();
+  const regras = [
+    'MODO DE RECUPERAÇÃO: a resposta anterior terminou antes de fechar o objeto JSON.',
+    'Gere novamente o JSON COMPLETO desde o início. Não continue o fragmento anterior e não devolva explicações fora do JSON.',
+    'Preserve todos os campos obrigatórios do contrato e finalize explicitamente o objeto raiz.',
+    'Não invente nem altere fatos, falas, evidências, regras de pitch, classificações ou recomendações.',
+    'Use evidências literais curtas e elimine repetição entre campos.',
+    'Meta técnica desta recuperação: JSON final com no máximo ' + (tipo === 'CLOSER' ? '18.000' : '11.000') + ' caracteres.',
+    'Erro anterior: ' + audV3DescreverErroTecnico_(erroAnterior)
+  ];
+
+  if (tipo === 'CLOSER') {
+    regras.push(
+      'Mantenha os quatro momentos oficiais, todas as dimensões oficiais e todos os itens obrigatórios do checklist.',
+      'Em perguntas_diagnostico.perguntas_realizadas, liste no máximo 12 perguntas comercialmente mais relevantes. Se houver mais, preserve o total real em total_realizadas e priorize Problema, Implicação, Necessidade, decisão, objeções e próximo passo.',
+      'Em perguntas_esperadas_nao_realizadas, mantenha no máximo 6 lacunas prioritárias e não repita perguntas semanticamente equivalentes.',
+      'Em objecoes_respostas, mantenha no máximo 6 ocorrências prioritárias.',
+      'Em analise_impacto_implicacao, use no máximo 3 itens por lista e concentre-se no que muda a condução comercial.',
+      'Em repertorio_perguntas_sugeridas, use no máximo 5 perguntas, priorizando Problema, Implicação e Necessidade; Situação só quando faltar contexto essencial.',
+      'Em impactos_nao_conformidades e proximos_passos, mantenha no máximo 5 itens prioritários.',
+      'Campos explicativos devem ser objetivos; evidências e regras literais devem usar apenas o menor trecho suficiente para comprovar o ponto.'
+    );
+  }
+
+  return String(promptOriginal || '') + '\n\n' + regras.join('\n');
+}
+
 function audV3ChamarGemini_(ctx) {
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Configure GEMINI_API_KEY nas propriedades do script.');
@@ -2844,14 +2872,20 @@ function audV3ChamarGemini_(ctx) {
         return resultadoParseado;
       } catch (erroJson) {
         ultimoErroTecnico = erroJson;
+        const codigoErroJson = audV3CodigoErroTecnico_(erroJson);
         console.warn(audV3DescreverErroTecnico_(erroJson) + ' Modelo: ' + modeloApi + '; tentativa: ' + (tentativa + 1) + '.');
-        if (audV3CodigoErroTecnico_(erroJson) === 'JSON_INVALIDO') {
+        if (codigoErroJson === 'JSON_INVALIDO') {
           try {
             return audV3RepararJsonComGemini_(ctx, texto, erroJson, modeloApi, chave, consumoBase);
           } catch (erroReparo) {
             ultimoErroTecnico = erroReparo;
             console.warn(audV3DescreverErroTecnico_(erroReparo));
           }
+        }
+        if (codigoErroJson === 'RESPOSTA_TRUNCADA') {
+          payload.contents[0].parts[0].text = audV3PromptRecuperacaoTruncada_(prompt, tipo, erroJson);
+          if (tentativa < esperasMs.length - 1) continue;
+          break;
         }
         if (tentativa < esperasMs.length - 1) {
           payload.contents[0].parts[0].text = prompt + '\n\nA tentativa anterior falhou com ' + audV3DescreverErroTecnico_(erroJson) + ' Gere novamente o JSON COMPLETO com no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres, sem repetir conteúdo.';

@@ -71,6 +71,17 @@ assert.match(callSource, /candidato\.finishReason/, 'A chamada precisa inspecion
 assert.match(callSource, /finishReason === 'MAX_TOKENS'/, 'MAX_TOKENS precisa ter tratamento dedicado.');
 assert.match(callSource, /audV3ParseJsonRespostaSegura_\(texto\)/, 'A resposta não pode usar JSON.parse puro.');
 assert.match(callSource, /audV3RepararJsonComGemini_/, 'JSON sintaticamente inválido precisa acionar reparo controlado.');
+const truncatedRecoveryStart = source.indexOf('function audV3PromptRecuperacaoTruncada_');
+assert.ok(truncatedRecoveryStart >= 0, 'A recuperação específica para RESPOSTA_TRUNCADA precisa existir.');
+const truncatedRecoveryEnd = source.indexOf('function audV3ChamarGemini_', truncatedRecoveryStart);
+const truncatedRecoverySource = source.slice(truncatedRecoveryStart, truncatedRecoveryEnd);
+assert.match(truncatedRecoverySource, /MODO DE RECUPERAÇÃO/, 'A recuperação truncada deve instruir uma nova geração completa.');
+assert.match(truncatedRecoverySource, /no máximo 12 perguntas comercialmente mais relevantes/, 'O Closer precisa limitar perguntas realizadas durante recuperação.');
+assert.match(truncatedRecoverySource, /priorizando Problema, Implicação e Necessidade/, 'O Closer precisa preservar a prioridade SPIN na recuperação.');
+assert.match(truncatedRecoverySource, /Situação só quando faltar contexto essencial/, 'Situação não pode inflar a recuperação do Closer.');
+assert.match(callSource, /codigoErroJson === 'RESPOSTA_TRUNCADA'/, 'RESPOSTA_TRUNCADA precisa acionar tratamento dedicado.');
+assert.match(callSource, /audV3PromptRecuperacaoTruncada_\(prompt, tipo, erroJson\)/, 'A nova tentativa precisa usar o prompt compacto de recuperação.');
+
 
 for (const legacyFixture of ['WISETEC-ERRO', 'WISETEC-OK', 'STEC-90', 'STEC-91', 'STEC-92']) {
   assert.ok(
