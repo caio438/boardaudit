@@ -5,7 +5,7 @@
   "description": "Board de Auditorias VOLUM em Google Apps Script",
   "scripts": {
     "check": "node check-project.mjs",
-    "test": "npm run check && node test-automacao-central.mjs && node test-automation-retry.mjs && node test-formalization-queue.mjs && node test-circle-auditoria.mjs && node test-crm-resolver.mjs && node test-pipedrive-auditorias.mjs && node test-closer.mjs && node test-sdr-structure.mjs && node test-tarefas-formalizacoes.mjs && node test-auditoria-v5.mjs && node test-audit-json-repair.mjs && node test-audit-coaching-repair.mjs && node test-ops-audit-publish.mjs && node test-deploy-automation.mjs"
+    "test": "npm run check && node test-automacao-central.mjs && node test-automation-retry.mjs && node test-formalization-queue.mjs && node test-circle-auditoria.mjs && node test-crm-resolver.mjs && node test-crm-principal.mjs && node test-pipedrive-auditorias.mjs && node test-closer.mjs && node test-sdr-structure.mjs && node test-tarefas-formalizacoes.mjs && node test-auditoria-v5.mjs && node test-audit-json-repair.mjs && node test-audit-coaching-repair.mjs && node test-ops-audit-publish.mjs && node test-deploy-automation.mjs"
   },
   "devDependencies": {
     "@google/clasp": "3.4.1"

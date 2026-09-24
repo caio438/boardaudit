@@ -1587,6 +1587,7 @@ function transcreverAudioMp3V3(dados) {
     linkOriginal: urlAudio,
     urlGravacao: urlAudio,
     nomeArquivoOrigem: String(dados.nomeArquivoOrigem || '').trim() || urlAudio.split('/').pop() || 'gravacao.mp3',
+    crmRecordId: String(dados.crmRecordId || '').trim(),
     rdDealId: String(dados.rdDealId || '').trim(),
     transcricao: texto
   });
@@ -1683,6 +1684,9 @@ function executarAuditoriaV3(dados) {
   const identidade = audV3Identidade_(dados, cliente, interacao);
   const idAuditoria = audV3Id_('AUD');
   const agora = new Date();
+  const crmProviderSnapshot = typeof audCrmProviderPrincipalCliente_ === 'function'
+    ? (audCrmProviderPrincipalCliente_(cliente.ID_CLIENTE) || audCrmResolverProvider_(interacao, {}))
+    : String(interacao.CRM_PROVIDER || '');
 
   audV3Adicionar_('AUDITORIAS', {
     ID_AUDITORIA: idAuditoria,
@@ -1716,6 +1720,7 @@ function executarAuditoriaV3(dados) {
     AUTOMACAO_STATUS: 'PROCESSANDO',
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: agora,
+    CRM_PROVIDER: crmProviderSnapshot,
     RESULTADO_JSON: '',
     SCORE_PERCENTUAL: '',
     ITENS_AVALIADOS: '',

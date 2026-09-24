@@ -103,6 +103,28 @@ function audCrmIntegracoesCliente_(idCliente) {
     });
 }
 
+function audCrmProviderPrincipalCliente_(idCliente) {
+  var id = String(idCliente || '').trim();
+  if (!id) return '';
+  var cliente = typeof localizarObjeto_ === 'function'
+    ? localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', id)
+    : null;
+  if (!cliente && typeof lerObjetos_ === 'function') {
+    cliente = lerObjetos_(APP.sheets.clientes).find(function(item) {
+      return String(item.ID_CLIENTE || '') === id;
+    }) || null;
+  }
+  var configurado = audCrmNormalizarProvider_((cliente || {}).CRM_PRINCIPAL || '');
+  if (audCrmEhProviderCrm_(configurado)) return configurado;
+
+  // Compatibilidade: antes de CRM_PRINCIPAL, um unico CRM ativo era o principal implicito.
+  var integracoes = audCrmIntegracoesCliente_(id).filter(function(item) {
+    return String(item.ATIVO || '').toUpperCase() === 'SIM';
+  });
+  if (integracoes.length === 1) return audCrmNormalizarProvider_(integracoes[0].TIPO_INTEGRACAO);
+  return '';
+}
+
 function audCrmLinkPertenceProvider_(link, provider) {
   var url = String(link || '').toLowerCase();
   var tipo = audCrmNormalizarProvider_(provider);
@@ -117,7 +139,8 @@ function audCrmResolverProvider_(interacao, auditoria) {
   interacao = interacao || {};
   auditoria = auditoria || {};
 
-  var explicito = audCrmNormalizarProvider_(interacao.CRM_PROVIDER || auditoria.CRM_PROVIDER || '');
+  // A auditoria e o snapshot historico. A interacao e apenas fallback legado.
+  var explicito = audCrmNormalizarProvider_(auditoria.CRM_PROVIDER || interacao.CRM_PROVIDER || '');
   if (audCrmEhProviderCrm_(explicito)) return explicito;
 
   var link = String(interacao.LINK_CRM || '').trim();
@@ -126,11 +149,12 @@ function audCrmResolverProvider_(interacao, auditoria) {
   if (/leads2b/i.test(link)) return AUD_CRM_PROVIDERS.LEADS2B;
 
   var idCliente = String(auditoria.ID_CLIENTE || interacao.ID_CLIENTE || '').trim();
+  var principal = audCrmProviderPrincipalCliente_(idCliente);
+  if (principal) return principal;
+
   var integracoes = audCrmIntegracoesCliente_(idCliente).filter(function(item) {
     return String(item.ATIVO || '').toUpperCase() === 'SIM';
   });
-
-  if (integracoes.length === 1) return audCrmNormalizarProvider_(integracoes[0].TIPO_INTEGRACAO);
 
   // Se houver mais de um CRM ativo, nao escolhemos um provider por preferencia.
   // A unica excecao e o fluxo legado inequivocamente originado do RD/API4COM.
@@ -185,7 +209,7 @@ function audCrmExtrairRecordId_(interacao, provider) {
   var explicito = String(interacao.CRM_RECORD_ID || '').trim();
   if (explicito) {
     try { return audCrmNormalizarRecordId_(tipo, explicito); }
-    catch (erro) { return explicito; }
+    catch (erro) { return ''; }
   }
 
   if (tipo === AUD_CRM_PROVIDERS.RD_STATION && typeof audRdDeal_ === 'function') {
@@ -227,8 +251,9 @@ function audCrmMontarLink_(provider, recordId, integracao) {
 function audCrmVinculoEntrada_(dados, idCliente) {
   dados = dados || {};
   var bruto = String(dados.crmRecordId || dados.rdDealId || dados.linkCrm || '').trim();
-  var provider = audCrmNormalizarProvider_(dados.crmProvider || '');
+  var provider = audCrmProviderPrincipalCliente_(idCliente);
 
+  // Compatibilidade com chamadas antigas que enviavam especificamente rdDealId.
   if (!provider && dados.rdDealId) provider = AUD_CRM_PROVIDERS.RD_STATION;
   if (!provider && /crm\.rdstation\.com/i.test(bruto)) provider = AUD_CRM_PROVIDERS.RD_STATION;
   if (!provider && /pipedrive\.com/i.test(bruto)) provider = AUD_CRM_PROVIDERS.PIPEDRIVE;
@@ -252,10 +277,46 @@ function audCrmVinculoEntrada_(dados, idCliente) {
 function audCrmEstr_() {
   if (typeof audV3GarantirColunas_ !== 'function' || typeof audV3Planilha_ !== 'function') return;
   var ss = audV3Planilha_();
+  audV3GarantirColunas_(ss, 'CLIENTES', ['CRM_PRINCIPAL']);
   audV3GarantirColunas_(ss, 'INTERACOES', ['CRM_PROVIDER', 'CRM_RECORD_ID']);
   audV3GarantirColunas_(ss, 'AUDITORIAS', [
     'CRM_PROVIDER', 'CRM_STATUS', 'CRM_ACTIVITY_ID', 'CRM_PUBLICADO_EM', 'CRM_ERRO'
   ]);
+}
+
+function audCrmCongelarHistoricoCliente_(idCliente) {
+  if (typeof lerObjetos_ !== 'function' || typeof audV3Atualizar_ !== 'function') return 0;
+  audCrmEstr_();
+  var id = String(idCliente || '').trim();
+  if (!id) return 0;
+  var interacoes = {};
+  lerObjetos_(APP.sheets.interacoes).forEach(function(item) {
+    interacoes[String(item.ID_INTERACAO || '')] = item;
+  });
+  var congeladas = 0;
+  lerObjetos_(APP.sheets.auditorias).forEach(function(auditoria) {
+    if (String(auditoria.ID_CLIENTE || '') !== id || String(auditoria.CRM_PROVIDER || '').trim()) return;
+    var provider = audCrmResolverProvider_(interacoes[String(auditoria.ID_INTERACAO || '')] || {}, auditoria);
+    if (!provider) return;
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA, { CRM_PROVIDER: provider });
+    congeladas += 1;
+  });
+  return congeladas;
+}
+
+function audCrmCongelarHistoricoInteracao_(idInteracao, interacao) {
+  if (typeof lerObjetos_ !== 'function' || typeof audV3Atualizar_ !== 'function') return 0;
+  var id = String(idInteracao || '').trim();
+  if (!id) return 0;
+  var congeladas = 0;
+  lerObjetos_(APP.sheets.auditorias).forEach(function(auditoria) {
+    if (String(auditoria.ID_INTERACAO || '') !== id || String(auditoria.CRM_PROVIDER || '').trim()) return;
+    var provider = audCrmResolverProvider_(interacao || {}, auditoria);
+    if (!provider) return;
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA, { CRM_PROVIDER: provider });
+    congeladas += 1;
+  });
+  return congeladas;
 }
 
 function audCrmStatusAuditoria_(auditoria) {
@@ -378,9 +439,7 @@ function salvarIdCrmAuditoriaV3(dados) {
     throw new Error('Esta auditoria ja foi publicada no CRM e o vinculo nao pode ser alterado por aqui.');
   }
 
-  var provider = audCrmNormalizarProvider_(
-    dados.crmProvider || audCrmResolverProvider_(interacao, auditoria)
-  );
+  var provider = audCrmResolverProvider_(interacao, auditoria);
   var bruto = String(dados.crmRecordId || dados.rdDealId || dados.linkCrm || '').trim();
 
   if (!provider && bruto) throw new Error('Selecione o CRM antes de informar o ID do registro.');
@@ -397,6 +456,7 @@ function salvarIdCrmAuditoriaV3(dados) {
   var link = recordId ? audCrmMontarLink_(provider, recordId, integracao) : '';
   if (!link && recordId && /^https?:\/\//i.test(bruto)) link = bruto;
 
+  audCrmCongelarHistoricoInteracao_(auditoria.ID_INTERACAO, interacao);
   audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, {
     CRM_PROVIDER: provider,
     CRM_RECORD_ID: recordId,

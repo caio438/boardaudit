@@ -548,7 +548,8 @@ function obterCabecalhosOficiais_() {
     'ID_CLIENTE', 'NOME_CLIENTE', 'TIPO_OPERACAO', 'PRODUTO_SERVICO',
     'REGRAS_CLIENTE', 'STATUS', 'CRIADO_EM', 'ATUALIZADO_EM',
     'CHAVE_VOLUMBERG', 'URL_MATERIAIS', 'URL_PASTA_GRAVACOES',
-    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM'
+    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM',
+    'CRM_PRINCIPAL'
   ];
 
   estruturas[APP.sheets.materiaisClientes] = [
@@ -1275,6 +1276,17 @@ function listarClientes(integracoesInformadas, materiaisInformados, clientesInfo
       const integracoesCliente = integracoes.filter(integracao =>
         String(integracao.ID_CLIENTE) === String(item.ID_CLIENTE)
       );
+      const crmPrincipalConfigurado = typeof audCrmNormalizarProvider_ === 'function'
+        ? audCrmNormalizarProvider_(item.CRM_PRINCIPAL || '')
+        : String(item.CRM_PRINCIPAL || '').trim().toUpperCase();
+      const integracoesCrmAtivas = integracoesCliente.filter(integracao =>
+        ['RD_STATION', 'PIPEDRIVE', 'LEADS2B'].indexOf(String(integracao.TIPO_INTEGRACAO || '').toUpperCase()) >= 0 &&
+        normalizarBooleano_(integracao.ATIVO)
+      );
+      const crmPrincipal = crmPrincipalConfigurado ||
+        (integracoesCrmAtivas.length === 1
+          ? String(integracoesCrmAtivas[0].TIPO_INTEGRACAO || '').toUpperCase()
+          : '');
       const materiaisCliente = materiais.filter(material =>
         String(material.idCliente) === String(item.ID_CLIENTE)
       );
@@ -1285,6 +1297,8 @@ function listarClientes(integracoesInformadas, materiaisInformados, clientesInfo
         chaveVolumberg: item.CHAVE_VOLUMBERG || '',
         carteiraVolum: item.CARTEIRA_VOLUM || '',
         executorVolum: item.EXECUTOR_VOLUM || '',
+        crmPrincipal: crmPrincipal,
+        crmPrincipalConfigurado: crmPrincipalConfigurado,
         urlMateriais: item.URL_MATERIAIS || '',
         urlPastaGravacoes: item.URL_PASTA_GRAVACOES || '',
         urlPastaTranscricoes: item.URL_PASTA_TRANSCRICOES || '',
@@ -1332,6 +1346,21 @@ function salvarCliente(dados) {
     const existente = existentePorId || existentePorNome || null;
     const id = existente ? String(existente.ID_CLIENTE) : gerarId_('CLI');
     const agora = new Date();
+    const crmPrincipalAnterior = typeof audCrmNormalizarProvider_ === 'function'
+      ? audCrmNormalizarProvider_((existente || {}).CRM_PRINCIPAL || '')
+      : String((existente || {}).CRM_PRINCIPAL || '').toUpperCase();
+    const recebeuCrmPrincipal = Object.prototype.hasOwnProperty.call(dados, 'crmPrincipal');
+    const crmPrincipal = typeof audCrmNormalizarProvider_ === 'function'
+      ? audCrmNormalizarProvider_(recebeuCrmPrincipal ? dados.crmPrincipal : crmPrincipalAnterior)
+      : String(recebeuCrmPrincipal ? dados.crmPrincipal : crmPrincipalAnterior).trim().toUpperCase();
+    if (crmPrincipal && ['RD_STATION', 'PIPEDRIVE', 'LEADS2B'].indexOf(crmPrincipal) < 0) {
+      throw new Error('Selecione um CRM principal valido para o cliente.');
+    }
+    if (recebeuCrmPrincipal && typeof audCrmEstr_ === 'function') audCrmEstr_();
+    if (existente && recebeuCrmPrincipal && crmPrincipal !== crmPrincipalAnterior &&
+        typeof audCrmCongelarHistoricoCliente_ === 'function') {
+      audCrmCongelarHistoricoCliente_(id);
+    }
     const objeto = {
       ID_CLIENTE: id,
       NOME_CLIENTE: nome,
@@ -1344,7 +1373,8 @@ function salvarCliente(dados) {
       CHAVE_VOLUMBERG: existente ? String(existente.CHAVE_VOLUMBERG || '') : '',
       URL_MATERIAIS: String(dados.urlMateriais || (existente && existente.URL_MATERIAIS) || '').trim(),
       CARTEIRA_VOLUM: String(dados.carteiraVolum || (existente && existente.CARTEIRA_VOLUM) || '').trim().toUpperCase(),
-      EXECUTOR_VOLUM: String(dados.executorVolum || (existente && existente.EXECUTOR_VOLUM) || '').trim()
+      EXECUTOR_VOLUM: String(dados.executorVolum || (existente && existente.EXECUTOR_VOLUM) || '').trim(),
+      CRM_PRINCIPAL: crmPrincipal
     };
 
     if (existente) atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', id, objeto);
@@ -4517,7 +4547,8 @@ function executarAuditoria(dados) {
   if(!promptBase) throw new Error('Cadastre o prompt padrão de '+tipo+'.');
   const chave=obterSegredo_('GEMINI_API_KEY'); if(!chave) throw new Error('Configure a chave Gemini.');
   const id=gerarId_('AUD'); const agora=new Date();
-  adicionarObjeto_(APP.sheets.auditorias,{ID_AUDITORIA:id,ID_INTERACAO:interacao.ID_INTERACAO,ID_TRANSCRICAO:transcricao.ID_TRANSCRICAO,ID_CLIENTE:cliente.ID_CLIENTE,ID_PITCH:pitch.ID_PITCH,TIPO_AUDITORIA:tipo,NOME_PITCH_SNAPSHOT:pitch.NOME_VERSAO,VERSAO_PITCH_SNAPSHOT:pitch.NUMERO_VERSAO,CONTEUDO_PITCH_SNAPSHOT:pitch.CONTEUDO_PITCH,PROMPT_SNAPSHOT:promptBase,STATUS:'PROCESSANDO',RESULTADO_COMPLETO:'',SCORE:'',SEMAFORO:'',ID_DOCUMENTO:'',LINK_DOCUMENTO:'',ERRO:'',SOLICITADO_EM:agora,CONCLUIDO_EM:''});
+  const crmProviderSnapshot=typeof audCrmProviderPrincipalCliente_==='function'?(audCrmProviderPrincipalCliente_(cliente.ID_CLIENTE)||audCrmResolverProvider_(interacao,{})):String(interacao.CRM_PROVIDER||'');
+  adicionarObjeto_(APP.sheets.auditorias,{ID_AUDITORIA:id,ID_INTERACAO:interacao.ID_INTERACAO,ID_TRANSCRICAO:transcricao.ID_TRANSCRICAO,ID_CLIENTE:cliente.ID_CLIENTE,ID_PITCH:pitch.ID_PITCH,TIPO_AUDITORIA:tipo,NOME_PITCH_SNAPSHOT:pitch.NOME_VERSAO,VERSAO_PITCH_SNAPSHOT:pitch.NUMERO_VERSAO,CONTEUDO_PITCH_SNAPSHOT:pitch.CONTEUDO_PITCH,PROMPT_SNAPSHOT:promptBase,STATUS:'PROCESSANDO',RESULTADO_COMPLETO:'',SCORE:'',SEMAFORO:'',ID_DOCUMENTO:'',LINK_DOCUMENTO:'',ERRO:'',SOLICITADO_EM:agora,CONCLUIDO_EM:'',CRM_PROVIDER:crmProviderSnapshot});
   try {
     const prompt = promptBase+'\n\nREGRAS DO CLIENTE:\n'+String(cliente.REGRAS_CLIENTE||'')+'\n\nPITCH OFICIAL SELECIONADO:\n'+String(pitch.CONTEUDO_PITCH||'')+'\n\nTRANSCRIÇÃO A SER ANALISADA:\n'+String(transcricao.CONTEUDO||'')+'\n\nRetorne somente o relatório final estruturado.';
     const modelo=obterConfiguracao_('GEMINI_MODEL')||'gemini-2.5-flash-lite';
