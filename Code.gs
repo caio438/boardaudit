@@ -2658,6 +2658,7 @@ function testarIntegracaoCliente(dados) {
       limparCachesDados_();
       return {
         sucesso: true,
+        testada: true,
         mensagem: 'Pipedrive conectado com sucesso para ' + String(teste.usuario.name || teste.usuario.email || 'o usuario autorizado') + '.',
         integracoesClientes: listarIntegracoesClientes_()
       };
@@ -2681,7 +2682,8 @@ function testarIntegracaoCliente(dados) {
     limparCachesDados_();
     return {
       sucesso: true,
-      mensagem: 'Credencial da Leads2b preservada. O teste remoto depende de documentacao e acesso validados; nenhuma alteracao foi feita no CRM.',
+      testada: false,
+      mensagem: 'Credencial da Leads2b salva. A conexao remota nao foi validada porque a API publica disponivel ainda nao expoe os recursos de lead/oportunidade e notas usados pelo Board.',
       integracoesClientes: listarIntegracoesClientes_()
     };
   }
