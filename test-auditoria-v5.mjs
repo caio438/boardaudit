@@ -30,6 +30,84 @@ assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não tr
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
+
+assert.ok(front.includes('function auditoriasOperacionaisFront_'), 'Histórico não possui fonte resiliente para incluir a auditoria atual recém-aprovada.');
+assert.match(
+  front,
+  /function renderizarAuditorias\(\)[\s\S]*?const auditoriasFonte = auditoriasOperacionaisFront_\(\)/,
+  'A lista de auditorias ainda depende diretamente do estado bruto e pode omitir a auditoria recém-aprovada.'
+);
+assert.ok(front.includes('Auditorias realizadas'), 'Resumo não separa mais auditorias realizadas de vínculo com CRM.');
+assert.ok(front.includes('Com vínculo CRM'), 'Resumo não possui contador separado de vínculo com CRM.');
+assert.ok(front.includes('Aguardando vínculo'), 'Resumo não destaca auditorias aprovadas sem vínculo CRM.');
+assert.ok(!front.includes("['SDR vinculadas'"), 'Resumo ainda mistura função auditada com estado de vínculo ao CRM.');
+assert.ok(!front.includes("['Closer vinculadas'"), 'Resumo ainda mistura função auditada com estado de vínculo ao CRM.');
+
+const inicioResumoCrmFront = front.indexOf('function resumoAuditoriasCrmFront_');
+const fimResumoCrmFront = front.indexOf('function selecionarEspacoAuditoriaFront_', inicioResumoCrmFront);
+assert.ok(inicioResumoCrmFront >= 0 && fimResumoCrmFront > inicioResumoCrmFront, 'Não foi possível isolar o resumo de auditorias/CRM do front.');
+const resumoAuditoriasCrmFront = new Function(
+  front.slice(inicioResumoCrmFront, fimResumoCrmFront) +
+  '\nreturn resumoAuditoriasCrmFront_;'
+)();
+
+const closerSemCrm = {
+  idAuditoria: 'AUD-CLOSER-1',
+  tipoAuditoria: 'CLOSER',
+  status: 'APROVADA',
+  resultado: { ok: true },
+  linkCrm: '',
+  rdStatus: 'AGUARDANDO_VINCULO'
+};
+const closerEmRevisao = {
+  idAuditoria: 'AUD-CLOSER-2',
+  tipoAuditoria: 'CLOSER',
+  status: 'EM_REVISAO',
+  resultado: { ok: true },
+  linkCrm: '',
+  rdStatus: ''
+};
+const sdrPublicado = {
+  idAuditoria: 'AUD-SDR-1',
+  tipoAuditoria: 'SDR',
+  status: 'APROVADA',
+  resultado: { ok: true },
+  linkCrm: 'https://crm.rdstation.com/app/deals/aaaaaaaaaaaaaaaaaaaaaaaa',
+  rdStatus: 'PUBLICADA'
+};
+const resumoCloser = resumoAuditoriasCrmFront([closerSemCrm, closerEmRevisao, sdrPublicado], 'CLOSER');
+assert.deepEqual(
+  resumoCloser,
+  {
+    tipo: 'CLOSER',
+    realizadas: 2,
+    aprovadas: 1,
+    emRevisao: 1,
+    vinculadas: 0,
+    aguardandoVinculo: 1,
+    enviadas: 0,
+    pendentes: 0,
+    erros: 0
+  },
+  'Closer aprovada sem CRM deve continuar aparecendo como realizada e aguardando vínculo.'
+);
+const resumoSdr = resumoAuditoriasCrmFront([closerSemCrm, closerEmRevisao, sdrPublicado], 'SDR');
+assert.deepEqual(
+  resumoSdr,
+  {
+    tipo: 'SDR',
+    realizadas: 1,
+    aprovadas: 1,
+    emRevisao: 0,
+    vinculadas: 1,
+    aguardandoVinculo: 0,
+    enviadas: 1,
+    pendentes: 0,
+    erros: 0
+  },
+  'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
+);
+
 assert.match(audit, /versao:\s*'6\.1\.0'/, 'O engine não foi versionado para o autorreparo seletivo de coaching genérico.');
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
 assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
