@@ -1994,10 +1994,14 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
 
   const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
   if (rd && rd.aplicavel) {
-    if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
-    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
-    else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push('RD aguardando a integração do cliente.');
-    else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no RD precisa ser reprocessada.');
+    const providerPublicacao = String(rd.provider || 'RD_STATION').toUpperCase();
+    const nomeCrmPublicacao = providerPublicacao === 'RD_STATION'
+      ? 'RD CRM'
+      : (typeof audCrmNomeProvider_ === 'function' ? audCrmNomeProvider_(providerPublicacao) : 'CRM');
+    if (rd.publicada) partes.push('Resultado registrado automaticamente no ' + nomeCrmPublicacao + '.');
+    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push(nomeCrmPublicacao + ' aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
+    else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push(nomeCrmPublicacao + ' aguardando a integração do cliente.');
+    else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no ' + nomeCrmPublicacao + ' precisa ser reprocessada.');
   }
 
   return {
@@ -2252,7 +2256,10 @@ function aprovarAuditoriaV3(idAuditoria) {
   return {
     sucesso: true,
     mensagem: publicacaoRd && publicacaoRd.publicada
-      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no RD CRM.'
+      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no ' +
+        (String(publicacaoRd.provider || 'RD_STATION').toUpperCase() === 'RD_STATION'
+          ? 'RD CRM.'
+          : (typeof audCrmNomeProvider_ === 'function' ? audCrmNomeProvider_(publicacaoRd.provider) : 'CRM') + '.')
       : 'Auditoria aprovada e Google Docs criado. ' + (publicacaoRd && publicacaoRd.mensagem ? publicacaoRd.mensagem : ''),
     publicacaoRd: publicacaoRd,
     auditoria: audV3AuditoriaFront_(atualizada),

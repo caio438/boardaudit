@@ -161,6 +161,10 @@ function audCrmMontarLink_(provider, recordId, integracao) {
     return audV3RdLinkNegociacao_(id);
   }
 
+  if (tipo === AUD_CRM_PROVIDERS.PIPEDRIVE && typeof audPipeMontarLinkNegocio_ === 'function') {
+    return audPipeMontarLinkNegocio_(id, integracao);
+  }
+
   var config = audCrmConfigIntegracao_(integracao);
   return audCrmLinkPorTemplate_(
     config.recordUrlTemplate || config.dealUrlTemplate || config.opportunityUrlTemplate || '',
@@ -282,7 +286,11 @@ function audCrmPublicarAutomaticamente_(idAuditoria) {
     };
   }
 
-  // Pipedrive e Leads2b ficam preparados, mas sem escrita remota ate o adapter ser validado.
+  if (provider === AUD_CRM_PROVIDERS.PIPEDRIVE) {
+    return audPipePublicarAutomaticamente_(id);
+  }
+
+  // Leads2b permanece preparado, mas sem escrita remota ate existir contrato validado.
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     CRM_PROVIDER: provider,
     CRM_STATUS: 'AGUARDANDO_ADAPTADOR',
@@ -372,6 +380,7 @@ function prepararEnvioAuditoriaCrm(idAuditoria) {
   var interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {};
   var provider = audCrmResolverProvider_(interacao, auditoria);
   if (provider === AUD_CRM_PROVIDERS.RD_STATION) return prepararEnvioAuditoriaRd(idAuditoria);
+  if (provider === AUD_CRM_PROVIDERS.PIPEDRIVE) return prepararEnvioAuditoriaPipedrive(idAuditoria);
   throw new Error('Envio manual para ' + audCrmNomeProvider_(provider) + ' ainda nao foi ativado.');
 }
 
@@ -382,5 +391,6 @@ function enviarAuditoriaParaCrm(dados) {
   var interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {};
   var provider = audCrmResolverProvider_(interacao, auditoria);
   if (provider === AUD_CRM_PROVIDERS.RD_STATION) return enviarAuditoriaParaRd(dados);
+  if (provider === AUD_CRM_PROVIDERS.PIPEDRIVE) return enviarAuditoriaParaPipedrive(dados);
   throw new Error('Envio manual para ' + audCrmNomeProvider_(provider) + ' ainda nao foi ativado.');
 }

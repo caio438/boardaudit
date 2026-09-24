@@ -2652,7 +2652,27 @@ function testarIntegracaoCliente(dados) {
   else segredo = obterSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO);
   if (!segredo) throw new Error('Informe a chave ou token da integração.');
 
-  if (tipo === 'PIPEDRIVE' || tipo === 'LEADS2B') {
+  if (tipo === 'PIPEDRIVE') {
+    try {
+      const teste = audPipeTestarIntegracaoCliente_(integracao, segredo, dados.config);
+      limparCachesDados_();
+      return {
+        sucesso: true,
+        mensagem: 'Pipedrive conectado com sucesso para ' + String(teste.usuario.name || teste.usuario.email || 'o usuario autorizado') + '.',
+        integracoesClientes: listarIntegracoesClientes_()
+      };
+    } catch (erro) {
+      atualizarIntegracaoCliente_(integracao.ID_INTEGRACAO, {
+        STATUS: 'ERRO',
+        ULTIMO_ERRO: erro.message,
+        ATUALIZADO_EM: new Date()
+      });
+      limparCachesDados_();
+      throw erro;
+    }
+  }
+
+  if (tipo === 'LEADS2B') {
     atualizarIntegracaoCliente_(integracao.ID_INTEGRACAO, {
       STATUS: 'CONFIGURADA',
       ULTIMO_ERRO: '',
@@ -2661,9 +2681,7 @@ function testarIntegracaoCliente(dados) {
     limparCachesDados_();
     return {
       sucesso: true,
-      mensagem: tipo === 'PIPEDRIVE'
-        ? 'Credencial do Pipedrive preservada. O teste remoto será ativado junto com o adapter validado; nenhuma alteração foi feita no CRM.'
-        : 'Credencial da Leads2b preservada. O teste remoto será ativado junto com o adapter validado; nenhuma alteração foi feita no CRM.',
+      mensagem: 'Credencial da Leads2b preservada. O teste remoto depende de documentacao e acesso validados; nenhuma alteracao foi feita no CRM.',
       integracoesClientes: listarIntegracoesClientes_()
     };
   }
