@@ -17,13 +17,16 @@ assert.ok(yaml.includes("if: steps.capacity.outputs.head_only != 'true'"), 'Depl
 assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Push exact validated source'), 'Limite de versões só é verificado depois do push.');
 assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
 assert.ok(yaml.includes('Restore independent automation triggers'), 'Deploy não reinstala os acionadores operacionais após publicar.');
+assert.ok(yaml.includes('ops_restore_automation=1'), 'Deploy não chama o restaurador autenticado de automações.');
 assert.ok(
-  yaml.includes("clasp run-function INSTALAR_AUTOMACOES_OPERACIONAIS --params '[]'"),
-  'Deploy não executa o restaurador diretamente pelo Apps Script.'
+  yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1'),
+  'Restaurador de automações não usa o deployment de produção.'
 );
+assert.ok(yaml.includes('for attempt in 1 2 3 4'), 'Restaurador não tolera propagação transitória do web app.');
+assert.ok(yaml.includes('RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_'), 'Deploy não registra cada tentativa de restauração.');
 assert.ok(
-  !yaml.includes('ops_restore_automation=1'),
-  'Deploy não deve depender do endpoint HTTP de restauração.'
+  !yaml.includes('/dev?ops_restore_automation=1'),
+  'Restaurador de automações não pode depender do endpoint /dev.'
 );
 assert.ok(yaml.includes('AUTOMATION_TRIGGERS_RESTORED=1'), 'Deploy não confirma a restauração dos acionadores.');
 

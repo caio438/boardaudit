@@ -259,15 +259,58 @@ jobs:
         run: |
           set -euo pipefail
 
-          npx clasp run-function INSTALAR_AUTOMACOES_OPERACIONAIS --params '[]' 2>&1 | tee /tmp/restore-automation-result.txt
-          if grep -q '^Exception:' /tmp/restore-automation-result.txt; then
-            cat /tmp/restore-automation-result.txt
-            exit 1
-          fi
-          grep -q '"sucesso":true\|"sucesso": true' /tmp/restore-automation-result.txt
-          grep -q '"centralRemovida":true\|"centralRemovida": true' /tmp/restore-automation-result.txt
-          grep -q '"agenda"' /tmp/restore-automation-result.txt
-          echo "AUTOMATION_TRIGGERS_RESTORED=1"
+          # O web app pode levar alguns segundos para propagar a nova versão.
+          # Reutilizamos o endpoint autenticado já validado em produção e
+          # tratamos 404/5xx transitórios como atraso de propagação.
+          npx clasp versions > /tmp/clasp-versions-restore.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token_restore', token, {mode: 0o600});
+          NODE
+
+          TOKEN="$(cat /tmp/google_access_token_restore)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1"
+          code=""
+          for attempt in 1 2 3 4; do
+            code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/restore-automation-result.txt -w '%{http_code}' "$URL" || true)"
+            echo "RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_$attempt=$code"
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              sleep $((attempt * 15))
+            fi
+          done
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/restore-automation-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Restaurador de automacoes retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Restaurador de automacoes retornou HTML em vez de JSON.');
+          }
+          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+          if (result.sucesso !== true) throw new Error('Restaurador nao retornou sucesso=true.');
+          const data = result.resultado || {};
+          if (data.centralRemovida !== true) throw new Error('Acionador central nao foi removido.');
+          if (data.tldv && Number((data.tldv.automacao || {}).totalAcionadores || 0) !== 7) {
+            throw new Error('tl;dv nao ficou com 7 acionadores.');
+          }
+          if (data.ligacoes && Number(data.ligacoes.gatilhosInstalados || 0) !== 5) {
+            throw new Error('Ligacoes nao ficaram com 5 acionadores.');
+          }
+          if (!data.agenda || data.agenda.sucesso !== true) throw new Error('Agenda nao foi reinstalada.');
+          console.log('AUTOMATION_TRIGGERS_RESTORED=1');
+          NODE
+
+          rm -f /tmp/google_access_token_restore /tmp/clasp-versions-restore.txt
 
       - name: Run one-time journey sync
         if: steps.capacity.outputs.head_only != 'true'
