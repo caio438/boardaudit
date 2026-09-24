@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.6',
+  versao: '1.9.7',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -1705,15 +1705,19 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
       pontos = 100; motivo = 'e-mail exato: ' + valor;
     } else if (tipo === 'DOMINIO' && emails.some(email => jornadaDominio_(email) === jornadaDominio_(valor))) {
       pontos = 85; motivo = 'domínio do participante: ' + valor;
-    } else if ((tipo === 'NOME' || tipo === 'TITULO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
-      pontos = tipo === 'TITULO' ? 80 : 70; motivo = 'nome no título: ' + valor;
-    } else if (tipo === 'NOME' && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
-      pontos = 45; motivo = 'nome na descrição: ' + valor;
+    } else if ((tipo === 'NOME' || tipo === 'TITULO' || tipo === 'GRUPO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
+      pontos = tipo === 'TITULO' ? 80 : (tipo === 'GRUPO' ? 60 : 70);
+      motivo = (tipo === 'GRUPO' ? 'grupo no título: ' : 'nome no título: ') + valor;
+    } else if ((tipo === 'NOME' || tipo === 'GRUPO') && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
+      pontos = tipo === 'GRUPO' ? 35 : 45;
+      motivo = (tipo === 'GRUPO' ? 'grupo na descrição: ' : 'nome na descrição: ') + valor;
     }
     pontos += pontos ? Number(regra.PRIORIDADE || 0) / 100 : 0;
-    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo };
+    const internoVolum = normal === 'volum';
+    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo, internoVolum: internoVolum };
   });
-  const ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  let ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  if (ordenados.some(item => !item.internoVolum)) ordenados = ordenados.filter(item => !item.internoVolum);
   if (!ordenados.length) return null;
   if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) return null;
   return ordenados[0];
@@ -1907,8 +1911,9 @@ function jornadaGarantirIdentificadoresPadrao_(cliente, identificadoresInformado
       })
     : null;
   const nomes = [cliente.NOME_CLIENTE].concat((catalogo && catalogo.aliases) || []);
+  const tipoIdentificador = String(cliente.TIPO_CLIENTE || (catalogo && catalogo.tipoCliente) || 'EMPRESA').toUpperCase() === 'GRUPO' ? 'GRUPO' : 'NOME';
   nomes.filter(Boolean).forEach((nome, indice) => jornadaUpsertIdentificador_(
-    cliente.ID_CLIENTE, 'NOME', nome, 10 - indice, 'CATALOGO', identificadoresInformados
+    cliente.ID_CLIENTE, tipoIdentificador, nome, 10 - indice, 'CATALOGO', identificadoresInformados
   ));
 }
 
@@ -1961,6 +1966,8 @@ function jornadaUpsertIdentificador_(idCliente, tipo, valor, prioridade, origem,
 }
 
 function jornadaGarantirRegrasPadrao_(idCliente, regrasInformadas) {
+  const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', idCliente);
+  if (cliente && String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return;
   const todas = Array.isArray(regrasInformadas)
     ? regrasInformadas
     : lerObjetos_(APP.sheets.regrasEntregas);
