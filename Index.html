@@ -389,6 +389,132 @@
       color: var(--danger);
     }
 
+    .formal-collapsible > summary,
+    .formal-editor-section > summary,
+    .formal-card-details > summary,
+    .meeting-classifier > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .formal-collapsible > summary::-webkit-details-marker,
+    .formal-editor-section > summary::-webkit-details-marker,
+    .formal-card-details > summary::-webkit-details-marker,
+    .meeting-classifier > summary::-webkit-details-marker { display: none; }
+
+    .formal-collapsible > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-weight: 800;
+      font-size: 17px;
+    }
+
+    .formal-collapsible > summary::after,
+    .formal-editor-section > summary::after,
+    .formal-card-details > summary::after {
+      content: '⌄';
+      color: var(--muted);
+      font-weight: 800;
+      transition: transform .18s ease;
+    }
+
+    .formal-collapsible[open] > summary::after,
+    .formal-editor-section[open] > summary::after,
+    .formal-card-details[open] > summary::after { transform: rotate(180deg); }
+
+    .formal-editor-section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-top: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .formal-editor-section > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      font-weight: 800;
+      background: rgba(148,163,184,.07);
+    }
+
+    .formal-editor-section > .form-grid { padding: 16px; }
+
+    .formal-editor-actions {
+      position: sticky;
+      bottom: 12px;
+      z-index: 3;
+      padding: 12px;
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(15,23,42,.10);
+    }
+
+    .formal-history-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+
+    .formal-card-details {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .formal-card-details > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .meeting-classifier { position: relative; }
+    .meeting-classifier > summary.btn { display: inline-flex; align-items: center; }
+    .meeting-outcome-panel {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(108px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .meeting-outcome-btn {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-weight: 800;
+      cursor: pointer;
+      background: #eef2f6;
+      color: #475467;
+    }
+    .meeting-outcome-btn.realizada { background:#ecfdf3; color:#027a48; }
+    .meeting-outcome-btn.no-show { background:#fef3f2; color:#b42318; }
+    .meeting-outcome-btn.remarcada { background:#fffaeb; color:#b54708; }
+    .meeting-outcome-btn.cancelada { background:#f2f4f7; color:#475467; }
+    .meeting-outcome-btn.nao-identificada { background:#eff8ff; color:#175cd3; }
+    .meeting-outcome-btn.is-active { box-shadow: inset 0 0 0 2px currentColor; }
+    .meeting-outcome-btn:disabled { opacity:.55; cursor:wait; }
+
+    .status.info { background:#eff8ff; color:#175cd3; }
+
+    @media (max-width: 980px) {
+      .meeting-outcome-panel { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+
     .automation {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1490,13 +1616,9 @@
           <div id="formalReunioesAgenda" style="margin-top:18px"></div>
         </div>
 
-        <div class="card" style="margin-top:18px">
-          <div class="section-title">
-            <div>
-              <h3>Nova formalização de reunião</h3>
-              <p>Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
-            </div>
-          </div>
+        <details id="formalNovaFormalizacao" class="card formal-collapsible" style="margin-top:18px" open>
+          <summary><span>Nova formalização de reunião</span><span class="small muted">Selecionar transcrição</span></summary>
+          <p class="muted" style="margin-top:10px">Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
 
           <div class="toolbar">
             <div class="filters" style="width:100%">
@@ -1543,7 +1665,7 @@
           <div class="actions">
             <button id="btnGerarFormalizacao" class="btn success" type="button" onclick="gerarFormalizacaoFront()" disabled>Gerar formalização</button>
           </div>
-        </div>
+        </details>
 
         <details id="formalImportacaoManual" class="card" style="margin-top:18px">
           <summary style="cursor:pointer;font-weight:700">+ Adicionar transcrição manual sem classificar</summary>
@@ -1569,6 +1691,14 @@
                 <option value="APROVADA">Aprovadas</option>
                 <option value="EM_REVISAO">Em revisão</option>
                 <option value="ERRO">Com erro</option>
+              </select>
+              <select id="formalHistoricoResultado" aria-label="Filtrar por resultado da reunião" onchange="renderizarHistoricoFormalizacoes()">
+                <option value="">Todos os resultados</option>
+                <option value="REALIZADA">Realizada</option>
+                <option value="NO_SHOW">No-show</option>
+                <option value="REMARCADA">Remarcada</option>
+                <option value="CANCELADA">Cancelada</option>
+                <option value="NAO_IDENTIFICADA">Não identificada</option>
               </select>
               <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoFormalizacoes_()">Mostrar todas as datas</button>
             </div>
@@ -8970,6 +9100,99 @@
       }).withFailureHandler(tratarErro).salvarPreferenciasFontesReuniao({ formalizacaoAutomatica: document.getElementById('formalFormalizacaoAutomatica').checked });
     }
 
+    function formalNormalizarResultadoFront_(valor) {
+      const resultado = String(valor || '').trim().toUpperCase();
+      return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+        ? resultado
+        : 'NAO_IDENTIFICADA';
+    }
+
+    function formalRotuloResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      return {
+        REALIZADA: 'REALIZADA',
+        NO_SHOW: 'NO-SHOW',
+        REMARCADA: 'REMARCADA',
+        CANCELADA: 'CANCELADA',
+        NAO_IDENTIFICADA: 'NÃO IDENTIFICADA'
+      }[resultado] || 'NÃO IDENTIFICADA';
+    }
+
+    function formalClasseResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      if (resultado === 'REALIZADA') return 'success';
+      if (resultado === 'NO_SHOW') return 'danger';
+      if (resultado === 'REMARCADA') return 'warning';
+      if (resultado === 'NAO_IDENTIFICADA') return 'info';
+      return '';
+    }
+
+    function formalTituloLimpo_(titulo) {
+      return String(titulo || 'Formalização')
+        .replace(/\s*GMT[+-]\d{2}:\d{2}\s*/gi, ' ')
+        .replace(/\s*-\s*Anota(?:ções|coes) do Gemini\s*$/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+-\s*$/g, '')
+        .trim() || 'Formalização';
+    }
+
+    function formalBadgeResultadoReuniao_(valor) {
+      return '<span class="status ' + formalClasseResultadoReuniao_(valor) + '">' +
+        escapeHtml(formalRotuloResultadoReuniao_(valor)) + '</span>';
+    }
+
+    function formalClassificadorReuniaoHtml_(idReuniao, resultadoAtual) {
+      if (!idReuniao) return '';
+      const atual = formalNormalizarResultadoFront_(resultadoAtual);
+      const opcoes = [
+        ['REALIZADA', 'Realizada', 'realizada'],
+        ['NO_SHOW', 'No-show', 'no-show'],
+        ['REMARCADA', 'Remarcada', 'remarcada'],
+        ['CANCELADA', 'Cancelada', 'cancelada'],
+        ['NAO_IDENTIFICADA', 'Não identificada', 'nao-identificada']
+      ];
+      const botoes = opcoes.map(item =>
+        '<button class="meeting-outcome-btn ' + item[2] + (atual === item[0] ? ' is-active' : '') +
+        '" type="button" onclick="salvarResultadoReuniaoFront(\'' + escapeAtributo(idReuniao) + '\',\'' + item[0] + '\',this)">' +
+        escapeHtml(item[1]) + '</button>'
+      ).join('');
+      return '<details class="meeting-classifier"><summary class="btn secondary">Classificar reunião</summary>' +
+        '<div class="meeting-outcome-panel">' + botoes + '</div></details>';
+    }
+
+    function formalReuniaoAssociadaFront_(formalizacao) {
+      formalizacao = formalizacao || {};
+      return (estado.reunioesFormalizacao || []).find(reuniao =>
+        (formalizacao.idTranscricao && String(reuniao.idTranscricao || '') === String(formalizacao.idTranscricao)) ||
+        (formalizacao.idInteracao && String(reuniao.idInteracao || '') === String(formalizacao.idInteracao))
+      ) || null;
+    }
+
+    function salvarResultadoReuniaoFront(idReuniao, resultadoReuniao, botao) {
+      if (!idReuniao) return mostrarToast('Reunião não localizada para classificação.', 'error');
+      const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel') : null;
+      if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = true; });
+      google.script.run
+        .withSuccessHandler(resposta => {
+          const dados = resposta.dados || {};
+          estado.clientes = dados.clientes || estado.clientes;
+          estado.transcricoesFormalizacao = dados.transcricoes || estado.transcricoesFormalizacao || [];
+          estado.reunioesFormalizacao = dados.reunioes || estado.reunioesFormalizacao || [];
+          estado.formalizacoes = dados.formalizacoes || estado.formalizacoes || [];
+          estado.formalizacoesResumoClientes = estado.formalizacoes;
+          renderizarReunioesAgendaFormal_();
+          renderizarHistoricoFormalizacoes();
+          if (estado.formalizacaoAtual) renderizarEditorFormalizacao(estado.formalizacaoAtual);
+          salvarCacheFormalizacoesFront_();
+          mostrarToast(resposta.mensagem || 'Resultado da reunião atualizado.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = false; });
+          tratarErro(erro);
+        })
+        .salvarResultadoReuniaoFormalizacao({ idReuniao: idReuniao, resultadoReuniao: resultadoReuniao });
+    }
+
     function renderizarReunioesAgendaFormal_() {
       const alvo = document.getElementById('formalReunioesAgenda');
       const idCliente = valor('formalCliente');
@@ -8980,7 +9203,7 @@
         return (!idCliente || String(item.idCliente || '') === String(idCliente)) && (!periodo || String(item.inicio || '').slice(0, 7) === periodo) && (!busca || texto.includes(busca));
       });
       const pagina = paginarItens_('agendaFormal', itens);
-      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
+      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Resultado</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
         const gravacao = Boolean(item.gravacaoUrl);
         const transcricao = Boolean(item.transcricaoUrl || item.idTranscricao);
         const confirmacao = gravacao && transcricao ? 'CONFIRMADA' : (gravacao || transcricao ? 'PARCIAL' : 'SEM EVIDÊNCIA');
@@ -8997,7 +9220,7 @@
         const statusPreFormalizacao = item.idFormalizacao
           ? `<div style="margin-top:7px"><span class="status ${aprovada ? 'success' : 'warning'}">${aprovada ? 'FORMALIZADA' : 'PRÉ-FORMALIZAÇÃO PRONTA'}</span></div>`
           : '';
-        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}</div></td></tr>`;
+        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td>${formalBadgeResultadoReuniao_(item.resultadoReuniao)}${!transcricao ? '<div class="small muted" style="margin-top:6px">Sem transcrição disponível</div>' : ''}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}${formalClassificadorReuniaoHtml_(item.idReuniao, item.resultadoReuniao)}</div></td></tr>`;
       }).join('')}</tbody></table></div>${controlesPaginacao_('agendaFormal', pagina, 'renderizarReunioesAgendaFormal_')}` : '<div class="empty">Nenhuma reunião encontrada para o filtro e período selecionados.</div>';
     }
 
@@ -9018,6 +9241,8 @@
     }
 
     function usarReuniaoNaFormalizacao_(idTranscricao, idCliente, periodo) {
+      const nova = document.getElementById('formalNovaFormalizacao');
+      if (nova) nova.open = true;
       document.getElementById('formalCliente').value = idCliente || '';
       if (periodo) document.getElementById('formalFiltroData').value = periodo;
       document.getElementById('formalFiltroFonte').value = 'GOOGLE_MEET';
@@ -9168,6 +9393,8 @@
           resposta.formalizacao.semGravacao = semGravacao;
           estado.formalizacaoAtual = resposta.formalizacao;
           renderizarEditorFormalizacao(resposta.formalizacao);
+          const novaFormalizacao = document.getElementById('formalNovaFormalizacao');
+          if (novaFormalizacao) novaFormalizacao.open = false;
           estado.carregado.formalizacoes = false;
           botao.disabled = false;
           botao.textContent = 'Gerar formalização';
@@ -9238,30 +9465,61 @@
       const alvo = document.getElementById('formalEditor');
       alvo.style.display = 'block';
       const resumoCircleComPontos = formalResumoCircleComPontos_(r);
+      const reuniaoAssociada = formalReuniaoAssociadaFront_(formalizacao);
+      const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+      const tituloExibicao = formalTituloLimpo_(m.titulo || formalizacao.titulo || 'Formalização');
       alvo.innerHTML = `<div class="card">
-        <div class="section-title"><div><h3>Revisar formalização</h3><p>Todos os campos abaixo podem ser corrigidos antes da aprovação.</p></div><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span></div>
+        <div class="section-title"><div><h3>${escapeHtml(tituloExibicao)}</h3><p>${escapeHtml([m.cliente || '', formalizacao.tipoReuniao || r.tipo_reuniao || '', formatarDataDia(formalizacao.dataReuniao)].filter(Boolean).join(' · '))}</p></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}</div></div>
         ${formalizacao.semGravacao ? '<div style="padding:12px 14px;margin-bottom:16px;border-radius:10px;background:#fffaeb;color:#934f00;border:1px solid #fedf89"><strong>Atenção:</strong> a gravação não foi encontrada. Esta formalização foi gerada somente a partir da transcrição disponível.</div>' : ''}
-        <div class="form-grid">
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Dados da reunião</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título</label><input id="formalEditTitulo" value="${escapeAtributo(m.titulo || formalizacao.titulo || '')}"></div>
           <div class="field"><label>Tipo da reunião</label><select id="formalEditTipo"><option value="OPERACIONAL" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OPERACIONAL' ? 'selected' : ''}>Operacional</option><option value="EXECUTIVA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'EXECUTIVA' ? 'selected' : ''}>Executiva</option><option value="OUTRA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OUTRA' ? 'selected' : ''}>Outra</option></select></div>
           <div class="field full"><label>Cliente</label><input id="formalEditCliente" value="${escapeAtributo(m.cliente || '')}"></div>
           <div class="field"><label>Data</label><input id="formalEditData" value="${escapeAtributo(m.data || '')}"></div>
           <div class="field full"><label>Participantes</label><input id="formalEditParticipantes" value="${escapeAtributo((m.participantes || []).join(', '))}"></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section" open>
+          <summary>Resumo e assuntos</summary>
+          <div class="form-grid">
           <div class="field full"><label>Resumo da reunião</label><textarea id="formalEditResumo" style="min-height:140px">${escapeHtml(r.resumo_reuniao || '')}</textarea></div>
           <div class="field full"><label>Assuntos discutidos <span class="muted">(um por linha: assunto | detalhamento)</span></label><textarea id="formalEditAssuntos" style="min-height:140px">${escapeHtml((r.assuntos_discutidos || []).map(x => (x.assunto || '') + ' | ' + (x.detalhamento || '')).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Highlights e necessidades</summary>
+          <div class="form-grid">
           <div class="field full"><label>Highlights <span class="muted">(um por linha)</span></label><textarea id="formalEditHighlights">${escapeHtml((r.highlights || []).join('\n'))}</textarea></div>
           <div class="field full"><label>Necessidades <span class="muted">(necessidade | contexto | prioridade)</span></label><textarea id="formalEditNecessidades" style="min-height:140px">${escapeHtml((r.necessidades_identificadas || []).map(x => [x.necessidade, x.contexto, x.prioridade].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Decisões tomadas <span class="muted">(uma por linha)</span></label><textarea id="formalEditDecisoes">${escapeHtml((r.decisoes_tomadas || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Acompanhamento e ações</summary>
+          <div class="form-grid">
           <div class="field full"><label>Acompanhamento das auditorias <span class="muted">(origem | ponto | status | evidência desta reunião)</span></label><textarea id="formalEditAcompanhamento" style="min-height:150px">${escapeHtml(formalAcompanhamentoAtual_(r.acompanhamento_auditorias).map(x => [x.origem, x.ponto, x.status, x.evidencia_reuniao].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Ajustes operacionais <span class="muted">(comportamento | o que fazer | como executar | frequência | indicador | responsável | prazo)</span></label><textarea id="formalEditAjustes" style="min-height:190px">${escapeHtml((r.ajustes_operacionais || []).map(x => [x.comportamento, x.o_que_fazer, x.como_executar, x.frequencia, x.indicador, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Próximos passos <span class="muted">(ação | responsável | prazo)</span></label><textarea id="formalEditPassos" style="min-height:140px">${escapeHtml((r.proximos_passos || []).map(x => [x.acao, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Pendências <span class="muted">(uma por linha)</span></label><textarea id="formalEditPendencias">${escapeHtml((r.pendencias || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Próxima intervenção</summary>
+          <div class="form-grid">
           <div class="field full"><label>Próxima intervenção <span class="muted">(foco | motivo | quando revisar)</span></label><textarea id="formalEditIntervencao">${escapeHtml([((r.proxima_intervencao || {}).foco || ''), ((r.proxima_intervencao || {}).motivo || ''), ((r.proxima_intervencao || {}).quando_revisar || '')].join(' | '))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Conteúdo para o Circle</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título para o Circle</label><input id="formalCircleTitulo" value="${escapeAtributo((r.publicacao_circle || {}).titulo || '')}"></div>
           <div class="field full"><label>Resumo para o Circle</label><textarea id="formalCircleResumo" style="min-height:180px">${escapeHtml(resumoCircleComPontos)}</textarea></div>
           <div class="field full"><label>Conteúdo para o Circle</label><textarea id="formalCircleConteudo" style="min-height:220px">${escapeHtml((r.publicacao_circle || {}).conteudo || '')}</textarea></div>
-        </div>
-        <div class="actions">
+          </div>
+        </details>
+        <div class="actions formal-editor-actions">
           <button id="btnSalvarFormalizacao" class="btn secondary" type="button" onclick="salvarFormalizacaoFront('RASCUNHO')">Salvar rascunho</button>
           <button id="btnAprovarFormalizacao" class="btn success" type="button" onclick="salvarFormalizacaoFront('APROVADA')">Aprovar formalização</button>
           ${formalizacao.status === 'APROVADA'
@@ -9370,8 +9628,10 @@
     function limparFiltrosHistoricoFormalizacoes_() {
       const mes = document.getElementById('formalHistoricoMes');
       const status = document.getElementById('formalHistoricoStatus');
+      const resultado = document.getElementById('formalHistoricoResultado');
       if (mes) mes.value = '';
       if (status) status.value = '';
+      if (resultado) resultado.value = '';
       renderizarHistoricoFormalizacoes();
     }
 
@@ -9380,9 +9640,14 @@
       if (!alvo) return;
       const mes = String((document.getElementById('formalHistoricoMes') || {}).value || '');
       const statusFiltro = String((document.getElementById('formalHistoricoStatus') || {}).value || '').toUpperCase();
+      const resultadoFiltro = String((document.getElementById('formalHistoricoResultado') || {}).value || '').toUpperCase();
       const formalizacoes = (estado.formalizacoes || []).filter(item => {
         const chave = chaveDataHistorico_(item.dataReuniao || item.atualizadoEm || item.solicitadoEm);
-        return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+        const reuniao = formalReuniaoAssociadaFront_(item);
+        const resultado = formalNormalizarResultadoFront_(reuniao && reuniao.resultadoReuniao);
+        return (!mes || chave.slice(0, 7) === mes)
+          && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro)
+          && (!resultadoFiltro || resultado === resultadoFiltro);
       });
       if (!formalizacoes.length) {
         alvo.innerHTML = `<div class="empty">${(estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.'}</div>`;
@@ -9409,7 +9674,9 @@
           ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
           : '';
         const podeAprovar = item.status !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const reuniaoAssociada = formalReuniaoAssociadaFront_(item);
+        const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+        return `<div class="formal-history-card"><div class="section-title"><div><strong>${escapeHtml(formalTituloLimpo_(item.titulo || 'Formalização'))}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<details class="formal-card-details"><summary>Detalhes e publicação</summary><div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div></details><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Revisar</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar agora</button>` : ''}${reuniaoAssociada ? formalClassificadorReuniaoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
       });
       salvarCacheFormalizacoesFront_();
     }
@@ -9435,7 +9702,7 @@
           mostrarToast(resposta.mensagem || 'Formalização aprovada.', 'success');
         })
         .withFailureHandler(erro => {
-          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar'; }
+          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar agora'; }
           tratarErro(erro);
         })
         .salvarFormalizacaoReuniao({

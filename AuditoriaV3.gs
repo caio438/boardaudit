@@ -311,6 +311,8 @@ function carregarDadosFormalizacoes() {
       idFormalizacao: formalizacao ? formalizacao.idFormalizacao : '',
       statusFormalizacao: formalizacao ? formalizacao.status : '',
       status: item.STATUS || '',
+      resultadoReuniao: formalNormalizarResultadoReuniao_(item.RESULTADO_REUNIAO),
+      resultadoReuniaoAtualizadoEm: audV3DataIso_(item.RESULTADO_REUNIAO_ATUALIZADO_EM),
       motivo: item.MOTIVO_IDENTIFICACAO || '',
       agendaOrigem: fonteAgenda ? (fonteAgenda.nome || fonteAgenda.endereco) : (item.CALENDAR_ID || 'Agenda principal')
     }); })
@@ -323,6 +325,44 @@ function carregarDadosFormalizacoes() {
     agenda: typeof jornadaStatusFontesReunioes_ === 'function' ? jornadaStatusFontesReunioes_() : {},
     formalizacoes: formalizacoesFront
   }));
+}
+
+function formalNormalizarResultadoReuniao_(valor) {
+  const resultado = String(valor || '').trim().toUpperCase();
+  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+    ? resultado
+    : 'NAO_IDENTIFICADA';
+}
+
+function salvarResultadoReuniaoFormalizacao(dados) {
+  dados = dados || {};
+  const idReuniao = String(dados.idReuniao || '').trim();
+  const resultadoInformado = String(dados.resultadoReuniao || '').trim().toUpperCase();
+  const permitidos = ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'];
+  if (!idReuniao) throw new Error('Reunião não informada.');
+  if (!permitidos.includes(resultadoInformado)) throw new Error('Selecione um resultado de reunião válido.');
+  if (typeof jornadaGarantirEstrutura_ === 'function') jornadaGarantirEstrutura_();
+  const resultado = resultadoInformado;
+  const reuniao = audV3Localizar_('REUNIOES_CALENDARIO', 'ID_REUNIAO', idReuniao);
+  if (!reuniao) throw new Error('Reunião não encontrada.');
+  const agora = new Date();
+  audV3Atualizar_('REUNIOES_CALENDARIO', 'ID_REUNIAO', idReuniao, {
+    RESULTADO_REUNIAO: resultado,
+    RESULTADO_REUNIAO_ATUALIZADO_EM: agora,
+    ATUALIZADO_EM: agora
+  });
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  return {
+    sucesso: true,
+    mensagem: resultado === 'NO_SHOW' ? 'Reunião marcada como No-show.'
+      : resultado === 'REALIZADA' ? 'Reunião marcada como realizada.'
+      : resultado === 'REMARCADA' ? 'Reunião marcada como remarcada.'
+      : resultado === 'CANCELADA' ? 'Reunião marcada como cancelada.'
+      : 'Resultado da reunião definido como não identificado.',
+    idReuniao: idReuniao,
+    resultadoReuniao: resultado,
+    dados: carregarDadosFormalizacoes()
+  };
 }
 
 function importarTranscricaoFormalizacaoManual(dados) {
