@@ -299,6 +299,21 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_sync_client_groups || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Sincronizacao de grupos permitida somente para a conta proprietaria autenticada.');
+    }
+    const sincronizacao = sincronizarClientesVolumberg();
+    const diagnostico = typeof DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES === 'function'
+      ? DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES()
+      : { sucesso: false, erro: 'Diagnostico de grupos indisponivel.' };
+    return ContentService
+      .createTextOutput(JSON.stringify({ sucesso: true, sincronizacao: sincronizacao, diagnostico: diagnostico }, null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sync_jornada || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -2063,6 +2078,9 @@ function sincronizarClientesVolumberg() {
       criados++;
     });
 
+    const identificadoresSincronizados = typeof jornadaReconciliarIdentificadoresCatalogo_ === 'function'
+      ? jornadaReconciliarIdentificadoresCatalogo_()
+      : { garantidos: 0, desativados: 0 };
     const materiaisSincronizados = sincronizarMateriaisCatalogoVolumberg_(clientes);
     const operacaoSincronizada = sincronizarOperacaoCatalogoVolumberg_(clientes);
     const comunidadeSincronizada = typeof sincronizarEspacosComunidadeClientes_ === 'function'
@@ -2082,7 +2100,8 @@ function sincronizarClientesVolumberg() {
       materiais: listarMateriaisClientes_(),
       catalogoVolumberg: obterResumoCatalogoVolumberg_(),
       comunidade: comunidadeSincronizada,
-      operacao: operacaoSincronizada
+      operacao: operacaoSincronizada,
+      identificadores: identificadoresSincronizados
     };
   } finally {
     lock.releaseLock();
