@@ -6988,15 +6988,168 @@
     return [p1, p2, p3];
   }
 
+  function consolidarIntervencoesCloserFront_(r) {
+    r = r || {};
+    const contexto = r.resumo_reuniao || {};
+    const perguntas = r.perguntas_diagnostico || {};
+    const impacto = r.analise_impacto_implicacao || {};
+    const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
+    const objecoes = Array.isArray(r.objecoes_respostas) ? r.objecoes_respostas : [];
+    const momentos = Array.isArray(r.momentos) ? r.momentos : [];
+    const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+    const candidatos = [];
+    let ordem = 0;
+
+    const normalizar = valor => String(valor || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const categoriaSpin = valor => {
+      const chave = normalizar(valor);
+      if (/\b(?:situacao|contexto)\b/.test(chave)) return { chave: 'S', rotulo: 'Situação (SPIN)', peso: 55 };
+      if (/\b(?:problema|dor)\b/.test(chave)) return { chave: 'P', rotulo: 'Problema (SPIN)', peso: 88 };
+      if (/\b(?:implicacao|impacto|consequencia)\b/.test(chave)) return { chave: 'I', rotulo: 'Implicação (SPIN)', peso: 100 };
+      if (/\b(?:necessidade|solucao|need payoff|resultado desejado)\b/.test(chave)) return { chave: 'N', rotulo: 'Necessidade de solução (SPIN)', peso: 96 };
+      return null;
+    };
+    const tokensPergunta = valor => {
+      const ignorar = { a: true, as: true, de: true, do: true, da: true, dos: true, das: true, e: true, em: true, no: true, na: true, nos: true, nas: true, o: true, os: true, para: true, por: true, que: true, qual: true, quais: true, como: true, hoje: true, voces: true, voce: true, poderia: true, consegue: true };
+      return normalizar(valor).split(' ').filter(token => token.length > 2 && !ignorar[token]);
+    };
+    const perguntasEquivalentes = (a, b) => {
+      const chaveA = normalizar(a);
+      const chaveB = normalizar(b);
+      if (!chaveA || !chaveB) return false;
+      if (chaveA === chaveB || (Math.min(chaveA.length, chaveB.length) >= 28 && (chaveA.includes(chaveB) || chaveB.includes(chaveA)))) return true;
+      const tokensA = tokensPergunta(chaveA);
+      const tokensB = tokensPergunta(chaveB);
+      if (!tokensA.length || !tokensB.length) return false;
+      const conjuntoB = new Set(tokensB);
+      const comuns = tokensA.filter(token => conjuntoB.has(token)).length;
+      return comuns / Math.max(tokensA.length, tokensB.length) >= 0.72;
+    };
+    const naoEvidenciado = valor => {
+      const chave = normalizar(valor);
+      return !chave || /^(?:nao evidenciado|nao informado|nao identificado|nao mensuravel)$/.test(chave);
+    };
+    const situacaoEssencialAusente = item => {
+      const texto = normalizar([
+        item && item.pergunta, item && item.pergunta_sugerida, item && item.objetivo,
+        item && item.quando_usar, item && item.motivo_importancia, item && item.impacto_da_ausencia,
+        (impacto.lacunas || []).join(' ')
+      ].join(' '));
+      const lacunaContextual = /\b(?:cenario|contexto|processo atual|ferramenta atual|fluxo atual|operacao atual|volume|responsavel|decisor)\b/.test(texto);
+      return lacunaContextual && (naoEvidenciado(contexto.cenario_atual) || naoEvidenciado(contexto.dor_principal));
+    };
+    const prioridadeTema = valor => {
+      const texto = normalizar(valor);
+      if (/\b(?:implicacao|impacto|consequencia|custo da inacao|risco|financeir)\b/.test(texto)) return 94;
+      if (/\b(?:diagnostico|problema|dor|necessidade)\b/.test(texto)) return 86;
+      if (/\b(?:valor|beneficio|resultado desejado|solucao)\b/.test(texto)) return 80;
+      if (/\b(?:objecao|duvida|bloqueio|impeditivo)\b/.test(texto)) return 74;
+      if (/\b(?:proximo passo|agenda|agendar|decisao|avanco|compromisso|follow up|fechamento)\b/.test(texto)) return 68;
+      return 45;
+    };
+    const adicionar = candidato => {
+      candidato = candidato || {};
+      const texto = String(candidato.texto || '').replace(/^[-•]\s*/, '').trim();
+      if (!texto) return;
+      const pergunta = String(candidato.pergunta || '').trim();
+      const duplicado = candidatos.some(existente =>
+        (pergunta && existente.pergunta && perguntasEquivalentes(pergunta, existente.pergunta)) ||
+        perguntasEquivalentes(texto, existente.texto)
+      );
+      if (duplicado) return;
+      candidatos.push({
+        texto: texto,
+        pergunta: pergunta,
+        prioridade: Number(candidato.prioridade || prioridadeTema(texto)),
+        ordem: ordem++
+      });
+    };
+    const montarPergunta = (item, pergunta, spin, origem) => {
+      const partes = [spin.rotulo + ': pergunte "' + String(pergunta).trim() + '"'];
+      const aplicacao = item.sugestao_aplicacao || item.quando_usar || '';
+      const objetivo = item.objetivo || item.motivo_importancia || '';
+      if (aplicacao) partes.push('Quando usar: ' + String(aplicacao).trim());
+      if (objetivo) partes.push('Objetivo: ' + String(objetivo).trim());
+      return {
+        texto: partes.join(' — '),
+        pergunta: pergunta,
+        prioridade: spin.peso + (origem === 'AUSENTE' ? 5 : 0)
+      };
+    };
+
+    const perguntasFaltantes = Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [];
+    perguntasFaltantes.forEach(item => {
+      if (!item || !String(item.pergunta || '').trim()) return;
+      const spin = categoriaSpin(item.categoria);
+      if (spin && spin.chave === 'S' && !situacaoEssencialAusente(item)) return;
+      if (spin) adicionar(montarPergunta(item, item.pergunta, spin, 'AUSENTE'));
+      else adicionar({
+        texto: (item.categoria ? String(item.categoria).trim() + ': ' : '') + 'pergunte "' + String(item.pergunta).trim() + '"' + (item.sugestao_aplicacao ? ' — Quando usar: ' + String(item.sugestao_aplicacao).trim() : ''),
+        pergunta: item.pergunta,
+        prioridade: prioridadeTema([item.categoria, item.motivo_importancia, item.impacto_da_ausencia].join(' ')) + 3
+      });
+    });
+
+    const perguntasRealizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
+    perguntasRealizadas.forEach(item => {
+      if (!item || !String(item.o_que_melhorar || '').trim()) return;
+      const avaliacao = normalizar(item.avaliacao).replace(/ /g, '_').toUpperCase();
+      if (item.aprofundou !== false && !['DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'PARCIAL'].includes(avaliacao)) return;
+      const spin = categoriaSpin(item.categoria);
+      const prefixo = spin ? spin.rotulo + ': ' : 'Aprofundamento: ';
+      adicionar({
+        texto: prefixo + 'aprofunde a pergunta "' + String(item.pergunta || '').trim() + '" — ' + String(item.o_que_melhorar).trim(),
+        pergunta: item.pergunta,
+        prioridade: (spin ? spin.peso : prioridadeTema(item.categoria)) + 2
+      });
+    });
+
+    repertorio.forEach(item => {
+      if (!item || !String(item.pergunta_sugerida || '').trim()) return;
+      const spin = categoriaSpin(item.categoria);
+      if (!spin || (spin.chave === 'S' && !situacaoEssencialAusente(item))) return;
+      adicionar(montarPergunta(item, item.pergunta_sugerida, spin, 'REPERTORIO'));
+    });
+
+    objecoes.forEach(item => {
+      if (!item || !String(item.melhoria_sugerida || '').trim()) return;
+      adicionar({ texto: 'Objeção: ' + String(item.melhoria_sugerida).trim(), prioridade: 76 });
+    });
+
+    momentos.filter(item =>
+      item && !statusMomentoConformeCloserFront_(item) && !statusMomentoNaoAplicavelCloserFront_(item)
+    ).forEach(item => {
+      const correcao = item.o_que_fazer || item.como_agir || item.texto_script || '';
+      adicionar({ texto: correcao, prioridade: prioridadeTema([item.nome, item.divergencia, correcao].join(' ')) });
+    });
+    adicionar({ texto: impacto.correcao_pratica, prioridade: prioridadeTema([impacto.correcao_pratica, (impacto.lacunas || []).join(' ')].join(' ')) });
+    criterios.filter(item =>
+      item && item.aplicavel !== false &&
+      !statusConformeAuditoriaFront_(item.status) &&
+      !statusNaoAplicavelAuditoriaFront_(item.status)
+    ).forEach(item => adicionar({
+      texto: item.correcao_pratica,
+      prioridade: prioridadeTema([item.nome, item.correcao_pratica].join(' '))
+    }));
+    passos.forEach(item => adicionar({
+      texto: item && item.acao,
+      prioridade: prioridadeTema([item && item.acao, item && item.criterio_conclusao].join(' '))
+    }));
+
+    return candidatos
+      .sort((a, b) => b.prioridade - a.prioridade || a.ordem - b.ordem)
+      .slice(0, 5)
+      .map(item => item.texto);
+  }
+
   function renderizarResumoExecutivoCloserV3_(r) {
     r = r || {};
     const contexto = r.resumo_reuniao || {};
     const momentos = Array.isArray(r.momentos) ? r.momentos : [];
     const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
-    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
-    const perguntas = r.perguntas_diagnostico || {};
-    const impacto = r.analise_impacto_implicacao || {};
-    const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
 
     const aderentesMomentos = momentos.filter(statusMomentoConformeCloserFront_);
     const desviosMomentos = momentos.filter(item =>
@@ -7048,50 +7201,10 @@
         ).join('') + '</ul>'
       : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
 
-    const acoes = [];
-    const vistosAcoes = {};
-    const adicionarAcao = valor => {
-      const texto = String(valor || '').replace(/^[-•]\s*/, '').trim();
-      if (!texto) return;
-      const chave = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-      if (!chave || vistosAcoes[chave]) return;
-      vistosAcoes[chave] = true;
-      acoes.push(texto);
-    };
-
-    const perguntasRealizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
-    const perguntasFaltantes = Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [];
-
-    perguntasRealizadas.forEach(item => {
-      if (!item) return;
-      const avaliacao = normalizarStatusAuditoriaFront_(item.avaliacao || '');
-      if (item.aprofundou === false || ['DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'PARCIAL'].includes(avaliacao)) {
-        adicionarAcao(item.o_que_melhorar);
-      }
-    });
-    perguntasFaltantes.forEach(item => {
-      if (!item) return;
-      if (item.sugestao_aplicacao) adicionarAcao(item.sugestao_aplicacao);
-      else if (item.pergunta) adicionarAcao('Pergunte: "' + item.pergunta + '"');
-    });
-    desvios.forEach(item => adicionarAcao(item && item.correcao));
-    adicionarAcao(impacto.correcao_pratica);
-    criterios.filter(item =>
-      item && item.aplicavel !== false &&
-      !statusConformeAuditoriaFront_(item.status) &&
-      !statusNaoAplicavelAuditoriaFront_(item.status)
-    ).forEach(item => adicionarAcao(item.correcao_pratica));
-    repertorio.filter(item =>
-      item && String(item.origem || '').toUpperCase() === 'SUGESTAO_ENABLEMENT'
-    ).forEach(item => {
-      if (item.pergunta_sugerida) {
-        adicionarAcao('Pergunte: "' + item.pergunta_sugerida + '"' + (item.objetivo ? ' — objetivo: ' + item.objetivo : ''));
-      }
-    });
-    passos.forEach(item => adicionarAcao(item && item.acao));
+    const acoes = consolidarIntervencoesCloserFront_(r);
 
     const listaAcoes = acoes.length
-      ? '<ol class="audit-executive-list">' + acoes.slice(0, 7).map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
+      ? '<ol class="audit-executive-list">' + acoes.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
       : '<p class="muted">Manter a execução aderente e repetir os comportamentos que funcionaram nesta reunião.</p>';
 
     const criteriosAplicaveis = criterios.filter(item =>

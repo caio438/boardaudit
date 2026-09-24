@@ -164,6 +164,9 @@ assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa de
 assert.ok(resumoCloserFront.includes('audit-executive-action'), 'Closer não usa destaque amarelo para coaching prático.');
 assert.ok(resumoCloserFront.includes('O que foi executado corretamente'), 'Closer não replica o bloco de acertos do SDR.');
 assert.ok(resumoCloserFront.includes('Se eu fosse o Closer, faria assim'), 'Closer não possui o bloco prático equivalente ao SDR.');
+assert.ok(front.includes('function consolidarIntervencoesCloserFront_'), 'Closer não possui consolidação executiva de intervenções e perguntas SPIN.');
+assert.ok(resumoCloserFront.includes('consolidarIntervencoesCloserFront_(r)'), 'Bloco prático do Closer não usa a consolidação priorizada.');
+assert.ok(!resumoCloserFront.includes('acoes.slice(0, 7)'), 'Resumo executivo Closer ainda aceita sete intervenções.');
 assert.ok(resumoCloserFront.includes('Pontuação por critério'), 'Resumo Closer não mostra a tabela compacta de notas.');
 assert.ok(resumoCloserFront.includes('Média dos critérios aplicáveis'), 'Resumo Closer não mostra a média contextual dos critérios.');
 assert.ok(resumoCloserFront.includes('audit-executive-conclusion'), 'Conclusão do Closer não usa o destaque visual do resumo executivo.');
