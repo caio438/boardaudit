@@ -50,8 +50,9 @@ const ACESSO_BOARD = Object.freeze({
  */
 const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'c9_compacta_9', nome: 'C9 Compacta 9', aliases: ['C9'] },
-  { chave: 'buffet_mais', nome: 'Buffet Mais' },
-  { chave: 'gestao_festa', nome: 'Gestão Festa' },
+  { chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' },
+  { chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' },
+  { chave: 'gestao_festa', nome: 'Gestão Festa', grupoCliente: 'Grupo Eleva' },
   { chave: 'impostograma', nome: 'Impostograma' },
   { chave: 'rtm', nome: 'RTM' },
   { chave: 'wisetec', nome: 'Wisetec' },
@@ -69,14 +70,17 @@ const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'informaction', nome: 'InformAction' },
   { chave: 'hitecnet', nome: 'Hitecnet' },
   { chave: 'melius', nome: 'Melius' },
-  { chave: 'ingee', nome: 'INGEE', aliases: ['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio/CBI', 'CBI'] },
+  { chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' },
+  { chave: 'ingee', nome: 'INGEE', aliases: ['Ingee'], grupoCliente: 'Grupo Sinergia' },
+  { chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' },
+  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'CBI'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'o_guia_transportes', nome: 'O Guia Transportes', aliases: ['O Guia Digital'] },
   { chave: 'tecnosoft', nome: 'Tecnosoft' },
   { chave: 'siptalk', nome: 'SipTalk', aliases: ['Sip Talk'] },
   { chave: 'liberado_app', nome: 'Liberado App', aliases: ['Liberado', 'LiberadoApp', 'Equity'] },
   { chave: 'ausland', nome: 'Ausland' },
   { chave: 'alphaplanos', nome: 'AlphaPlanos', aliases: ['Alfa Planos', 'Alfaplanos'] },
-  { chave: 'assine_mais', nome: 'Assine Mais' },
+  { chave: 'assine_mais', nome: 'Assine Mais', grupoCliente: 'Grupo Eleva' },
   { chave: 'manytalks', nome: 'ManyTalks', aliases: ['Many Talks'] },
   { chave: 'conac_flow', nome: 'Conac Flow', aliases: ['Conac'] },
   { chave: 'converta', nome: 'Converta', aliases: ['ConvertaApp', 'Converta App'] },
@@ -562,7 +566,8 @@ function obterCabecalhosOficiais_() {
     'ID_CLIENTE', 'NOME_CLIENTE', 'TIPO_OPERACAO', 'PRODUTO_SERVICO',
     'REGRAS_CLIENTE', 'STATUS', 'CRIADO_EM', 'ATUALIZADO_EM',
     'CHAVE_VOLUMBERG', 'URL_MATERIAIS', 'URL_PASTA_GRAVACOES',
-    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM'
+    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM',
+    'TIPO_CLIENTE', 'GRUPO_CLIENTE'
   ];
 
   estruturas[APP.sheets.materiaisClientes] = [
@@ -1298,6 +1303,8 @@ function listarClientes(integracoesInformadas, materiaisInformados, clientesInfo
         idCliente: item.ID_CLIENTE,
         nomeCliente: item.NOME_CLIENTE,
         chaveVolumberg: item.CHAVE_VOLUMBERG || '',
+        tipoCliente: item.TIPO_CLIENTE || 'EMPRESA',
+        grupoCliente: item.GRUPO_CLIENTE || '',
         carteiraVolum: item.CARTEIRA_VOLUM || '',
         executorVolum: item.EXECUTOR_VOLUM || '',
         urlMateriais: item.URL_MATERIAIS || '',
@@ -1875,6 +1882,7 @@ function unificacaoIngeeGarantirAliases_() {
 }
 
 function executarUnificacaoIngeeSinergiaSemeioCbi(confirmacao) {
+  throw new Error('Rotina desativada: INGEE, Sinergia e Semeio/CBI agora são clientes separados dentro do Grupo Sinergia.');
   if (String(confirmacao || '') !== UNIFICACAO_INGEE.confirmacao) {
     throw new Error('Confirmação inválida. Execute primeiro o dry-run e informe a confirmação exigida.');
   }
@@ -1996,15 +2004,21 @@ function sincronizarClientesVolumberg() {
         const operacao = OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {};
         const materialPrincipal = (MATERIAIS_CATALOGO_VOLUMBERG[itemCatalogo.chave] || [])
           .find(material => material.funcao === 'SDR' && material.status !== 'SEM_ACESSO');
+        const tipoClienteCatalogo = String(itemCatalogo.tipoCliente || 'EMPRESA').toUpperCase();
+        const grupoClienteCatalogo = String(itemCatalogo.grupoCliente || '');
         const precisaVincular = String(existente.CHAVE_VOLUMBERG || '') !== itemCatalogo.chave ||
           String(existente.NOME_CLIENTE || '') !== itemCatalogo.nome ||
           String(existente.STATUS || 'ATIVO').toUpperCase() !== 'ATIVO' ||
+          String(existente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() !== tipoClienteCatalogo ||
+          String(existente.GRUPO_CLIENTE || '') !== grupoClienteCatalogo ||
           String(existente.CARTEIRA_VOLUM || '') !== String(operacao.carteira || '') ||
           (!String(existente.URL_MATERIAIS || '').trim() && Boolean(materialPrincipal));
         if (precisaVincular) {
           atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', existente.ID_CLIENTE, {
             NOME_CLIENTE: itemCatalogo.nome,
             CHAVE_VOLUMBERG: itemCatalogo.chave,
+            TIPO_CLIENTE: tipoClienteCatalogo,
+            GRUPO_CLIENTE: grupoClienteCatalogo,
             URL_MATERIAIS: String(existente.URL_MATERIAIS || '').trim() || (materialPrincipal ? materialPrincipal.url : ''),
             CARTEIRA_VOLUM: operacao.carteira || String(existente.CARTEIRA_VOLUM || ''),
             EXECUTOR_VOLUM: operacao.carteira === 'CAIO' ? 'Caio Cappelazzo' : (operacao.carteira === 'THIAGO' ? 'Thiago Custodio' : String(existente.EXECUTOR_VOLUM || '')),
@@ -2013,6 +2027,8 @@ function sincronizarClientesVolumberg() {
           });
           existente.NOME_CLIENTE = itemCatalogo.nome;
           existente.CHAVE_VOLUMBERG = itemCatalogo.chave;
+          existente.TIPO_CLIENTE = tipoClienteCatalogo;
+          existente.GRUPO_CLIENTE = grupoClienteCatalogo;
           existente.STATUS = 'ATIVO';
           existente.ATUALIZADO_EM = agora;
           vinculados++;
@@ -2035,6 +2051,8 @@ function sincronizarClientesVolumberg() {
         CRIADO_EM: agora,
         ATUALIZADO_EM: agora,
         CHAVE_VOLUMBERG: itemCatalogo.chave,
+        TIPO_CLIENTE: String(itemCatalogo.tipoCliente || 'EMPRESA').toUpperCase(),
+        GRUPO_CLIENTE: String(itemCatalogo.grupoCliente || ''),
         CARTEIRA_VOLUM: (OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira || '',
         EXECUTOR_VOLUM: ((OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira === 'CAIO' ? 'Caio Cappelazzo' : ((OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira === 'THIAGO' ? 'Thiago Custodio' : '')),
         URL_MATERIAIS: ((MATERIAIS_CATALOGO_VOLUMBERG[itemCatalogo.chave] || [])
