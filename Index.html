@@ -6487,8 +6487,8 @@
         ${auditoria.status === 'APROVADA'
           ? `<span class="status success" style="align-self:center">APROVADA</span>
              ${auditoria.linkDocumento ? `<a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
-             ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.rdStatus || '').toUpperCase() === 'ERRO'
-               ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Reprocessar RD</button>`
+             ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.crmStatus || auditoria.rdStatus || '').toUpperCase() === 'ERRO'
+               ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Reprocessar CRM</button>`
                : ''}
              ${['PLANO', 'SDR', 'CLOSER'].includes(tipoAudit)
                ? `${auditoria.comunidadePostId
