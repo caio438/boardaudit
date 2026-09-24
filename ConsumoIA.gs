@@ -13,11 +13,17 @@ const CONSUMO_IA = {
   modeloAudioGratuito: 'gemini-3.5-flash',
   modelosPermitidos: [
     'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.5-flash'
   ],
   modelosTextoGratuitos: [
     'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.5-flash'
   ],
@@ -33,6 +39,10 @@ const CONSUMO_IA = {
     'ID_AUDITORIA', 'ID_INTERACAO', 'TIPO_AUDITORIA', 'TENTATIVA'
   ],
   limites: {
+    // Os Flash 3.6+ possuem nível gratuito. O Board usa um teto interno
+    // conservador de 20 RPD para estes fallbacks de capacidade.
+    'gemini-3.8-flash': { rpm: 5, tpm: 250000, rpd: 20 },
+    'gemini-3.7-flash': { rpm: 5, tpm: 250000, rpd: 20 },
     'gemini-3.6-flash': { rpm: 5, tpm: 250000, rpd: 20 },
     'gemini-3.5-flash': { rpm: 5, tpm: 250000, rpd: 20 },
     'gemini-3.1-flash-lite': { rpm: 15, tpm: 250000, rpd: 500 },

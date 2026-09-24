@@ -2863,6 +2863,7 @@ function audV3ChamarGemini_(ctx) {
   };
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
+  const statusTrocaModeloImediata = [429, 503];
   const consumoBase = {
     idAuditoria: String(ctx.idAuditoria || ''),
     idInteracao: String(((ctx || {}).interacao || {}).ID_INTERACAO || ''),
@@ -2970,7 +2971,15 @@ function audV3ChamarGemini_(ctx) {
     }
 
     const temporario = statusTemporarios.indexOf(status) >= 0;
+    const trocarModeloAgora = statusTrocaModeloImediata.indexOf(status) >= 0;
     console.warn('Gemini HTTP ' + status + ' na tentativa ' + (tentativa + 1) + '.');
+    // 429 e 503 indicam indisponibilidade/capacidade do modelo atual. Insistir
+    // três vezes no mesmo endpoint aumenta a latência e pode estourar o tempo
+    // do Apps Script sem melhorar a chance de concluir a auditoria.
+    if (trocarModeloAgora) {
+      console.warn('Pulando imediatamente para o próximo modelo gratuito configurado.');
+      break;
+    }
     if (temporario && tentativa < esperasMs.length - 1) continue;
     if (temporario) break;
     let detalheIa = '';

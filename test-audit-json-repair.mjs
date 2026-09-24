@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
 const context = {
   console,
   Date,
@@ -89,6 +90,19 @@ assert.match(sameModelRecoverySource, /AUDITORIA_' \+ tipo \+ '_RECUPERACAO_TRUN
 assert.match(sameModelRecoverySource, /audV3PromptRecuperacaoTruncada_\(promptOriginal, tipo, erroAnterior\)/, 'A tentativa extra precisa usar o prompt compacto.');
 assert.match(callSource, /return audV3RecuperarTruncamentoNoMesmoModelo_\(/, 'A última tentativa truncada deve repetir no mesmo modelo antes do fallback.');
 assert.match(callSource, /tentativa \+ 2/, 'A recuperação extra deve ser registrada como tentativa adicional.');
+
+assert.match(callSource, /const statusTrocaModeloImediata = \[429, 503\]/, '429 e 503 precisam trocar de modelo sem insistência.');
+assert.match(callSource, /if \(trocarModeloAgora\)[\s\S]*?break;/, 'Erros de capacidade precisam interromper as retentativas do modelo atual.');
+
+for (const modeloNovo of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) {
+  assert.ok(consumoSource.includes("'" + modeloNovo + "'"), modeloNovo + ' precisa estar disponível como fallback gratuito.');
+}
+assert.match(
+  consumoSource,
+  /modelosTextoGratuitos:\s*\[[\s\S]*?'gemini-3\.8-flash'[\s\S]*?'gemini-3\.7-flash'[\s\S]*?'gemini-3\.6-flash'/,
+  'Os modelos gratuitos novos precisam entrar no fallback de texto.'
+);
+
 
 
 
