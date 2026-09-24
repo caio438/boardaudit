@@ -26,7 +26,7 @@ assert.match(jornada, /function jornadaNormalizarResultadoReuniao_/);
 assert.match(jornada, /\['NO_SHOW', 'REMARCADA', 'CANCELADA'\]\.includes/);
 assert.match(jornada, /jornadaResultadoReuniaoEncerraAutomacao_\(reuniao\.RESULTADO_REUNIAO\)/);
 assert.match(jornada, /RESULTADO_REUNIAO: existente \? existente\.RESULTADO_REUNIAO \|\| '' : ''/);
-assert.match(jornada, /versao: '1\.9\.6'/);
+assert.match(jornada, /versao: '1\.9\.7'/);
 
 // Endpoint manual valida o enum e não precisa alterar o STATUS técnico.
 assert.match(auditoria, /function salvarResultadoReuniaoFormalizacao\(dados\)/);
