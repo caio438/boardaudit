@@ -18,6 +18,7 @@ const AUDITORIA_V3 = Object.freeze({
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
   modeloGeminiPadrao: 'gemini-3.5-flash-lite',
   esperasRetentativaMs: [0, 3000, 8000],
+  processamentoExpiraMinutos: 8,
   maxCaracteresTranscricao: 500000,
   observacaoProcesso: 'Observação de processo: o time de Sales Ops já está ciente deste ponto e tratará a atualização na próxima reunião operacional. Até lá, o pitch vigente permanece como referência de execução.',
   colunasAuditoria: [
@@ -1586,6 +1587,7 @@ function transcreverAudioMp3V3(dados) {
 
 function executarAuditoriaV3(dados) {
   dados = dados || {};
+  audV3EncerrarProcessamentosExpirados_();
   const inicioMs = Date.now();
   const tipo = String(dados.tipoAuditoria || 'SDR').trim().toUpperCase();
   if (!['SDR', 'CLOSER', 'PLANO'].includes(tipo)) throw new Error('Tipo de auditoria inválido. Use SDR, CLOSER ou PLANO.');
@@ -6996,7 +6998,37 @@ function audV3MensagemErroOperador_(erro) {
   return tecnico.length > 800 ? tecnico.slice(0, 797) + '...' : tecnico;
 }
 
+function audV3EncerrarProcessamentosExpirados_() {
+  const agora = new Date();
+  const agoraMs = agora.getTime();
+  const limiteMs = Number(AUDITORIA_V3.processamentoExpiraMinutos || 8) * 60 * 1000;
+  let encerradas = 0;
+
+  audV3Ler_('AUDITORIAS').forEach(function(item) {
+    if (String(item.STATUS || '').toUpperCase() !== 'PROCESSANDO') return;
+    const referencia = item.AUTOMACAO_ATUALIZADO_EM || item.SOLICITADO_EM;
+    const referenciaMs = referencia ? new Date(referencia).getTime() : 0;
+    if (!referenciaMs || agoraMs - referenciaMs < limiteMs) return;
+
+    const mensagem = 'TEMPO_PROCESSAMENTO_EXPIRADO: A execução anterior excedeu o tempo operacional e foi encerrada automaticamente. Gere a auditoria novamente.';
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', item.ID_AUDITORIA, {
+      STATUS: 'ERRO',
+      VALIDACAO_STATUS: 'ERRO',
+      AUTOMACAO_STATUS: 'ERRO',
+      AUTOMACAO_ERRO: mensagem,
+      AUTOMACAO_ATUALIZADO_EM: agora,
+      ERRO: mensagem,
+      CONCLUIDO_EM: agora,
+      DURACAO_PROCESSAMENTO_MS: Math.max(0, agoraMs - referenciaMs)
+    });
+    encerradas++;
+  });
+
+  return encerradas;
+}
+
 function audV3ListarAuditoriasFront_() {
+  audV3EncerrarProcessamentosExpirados_();
   const clientes = {};
   const interacoes = {};
   audV3Ler_('CLIENTES').forEach(item => {
