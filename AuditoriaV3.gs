@@ -2775,6 +2775,63 @@ function audV3PromptRecuperacaoTruncada_(promptOriginal, tipoAuditoria, erroAnte
   return String(promptOriginal || '') + '\n\n' + regras.join('\n');
 }
 
+function audV3RecuperarTruncamentoNoMesmoModelo_(ctx, promptOriginal, tipoAuditoria, erroAnterior, modeloApi, chave, instrucaoSistema, generationConfig, consumoBase, numeroTentativa) {
+  const tipo = String(tipoAuditoria || 'SDR').toUpperCase();
+  const payload = {
+    systemInstruction: { parts: [{ text: instrucaoSistema }] },
+    contents: [{ role: 'user', parts: [{ text: audV3PromptRecuperacaoTruncada_(promptOriginal, tipo, erroAnterior) }] }],
+    generationConfig: Object.assign({}, generationConfig)
+  };
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modeloApi) + ':generateContent';
+  const inicioTentativaIa = Date.now();
+  consumoIaValidarAntes_(modeloApi);
+
+  let resposta;
+  try {
+    resposta = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': chave },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (erroRede) {
+    registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo + '_RECUPERACAO_TRUNCADA', 0, '', String(erroRede), inicioTentativaIa,
+      Object.assign({}, consumoBase, { tentativa: numeroTentativa }));
+    throw audV3ErroTecnico_('MODELO_INDISPONIVEL', 'Falha de rede na recuperação compacta do JSON truncado.', erroRede);
+  }
+
+  const status = resposta.getResponseCode();
+  const corpo = resposta.getContentText();
+  registrarConsumoIa_(modeloApi, 'AUDITORIA_' + tipo + '_RECUPERACAO_TRUNCADA', status, corpo, '', inicioTentativaIa,
+    Object.assign({}, consumoBase, { tentativa: numeroTentativa }));
+
+  if (status < 200 || status >= 300) {
+    let detalheIa = '';
+    try {
+      detalheIa = String(((JSON.parse(corpo || '{}') || {}).error || {}).message || '').trim();
+    } catch (erroDetalhe) {}
+    if ([429, 500, 502, 503, 504].indexOf(status) >= 0) {
+      throw audV3ErroTecnico_('MODELO_INDISPONIVEL', 'Recuperação compacta indisponível no modelo ' + modeloApi + ' (HTTP ' + status + ').' + (detalheIa ? ' ' + detalheIa : ''));
+    }
+    throw audV3ErroTecnico_('RECUPERACAO_TRUNCADA_FALHOU', 'A recuperação compacta retornou HTTP ' + status + '.' + (detalheIa ? ' ' + detalheIa : ''));
+  }
+
+  const envelope = audV3ParseJson_(corpo, 'A resposta HTTP da recuperação compacta não é JSON válido.');
+  const candidato = (envelope.candidates || [])[0] || {};
+  const finishReason = String(candidato.finishReason || '').toUpperCase();
+  const texto = (((candidato.content || {}).parts || [])).map(function(item) { return item.text || ''; }).join('').trim();
+  if (finishReason === 'MAX_TOKENS') {
+    throw audV3ErroTecnico_('RESPOSTA_MAX_TOKENS', 'A recuperação compacta foi encerrada por MAX_TOKENS. Modelo: ' + modeloApi + '.');
+  }
+  if (!texto) {
+    throw audV3ErroTecnico_('RESPOSTA_SEM_TEXTO', 'A recuperação compacta terminou sem conteúdo JSON. Modelo: ' + modeloApi + '.');
+  }
+  const resultado = audV3ParseJsonRespostaSegura_(texto);
+  resultado.__modelo_ia = modeloApi;
+  return resultado;
+}
+
 function audV3ChamarGemini_(ctx) {
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Configure GEMINI_API_KEY nas propriedades do script.');
@@ -2885,7 +2942,24 @@ function audV3ChamarGemini_(ctx) {
         if (codigoErroJson === 'RESPOSTA_TRUNCADA') {
           payload.contents[0].parts[0].text = audV3PromptRecuperacaoTruncada_(prompt, tipo, erroJson);
           if (tentativa < esperasMs.length - 1) continue;
-          break;
+          try {
+            return audV3RecuperarTruncamentoNoMesmoModelo_(
+              ctx,
+              prompt,
+              tipo,
+              erroJson,
+              modeloApi,
+              chave,
+              instrucaoSistema,
+              generationConfig,
+              consumoBase,
+              tentativa + 2
+            );
+          } catch (erroRecuperacaoTruncada) {
+            ultimoErroTecnico = erroRecuperacaoTruncada;
+            console.warn(audV3DescreverErroTecnico_(erroRecuperacaoTruncada));
+            break;
+          }
         }
         if (tentativa < esperasMs.length - 1) {
           payload.contents[0].parts[0].text = prompt + '\n\nA tentativa anterior falhou com ' + audV3DescreverErroTecnico_(erroJson) + ' Gere novamente o JSON COMPLETO com no máximo ' + (tipo === 'CLOSER' ? '20.000' : '12.000') + ' caracteres, sem repetir conteúdo.';
