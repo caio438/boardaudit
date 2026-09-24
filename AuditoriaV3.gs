@@ -1071,7 +1071,7 @@ function INSTALAR_AUDITORIA_V3() {
   }
 
   audV3SalvarConfiguracaoSeVazia_('GEMINI_MODEL', AUDITORIA_V3.modeloGeminiPadrao);
-  audV3SalvarConfiguracao_('AUDITORIA_ENGINE_VERSAO', AUDITORIA_V3.versao);
+  audV3SalvarConfiguracao_('AUDITORIA_ENGINE_VERSAO', audV3VersaoPersistida_());
   return {
     sucesso: true,
     mensagem: 'Motor de auditoria V3 instalado sem remover dados existentes.',
@@ -1105,11 +1105,15 @@ function carregarDadosAuditoriasV3() {
   let configuracoes = audV3Ler_('CONFIGURACOES');
   let mapaConfiguracoes = {};
   configuracoes.forEach(item => { mapaConfiguracoes[String(item.CHAVE || '')] = item.VALOR; });
-  if (String(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO || '') !== AUDITORIA_V3.versao) {
+  const versaoConfigurada = audV3NormalizarVersao_(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO);
+  if (versaoConfigurada !== AUDITORIA_V3.versao) {
     INSTALAR_AUDITORIA_V3();
     configuracoes = audV3Ler_('CONFIGURACOES');
     mapaConfiguracoes = {};
     configuracoes.forEach(item => { mapaConfiguracoes[String(item.CHAVE || '')] = item.VALOR; });
+  } else if (String(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO || '') !== audV3VersaoPersistida_()) {
+    audV3SalvarConfiguracao_('AUDITORIA_ENGINE_VERSAO', audV3VersaoPersistida_());
+    mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO = audV3VersaoPersistida_();
   }
   if (typeof carregarDadosAuditorias !== 'function') {
     throw new Error('A função carregarDadosAuditorias do projeto principal não foi encontrada.');
@@ -1701,7 +1705,7 @@ function executarAuditoriaV3(dados) {
     CRITERIOS_SNAPSHOT_JSON: modelo.CRITERIOS_JSON,
     HASH_FONTE: hashFonte,
     MODELO_IA: '',
-    ENGINE_VERSAO: AUDITORIA_V3.versao,
+    ENGINE_VERSAO: audV3VersaoPersistida_(),
     VALIDACAO_STATUS: 'PENDENTE',
     VALIDADA_EM: '',
     AUTOMACAO_STATUS: 'PROCESSANDO',
@@ -1813,7 +1817,7 @@ function executarAuditoriaV3(dados) {
       STATUS: 'EM_REVISAO',
       RESULTADO_COMPLETO: texto,
       MODELO_IA: modeloIaUsado,
-      ENGINE_VERSAO: AUDITORIA_V3.versao,
+      ENGINE_VERSAO: audV3VersaoPersistida_(),
       VALIDACAO_STATUS: 'VALIDADA',
       VALIDADA_EM: new Date(),
       RESULTADO_JSON: JSON.stringify(resultado),
@@ -1926,7 +1930,7 @@ function repararCoachingAuditoriaV3(idAuditoria) {
       audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA, {
         RESULTADO_JSON: JSON.stringify(resultado),
         RESULTADO_COMPLETO: audV3ResultadoTexto_(resultado, tipo),
-        ENGINE_VERSAO: AUDITORIA_V3.versao,
+        ENGINE_VERSAO: audV3VersaoPersistida_(),
         AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
         AUTOMACAO_ERRO: reparo.sucesso ? '' : String((reparo.erro || {}).message || 'Reparo seletivo falhou.'),
         AUTOMACAO_ATUALIZADO_EM: new Date()
@@ -2196,7 +2200,7 @@ function aprovarAuditoriaV3(idAuditoria) {
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: new Date(),
     VALIDADA_EM: new Date(),
-    ENGINE_VERSAO: AUDITORIA_V3.versao,
+    ENGINE_VERSAO: audV3VersaoPersistida_(),
     ID_DOCUMENTO: documento.id,
     LINK_DOCUMENTO: documento.url,
     CONCLUIDO_EM: new Date(),
@@ -6821,8 +6825,30 @@ function audV3EhAuditoriaLegadaBase_(auditoria) {
   return Boolean((temResultado && !hash) || /^SUBSTITUIDA_PARA_/.test(automacao));
 }
 
+function audV3NormalizarVersao_(versao) {
+  if (versao instanceof Date && !isNaN(versao.getTime())) {
+    const ano = versao.getFullYear();
+    const mes = versao.getMonth() + 1;
+    const dia = versao.getDate();
+    if (ano >= 2000 && ano <= 2099) return dia + '.' + mes + '.' + (ano - 2000);
+  }
+
+  const texto = String(versao === null || versao === undefined ? '' : versao).trim().replace(/^v/i, '');
+  const dataConvertidaPeloSheets = texto.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](20\d{2})$/);
+  if (dataConvertidaPeloSheets) {
+    return Number(dataConvertidaPeloSheets[1]) + '.' +
+      Number(dataConvertidaPeloSheets[2]) + '.' +
+      (Number(dataConvertidaPeloSheets[3]) - 2000);
+  }
+  return texto;
+}
+
+function audV3VersaoPersistida_() {
+  return 'v' + AUDITORIA_V3.versao;
+}
+
 function audV3MajorVersao_(versao) {
-  const match = String(versao || '').trim().match(/^(\d+)/);
+  const match = audV3NormalizarVersao_(versao).match(/^(\d+)/);
   return match ? Number(match[1]) : 0;
 }
 
