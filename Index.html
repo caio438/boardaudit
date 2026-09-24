@@ -9465,30 +9465,61 @@
       const alvo = document.getElementById('formalEditor');
       alvo.style.display = 'block';
       const resumoCircleComPontos = formalResumoCircleComPontos_(r);
+      const reuniaoAssociada = formalReuniaoAssociadaFront_(formalizacao);
+      const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+      const tituloExibicao = formalTituloLimpo_(m.titulo || formalizacao.titulo || 'Formalização');
       alvo.innerHTML = `<div class="card">
-        <div class="section-title"><div><h3>Revisar formalização</h3><p>Todos os campos abaixo podem ser corrigidos antes da aprovação.</p></div><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span></div>
+        <div class="section-title"><div><h3>${escapeHtml(tituloExibicao)}</h3><p>${escapeHtml([m.cliente || '', formalizacao.tipoReuniao || r.tipo_reuniao || '', formatarDataDia(formalizacao.dataReuniao)].filter(Boolean).join(' · '))}</p></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}</div></div>
         ${formalizacao.semGravacao ? '<div style="padding:12px 14px;margin-bottom:16px;border-radius:10px;background:#fffaeb;color:#934f00;border:1px solid #fedf89"><strong>Atenção:</strong> a gravação não foi encontrada. Esta formalização foi gerada somente a partir da transcrição disponível.</div>' : ''}
-        <div class="form-grid">
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Dados da reunião</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título</label><input id="formalEditTitulo" value="${escapeAtributo(m.titulo || formalizacao.titulo || '')}"></div>
           <div class="field"><label>Tipo da reunião</label><select id="formalEditTipo"><option value="OPERACIONAL" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OPERACIONAL' ? 'selected' : ''}>Operacional</option><option value="EXECUTIVA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'EXECUTIVA' ? 'selected' : ''}>Executiva</option><option value="OUTRA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OUTRA' ? 'selected' : ''}>Outra</option></select></div>
           <div class="field full"><label>Cliente</label><input id="formalEditCliente" value="${escapeAtributo(m.cliente || '')}"></div>
           <div class="field"><label>Data</label><input id="formalEditData" value="${escapeAtributo(m.data || '')}"></div>
           <div class="field full"><label>Participantes</label><input id="formalEditParticipantes" value="${escapeAtributo((m.participantes || []).join(', '))}"></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section" open>
+          <summary>Resumo e assuntos</summary>
+          <div class="form-grid">
           <div class="field full"><label>Resumo da reunião</label><textarea id="formalEditResumo" style="min-height:140px">${escapeHtml(r.resumo_reuniao || '')}</textarea></div>
           <div class="field full"><label>Assuntos discutidos <span class="muted">(um por linha: assunto | detalhamento)</span></label><textarea id="formalEditAssuntos" style="min-height:140px">${escapeHtml((r.assuntos_discutidos || []).map(x => (x.assunto || '') + ' | ' + (x.detalhamento || '')).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Highlights e necessidades</summary>
+          <div class="form-grid">
           <div class="field full"><label>Highlights <span class="muted">(um por linha)</span></label><textarea id="formalEditHighlights">${escapeHtml((r.highlights || []).join('\n'))}</textarea></div>
           <div class="field full"><label>Necessidades <span class="muted">(necessidade | contexto | prioridade)</span></label><textarea id="formalEditNecessidades" style="min-height:140px">${escapeHtml((r.necessidades_identificadas || []).map(x => [x.necessidade, x.contexto, x.prioridade].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Decisões tomadas <span class="muted">(uma por linha)</span></label><textarea id="formalEditDecisoes">${escapeHtml((r.decisoes_tomadas || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Acompanhamento e ações</summary>
+          <div class="form-grid">
           <div class="field full"><label>Acompanhamento das auditorias <span class="muted">(origem | ponto | status | evidência desta reunião)</span></label><textarea id="formalEditAcompanhamento" style="min-height:150px">${escapeHtml(formalAcompanhamentoAtual_(r.acompanhamento_auditorias).map(x => [x.origem, x.ponto, x.status, x.evidencia_reuniao].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Ajustes operacionais <span class="muted">(comportamento | o que fazer | como executar | frequência | indicador | responsável | prazo)</span></label><textarea id="formalEditAjustes" style="min-height:190px">${escapeHtml((r.ajustes_operacionais || []).map(x => [x.comportamento, x.o_que_fazer, x.como_executar, x.frequencia, x.indicador, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Próximos passos <span class="muted">(ação | responsável | prazo)</span></label><textarea id="formalEditPassos" style="min-height:140px">${escapeHtml((r.proximos_passos || []).map(x => [x.acao, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Pendências <span class="muted">(uma por linha)</span></label><textarea id="formalEditPendencias">${escapeHtml((r.pendencias || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Próxima intervenção</summary>
+          <div class="form-grid">
           <div class="field full"><label>Próxima intervenção <span class="muted">(foco | motivo | quando revisar)</span></label><textarea id="formalEditIntervencao">${escapeHtml([((r.proxima_intervencao || {}).foco || ''), ((r.proxima_intervencao || {}).motivo || ''), ((r.proxima_intervencao || {}).quando_revisar || '')].join(' | '))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Conteúdo para o Circle</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título para o Circle</label><input id="formalCircleTitulo" value="${escapeAtributo((r.publicacao_circle || {}).titulo || '')}"></div>
           <div class="field full"><label>Resumo para o Circle</label><textarea id="formalCircleResumo" style="min-height:180px">${escapeHtml(resumoCircleComPontos)}</textarea></div>
           <div class="field full"><label>Conteúdo para o Circle</label><textarea id="formalCircleConteudo" style="min-height:220px">${escapeHtml((r.publicacao_circle || {}).conteudo || '')}</textarea></div>
-        </div>
-        <div class="actions">
+          </div>
+        </details>
+        <div class="actions formal-editor-actions">
           <button id="btnSalvarFormalizacao" class="btn secondary" type="button" onclick="salvarFormalizacaoFront('RASCUNHO')">Salvar rascunho</button>
           <button id="btnAprovarFormalizacao" class="btn success" type="button" onclick="salvarFormalizacaoFront('APROVADA')">Aprovar formalização</button>
           ${formalizacao.status === 'APROVADA'
