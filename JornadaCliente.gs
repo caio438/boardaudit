@@ -32,6 +32,17 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
   ]
 });
 
+function jornadaNormalizarResultadoReuniao_(valor) {
+  const resultado = String(valor || '').trim().toUpperCase();
+  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+    ? resultado
+    : 'NAO_IDENTIFICADA';
+}
+
+function jornadaResultadoReuniaoEncerraAutomacao_(valor) {
+  return ['NO_SHOW', 'REMARCADA', 'CANCELADA'].includes(jornadaNormalizarResultadoReuniao_(valor));
+}
+
 const JORNADA_PASTAS_CONFIG = Object.freeze({
   maxArtefatosPorVarredura: 600,
   maxPastasPorVarredura: 1000,
@@ -727,6 +738,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
 }
 
 function jornadaReuniaoDeveFormalizar_(reuniao) {
+  if (jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) return false;
   if (String(reuniao.ID_CLIENTE || '').trim() && String(reuniao.ID_TRANSCRICAO || '').trim()) return true;
   const tipo = String(reuniao.TIPO_REUNIAO || '').toUpperCase();
   if (['EXECUTIVA', 'OPERACIONAL_SDR', 'OPERACIONAL_CLOSER'].includes(tipo)) return true;
@@ -812,7 +824,8 @@ function sincronizarAgendaTodosClientes(dados) {
         const reuniao = jornadaSalvarEvento_(evento, origem.calendario.getId(), candidato);
         const encerrada = new Date(reuniao.FIM).getTime() <= Date.now();
         const incompleta = !reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL;
-        if (reuniao.MEETING_CODE && encerrada && incompleta) {
+        const processamentoEncerrado = jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO);
+        if (reuniao.MEETING_CODE && encerrada && incompleta && !processamentoEncerrado) {
           try {
             const enriquecida = jornadaEnriquecerComMeet_(reuniao);
             if (enriquecida && (enriquecida.CONFERENCE_RECORD || enriquecida.TRANSCRICAO_URL || enriquecida.GRAVACAO_URL)) artefatos++;
@@ -993,7 +1006,8 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
     })
     .sort((a, b) => jornadaTimestampDrive_(b) - jornadaTimestampDrive_(a));
   const reunioesCliente = lerObjetos_(APP.sheets.reunioesCalendario)
-    .filter(item => !cliente.ID_CLIENTE || String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE || ''));
+    .filter(item => !cliente.ID_CLIENTE || String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE || ''))
+    .filter(item => !jornadaResultadoReuniaoEncerraAutomacao_(item.RESULTADO_REUNIAO));
   const interacoesPorExterno = {};
   lerObjetos_(APP.sheets.interacoes).forEach(item => { if (item.ID_EXTERNO) interacoesPorExterno[String(item.ID_EXTERNO)] = item; });
   const transcricoesPorInteracao = {};
@@ -1144,6 +1158,7 @@ function jornadaTokensDistintivosArquivo_(valor) {
 
 function jornadaVincularArtefatosPasta_(reuniao, transcricao, gravacao, idInteracao, idTranscricao) {
   if (!reuniao || !reuniao.ID_REUNIAO) return;
+  if (jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) return;
   const transcricaoUrl = transcricao ? transcricao.getUrl() : String(reuniao.TRANSCRICAO_URL || '');
   const gravacaoUrl = gravacao ? gravacao.getUrl() : String(reuniao.GRAVACAO_URL || '');
   const alteracoes = {
@@ -1480,7 +1495,7 @@ function sincronizarAgendaCliente(dados) {
         encontrados++;
         const reuniao = jornadaSalvarEvento_(evento, origem.calendario.getId(), candidato);
         atualizados++;
-        if (reuniao.MEETING_CODE && new Date(reuniao.FIM).getTime() <= Date.now() && (!reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL)) {
+        if (reuniao.MEETING_CODE && new Date(reuniao.FIM).getTime() <= Date.now() && (!reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL) && !jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) {
           try {
             const enriquecida = jornadaEnriquecerComMeet_(reuniao);
             if (enriquecida && (enriquecida.CONFERENCE_RECORD || enriquecida.TRANSCRICAO_URL || enriquecida.GRAVACAO_URL)) artefatos++;
@@ -1737,6 +1752,8 @@ function jornadaSalvarEvento_(evento, calendarId, candidato) {
     ID_INTERACAO: existente ? existente.ID_INTERACAO || '' : '',
     ID_TRANSCRICAO: existente ? existente.ID_TRANSCRICAO || '' : '',
     ERRO_MEET: '',
+    RESULTADO_REUNIAO: existente ? existente.RESULTADO_REUNIAO || '' : '',
+    RESULTADO_REUNIAO_ATUALIZADO_EM: existente ? existente.RESULTADO_REUNIAO_ATUALIZADO_EM || '' : '',
     ORIGEM: 'GOOGLE_CALENDAR',
     SINCRONIZADO_EM: agora,
     ATUALIZADO_EM: agora
@@ -1747,6 +1764,7 @@ function jornadaSalvarEvento_(evento, calendarId, candidato) {
 }
 
 function jornadaEnriquecerComMeet_(reuniao) {
+  if (jornadaResultadoReuniaoEncerraAutomacao_((reuniao || {}).RESULTADO_REUNIAO)) return reuniao;
   const codigo = String(reuniao.MEETING_CODE || '').trim();
   if (!codigo) return reuniao;
   const lista = jornadaMeetGet_('/v2/conferenceRecords', {
@@ -2410,6 +2428,7 @@ function jornadaListarReunioes_(idCliente, periodo, itensInformados) {
   return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.reunioesCalendario)).filter(item => String(item.ID_CLIENTE) === String(idCliente) && jornadaPeriodoData_(item.INICIO) === periodo).sort((a, b) => new Date(b.INICIO) - new Date(a.INICIO)).map(item => ({
     idReuniao: item.ID_REUNIAO, titulo: item.TITULO, tipoReuniao: item.TIPO_REUNIAO, inicio: serializarData_(item.INICIO), fim: serializarData_(item.FIM),
     organizador: item.ORGANIZADOR, participantes: typeof formalParticipantes_ === 'function' ? formalParticipantes_(item.PARTICIPANTES_JSON) : jornadaJsonLista_(item.PARTICIPANTES_JSON), meetUrl: item.MEET_URL, status: item.STATUS,
+    resultadoReuniao: jornadaNormalizarResultadoReuniao_(item.RESULTADO_REUNIAO), resultadoReuniaoAtualizadoEm: serializarData_(item.RESULTADO_REUNIAO_ATUALIZADO_EM),
     confianca: Number(item.CONFIANCA_CLIENTE || 0), motivo: item.MOTIVO_IDENTIFICACAO, gravacaoUrl: item.GRAVACAO_URL,
     transcricaoUrl: item.TRANSCRICAO_URL, idInteracao: item.ID_INTERACAO, idTranscricao: item.ID_TRANSCRICAO, erroMeet: item.ERRO_MEET
   }));
