@@ -174,9 +174,26 @@ assert.ok(inicioFiltroOperacional >= 0 && fimFiltroOperacional > inicioFiltroOpe
 const criarFiltroOperacional = new Function(
   'AUDITORIA_V3',
   audit.slice(inicioFiltroOperacional, fimFiltroOperacional) +
-    '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_ };'
+    '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_, normalizarVersao: audV3NormalizarVersao_, versaoPersistida: audV3VersaoPersistida_ };'
 );
 const filtroOperacional = criarFiltroOperacional({ versao: '6.0.2' }).filtrar;
+const helpersVersao = criarFiltroOperacional({ versao: '6.1.0' });
+assert.equal(
+  helpersVersao.normalizarVersao(new Date(2000, 0, 6)),
+  '6.1.0',
+  'Versão 6.1.0 convertida pelo Google Sheets em data precisa voltar ao formato semântico correto.'
+);
+assert.equal(
+  helpersVersao.normalizarVersao('6.1.2000'),
+  '6.1.0',
+  'Versão formatada pelo Sheets como 6.1.2000 precisa ser reconhecida como 6.1.0.'
+);
+assert.equal(
+  helpersVersao.versaoPersistida(),
+  'v6.1.0',
+  'Novas versões precisam ser persistidas como texto inequívoco para não virar data no Sheets.'
+);
+
 const atualValida = (id, interacao, status = 'APROVADA') => ({
   ID_AUDITORIA: id,
   ID_INTERACAO: interacao,
@@ -202,6 +219,8 @@ const idsVisiveis = filtroOperacional([
   erro('STEC-91', 'STEC', '4.0.0'),
   atualValida('STEC-92', 'STEC', 'EM_REVISAO'),
   atualValida('HITEC-APROVADA-ANTIGA', 'HITEC-POSTERIOR', 'APROVADA'),
+  { ...atualValida('BUFFET-CLOSER-DATA', 'BUFFET-CLOSER', 'APROVADA'), ENGINE_VERSAO: new Date(2000, 0, 6) },
+
   erro('HITEC-ERRO-POSTERIOR', 'HITEC-POSTERIOR'),
   erro('BUFFET-ERRO-ATUAL', 'BUFFET'),
   { ...atualValida('LEGADA-SEM-HASH', 'LEGADA'), HASH_FONTE: '', ENGINE_VERSAO: '5.0.0' }
@@ -210,9 +229,15 @@ assert.deepEqual(idsVisiveis, [
   'WISETEC-OK',
   'STEC-92',
   'HITEC-APROVADA-ANTIGA',
+  'BUFFET-CLOSER-DATA',
   'HITEC-ERRO-POSTERIOR',
   'BUFFET-ERRO-ATUAL'
 ], 'Filtro operacional não preserva corretamente auditorias atuais e erros ainda não substituídos.');
+assert.ok(audit.includes("function audV3NormalizarVersao_"), 'Motor não normaliza versões convertidas em data pelo Google Sheets.');
+assert.ok(audit.includes("return 'v' + AUDITORIA_V3.versao"), 'Novas versões do motor ainda podem ser persistidas como data pelo Sheets.');
+assert.ok(!audit.includes("ENGINE_VERSAO: AUDITORIA_V3.versao"), 'Há gravação de ENGINE_VERSAO ainda sujeita à conversão automática para data.');
+assert.ok(audit.includes("audV3NormalizarVersao_(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO)"), 'Configuração do motor ainda compara uma data do Sheets diretamente com a versão semântica.');
+
 assert.ok(front.includes("if (item.auditoriaLegada || item.auditoriaSubstituida) return false;"), 'Frontend não possui defesa contra cache antigo de auditorias legadas.');
 assert.match(front, /!item\.auditoriaLegada\s*&&\s*!item\.auditoriaSubstituida/, 'Resumo do RD ainda pode contabilizar auditorias legadas.');
 
