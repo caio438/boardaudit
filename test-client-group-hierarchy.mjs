@@ -42,6 +42,8 @@ assert.match(opsWorkflow, /ops_sync_client_groups=1/);
 assert.match(opsWorkflow, /DRY_RUN/);
 assert.doesNotMatch(opsWorkflow, /REPARAR_CONFLITOS|executarReparo|repair_client_groups/i);
 
+assert.match(code, /let APP_PLANILHA_CACHE_ = null/);
+assert.match(code, /if \(!APP_PLANILHA_CACHE_\) APP_PLANILHA_CACHE_ = SpreadsheetApp\.openById\(APP\.spreadsheetId\)/);
 assert.match(code, /ops_repair_client_groups_stage1/);
 assert.match(jornada, /REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1/);
 assert.match(jornada, /BACKUP_REPARO_GRUPOS_/);
