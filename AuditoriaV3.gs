@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.1
+ * Versão: 6.2.2
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.1',
+  versao: '6.2.2',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -8257,6 +8257,77 @@ function audV3GarantirColunas_(ss, nomeAba, colunas) {
   audV3GarantirCabecalhos_(ss, nomeAba, colunas);
 }
 
+const AUDV3_LIMITE_SEGURO_CELULA = 45000;
+const AUDV3_SUFIXO_FRAGMENTO_CELULA = '__PARTE_';
+
+function audV3FragmentarTextoCelula_(chave, valor) {
+  const resultado = {};
+  if (typeof valor !== 'string' || valor.length <= AUDV3_LIMITE_SEGURO_CELULA) {
+    resultado[chave] = valor;
+    return resultado;
+  }
+  let indiceParte = 1;
+  for (let inicio = 0; inicio < valor.length; inicio += AUDV3_LIMITE_SEGURO_CELULA) {
+    const parte = valor.slice(inicio, inicio + AUDV3_LIMITE_SEGURO_CELULA);
+    const nome = indiceParte === 1
+      ? chave
+      : chave + AUDV3_SUFIXO_FRAGMENTO_CELULA + String(indiceParte).padStart(2, '0');
+    resultado[nome] = parte;
+    indiceParte += 1;
+  }
+  return resultado;
+}
+
+function audV3CabecalhosFragmentosCelula_(cabecalhos, chave) {
+  const prefixo = String(chave || '') + AUDV3_SUFIXO_FRAGMENTO_CELULA;
+  return (cabecalhos || []).filter(function(cabecalho) {
+    return String(cabecalho || '').indexOf(prefixo) === 0;
+  });
+}
+
+function audV3ExpandirObjetoParaCelulas_(objeto, cabecalhos) {
+  const saida = {};
+  const extras = [];
+  const chaves = Object.keys(objeto || {}).filter(function(chave) {
+    return (cabecalhos || []).includes(chave);
+  });
+
+  chaves.forEach(function(chave) {
+    audV3CabecalhosFragmentosCelula_(cabecalhos, chave).forEach(function(fragmento) {
+      saida[fragmento] = '';
+    });
+    const partes = audV3FragmentarTextoCelula_(chave, objeto[chave]);
+    Object.keys(partes).forEach(function(nomeParte) {
+      saida[nomeParte] = partes[nomeParte];
+      if (!(cabecalhos || []).includes(nomeParte)) extras.push(nomeParte);
+    });
+  });
+
+  return { valores: saida, cabecalhosExtras: Array.from(new Set(extras)) };
+}
+
+function audV3RemontarFragmentosCelula_(objeto, cabecalhos) {
+  const grupos = {};
+  (cabecalhos || []).forEach(function(cabecalho) {
+    const match = String(cabecalho || '').match(/^(.*)__PARTE_(\d{2})$/);
+    if (!match) return;
+    const base = match[1];
+    if (!grupos[base]) grupos[base] = [];
+    grupos[base].push({ cabecalho: cabecalho, ordem: Number(match[2] || 0) });
+  });
+
+  Object.keys(grupos).forEach(function(base) {
+    const partes = grupos[base].sort(function(a, b) { return a.ordem - b.ordem; });
+    let valor = String(Object.prototype.hasOwnProperty.call(objeto, base) ? (objeto[base] || '') : '');
+    partes.forEach(function(parte) {
+      valor += String(objeto[parte.cabecalho] || '');
+      delete objeto[parte.cabecalho];
+    });
+    objeto[base] = valor;
+  });
+  return objeto;
+}
+
 function audV3Ler_(nomeAba) {
   const aba = audV3Planilha_().getSheetByName(nomeAba);
   if (!aba || aba.getLastRow() < 2) return [];
@@ -8265,7 +8336,7 @@ function audV3Ler_(nomeAba) {
   return valores.map(linha => {
     const obj = {};
     cabecalhos.forEach((cabecalho, indice) => { if (cabecalho) obj[cabecalho] = linha[indice]; });
-    return obj;
+    return audV3RemontarFragmentosCelula_(obj, cabecalhos);
   });
 }
 
@@ -8274,25 +8345,44 @@ function audV3Localizar_(nomeAba, campo, valor) {
 }
 
 function audV3Adicionar_(nomeAba, objeto) {
-  const aba = audV3Planilha_().getSheetByName(nomeAba);
+  const ss = audV3Planilha_();
+  const aba = ss.getSheetByName(nomeAba);
   if (!aba) throw new Error('Aba não encontrada: ' + nomeAba);
-  const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
-  aba.appendRow(cabecalhos.map(cabecalho => Object.prototype.hasOwnProperty.call(objeto, cabecalho) ? objeto[cabecalho] : ''));
+  let cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+  let expandido = audV3ExpandirObjetoParaCelulas_(objeto || {}, cabecalhos);
+  if (expandido.cabecalhosExtras.length) {
+    audV3GarantirCabecalhos_(ss, nomeAba, expandido.cabecalhosExtras);
+    cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+    expandido = audV3ExpandirObjetoParaCelulas_(objeto || {}, cabecalhos);
+  }
+  aba.appendRow(cabecalhos.map(function(cabecalho) {
+    return Object.prototype.hasOwnProperty.call(expandido.valores, cabecalho) ? expandido.valores[cabecalho] : '';
+  }));
 }
 
 function audV3Atualizar_(nomeAba, campo, valor, alteracoes) {
-  const aba = audV3Planilha_().getSheetByName(nomeAba);
+  const ss = audV3Planilha_();
+  const aba = ss.getSheetByName(nomeAba);
   if (!aba || aba.getLastRow() < 2) return false;
-  const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
-  const indiceCampo = cabecalhos.indexOf(campo);
+  let cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+  let indiceCampo = cabecalhos.indexOf(campo);
   if (indiceCampo < 0) throw new Error('Campo não encontrado em ' + nomeAba + ': ' + campo);
   const ids = aba.getRange(2, indiceCampo + 1, aba.getLastRow() - 1, 1).getDisplayValues();
   const posicao = ids.findIndex(linha => String(linha[0]) === String(valor));
   if (posicao < 0) return false;
   const numeroLinha = posicao + 2;
-  Object.keys(alteracoes || {}).forEach(chave => {
+
+  let expandido = audV3ExpandirObjetoParaCelulas_(alteracoes || {}, cabecalhos);
+  if (expandido.cabecalhosExtras.length) {
+    audV3GarantirCabecalhos_(ss, nomeAba, expandido.cabecalhosExtras);
+    cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
+    indiceCampo = cabecalhos.indexOf(campo);
+    expandido = audV3ExpandirObjetoParaCelulas_(alteracoes || {}, cabecalhos);
+  }
+
+  Object.keys(expandido.valores).forEach(function(chave) {
     const indice = cabecalhos.indexOf(chave);
-    if (indice >= 0) aba.getRange(numeroLinha, indice + 1).setValue(alteracoes[chave]);
+    if (indice >= 0) aba.getRange(numeroLinha, indice + 1).setValue(expandido.valores[chave]);
   });
   return true;
 }
