@@ -485,7 +485,7 @@ function audRdTextoCloser_(c) {
       return;
     }
     if (leitura.pitch && coachingAcionavelCloser(leitura.pitch)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a referência "' + curtoCloser(leitura.pitch, 280) + '"');
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a regra do pitch "' + curtoCloser(leitura.pitch, 280) + '"');
     }
   });
 
