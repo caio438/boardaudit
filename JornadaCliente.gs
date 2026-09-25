@@ -2150,42 +2150,78 @@ function jornadaNomeClientePorId_(idCliente, clientesInformados) {
   return cliente ? String(cliente.NOME_CLIENTE || '') : '';
 }
 
+function jornadaLimparBackupsVaziosReparoGrupos_() {
+  const ss = abrirPlanilha_();
+  let removidos = 0;
+  ss.getSheets().forEach(aba => {
+    if (!String(aba.getName() || '').startsWith('BACKUP_REPARO_GRUPOS_')) return;
+    if (aba.getLastRow() > 0) return;
+    ss.deleteSheet(aba);
+    removidos++;
+  });
+  return removidos;
+}
+
 function jornadaBackupReparoGruposEtapa1_(diagnostico) {
   const ss = abrirPlanilha_();
+  jornadaLimparBackupsVaziosReparoGrupos_();
   const nome = 'BACKUP_REPARO_GRUPOS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
   const aba = ss.insertSheet(nome);
-  const linhas = [['ABA', 'CHAVE', 'ID_REGISTRO', 'ID_ATUAL', 'ID_ESPERADO', 'TITULO', 'DADOS_JSON']];
+  const linhas = [['ABA', 'CHAVE', 'ID_REGISTRO', 'ID_ATUAL', 'ID_ESPERADO', 'TITULO', 'PARTE', 'TOTAL_PARTES', 'DADOS_JSON_PARTE']];
+  const limiteParte = 30000;
   const specs = [
     { aba: APP.sheets.reunioesCalendario, chave: 'ID_REUNIAO', itens: diagnostico.conflitos.reunioes || [] },
     { aba: APP.sheets.interacoes, chave: 'ID_INTERACAO', itens: diagnostico.conflitos.interacoes || [] },
     { aba: APP.sheets.formalizacoes, chave: 'ID_FORMALIZACAO', itens: diagnostico.conflitos.formalizacoes || [] }
   ];
+  let registros = 0;
 
-  specs.forEach(spec => {
-    if (!spec.itens.length) return;
-    const porId = {};
-    lerObjetos_(spec.aba).forEach(item => {
-      if (item[spec.chave]) porId[String(item[spec.chave])] = item;
+  try {
+    specs.forEach(spec => {
+      if (!spec.itens.length) return;
+      const porId = {};
+      lerObjetos_(spec.aba).forEach(item => {
+        if (item[spec.chave]) porId[String(item[spec.chave])] = item;
+      });
+      spec.itens.forEach(conflito => {
+        const registro = porId[String(conflito.id || '')];
+        if (!registro) throw new Error('Registro não encontrado para backup: ' + spec.aba + ' / ' + conflito.id);
+        const serializado = JSON.stringify(registro);
+        const totalPartes = Math.max(1, Math.ceil(serializado.length / limiteParte));
+        for (let parte = 0; parte < totalPartes; parte++) {
+          linhas.push([
+            spec.aba,
+            spec.chave,
+            String(conflito.id || ''),
+            String(conflito.idAtual || ''),
+            String(conflito.idEsperado || ''),
+            String(conflito.titulo || '').slice(0, 1000),
+            parte + 1,
+            totalPartes,
+            serializado.slice(parte * limiteParte, (parte + 1) * limiteParte)
+          ]);
+        }
+        registros++;
+      });
     });
-    spec.itens.forEach(conflito => {
-      const registro = porId[String(conflito.id || '')];
-      if (!registro) throw new Error('Registro não encontrado para backup: ' + spec.aba + ' / ' + conflito.id);
-      linhas.push([
-        spec.aba,
-        spec.chave,
-        String(conflito.id || ''),
-        String(conflito.idAtual || ''),
-        String(conflito.idEsperado || ''),
-        String(conflito.titulo || ''),
-        JSON.stringify(registro)
-      ]);
-    });
-  });
 
-  aba.getRange(1, 1, linhas.length, linhas[0].length).setValues(linhas);
-  aba.setFrozenRows(1);
-  aba.hideSheet();
-  return { nome: nome, registros: Math.max(0, linhas.length - 1) };
+    if (linhas.length > aba.getMaxRows()) {
+      aba.insertRowsAfter(aba.getMaxRows(), linhas.length - aba.getMaxRows());
+    }
+    if (linhas[0].length > aba.getMaxColumns()) {
+      aba.insertColumnsAfter(aba.getMaxColumns(), linhas[0].length - aba.getMaxColumns());
+    }
+    aba.getRange(1, 1, linhas.length, linhas[0].length).setValues(linhas);
+    aba.setFrozenRows(1);
+    aba.hideSheet();
+    SpreadsheetApp.flush();
+    return { nome: nome, registros: registros, linhas: Math.max(0, linhas.length - 1) };
+  } catch (erro) {
+    try {
+      if (aba && aba.getLastRow() === 0) ss.deleteSheet(aba);
+    } catch (erroLimpeza) {}
+    throw erro;
+  }
 }
 
 function jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente) {
@@ -2201,6 +2237,70 @@ function jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente) {
   }
 }
 
+function jornadaAplicarAlteracoesReparoEmLote_(nomeAba, campoChave, alteracoesPorId) {
+  const ids = Object.keys(alteracoesPorId || {});
+  if (!ids.length) return { quantidade: 0, restauracao: null };
+  const aba = abrirPlanilha_().getSheetByName(nomeAba);
+  if (!aba) throw new Error('Aba não encontrada no reparo: ' + nomeAba);
+  const dados = aba.getDataRange().getValues();
+  if (!dados.length) throw new Error('Aba vazia no reparo: ' + nomeAba);
+  const cabecalhos = dados[0].map(String);
+  const indiceChave = cabecalhos.indexOf(campoChave);
+  if (indiceChave < 0) throw new Error('Chave não encontrada no reparo: ' + nomeAba + ' / ' + campoChave);
+
+  const desconhecidos = new Set();
+  ids.forEach(id => Object.keys(alteracoesPorId[id] || {}).forEach(campo => {
+    if (!cabecalhos.includes(campo)) desconhecidos.add(campo);
+  }));
+  if (desconhecidos.size) throw new Error('Campos fora do schema de ' + nomeAba + ': ' + Array.from(desconhecidos).join(', '));
+
+  const pendentes = new Set(ids.map(String));
+  const mutacoes = [];
+  for (let i = 1; i < dados.length; i++) {
+    const id = String(dados[i][indiceChave] || '');
+    if (!pendentes.has(id)) continue;
+    const original = dados[i].slice();
+    const nova = dados[i].slice();
+    const alteracoes = alteracoesPorId[id] || {};
+    Object.keys(alteracoes).forEach(campo => {
+      nova[cabecalhos.indexOf(campo)] = alteracoes[campo];
+    });
+    mutacoes.push({ linha: i + 1, original: original, nova: nova });
+    pendentes.delete(id);
+  }
+  if (pendentes.size) throw new Error('Registros não encontrados em ' + nomeAba + ': ' + Array.from(pendentes).join(', '));
+
+  const aplicadas = [];
+  try {
+    mutacoes.forEach(item => {
+      aba.getRange(item.linha, 1, 1, cabecalhos.length).setValues([item.nova]);
+      aplicadas.push(item);
+    });
+  } catch (erro) {
+    aplicadas.reverse().forEach(item => {
+      try { aba.getRange(item.linha, 1, 1, cabecalhos.length).setValues([item.original]); } catch (erroRollback) {}
+    });
+    throw erro;
+  }
+
+  return {
+    quantidade: mutacoes.length,
+    restauracao: { nomeAba: nomeAba, colunas: cabecalhos.length, linhas: mutacoes.map(item => ({ linha: item.linha, original: item.original })) }
+  };
+}
+
+function jornadaRestaurarReparoEmLote_(restauracoes) {
+  (restauracoes || []).slice().reverse().forEach(item => {
+    if (!item || !item.nomeAba || !item.linhas) return;
+    const aba = abrirPlanilha_().getSheetByName(item.nomeAba);
+    if (!aba) return;
+    item.linhas.slice().reverse().forEach(linha => {
+      try { aba.getRange(linha.linha, 1, 1, item.colunas).setValues([linha.original]); } catch (erro) {}
+    });
+  });
+  SpreadsheetApp.flush();
+}
+
 function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
   if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA1_CONFIRMACAO) {
     throw new Error('Confirmação inválida para reparo de grupos etapa 1.');
@@ -2208,6 +2308,7 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  const restauracoes = [];
   try {
     const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
     const totaisAntes = antes.totais || {};
@@ -2235,28 +2336,32 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
     const agora = new Date();
     const aplicados = { reunioes: 0, interacoes: 0, formalizacoes: 0, jsonFormalizacao: 0 };
 
+    const alteracoesReunioes = {};
     (antes.conflitos.reunioes || []).forEach(item => {
-      atualizarPorCampo_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', item.id, {
+      alteracoesReunioes[String(item.id)] = {
         ID_CLIENTE: item.idEsperado,
         CONFIANCA_CLIENTE: Number(item.confianca || 0),
         MOTIVO_IDENTIFICACAO: 'reparo histórico: ' + String(item.motivo || ''),
         ATUALIZADO_EM: agora
-      });
-      aplicados.reunioes++;
+      };
     });
+    const loteReunioes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoesReunioes);
+    if (loteReunioes.restauracao) restauracoes.push(loteReunioes.restauracao);
+    aplicados.reunioes = loteReunioes.quantidade;
 
+    const alteracoesInteracoes = {};
     (antes.conflitos.interacoes || []).forEach(item => {
-      atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', item.id, {
-        ID_CLIENTE: item.idEsperado,
-        ATUALIZADO_EM: agora
-      });
-      aplicados.interacoes++;
+      alteracoesInteracoes[String(item.id)] = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
     });
+    const loteInteracoes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.interacoes, 'ID_INTERACAO', alteracoesInteracoes);
+    if (loteInteracoes.restauracao) restauracoes.push(loteInteracoes.restauracao);
+    aplicados.interacoes = loteInteracoes.quantidade;
 
     const formalizacoesPorId = {};
     lerObjetos_(APP.sheets.formalizacoes).forEach(item => {
       if (item.ID_FORMALIZACAO) formalizacoesPorId[String(item.ID_FORMALIZACAO)] = item;
     });
+    const alteracoesFormalizacoes = {};
     (antes.conflitos.formalizacoes || []).forEach(item => {
       const registro = formalizacoesPorId[String(item.id || '')] || {};
       const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
@@ -2266,9 +2371,11 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
         alteracoes.RESULTADO_JSON = resultadoJson;
         aplicados.jsonFormalizacao++;
       }
-      atualizarPorCampo_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', item.id, alteracoes);
-      aplicados.formalizacoes++;
+      alteracoesFormalizacoes[String(item.id)] = alteracoes;
     });
+    const loteFormalizacoes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', alteracoesFormalizacoes);
+    if (loteFormalizacoes.restauracao) restauracoes.push(loteFormalizacoes.restauracao);
+    aplicados.formalizacoes = loteFormalizacoes.quantidade;
 
     SpreadsheetApp.flush();
     if (typeof limparCachesDados_ === 'function') limparCachesDados_();
@@ -2278,21 +2385,27 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
       Number(depois.totais.interacoes || 0) === 0 &&
       Number(depois.totais.formalizacoes || 0) === 0;
 
+    if (!validacao.valido) throw new Error('Estrutura inválida após reparo: ' + validacao.erros.join(' | '));
+    if (!concluida) {
+      throw new Error(
+        'Reparo etapa 1 incompleto. Restaram R/I/F: ' +
+        depois.totais.reunioes + '/' + depois.totais.interacoes + '/' + depois.totais.formalizacoes
+      );
+    }
+
     registrarLog_(
       'CLIENTES',
       'REPARO_GRUPOS_ETAPA1',
       'Aplicados R/I/F: ' + aplicados.reunioes + '/' + aplicados.interacoes + '/' + aplicados.formalizacoes +
       ' | backup: ' + backup.nome +
-      ' | pós R/I/F: ' + depois.totais.reunioes + '/' + depois.totais.interacoes + '/' + depois.totais.formalizacoes +
+      ' | pós R/I/F: 0/0/0' +
       ' | vínculos cruzados: ' + depois.totais.vinculosCruzados
     );
-
-    if (!validacao.valido) throw new Error('Estrutura inválida após reparo: ' + validacao.erros.join(' | '));
 
     return {
       sucesso: true,
       etapa: 1,
-      concluida: concluida,
+      concluida: true,
       backup: backup,
       aplicados: aplicados,
       antes: antes.totais,
@@ -2300,6 +2413,12 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
       vinculosCruzados: depois.conflitos.vinculosCruzados || [],
       validacao: validacao
     };
+  } catch (erro) {
+    if (restauracoes.length) {
+      jornadaRestaurarReparoEmLote_(restauracoes);
+      if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    }
+    throw erro;
   } finally {
     lock.releaseLock();
   }
