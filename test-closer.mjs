@@ -31,7 +31,7 @@ const transcricaoIngeeFormatoDuploMaior = [
   '1:02',
   'um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?',
   '1:07',
-  '>> Não, não. A gente fez lá atrás 2013, 12, 13.',
+  '>> Não, não. A gente fez lá atrás 2013, 12, 13. Hoje a gente precisa organizar o inventário de todas as unidades e centralizar a coleta porque o processo manual consome muito tempo da equipe.',
   '5:49',
   '>> Sim, Evandro, boa tarde. Me apresentando aqui, eu sou a Jéssica, tava falando com você por mensagem.'
 ].join('\n');
