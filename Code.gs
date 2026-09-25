@@ -73,7 +73,7 @@ const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' },
   { chave: 'ingee', nome: 'INGEE', aliases: ['Ingee'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' },
-  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'CBI'], grupoCliente: 'Grupo Sinergia' },
+  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'Grupo Semeio', 'CBI'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'o_guia_transportes', nome: 'O Guia Transportes', aliases: ['O Guia Digital'] },
   { chave: 'tecnosoft', nome: 'Tecnosoft' },
   { chave: 'siptalk', nome: 'SipTalk', aliases: ['Sip Talk'] },
