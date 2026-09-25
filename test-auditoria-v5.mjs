@@ -108,7 +108,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.1\.0'/, 'O engine não foi versionado para o autorreparo seletivo de coaching genérico.');
+assert.match(audit, /versao:\s*'6\.2\.0'/, 'O engine não foi versionado para a normalização assertiva v6.2.0.');
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
 assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
 assert.ok(audit.includes('audV3AutorrepararCoachingGenerico_('), 'A geração não usa reparo seletivo.');
