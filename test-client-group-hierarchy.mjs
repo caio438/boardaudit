@@ -5,6 +5,7 @@ const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
 const opsWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-sync.yml', import.meta.url), 'utf8');
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
+const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
@@ -14,7 +15,7 @@ assert.match(code, /\{ chave: 'assine_mais', nome: 'Assine Mais', grupoCliente: 
 assert.match(code, /\{ chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Ingee'\], grupoCliente: 'Grupo Sinergia' \}/);
 assert.match(code, /\{ chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' \}/);
-assert.match(code, /\{ chave: 'semeio_cbi', nome: 'Semeio\/CBI', aliases: \['Semeio', 'Semeio CBI', 'CBI'\], grupoCliente: 'Grupo Sinergia' \}/);
+assert.match(code, /\{ chave: 'semeio_cbi', nome: 'Semeio\/CBI', aliases: \['Semeio', 'Semeio CBI', 'Grupo Semeio', 'CBI'\], grupoCliente: 'Grupo Sinergia' \}/);
 assert.doesNotMatch(code, /nome: 'INGEE'.*aliases: \[[^\]]*Sinergia[^\]]*\]/);
 
 assert.match(code, /'TIPO_CLIENTE', 'GRUPO_CLIENTE'/);
@@ -55,5 +56,13 @@ assert.match(jornada, /RESULTADO_JSON = resultadoJson/);
 assert.match(repairWorkflow, /Ops repair client groups stage1:/);
 assert.match(repairWorkflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1/);
 assert.match(repairWorkflow, /client-groups-repair-stage1-summary\.json/);
+assert.match(code, /ops_repair_client_groups_stage2/);
+assert.match(jornada, /REPARO_GRUPOS_CLIENTES_ETAPA2_CONFIRMACAO/);
+assert.match(jornada, /function jornadaAplicarAlteracoesReparoPorColunas_/);
+assert.match(jornada, /function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2\(confirmacao\)/);
+assert.match(repairStage2Workflow, /Ops repair client groups stage 2 after deploy/);
+assert.match(repairStage2Workflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA2/);
+assert.match(repairStage2Workflow, /ops_sync_client_groups=1/);
+assert.match(repairStage2Workflow, /DEPOIS_VINCULOS_CRUZADOS/);
 
 console.log('Hierarquia de clientes validada: grupos separados, filhas independentes, VOLUM como fallback e dry-run disponível.');

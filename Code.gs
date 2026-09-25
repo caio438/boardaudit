@@ -73,7 +73,7 @@ const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' },
   { chave: 'ingee', nome: 'INGEE', aliases: ['Ingee'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' },
-  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'CBI'], grupoCliente: 'Grupo Sinergia' },
+  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'Grupo Semeio', 'CBI'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'o_guia_transportes', nome: 'O Guia Transportes', aliases: ['O Guia Digital'] },
   { chave: 'tecnosoft', nome: 'Tecnosoft' },
   { chave: 'siptalk', nome: 'SipTalk', aliases: ['Sip Talk'] },
@@ -296,6 +296,20 @@ function doGet(e) {
     }
     return ContentService
       .createTextOutput(JSON.stringify(INSTALAR_AUTOMACOES_OPERACIONAIS(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_repair_client_groups_stage2 || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo de grupos etapa 2 permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2 !== 'function') {
+      throw new Error('Reparo de grupos etapa 2 indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2(String(parametros.confirm || '')), null, 2))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
