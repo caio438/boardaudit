@@ -74,7 +74,7 @@ context.api.reconcileContext(
 );
 assert.equal(contextoErradoIngee.contexto_interacao.classificacao, 'PRIMEIRA_REUNIAO', 'Proposta futura não pode classificar a reunião atual como apresentação de proposta.');
 assert.equal(contextoErradoIngee.contexto_interacao.continuidade_confirmada, false, 'Continuidade inventada precisa ser removida quando não existe na fonte nem no histórico.');
-assert.deepEqual(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas, [], 'Etapas anteriores não podem permanecer concluídas com continuidade não comprovada.');
+assert.equal(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas.length, 0, 'Etapas anteriores não podem permanecer concluídas com continuidade não comprovada.');
 
 const resultadoScoreIngee = {
   contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
