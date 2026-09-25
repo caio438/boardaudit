@@ -488,4 +488,35 @@ negociacaoCobradaComoDiagnostico.perguntas_diagnostico.perguntas_esperadas_nao_r
 const gateDiagnosticoIndevido = context.api.validateBoard(negociacaoCobradaComoDiagnostico, 'CLOSER');
 assert.equal(gateDiagnosticoIndevido.status, 'REVISAR', 'Negociação com diagnóstico completo cobrado novamente deve exigir revisão.');
 
+
+const speakerRepairSource = source.slice(
+  source.indexOf('function audV3PrepararTranscricaoParaAuditoria_'),
+  source.indexOf('function audV3UsaNormalizacaoV2_')
+);
+assert.match(
+  speakerRepairSource,
+  /if \(audV3PrecisaReparoLocutores_\(normalizacao, qualidade\)\)/,
+  'Mapa persistido parcial não pode impedir nova tentativa de reparo de locutores.'
+);
+assert.match(
+  speakerRepairSource,
+  /Object\.assign\(\{\}, mapa, mapaNovo\)/,
+  'O novo reparo deve complementar o mapa existente em vez de descartá-lo.'
+);
+assert.match(
+  speakerRepairSource,
+  /maxTentativas = 2/,
+  'O reparo deve poder repetir a classificação quando a cobertura continuar insuficiente.'
+);
+assert.match(
+  source,
+  /AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2\.1'/,
+  'A revisão precisa invalidar mapas persistidos da normalização 2.0.'
+);
+assert.match(
+  source,
+  /Use ALTA confiança para o lado comercial, não para a identidade da pessoa/,
+  'O prompt de reparo deve classificar o lado da conversa sem exigir descobrir o nome do locutor.'
+);
+
 console.log(`Teste Closer contextual válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise, contexto e gate.`);
