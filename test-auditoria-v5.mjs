@@ -373,7 +373,7 @@ assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado n�
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
 assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
-assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.0';"), 'A normalização de transcrição não foi versionada para v2.');
+assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.1';"), 'A normalização de transcrição não foi versionada para v2.1.');
 assert.ok(audit.includes("audV3ChamarReparoLocutoresGemini_"), 'O fallback conservador de autoria não foi implementado.');
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
 assert.ok(audit.includes("audV3ReconciliarContextoCloserComFonte_"), 'A classificação Closer não possui reconciliação determinística com a fonte.');
