@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
 const opsWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-sync.yml', import.meta.url), 'utf8');
+const repairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
@@ -28,6 +29,8 @@ assert.match(jornada, /tituloNormalizado\.split\('grupo ' \+ normal\)\.join\(' '
 assert.match(jornada, /jornadaNormalizar_\(item\.VALOR_NORMALIZADO \|\| item\.VALOR\) !== normal/);
 assert.match(jornada, /jornadaNormalizar_\(item\.VALOR_NORMALIZADO \|\| item\.VALOR\) === normal/);
 assert.match(jornada, /if \(ordenados\.some\(item => !item\.internoVolum\)\) ordenados = ordenados\.filter\(item => !item\.internoVolum\)/);
+assert.match(jornada, /function jornadaResolverAmbiguidadeMesmoGrupo_/);
+assert.match(jornada, /múltiplas empresas do grupo no título/);
 assert.match(jornada, /tipoIdentificador = .*=== 'GRUPO' \? 'GRUPO' : 'NOME'/);
 assert.match(jornada, /function jornadaReconciliarIdentificadoresCatalogo_/);
 assert.match(jornada, /function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES/);
@@ -38,5 +41,13 @@ assert.match(opsWorkflow, /Ops sync client groups:/);
 assert.match(opsWorkflow, /ops_sync_client_groups=1/);
 assert.match(opsWorkflow, /DRY_RUN/);
 assert.doesNotMatch(opsWorkflow, /REPARAR_CONFLITOS|executarReparo|repair_client_groups/i);
+
+assert.match(code, /ops_repair_client_groups_stage1/);
+assert.match(jornada, /REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1/);
+assert.match(jornada, /BACKUP_REPARO_GRUPOS_/);
+assert.match(jornada, /RESULTADO_JSON = resultadoJson/);
+assert.match(repairWorkflow, /Ops repair client groups stage1:/);
+assert.match(repairWorkflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1/);
+assert.match(repairWorkflow, /client-groups-repair-stage1-summary\.json/);
 
 console.log('Hierarquia de clientes validada: grupos separados, filhas independentes, VOLUM como fallback e dry-run disponível.');
