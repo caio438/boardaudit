@@ -7,6 +7,7 @@ const opsWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-grou
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
 const repairStage3Workflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage3.yml', import.meta.url), 'utf8');
+const finalRepairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-final-repair.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
@@ -76,5 +77,18 @@ assert.match(jornada, /STATUS: 'PENDENTE_EVIDENCIA'/);
 assert.match(repairStage3Workflow, /Ops repair client groups stage3:/);
 assert.match(repairStage3Workflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA3/);
 assert.match(repairStage3Workflow, /VINCULOS_REMOVIDOS/);
+assert.match(code, /ops_repair_client_groups_partial/);
+assert.match(jornada, /REPARO_GRUPOS_CLIENTES_PARCIAL_CONFIRMACAO/);
+assert.match(jornada, /function jornadaDiagnosticarConflitosGruposParcial_/);
+assert.match(jornada, /function REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL\(alvo, confirmacao\)/);
+assert.match(jornada, /jornadaBackupTarefasReparoGrupos_/);
+assert.match(jornada, /audV3Atualizar_\(APP\.sheets\.formalizacoes/);
+assert.match(finalRepairWorkflow, /Ops finalize client groups repair:/);
+assert.match(finalRepairWorkflow, /target=REUNIOES/);
+assert.match(finalRepairWorkflow, /target=INTERACOES/);
+assert.match(finalRepairWorkflow, /target=FORMALIZACOES/);
+assert.match(finalRepairWorkflow, /ops_repair_client_groups_stage3=1/);
+assert.match(finalRepairWorkflow, /ops_sync_jornada=1/);
+assert.match(finalRepairWorkflow, /CLIENT_GROUP_REPAIR_COMPLETE=1/);
 
 console.log('Hierarquia de clientes validada: grupos separados, filhas independentes, VOLUM como fallback e dry-run disponível.');

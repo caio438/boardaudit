@@ -299,6 +299,23 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_repair_client_groups_partial || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo parcial de grupos permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL !== 'function') {
+      throw new Error('Reparo parcial de grupos indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL(
+        String(parametros.target || ''),
+        String(parametros.confirm || '')
+      ), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_repair_client_groups_stage3 || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();

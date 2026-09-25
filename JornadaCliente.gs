@@ -2702,6 +2702,186 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3(confirmacao) {
   }
 }
 
+const REPARO_GRUPOS_CLIENTES_PARCIAL_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_PARCIAL';
+
+function jornadaDiagnosticarConflitosGruposParcial_(alvo) {
+  alvo = String(alvo || '').trim().toUpperCase();
+  const configs = {
+    REUNIOES: { aba: APP.sheets.reunioesCalendario, chave: 'ID_REUNIAO', filtro: function() { return true; } },
+    INTERACOES: { aba: APP.sheets.interacoes, chave: 'ID_INTERACAO', filtro: function(item) {
+      return String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' || String(item.FONTE || '').toUpperCase() === 'GOOGLE_MEET';
+    } },
+    FORMALIZACOES: { aba: APP.sheets.formalizacoes, chave: 'ID_FORMALIZACAO', filtro: function() { return true; } }
+  };
+  const config = configs[alvo];
+  if (!config) throw new Error('Alvo inválido para diagnóstico parcial: ' + alvo);
+
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(function(item) { return item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO'; });
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes)
+    .filter(function(item) { return String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO'; });
+  const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+  const conflitos = [];
+
+  lerObjetos_(config.aba).filter(config.filtro).forEach(function(registro) {
+    const titulo = String(registro.TITULO || '');
+    const candidato = jornadaClassificarTextoCliente_(titulo, identificadores);
+    if (!candidato) return;
+    const grupo = jornadaGrupoClientePorId_(candidato.idCliente, clientes);
+    if (!gruposGeridos.has(grupo)) return;
+    if (String(registro.ID_CLIENTE || '') === String(candidato.idCliente || '')) return;
+    conflitos.push({
+      id: String(registro[config.chave] || ''),
+      titulo: titulo,
+      idAtual: String(registro.ID_CLIENTE || ''),
+      idEsperado: String(candidato.idCliente || ''),
+      grupo: grupo,
+      motivo: candidato.motivo,
+      confianca: Math.round(Number(candidato.pontos || 0))
+    });
+  });
+
+  return {
+    sucesso: true,
+    modo: 'DRY_RUN_PARCIAL',
+    alvo: alvo,
+    total: conflitos.length,
+    conflitos: conflitos.slice(0, 200)
+  };
+}
+
+function jornadaBackupTarefasReparoGrupos_(idsFormalizacoes) {
+  const ids = new Set((idsFormalizacoes || []).map(String));
+  if (!ids.size) return null;
+  const tarefas = lerObjetos_(APP.sheets.tarefasFormalizacoes)
+    .filter(function(item) { return ids.has(String(item.ID_FORMALIZACAO || '')); });
+  if (!tarefas.length) return null;
+
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_REPARO_TAREFAS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const linhas = [['ID_TAREFA','ID_FORMALIZACAO','ID_CLIENTE','DADOS_JSON']];
+  tarefas.forEach(function(item) {
+    linhas.push([
+      String(item.ID_TAREFA || ''),
+      String(item.ID_FORMALIZACAO || ''),
+      String(item.ID_CLIENTE || ''),
+      JSON.stringify(item)
+    ]);
+  });
+  aba.getRange(1,1,linhas.length,linhas[0].length).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  SpreadsheetApp.flush();
+  return { nome: nome, registros: tarefas.length };
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL(alvo, confirmacao) {
+  alvo = String(alvo || '').trim().toUpperCase();
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_PARCIAL_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo parcial de grupos.');
+  }
+  if (!['REUNIOES','INTERACOES','FORMALIZACOES'].includes(alvo)) {
+    throw new Error('Alvo inválido para reparo parcial: ' + alvo);
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  try {
+    if (typeof jornadaReconciliarIdentificadoresCatalogo_ === 'function') jornadaReconciliarIdentificadoresCatalogo_();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+    const antes = jornadaDiagnosticarConflitosGruposParcial_(alvo);
+    if (Number(antes.total || 0) > 200 || Number(antes.total || 0) > (antes.conflitos || []).length) {
+      throw new Error('Diagnóstico parcial truncado ou acima do limite seguro: ' + antes.total);
+    }
+
+    const diagnosticoBackup = { conflitos: { reunioes: [], interacoes: [], formalizacoes: [] } };
+    const chaveBackup = alvo === 'REUNIOES' ? 'reunioes' : (alvo === 'INTERACOES' ? 'interacoes' : 'formalizacoes');
+    diagnosticoBackup.conflitos[chaveBackup] = antes.conflitos || [];
+    const backup = jornadaBackupReparoGruposEtapa1_(diagnosticoBackup);
+    const agora = new Date();
+    const clientes = lerObjetos_(APP.sheets.clientes)
+      .filter(function(item) { return item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO'; });
+    let aplicados = 0;
+    let backupTarefas = null;
+    let tarefasAtualizadas = 0;
+
+    if (alvo === 'REUNIOES') {
+      const alteracoes = {};
+      (antes.conflitos || []).forEach(function(item) {
+        alteracoes[String(item.id)] = {
+          ID_CLIENTE: item.idEsperado,
+          CONFIANCA_CLIENTE: Number(item.confianca || 0),
+          MOTIVO_IDENTIFICACAO: 'reparo histórico granular: ' + String(item.motivo || ''),
+          ATUALIZADO_EM: agora
+        };
+      });
+      aplicados = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoes).quantidade;
+    } else if (alvo === 'INTERACOES') {
+      const alteracoes = {};
+      (antes.conflitos || []).forEach(function(item) {
+        alteracoes[String(item.id)] = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+      });
+      aplicados = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.interacoes, 'ID_INTERACAO', alteracoes).quantidade;
+    } else {
+      const idsFormalizacoes = (antes.conflitos || []).map(function(item) { return String(item.id || ''); }).filter(Boolean);
+      backupTarefas = jornadaBackupTarefasReparoGrupos_(idsFormalizacoes);
+      const formalizacoesFonte = typeof audV3Ler_ === 'function' ? audV3Ler_(APP.sheets.formalizacoes) : lerObjetos_(APP.sheets.formalizacoes);
+      const porId = {};
+      formalizacoesFonte.forEach(function(item) { if (item.ID_FORMALIZACAO) porId[String(item.ID_FORMALIZACAO)] = item; });
+
+      (antes.conflitos || []).forEach(function(item) {
+        const registro = porId[String(item.id || '')] || {};
+        const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
+        const alteracoes = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+        const resultadoJson = jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente);
+        if (resultadoJson) alteracoes.RESULTADO_JSON = resultadoJson;
+        if (typeof audV3Atualizar_ !== 'function' || !audV3Atualizar_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', item.id, alteracoes)) {
+          throw new Error('Falha ao atualizar formalização: ' + item.id);
+        }
+        aplicados++;
+      });
+
+      const esperadoPorFormalizacao = {};
+      (antes.conflitos || []).forEach(function(item) { esperadoPorFormalizacao[String(item.id)] = String(item.idEsperado); });
+      const alteracoesTarefas = {};
+      lerObjetos_(APP.sheets.tarefasFormalizacoes).forEach(function(tarefa) {
+        const esperado = esperadoPorFormalizacao[String(tarefa.ID_FORMALIZACAO || '')];
+        if (!esperado || String(tarefa.ID_CLIENTE || '') === esperado) return;
+        alteracoesTarefas[String(tarefa.ID_TAREFA || '')] = { ID_CLIENTE: esperado, ATUALIZADO_EM: agora };
+      });
+      if (Object.keys(alteracoesTarefas).length) {
+        tarefasAtualizadas = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.tarefasFormalizacoes, 'ID_TAREFA', alteracoesTarefas).quantidade;
+      }
+    }
+
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    const depois = jornadaDiagnosticarConflitosGruposParcial_(alvo);
+    if (Number(depois.total || 0) !== 0) {
+      throw new Error('Reparo parcial incompleto em ' + alvo + ': restaram ' + depois.total + ' divergências.');
+    }
+
+    registrarLog_('CLIENTES','REPARO_GRUPOS_PARCIAL_' + alvo,
+      'Aplicados: ' + aplicados + ' | tarefas: ' + tarefasAtualizadas + ' | backup: ' + backup.nome + ' | pós: 0');
+
+    return {
+      sucesso: true,
+      etapa: alvo,
+      concluida: true,
+      antes: antes.total,
+      depois: depois.total,
+      aplicados: aplicados,
+      tarefasAtualizadas: tarefasAtualizadas,
+      backup: backup,
+      backupTarefas: backupTarefas
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function jornadaGarantirRegrasPadrao_(idCliente, regrasInformadas) {
   const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', idCliente);
   if (cliente && String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return;
