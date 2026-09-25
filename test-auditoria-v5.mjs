@@ -108,7 +108,26 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.1'/, 'O engine não foi versionado para a correção de autoria v6.2.1.');
+assert.match(audit, /versao:\s*'6\.2\.2'/, 'O engine não foi versionado para a correção do limite de célula v6.2.2.');
+const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
+const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
+assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
+const helpersCelula = new Function(
+  audit.slice(inicioFragmentacaoCelula, fimFragmentacaoCelula) +
+    '\nreturn { fragmentar: audV3FragmentarTextoCelula_, remontar: audV3RemontarFragmentosCelula_, expandir: audV3ExpandirObjetoParaCelulas_ };'
+)();
+const textoGrandeCelula = 'A'.repeat(100123);
+const fragmentadoCelula = helpersCelula.fragmentar('RESULTADO_JSON', textoGrandeCelula);
+assert.ok(Object.keys(fragmentadoCelula).length >= 3, 'Texto acima de 50 mil caracteres precisa ser dividido em múltiplas células.');
+for (const valorParte of Object.values(fragmentadoCelula)) {
+  assert.ok(String(valorParte).length <= 45000, 'Nenhum fragmento pode ultrapassar o limite seguro de 45 mil caracteres.');
+}
+const cabecalhosFragmentados = Object.keys(fragmentadoCelula);
+const remontadoCelula = helpersCelula.remontar({ ...fragmentadoCelula }, cabecalhosFragmentados);
+assert.equal(remontadoCelula.RESULTADO_JSON, textoGrandeCelula, 'A leitura precisa remontar integralmente o conteúdo fragmentado.');
+assert.match(audit, /audV3Adicionar_\([\s\S]*?audV3ExpandirObjetoParaCelulas_/, 'Inserções no Sheets não usam a fragmentação segura.');
+assert.match(audit, /audV3Atualizar_\([\s\S]*?audV3ExpandirObjetoParaCelulas_/, 'Atualizações no Sheets não usam a fragmentação segura.');
+
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
 assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
 assert.ok(audit.includes('audV3AutorrepararCoachingGenerico_('), 'A geração não usa reparo seletivo.');
@@ -304,7 +323,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.1'/, 'Engine de auditoria não foi versionado para a correção de autoria v6.2.1.');
+assert.match(audit, /versao:\s*'6\.2\.2'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.2.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
