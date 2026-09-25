@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.0
+ * Versão: 6.2.1
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.0',
+  versao: '6.2.1',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -2376,7 +2376,7 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
-const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.0';
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.1';
 
 function audV3DistanciaEdicaoCurta_(a, b) {
   a = String(a || '');
@@ -2800,9 +2800,13 @@ function audV3PromptReparoLocutores_(normalizacao, interacao) {
     'A fala de cada ID é imutável. Não reescreva, não corrija, não resuma e não invente texto.',
     'Classifique por lado comercial: ' + papelProfissional + ' é o profissional vendedor/consultor; LEAD é o comprador/prospect. OUTROS e trechos incertos devem ser omitidos do mapa.',
     'Retorne SOMENTE JSON no formato {"mapa":{"T0001":"' + papelProfissional + '","T0002":"LEAD"}}.',
-    'Inclua no mapa apenas atribuições de ALTA confiança. Se houver dúvida real, omita o ID.',
+    'Percorra TODOS os IDs e classifique todo turno cujo LADO da conversa esteja semanticamente claro. A ausência de nome do locutor, por si só, NÃO é motivo para omitir um turno.',
+    'Use ALTA confiança para o lado comercial, não para a identidade da pessoa. Você só precisa distinguir ' + papelProfissional + ' versus LEAD; não precisa descobrir qual pessoa específica falou.',
+    'Omita apenas trechos realmente ambíguos, como saudações soltas, "uhum", "sim" isolado ou frases que não permitam inferir o lado nem pelo contexto imediato.',
     'Não alterne papéis mecanicamente. Os marcadores >> e timestamps NÃO identificam sozinhos quem fala.',
     'Use como âncoras: autoapresentações explícitas, nomes, quem descreve a operação do comprador, quem apresenta a solução, perguntas e respostas encadeadas e continuidade semântica da conversa.',
+    'Sinais fortes de LEAD: descrição da própria empresa/operação, condicionantes, dores, equipe interna, orçamento, aprovação da diretoria, suprimentos, jurídico, objeções, respostas sobre necessidade e processo de compra.',
+    'Sinais fortes de ' + papelProfissional + ': perguntas de diagnóstico, apresentação da consultoria/software, explicação de funcionalidades, metodologia, planos/preços, confirmação de aderência e combinação de próximos passos.',
     'Nunca atribua ao profissional uma resposta, condição interna, objeção, processo de compra ou descrição operacional dita pelo comprador.',
     'Metadados podem estar desatualizados; uma fala explícita da transcrição prevalece.',
     profissional ? 'Profissional conhecido/canônico: ' + profissional + ' | papel esperado: ' + papelProfissional + '.' : '',
@@ -2906,15 +2910,47 @@ function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
   let qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
   let reparo = { usado: false, modelo: '', atribuicoes: Object.keys(mapa).length, erro: '' };
 
-  if (!Object.keys(mapa).length && audV3PrecisaReparoLocutores_(normalizacao, qualidade)) {
+  if (audV3PrecisaReparoLocutores_(normalizacao, qualidade)) {
     try {
-      const resposta = audV3ChamarReparoLocutoresGemini_(normalizacao, interacao || {});
-      mapa = resposta.mapa || {};
-      normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {}, mapa);
-      qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
-      reparo = { usado: true, modelo: String(resposta.modelo || ''), atribuicoes: Object.keys(mapa).length, erro: '' };
+      let modeloReparo = '';
+      let atribuicoesNovas = 0;
+      let tentativas = 0;
+      const maxTentativas = 2;
+
+      while (tentativas < maxTentativas && audV3PrecisaReparoLocutores_(normalizacao, qualidade)) {
+        tentativas += 1;
+        const quantidadeAntes = Object.keys(mapa).length;
+        const resposta = audV3ChamarReparoLocutoresGemini_(normalizacao, interacao || {});
+        const mapaNovo = resposta.mapa && typeof resposta.mapa === 'object' ? resposta.mapa : {};
+        modeloReparo = String(resposta.modelo || modeloReparo || '');
+
+        mapa = Object.assign({}, mapa, mapaNovo);
+        const quantidadeDepois = Object.keys(mapa).length;
+        atribuicoesNovas += Math.max(0, quantidadeDepois - quantidadeAntes);
+
+        normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {}, mapa);
+        qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+
+        if (quantidadeDepois <= quantidadeAntes) break;
+      }
+
+      reparo = {
+        usado: true,
+        modelo: modeloReparo,
+        atribuicoes: atribuicoesNovas,
+        atribuicoes_totais: Object.keys(mapa).length,
+        tentativas: tentativas,
+        erro: ''
+      };
     } catch (erro) {
-      reparo = { usado: true, modelo: '', atribuicoes: 0, erro: String(erro && erro.message ? erro.message : erro) };
+      reparo = {
+        usado: true,
+        modelo: '',
+        atribuicoes: 0,
+        atribuicoes_totais: Object.keys(mapa).length,
+        tentativas: 1,
+        erro: String(erro && erro.message ? erro.message : erro)
+      };
       qualidade.alertas = qualidade.alertas || [];
       qualidade.alertas.push('O reparo conservador de autoria não concluiu: ' + reparo.erro);
     }
