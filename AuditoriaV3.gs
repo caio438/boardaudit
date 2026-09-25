@@ -4421,6 +4421,31 @@ function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcri
       criterio.pontuacao = 0;
     }
   }
+
+  const avaliados = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const validos = avaliados.filter(function(item) {
+    return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '';
+  });
+  const soma = validos.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0);
+  const score5 = validos.length ? Math.round((soma / validos.length) * 10) / 10 : null;
+  resultado.pontuacao = avaliados.map(function(item) {
+    return {
+      id: item.id,
+      nome: item.nome,
+      aplicavel: item.aplicavel,
+      pontuacao: item.pontuacao,
+      observacao: item.justificativa_nota
+    };
+  });
+  resultado.pontuacao_calculada = {
+    itens_avaliados: validos.length,
+    itens_na: avaliados.length - validos.length,
+    soma_pontos: Math.round(soma * 10) / 10,
+    maximo_aplicavel: validos.length * 5,
+    score_5: score5,
+    score_percentual: score5 === null ? null : Math.round(score5 * 20 * 10) / 10,
+    regra: 'Média das dimensões aplicáveis com nota fixa por status: CONFORME = 5; DESVIO_EXECUCAO = 2,5; NAO_EXECUTADO = 0; N/A excluído.'
+  };
   return resultado;
 }
 
@@ -4433,7 +4458,7 @@ function audV3ReconciliarChecklistCloser_(resultado, criterios) {
   const momento = function(id) { return momentos.find(function(item) { return String((item || {}).id || '') === id; }) || {}; };
   const mapa = [
     { padrao: /contextualizacao|rapport|agenda|objetivo/, fonte: function() { return momento('momento_0'); } },
-    { padrao: /motivacao|cenario atual|tentativas anteriores|urgencia|decisao|qualificacao tecnica/, fonte: function() { return porId.aderencia_diagnostico || momento('momento_1'); } },
+    { padrao: /motivacao|cenario atual|tentativas anteriores|decisao|qualificacao tecnica/, fonte: function() { return porId.aderencia_diagnostico || momento('momento_1'); } },
     { padrao: /dor|impacto|consequencia financeira/, fonte: function() { return porId.exploracao_dor_impacto || momento('momento_1'); } },
     { padrao: /demonstracao conectada/, fonte: function() { return porId.demonstracao_solucao || momento('momento_2'); } },
     { padrao: /validacao do entendimento|validacao.*interesse/, fonte: function() { return porId.validacao_interesse || momento('momento_2'); } },
