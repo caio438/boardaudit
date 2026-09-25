@@ -6,6 +6,7 @@ const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url),
 const opsWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-sync.yml', import.meta.url), 'utf8');
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
+const repairStage3Workflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-repair-stage3.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
@@ -35,6 +36,8 @@ assert.match(jornada, /múltiplas empresas do grupo no título/);
 assert.match(jornada, /tipoIdentificador = .*=== 'GRUPO' \? 'GRUPO' : 'NOME'/);
 assert.match(jornada, /function jornadaReconciliarIdentificadoresCatalogo_/);
 assert.match(jornada, /function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES/);
+assert.match(jornada, /registro\[campoChave\]/);
+assert.match(jornada, /registrarDivergencia\(conflitos\.formalizacoes, item, 'ID_CLIENTE', 'TITULO', 'ID_FORMALIZACAO'\)/);
 assert.match(jornada, /String\(cliente\.TIPO_CLIENTE \|\| ''\)\.toUpperCase\(\) === 'GRUPO'/);
 assert.match(jornada, /versao: '1\.9\.7'/);
 
@@ -64,5 +67,14 @@ assert.match(repairStage2Workflow, /Ops repair client groups stage 2 after deplo
 assert.match(repairStage2Workflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA2/);
 assert.match(repairStage2Workflow, /ops_sync_client_groups=1/);
 assert.match(repairStage2Workflow, /DEPOIS_VINCULOS_CRUZADOS/);
+assert.match(code, /ops_repair_client_groups_stage3/);
+assert.match(jornada, /REPARO_GRUPOS_CLIENTES_ETAPA3_CONFIRMACAO/);
+assert.match(jornada, /function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3\(confirmacao\)/);
+assert.match(jornada, /BACKUP_REPARO_VINCULOS_/);
+assert.match(jornada, /ID_INTERACAO: ''/);
+assert.match(jornada, /STATUS: 'PENDENTE_EVIDENCIA'/);
+assert.match(repairStage3Workflow, /Ops repair client groups stage3:/);
+assert.match(repairStage3Workflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA3/);
+assert.match(repairStage3Workflow, /VINCULOS_REMOVIDOS/);
 
 console.log('Hierarquia de clientes validada: grupos separados, filhas independentes, VOLUM como fallback e dry-run disponível.');
