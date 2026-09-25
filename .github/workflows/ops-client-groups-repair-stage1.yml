@@ -1,0 +1,141 @@
+name: Ops repair client groups stage 1 after deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repair-client-groups-stage1:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve operational request
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          prefix="Ops repair client groups stage1:"
+          if [[ "$subject" == "$prefix"* ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "OPS_CLIENT_GROUPS_REPAIR_STAGE1_REQUESTED=1"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "OPS_CLIENT_GROUPS_REPAIR_STAGE1_SKIPPED=commit_not_operational"
+          fi
+
+      - name: Setup Node.js
+        if: steps.target.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.target.outputs.run == 'true'
+        run: npm ci
+
+      - name: Configure clasp authentication
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Refresh Google OAuth token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp versions > /tmp/clasp-versions-client-groups-repair-stage1.txt
+
+      - name: Extract Google access token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token_client_groups_repair_stage1', token, {mode: 0o600});
+          NODE
+
+      - name: Repair client ids with backup
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_client_groups_repair_stage1)"
+          CONFIRM="CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_repair_client_groups_stage1=1&confirm=$CONFIRM"
+
+          code="$(curl -sS --max-time 420 --location-trusted             --oauth2-bearer "$TOKEN"             -o /tmp/client-groups-repair-stage1-result.txt             -w '%{http_code}'             "$URL" || true)"
+          echo "CLIENT_GROUPS_REPAIR_STAGE1_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/client-groups-repair-stage1-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Web app retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) throw new Error('Web app retornou HTML em vez de JSON.');
+          const first = raw.indexOf('{');
+          const last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta não contém JSON.');
+          const result = JSON.parse(raw.slice(first, last + 1));
+          if (result.sucesso !== true || Number(result.etapa) !== 1) throw new Error('Reparo etapa 1 não retornou sucesso.');
+          if (!result.backup || !String(result.backup.nome || '').startsWith('BACKUP_REPARO_GRUPOS_')) throw new Error('Backup do reparo não foi criado.');
+          const antes = result.antes || {};
+          const depois = result.depois || {};
+          console.log('CLIENT_GROUPS_REPAIR_STAGE1_OK=1');
+          console.log('BACKUP=' + result.backup.nome);
+          console.log('ANTES_REUNIOES=' + Number(antes.reunioes || 0));
+          console.log('ANTES_INTERACOES=' + Number(antes.interacoes || 0));
+          console.log('ANTES_FORMALIZACOES=' + Number(antes.formalizacoes || 0));
+          console.log('DEPOIS_REUNIOES=' + Number(depois.reunioes || 0));
+          console.log('DEPOIS_INTERACOES=' + Number(depois.interacoes || 0));
+          console.log('DEPOIS_FORMALIZACOES=' + Number(depois.formalizacoes || 0));
+          console.log('DEPOIS_VINCULOS_CRUZADOS=' + Number(depois.vinculosCruzados || 0));
+          console.log('ETAPA1_CONCLUIDA=' + (result.concluida ? '1' : '0'));
+          fs.writeFileSync('/tmp/client-groups-repair-stage1-summary.json', JSON.stringify(result, null, 2));
+          NODE
+
+      - name: Save repair evidence
+        if: always() && steps.target.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-groups-repair-stage1-${{ github.run_id }}
+          path: |
+            /tmp/client-groups-repair-stage1-summary.json
+            /tmp/client-groups-repair-stage1-result.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Cleanup authentication
+        if: always() && steps.target.outputs.run == 'true'
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token_client_groups_repair_stage1 /tmp/clasp-versions-client-groups-repair-stage1.txt
