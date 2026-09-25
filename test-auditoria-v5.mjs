@@ -108,7 +108,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.0'/, 'O engine não foi versionado para a normalização assertiva v6.2.0.');
+assert.match(audit, /versao:\s*'6\.2\.1'/, 'O engine não foi versionado para a correção de autoria v6.2.1.');
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
 assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
 assert.ok(audit.includes('audV3AutorrepararCoachingGenerico_('), 'A geração não usa reparo seletivo.');
@@ -304,7 +304,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.0'/, 'Engine de auditoria não foi versionado para a normalização assertiva v6.2.0.');
+assert.match(audit, /versao:\s*'6\.2\.1'/, 'Engine de auditoria não foi versionado para a correção de autoria v6.2.1.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -373,7 +373,7 @@ assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado n�
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
 assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
-assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.0';"), 'A normalização de transcrição não foi versionada para v2.');
+assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.1';"), 'A normalização de transcrição não foi versionada para v2.1.');
 assert.ok(audit.includes("audV3ChamarReparoLocutoresGemini_"), 'O fallback conservador de autoria não foi implementado.');
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
 assert.ok(audit.includes("audV3ReconciliarContextoCloserComFonte_"), 'A classificação Closer não possui reconciliação determinística com a fonte.');
