@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.1.0
+ * Versão: 6.2.0
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
