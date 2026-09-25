@@ -8,9 +8,104 @@ const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url)
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,repairEvidence:audV3RepararEvidenciasRastreaveis_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,repairEvidence:audV3RepararEvidenciasRastreaveis_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_,normalizeTranscript:audV3NormalizarTranscricaoTexto_,transcriptQuality:audV3AvaliarQualidadeTranscricao_,reconcileContext:audV3ReconciliarContextoCloserComFonte_,applyCloserRules:audV3AplicarRegrasDeterministicasCloser_,reconcileChecklist:audV3ReconciliarChecklistCloser_,validateCloserFacts:audV3ValidarAfirmacoesFatuaisCloser_,requirePublishable:audV3ExigirGatePublicavel_};', context);
 
 const criterios = context.api.criteria();
+
+const interacaoIngee = {
+  ID_CLIENTE: 'CLI-20260806105306-25F3490A',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Luciana',
+  VENDEDOR: 'Luciana',
+  LEAD: 'Empiza Empilhadeiras'
+};
+const transcricaoIngeeFormatoDuploMaior = [
+  '0:00',
+  'Olá, boa tarde.',
+  '0:02',
+  '>> Oi, Evandro, boa tarde. Tudo bem?',
+  '0:04',
+  '>> Boa tarde. Tudo bem vocês?',
+  '0:58',
+  '>> Eh, e aí, antes de começar, queria entender',
+  '1:02',
+  'um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?',
+  '1:07',
+  '>> Não, não. A gente fez lá atrás 2013, 12, 13.',
+  '5:49',
+  '>> Sim, Evandro, boa tarde. Me apresentando aqui, eu sou a Jéssica, tava falando com você por mensagem.'
+].join('\n');
+
+const semMapa = context.api.normalizeTranscript(transcricaoIngeeFormatoDuploMaior, interacaoIngee, {});
+assert.equal(semMapa.turnos.length, 6, 'Timestamp + >> deve virar turnos reais, não duas linhas artificiais por fala.');
+assert.match(semMapa.turnos[3].fala, /Vocês já fazem os inventários\?/, 'Continuação sem >> precisa permanecer no mesmo turno.');
+assert.equal(semMapa.turnos[1].tipo, 'NAO_IDENTIFICADO', '>> não pode ser tratado sozinho como identidade de locutor.');
+assert.equal(semMapa.turnos[5].tipo, 'CLOSER', 'Autoapresentação explícita de Jéssica deve ancorar o lado Closer da INGEE.');
+
+const mapaIngee = { T0002: 'CLOSER', T0003: 'LEAD', T0004: 'CLOSER', T0005: 'LEAD' };
+const comMapa = context.api.normalizeTranscript(transcricaoIngeeFormatoDuploMaior, interacaoIngee, mapaIngee);
+assert.equal(comMapa.turnos[1].tipo, 'CLOSER');
+assert.equal(comMapa.turnos[2].tipo, 'LEAD');
+assert.equal(comMapa.turnos[3].tipo, 'CLOSER');
+assert.equal(comMapa.turnos[4].tipo, 'LEAD');
+assert.match(comMapa.texto, /\[0:58\] CLOSER \(Sinergia Engenharia\): Eh, e aí, antes de começar, queria entender um pouquinho\./, 'A normalização deve preservar a fala e apenas acrescentar autoria.');
+const qualidadeIngee = context.api.transcriptQuality(comMapa, transcricaoIngeeFormatoDuploMaior);
+assert.equal(qualidadeIngee.apta_para_auditoria, true, 'Transcrição com autoria reparada e cobertura suficiente deve passar o gate pré-auditoria.');
+assert.ok(qualidadeIngee.metricas.cobertura_identificada_pct > 80, 'Cobertura de autoria reparada ficou abaixo do mínimo esperado no caso de regressão.');
+
+const contextoErradoIngee = {
+  contexto_interacao: {
+    classificacao: 'APRESENTACAO_PROPOSTA',
+    momento_jornada: 'PROPOSTA',
+    objetivo_principal: 'Apresentar proposta',
+    confianca: 'ALTA',
+    etapas_aplicaveis: ['Apresentação'],
+    etapas_ja_concluidas: ['Diagnóstico'],
+    etapas_nao_aplicaveis: [],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'conforme conversamos na última reunião',
+    necessita_revisao: false
+  }
+};
+context.api.reconcileContext(
+  contextoErradoIngee,
+  'CLOSER: E aí, Evandro, eu gosto de geralmente marcar uma segunda reunião, 10 minutinhos só para te apresentar a proposta.',
+  { historico: [] }
+);
+assert.equal(contextoErradoIngee.contexto_interacao.classificacao, 'PRIMEIRA_REUNIAO', 'Proposta futura não pode classificar a reunião atual como apresentação de proposta.');
+assert.equal(contextoErradoIngee.contexto_interacao.continuidade_confirmada, false, 'Continuidade inventada precisa ser removida quando não existe na fonte nem no histórico.');
+assert.deepEqual(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas, [], 'Etapas anteriores não podem permanecer concluídas com continuidade não comprovada.');
+
+const resultadoScoreIngee = {
+  contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
+  criterios_avaliados: criterios.dimensoes.map(item => ({
+    id: item.id, nome: item.nome, aplicavel: true, status: 'CONFORME',
+    o_que_foi_dito: 'Evidência literal.', locutor_evidencia: 'CLOSER',
+    divergencia: 'Não houve divergência.', justificativa_nota: 'Conforme.', correcao_pratica: ''
+  })),
+  checklist: criterios.checklist.map(item => ({ item, resultado: 'ATENDIDO', observacao: 'Score 10 aplicado com sucesso.' })),
+  momentos: criterios.momentos.map(item => ({
+    id: item.id, nome: item.nome, status: 'VERDE', cor: 'VERDE', gatilho_alcancado: true,
+    o_que_foi_dito: 'Evidência literal.', locutor_evidencia: 'CLOSER',
+    justificativa_nota: 'Conforme.', divergencia: 'Não houve divergência.'
+  })),
+  resumo_executivo: { visao_geral: 'Score 10 aplicado com sucesso.' }
+};
+const pitchScore = 'Pergunta obrigatória: De zero a dez, o quanto a solução resolve seu problema? Se 10, podemos avançar.';
+const transcricaoSemScore = 'CLOSER: Conseguiu visualizar como vamos resolver o problema? LEAD: Sim, ficou claro. CLOSER: Vamos marcar uma segunda reunião para apresentar a proposta.';
+context.api.applyCloserRules(resultadoScoreIngee, criterios, transcricaoSemScore, pitchScore);
+const criterioScore = resultadoScoreIngee.criterios_avaliados.find(item => item.id === 'validacao_interesse');
+assert.equal(criterioScore.status, 'NAO_EXECUTADO', 'Score obrigatório ausente precisa virar desvio, não acerto ou N/A.');
+assert.equal(criterioScore.aplicavel, true, 'Score obrigatório em primeira reunião deve continuar aplicável.');
+context.api.reconcileChecklist(resultadoScoreIngee, criterios);
+const checklistScore = resultadoScoreIngee.checklist.find(item => /Validação do entendimento/i.test(item.item));
+assert.equal(checklistScore.resultado, 'NAO_ATENDIDO', 'Checklist deve ser derivado do critério validado e não repetir “Score 10” inventado.');
+assert.throws(
+  () => context.api.validateCloserFacts(resultadoScoreIngee, transcricaoSemScore, pitchScore),
+  /score de interesse foi aplicado/,
+  'Narrativa que afirma Score 10 sem evidência precisa bloquear a auditoria.'
+);
+
 const momentos = criterios.momentos.map((item, index) => ({
   id: item.id,
   nome: item.nome,
