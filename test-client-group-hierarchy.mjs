@@ -23,6 +23,10 @@ assert.match(code, /ops_sync_client_groups/);
 assert.match(code, /Rotina desativada: INGEE, Sinergia e Semeio\/CBI agora são clientes separados/);
 
 assert.match(jornada, /tipo === 'GRUPO' \? 60 : 70/);
+assert.match(jornada, /const normal = jornadaNormalizar_\(regra\.VALOR_NORMALIZADO \|\| valor\)/);
+assert.match(jornada, /tituloNormalizado\.split\('grupo ' \+ normal\)\.join\(' '\)/);
+assert.match(jornada, /jornadaNormalizar_\(item\.VALOR_NORMALIZADO \|\| item\.VALOR\) !== normal/);
+assert.match(jornada, /jornadaNormalizar_\(item\.VALOR_NORMALIZADO \|\| item\.VALOR\) === normal/);
 assert.match(jornada, /if \(ordenados\.some\(item => !item\.internoVolum\)\) ordenados = ordenados\.filter\(item => !item\.internoVolum\)/);
 assert.match(jornada, /tipoIdentificador = .*=== 'GRUPO' \? 'GRUPO' : 'NOME'/);
 assert.match(jornada, /function jornadaReconciliarIdentificadoresCatalogo_/);

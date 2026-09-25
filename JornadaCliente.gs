@@ -1694,11 +1694,14 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
     const id = String(regra.ID_CLIENTE);
     const tipo = String(regra.TIPO || '').toUpperCase();
     const valor = String(regra.VALOR || '').trim();
-    const normal = String(regra.VALOR_NORMALIZADO || jornadaNormalizar_(valor));
+    const normal = jornadaNormalizar_(regra.VALOR_NORMALIZADO || valor);
     if (!normal) return;
+    const tituloBusca = tipo === 'NOME' && tituloNormalizado.includes('grupo ' + normal)
+      ? tituloNormalizado.split('grupo ' + normal).join(' ')
+      : tituloNormalizado;
     const nomeNoTitulo = normal.length >= 4
-      ? tituloNormalizado.includes(normal)
-      : (' ' + tituloNormalizado + ' ').includes(' ' + normal + ' ');
+      ? tituloBusca.includes(normal)
+      : (' ' + tituloBusca + ' ').includes(' ' + normal + ' ');
     let pontos = 0;
     let motivo = '';
     if (tipo === 'EMAIL' && emails.some(email => jornadaNormalizar_(email) === normal)) {
@@ -1945,7 +1948,7 @@ function jornadaUpsertIdentificador_(idCliente, tipo, valor, prioridade, origem,
     : lerObjetos_(APP.sheets.identificadoresClientes);
   const existente = identificadores.find(item =>
     String(item.ID_CLIENTE) === String(idCliente) && String(item.TIPO).toUpperCase() === String(tipo).toUpperCase() &&
-    String(item.VALOR_NORMALIZADO) === normal
+    jornadaNormalizar_(item.VALOR_NORMALIZADO || item.VALOR) === normal
   );
   const agora = new Date();
   const objeto = { VALOR: String(valor).trim(), VALOR_NORMALIZADO: normal, PRIORIDADE: prioridade || 0, ATIVO: 'SIM', ORIGEM: origem || 'MANUAL', ATUALIZADO_EM: agora };
@@ -1983,7 +1986,7 @@ function jornadaReconciliarIdentificadoresCatalogo_() {
     valores.forEach((valor, indice) => {
       const normal = jornadaNormalizar_(valor);
       identificadores.forEach(item => {
-        if (String(item.VALOR_NORMALIZADO || jornadaNormalizar_(item.VALOR)) !== normal) return;
+        if (jornadaNormalizar_(item.VALOR_NORMALIZADO || item.VALOR) !== normal) return;
         if (String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE) && String(item.TIPO || '').toUpperCase() === tipoCorreto) return;
         if (String(item.ORIGEM || '').toUpperCase() === 'MANUAL') return;
         if (String(item.ATIVO || 'SIM').toUpperCase() === 'NAO') return;
