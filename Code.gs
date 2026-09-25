@@ -1038,8 +1038,11 @@ function limparAcionadoresDuplicados_() {
    INSTALAÇÃO E BANCO
 ========================================================= */
 
+let APP_PLANILHA_CACHE_ = null;
+
 function abrirPlanilha_() {
-  return SpreadsheetApp.openById(APP.spreadsheetId);
+  if (!APP_PLANILHA_CACHE_) APP_PLANILHA_CACHE_ = SpreadsheetApp.openById(APP.spreadsheetId);
+  return APP_PLANILHA_CACHE_;
 }
 
 function criarEstruturaBanco_() {
