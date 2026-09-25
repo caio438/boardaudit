@@ -2073,7 +2073,7 @@ function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
   const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
   const conflitos = { reunioes: [], interacoes: [], formalizacoes: [], vinculosCruzados: [] };
 
-  const registrarDivergencia = function(lista, registro, campoId, campoTitulo) {
+  const registrarDivergencia = function(lista, registro, campoId, campoTitulo, campoChave) {
     const titulo = String(registro[campoTitulo] || '');
     const candidato = jornadaClassificarTextoCliente_(titulo, identificadores);
     if (!candidato) return;
@@ -2081,7 +2081,7 @@ function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
     if (!gruposGeridos.has(grupo)) return;
     if (String(registro[campoId] || '') === String(candidato.idCliente)) return;
     lista.push({
-      id: registro.ID_REUNIAO || registro.ID_INTERACAO || registro.ID_FORMALIZACAO || '',
+      id: String(registro[campoChave] || ''),
       titulo: titulo,
       idAtual: String(registro[campoId] || ''),
       idEsperado: String(candidato.idCliente || ''),
@@ -2092,16 +2092,16 @@ function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
   };
 
   const reunioes = lerObjetos_(APP.sheets.reunioesCalendario);
-  reunioes.forEach(item => registrarDivergencia(conflitos.reunioes, item, 'ID_CLIENTE', 'TITULO'));
+  reunioes.forEach(item => registrarDivergencia(conflitos.reunioes, item, 'ID_CLIENTE', 'TITULO', 'ID_REUNIAO'));
 
   const interacoes = lerObjetos_(APP.sheets.interacoes);
   interacoes.forEach(item => {
     if (String(item.TIPO_INTERACAO || '').toUpperCase() !== 'REUNIAO' && String(item.FONTE || '').toUpperCase() !== 'GOOGLE_MEET') return;
-    registrarDivergencia(conflitos.interacoes, item, 'ID_CLIENTE', 'TITULO');
+    registrarDivergencia(conflitos.interacoes, item, 'ID_CLIENTE', 'TITULO', 'ID_INTERACAO');
   });
 
   const formalizacoes = lerObjetos_(APP.sheets.formalizacoes);
-  formalizacoes.forEach(item => registrarDivergencia(conflitos.formalizacoes, item, 'ID_CLIENTE', 'TITULO'));
+  formalizacoes.forEach(item => registrarDivergencia(conflitos.formalizacoes, item, 'ID_CLIENTE', 'TITULO', 'ID_FORMALIZACAO'));
 
   const interacoesPorId = {};
   interacoes.forEach(item => { if (item.ID_INTERACAO) interacoesPorId[String(item.ID_INTERACAO)] = item; });
@@ -2588,6 +2588,107 @@ function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2(confirmacao) {
       antes: antes.totais,
       depois: depois.totais,
       vinculosCruzados: depois.conflitos.vinculosCruzados || [],
+      validacao: validacao
+    };
+  } catch (erro) {
+    if (restauracoes.length) {
+      jornadaRestaurarAlteracoesReparoPorColunas_(restauracoes);
+      if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    }
+    throw erro;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+const REPARO_GRUPOS_CLIENTES_ETAPA3_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA3';
+
+function jornadaBackupVinculosCruzados_(vinculos) {
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_REPARO_VINCULOS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const reunioesPorId = {};
+  lerObjetos_(APP.sheets.reunioesCalendario).forEach(item => {
+    if (item.ID_REUNIAO) reunioesPorId[String(item.ID_REUNIAO)] = item;
+  });
+  const linhas = [['ID_REUNIAO','ID_INTERACAO','TITULO_REUNIAO','DADOS_JSON']];
+  (vinculos || []).forEach(item => {
+    const registro = reunioesPorId[String(item.idReuniao || '')];
+    if (!registro) throw new Error('Reunião não encontrada para backup de vínculo: ' + item.idReuniao);
+    linhas.push([
+      String(item.idReuniao || ''),
+      String(item.idInteracao || ''),
+      String(item.tituloReuniao || '').slice(0,1000),
+      JSON.stringify(registro)
+    ]);
+  });
+  aba.getRange(1,1,linhas.length,linhas[0].length).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  SpreadsheetApp.flush();
+  return { nome: nome, registros: Math.max(0, linhas.length - 1) };
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3(confirmacao) {
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA3_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo de grupos etapa 3.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  const restauracoes = [];
+  try {
+    const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const vinculos = (antes.conflitos || {}).vinculosCruzados || [];
+    if (Number((antes.totais || {}).reunioes || 0) !== 0 ||
+        Number((antes.totais || {}).interacoes || 0) !== 0 ||
+        Number((antes.totais || {}).formalizacoes || 0) !== 0) {
+      throw new Error('Etapa 3 exige divergências de cliente zeradas antes de corrigir vínculos.');
+    }
+    if (vinculos.length > 20) throw new Error('Quantidade inesperada de vínculos cruzados: ' + vinculos.length);
+    if (Number((antes.totais || {}).vinculosCruzados || 0) > vinculos.length) {
+      throw new Error('Diagnóstico de vínculos cruzados truncado.');
+    }
+
+    const backup = jornadaBackupVinculosCruzados_(vinculos);
+    const agora = new Date();
+    const alteracoes = {};
+    vinculos.forEach(item => {
+      alteracoes[String(item.idReuniao)] = {
+        ID_INTERACAO: '',
+        ID_TRANSCRICAO: '',
+        TRANSCRICAO_URL: '',
+        GRAVACAO_URL: '',
+        ERRO_MEET: 'Vínculo cruzado removido no reparo de grupos; aguardando nova evidência.',
+        STATUS: 'PENDENTE_EVIDENCIA',
+        ATUALIZADO_EM: agora
+      };
+    });
+
+    const lote = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoes);
+    restauracoes.push.apply(restauracoes, lote.restauracoes || []);
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+    const depois = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const validacao = validarEstruturaBanco_();
+    if (!validacao.valido) throw new Error('Estrutura inválida após etapa 3: ' + validacao.erros.join(' | '));
+    if (Number((depois.totais || {}).vinculosCruzados || 0) !== 0) {
+      throw new Error('Ainda existem vínculos cruzados após etapa 3: ' + depois.totais.vinculosCruzados);
+    }
+
+    registrarLog_('CLIENTES','REPARO_GRUPOS_ETAPA3',
+      'Vínculos cruzados removidos: ' + lote.quantidade + ' | backup: ' + backup.nome + ' | pós: 0');
+
+    return {
+      sucesso: true,
+      etapa: 3,
+      concluida: true,
+      backup: backup,
+      aplicados: { vinculosCruzados: lote.quantidade },
+      antes: antes.totais,
+      depois: depois.totais,
       validacao: validacao
     };
   } catch (erro) {
