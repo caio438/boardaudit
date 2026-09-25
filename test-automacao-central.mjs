@@ -13,19 +13,17 @@ assert.match(code, /tldvSyncHours:\s*\[6, 10, 12, 14, 16, 18, 20\]/);
 assert.match(code, /rdTriggerHour:\s*6/);
 assert.match(code, /configurada em 7 horários diários/);
 assert.match(code, /ops_restore_automation/);
-assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio\/CBI', 'CBI'\] \}/);
-assert.doesNotMatch(code, /\{ chave: 'sinergia'/);
-assert.doesNotMatch(code, /\{ chave: 'semeio_cbi'/);
+assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
+assert.match(code, /\{ chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' \}/);
+assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Ingee'\], grupoCliente: 'Grupo Sinergia' \}/);
+assert.match(code, /\{ chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' \}/);
+assert.match(code, /\{ chave: 'semeio_cbi', nome: 'Semeio\/CBI'.*grupoCliente: 'Grupo Sinergia' \}/);
+assert.doesNotMatch(code, /nome: 'INGEE'.*aliases: \[[^\]]*Sinergia[^\]]*\]/);
 
-assert.match(code, /function planejarUnificacaoIngeeSinergiaSemeioCbi\(\)/, 'Dry-run da unificação INGEE não foi implementado.');
-assert.match(code, /function executarUnificacaoIngeeSinergiaSemeioCbi\(confirmacao\)/, 'Execução protegida da unificação INGEE não foi implementada.');
-assert.match(code, /CONFIRMAR_UNIFICACAO_INGEE/, 'Unificação INGEE não exige confirmação explícita.');
-assert.match(code, /BACKUP_UNIFICACAO_INGEE_/, 'Unificação INGEE não cria snapshot dos registros afetados.');
-assert.match(code, /APP\.sheets\.tarefasFormalizacoes/, 'Migração INGEE não cobre tarefas de formalização.');
-assert.match(code, /APP\.sheets\.reunioesCalendario/, 'Migração INGEE não cobre agenda.');
-assert.match(code, /APP\.sheets\.entregasMensais/, 'Migração INGEE não cobre entregas mensais.');
-assert.match(code, /unificacaoIngeeResolverConflitosPitch_/, 'Migração INGEE não trata conflito de pitch atual.');
-assert.match(code, /unificacaoIngeeGarantirAliases_/, 'Migração INGEE não preserva aliases futuros.');
+assert.match(code, /function executarUnificacaoIngeeSinergiaSemeioCbi\(confirmacao\)/, 'Rotina legada da unificação precisa continuar identificável para bloqueio explícito.');
+assert.match(code, /Rotina desativada: INGEE, Sinergia e Semeio\/CBI agora são clientes separados/, 'A unificação legada precisa permanecer bloqueada.');
+assert.match(jornada, /function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES\(\)/, 'Novo dry-run da hierarquia de grupos não foi implementado.');
+assert.match(jornada, /function jornadaReconciliarIdentificadoresCatalogo_\(\)/, 'Reconciliação de identificadores de grupo não foi implementada.');
 assert.match(jornada, /lerObjetos_\(APP\.sheets\.identificadoresClientes\)/, 'Agenda não usa identificadores canônicos de cliente.');
 
 

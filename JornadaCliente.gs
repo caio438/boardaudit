@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.6',
+  versao: '1.9.7',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -1705,15 +1705,19 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
       pontos = 100; motivo = 'e-mail exato: ' + valor;
     } else if (tipo === 'DOMINIO' && emails.some(email => jornadaDominio_(email) === jornadaDominio_(valor))) {
       pontos = 85; motivo = 'domínio do participante: ' + valor;
-    } else if ((tipo === 'NOME' || tipo === 'TITULO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
-      pontos = tipo === 'TITULO' ? 80 : 70; motivo = 'nome no título: ' + valor;
-    } else if (tipo === 'NOME' && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
-      pontos = 45; motivo = 'nome na descrição: ' + valor;
+    } else if ((tipo === 'NOME' || tipo === 'TITULO' || tipo === 'GRUPO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
+      pontos = tipo === 'TITULO' ? 80 : (tipo === 'GRUPO' ? 60 : 70);
+      motivo = (tipo === 'GRUPO' ? 'grupo no título: ' : 'nome no título: ') + valor;
+    } else if ((tipo === 'NOME' || tipo === 'GRUPO') && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
+      pontos = tipo === 'GRUPO' ? 35 : 45;
+      motivo = (tipo === 'GRUPO' ? 'grupo na descrição: ' : 'nome na descrição: ') + valor;
     }
     pontos += pontos ? Number(regra.PRIORIDADE || 0) / 100 : 0;
-    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo };
+    const internoVolum = normal === 'volum';
+    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo, internoVolum: internoVolum };
   });
-  const ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  let ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  if (ordenados.some(item => !item.internoVolum)) ordenados = ordenados.filter(item => !item.internoVolum);
   if (!ordenados.length) return null;
   if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) return null;
   return ordenados[0];
@@ -1907,8 +1911,9 @@ function jornadaGarantirIdentificadoresPadrao_(cliente, identificadoresInformado
       })
     : null;
   const nomes = [cliente.NOME_CLIENTE].concat((catalogo && catalogo.aliases) || []);
+  const tipoIdentificador = String(cliente.TIPO_CLIENTE || (catalogo && catalogo.tipoCliente) || 'EMPRESA').toUpperCase() === 'GRUPO' ? 'GRUPO' : 'NOME';
   nomes.filter(Boolean).forEach((nome, indice) => jornadaUpsertIdentificador_(
-    cliente.ID_CLIENTE, 'NOME', nome, 10 - indice, 'CATALOGO', identificadoresInformados
+    cliente.ID_CLIENTE, tipoIdentificador, nome, 10 - indice, 'CATALOGO', identificadoresInformados
   ));
 }
 
@@ -1960,7 +1965,142 @@ function jornadaUpsertIdentificador_(idCliente, tipo, valor, prioridade, origem,
   identificadores.push(novo);
 }
 
+function jornadaReconciliarIdentificadoresCatalogo_() {
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const porChave = {};
+  clientes.forEach(item => { if (item.CHAVE_VOLUMBERG) porChave[String(item.CHAVE_VOLUMBERG)] = item; });
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes);
+  let desativados = 0;
+  let garantidos = 0;
+  const agora = new Date();
+
+  (typeof CATALOGO_CLIENTES_AUDIT !== 'undefined' ? CATALOGO_CLIENTES_AUDIT : []).forEach(itemCatalogo => {
+    const cliente = porChave[String(itemCatalogo.chave || '')];
+    if (!cliente) return;
+    const tipoCorreto = String(itemCatalogo.tipoCliente || cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() === 'GRUPO' ? 'GRUPO' : 'NOME';
+    const valores = [itemCatalogo.nome].concat(itemCatalogo.aliases || []).filter(Boolean);
+    valores.forEach((valor, indice) => {
+      const normal = jornadaNormalizar_(valor);
+      identificadores.forEach(item => {
+        if (String(item.VALOR_NORMALIZADO || jornadaNormalizar_(item.VALOR)) !== normal) return;
+        if (String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE) && String(item.TIPO || '').toUpperCase() === tipoCorreto) return;
+        if (String(item.ORIGEM || '').toUpperCase() === 'MANUAL') return;
+        if (String(item.ATIVO || 'SIM').toUpperCase() === 'NAO') return;
+        atualizarPorCampo_(APP.sheets.identificadoresClientes, 'ID_IDENTIFICADOR', item.ID_IDENTIFICADOR, {
+          ATIVO: 'NAO',
+          ATUALIZADO_EM: agora
+        });
+        item.ATIVO = 'NAO';
+        desativados++;
+      });
+      jornadaUpsertIdentificador_(cliente.ID_CLIENTE, tipoCorreto, valor, 10 - indice, 'CATALOGO', identificadores);
+      garantidos++;
+    });
+  });
+
+  return { garantidos: garantidos, desativados: desativados };
+}
+
+function jornadaClassificarTextoCliente_(texto, regrasInformadas) {
+  const evento = {
+    getTitle: function() { return String(texto || ''); },
+    getDescription: function() { return ''; },
+    getGuestList: function() { return []; },
+    getCreators: function() { return []; }
+  };
+  const candidato = jornadaIdentificarClienteEvento_(evento, regrasInformadas);
+  return candidato && candidato.pontos >= 50 ? candidato : null;
+}
+
+function jornadaGrupoClientePorId_(idCliente, clientesInformados) {
+  const clientes = Array.isArray(clientesInformados) ? clientesInformados : lerObjetos_(APP.sheets.clientes);
+  const cliente = clientes.find(item => String(item.ID_CLIENTE || '') === String(idCliente || ''));
+  if (!cliente) return '';
+  if (String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return String(cliente.NOME_CLIENTE || '');
+  return String(cliente.GRUPO_CLIENTE || '');
+}
+
+function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
+  criarAbasAusentes_();
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes)
+    .filter(item => String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO');
+  const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+  const conflitos = { reunioes: [], interacoes: [], formalizacoes: [], vinculosCruzados: [] };
+
+  const registrarDivergencia = function(lista, registro, campoId, campoTitulo) {
+    const titulo = String(registro[campoTitulo] || '');
+    const candidato = jornadaClassificarTextoCliente_(titulo, identificadores);
+    if (!candidato) return;
+    const grupo = jornadaGrupoClientePorId_(candidato.idCliente, clientes);
+    if (!gruposGeridos.has(grupo)) return;
+    if (String(registro[campoId] || '') === String(candidato.idCliente)) return;
+    lista.push({
+      id: registro.ID_REUNIAO || registro.ID_INTERACAO || registro.ID_FORMALIZACAO || '',
+      titulo: titulo,
+      idAtual: String(registro[campoId] || ''),
+      idEsperado: String(candidato.idCliente || ''),
+      grupo: grupo,
+      motivo: candidato.motivo
+    });
+  };
+
+  const reunioes = lerObjetos_(APP.sheets.reunioesCalendario);
+  reunioes.forEach(item => registrarDivergencia(conflitos.reunioes, item, 'ID_CLIENTE', 'TITULO'));
+
+  const interacoes = lerObjetos_(APP.sheets.interacoes);
+  interacoes.forEach(item => {
+    if (String(item.TIPO_INTERACAO || '').toUpperCase() !== 'REUNIAO' && String(item.FONTE || '').toUpperCase() !== 'GOOGLE_MEET') return;
+    registrarDivergencia(conflitos.interacoes, item, 'ID_CLIENTE', 'TITULO');
+  });
+
+  const formalizacoes = lerObjetos_(APP.sheets.formalizacoes);
+  formalizacoes.forEach(item => registrarDivergencia(conflitos.formalizacoes, item, 'ID_CLIENTE', 'TITULO'));
+
+  const interacoesPorId = {};
+  interacoes.forEach(item => { if (item.ID_INTERACAO) interacoesPorId[String(item.ID_INTERACAO)] = item; });
+  reunioes.forEach(reuniao => {
+    const interacao = interacoesPorId[String(reuniao.ID_INTERACAO || '')];
+    if (!interacao) return;
+    const candidatoReuniao = jornadaClassificarTextoCliente_(reuniao.TITULO, identificadores);
+    const candidatoInteracao = jornadaClassificarTextoCliente_(interacao.TITULO, identificadores);
+    if (!candidatoReuniao || !candidatoInteracao) return;
+    const grupoReuniao = jornadaGrupoClientePorId_(candidatoReuniao.idCliente, clientes);
+    const grupoInteracao = jornadaGrupoClientePorId_(candidatoInteracao.idCliente, clientes);
+    if (!gruposGeridos.has(grupoReuniao) || !gruposGeridos.has(grupoInteracao) || grupoReuniao === grupoInteracao) return;
+    conflitos.vinculosCruzados.push({
+      idReuniao: reuniao.ID_REUNIAO,
+      tituloReuniao: reuniao.TITULO,
+      idInteracao: interacao.ID_INTERACAO,
+      tituloInteracao: interacao.TITULO,
+      grupoReuniao: grupoReuniao,
+      grupoInteracao: grupoInteracao
+    });
+  });
+
+  return {
+    sucesso: true,
+    modo: 'DRY_RUN',
+    totais: {
+      reunioes: conflitos.reunioes.length,
+      interacoes: conflitos.interacoes.length,
+      formalizacoes: conflitos.formalizacoes.length,
+      vinculosCruzados: conflitos.vinculosCruzados.length
+    },
+    conflitos: {
+      reunioes: conflitos.reunioes.slice(0, 100),
+      interacoes: conflitos.interacoes.slice(0, 100),
+      formalizacoes: conflitos.formalizacoes.slice(0, 100),
+      vinculosCruzados: conflitos.vinculosCruzados.slice(0, 100)
+    }
+  };
+}
+
 function jornadaGarantirRegrasPadrao_(idCliente, regrasInformadas) {
+  const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', idCliente);
+  if (cliente && String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return;
   const todas = Array.isArray(regrasInformadas)
     ? regrasInformadas
     : lerObjetos_(APP.sheets.regrasEntregas);
