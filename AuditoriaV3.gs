@@ -2718,11 +2718,12 @@ function audV3AvaliarQualidadeTranscricao_(normalizacao, original) {
     status = 'BAIXA';
     alertas.push('Transcrição muito curta para sustentar uma auditoria confiável.');
   }
-  if (!profissionais.length || charsProfissional < 80) {
+  const minimoCaracteresPorPapel = Math.min(80, Math.max(15, Math.round(caracteresFalados * 0.05)));
+  if (!profissionais.length || charsProfissional < minimoCaracteresPorPapel) {
     status = 'BAIXA';
     alertas.push('Não há cobertura suficiente de falas do profissional com autoria segura.');
   }
-  if (!leads.length || charsLead < 80) {
+  if (!leads.length || charsLead < minimoCaracteresPorPapel) {
     status = 'BAIXA';
     alertas.push('Não há cobertura suficiente de falas do lead com autoria segura.');
   }
