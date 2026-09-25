@@ -79,7 +79,7 @@ assert.equal(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas.length,
 const resultadoScoreIngee = {
   contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
   criterios_avaliados: criterios.dimensoes.map(item => ({
-    id: item.id, nome: item.nome, aplicavel: true, status: 'CONFORME',
+    id: item.id, nome: item.nome, aplicavel: true, status: 'CONFORME', pontuacao: 5,
     o_que_foi_dito: 'Evidência literal.', locutor_evidencia: 'CLOSER',
     divergencia: 'Não houve divergência.', justificativa_nota: 'Conforme.', correcao_pratica: ''
   })),
@@ -97,6 +97,7 @@ context.api.applyCloserRules(resultadoScoreIngee, criterios, transcricaoSemScore
 const criterioScore = resultadoScoreIngee.criterios_avaliados.find(item => item.id === 'validacao_interesse');
 assert.equal(criterioScore.status, 'NAO_EXECUTADO', 'Score obrigatório ausente precisa virar desvio, não acerto ou N/A.');
 assert.equal(criterioScore.aplicavel, true, 'Score obrigatório em primeira reunião deve continuar aplicável.');
+assert.equal(resultadoScoreIngee.pontuacao_calculada.score_5, 4, 'A nota geral precisa ser recalculada depois que uma evidência determinística altera um critério.');
 context.api.reconcileChecklist(resultadoScoreIngee, criterios);
 const checklistScore = resultadoScoreIngee.checklist.find(item => /Validação do entendimento/i.test(item.item));
 assert.equal(checklistScore.resultado, 'NAO_ATENDIDO', 'Checklist deve ser derivado do critério validado e não repetir “Score 10” inventado.');
