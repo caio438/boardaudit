@@ -2646,7 +2646,7 @@ function audV3NormalizarTranscricaoTexto_(texto, interacao, mapaLocutores) {
     }
 
     const anterior = turnos.length ? turnos[turnos.length - 1] : null;
-    if (!marcadorDuploMaior && anterior) {
+    if (!marcadorDuploMaior && anterior && timestampPendente) {
       anterior.fala = (anterior.fala + ' ' + linha.replace(/\s+/g, ' ').trim()).trim();
       metricas.continuacoesUnidas += 1;
       timestampPendente = '';
