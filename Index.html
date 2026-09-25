@@ -990,6 +990,47 @@
       color: var(--muted);
     }
 
+    .audit-executive-moments {
+      display: grid;
+      gap: 10px;
+    }
+
+    .audit-executive-moment {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: var(--surface);
+    }
+
+    .audit-executive-moment + .audit-executive-moment { margin-top: 0; }
+
+    .audit-executive-moment-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .audit-executive-moment-head strong { font-size: 14px; }
+    .audit-executive-moment p { margin: 6px 0; }
+    .audit-executive-moment .line-tip { margin-top: 8px; }
+
+    .audit-temporal-notes {
+      display: grid;
+      gap: 8px;
+      margin: -8px 0 22px;
+    }
+
+    .audit-temporal-note {
+      border-left: 3px solid var(--border);
+      padding: 8px 10px;
+      background: var(--surface-2);
+      border-radius: 6px;
+    }
+
+    .audit-temporal-note strong { display: block; margin-bottom: 3px; }
+
     .audit-detail-panel {
       margin-top: 22px;
       border: 1px solid var(--border);
@@ -7281,58 +7322,103 @@
     const momentos = Array.isArray(r.momentos) ? r.momentos : [];
     const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
 
-    const aderentesMomentos = momentos.filter(statusMomentoConformeCloserFront_);
-    const desviosMomentos = momentos.filter(item =>
-      !statusMomentoConformeCloserFront_(item) &&
-      !statusMomentoNaoAplicavelCloserFront_(item)
-    );
+    const normalizarTexto = valor => String(valor || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
 
-    const aderentes = aderentesMomentos.length ? aderentesMomentos.map(item => ({
-      titulo: item.nome || item.id || 'Momento',
-      evidencia: item.o_que_foi_dito || '',
-      regra: item.o_que_se_espera || item.texto_script || ''
-    })) : criterios.filter(item => item && item.aplicavel !== false && statusConformeAuditoriaFront_(item.status)).map(item => ({
-      titulo: item.nome || item.id || 'Critério',
-      evidencia: item.o_que_foi_dito || '',
-      regra: item.regra_pitch || ''
-    }));
+    const textoNeutro = valor => {
+      const chave = normalizarTexto(valor).replace(/[.!]+$/g, '');
+      return !chave || [
+        'nao houve divergencia',
+        'nenhuma divergencia',
+        'nenhuma divergencia registrada',
+        'sem divergencia',
+        'nao evidenciado',
+        'nao aplicavel',
+        'n/a'
+      ].includes(chave);
+    };
 
-    const desvios = desviosMomentos.length ? desviosMomentos.map(item => ({
-      titulo: item.nome || item.id || 'Momento',
-      divergencia: item.divergencia || ((item.pontos_melhorar || []).join(' • ')) || 'Desvio registrado.',
-      evidencia: item.o_que_foi_dito || '',
-      correcao: item.o_que_fazer || item.como_agir || item.texto_script || ''
-    })) : criterios.filter(item =>
-      item && item.aplicavel !== false &&
-      !statusConformeAuditoriaFront_(item.status) &&
-      !statusNaoAplicavelAuditoriaFront_(item.status)
-    ).map(item => ({
-      titulo: item.nome || item.id || 'Critério',
-      divergencia: item.divergencia || 'Desvio registrado.',
-      evidencia: item.o_que_foi_dito || '',
-      correcao: item.correcao_pratica || item.regra_pitch || ''
-    }));
+    const unicos = itens => {
+      const vistos = {};
+      return (itens || []).map(item => String(item || '').trim()).filter(item => {
+        const chave = normalizarTexto(item);
+        if (!chave || vistos[chave]) return false;
+        vistos[chave] = true;
+        return true;
+      });
+    };
+
+    const criterioRelacionado = momento => {
+      const nome = normalizarTexto([momento && momento.nome, momento && momento.id].join(' '));
+      const tokens = nome.split(' ').filter(token => token.length > 4);
+      return criterios.find(item => {
+        if (!item || item.aplicavel === false || statusConformeAuditoriaFront_(item.status) || statusNaoAplicavelAuditoriaFront_(item.status)) return false;
+        const alvo = normalizarTexto([item.nome, item.id].join(' '));
+        return tokens.some(token => alvo.includes(token));
+      }) || null;
+    };
+
+    const leituraMomento = item => {
+      const relacionado = criterioRelacionado(item);
+      const divergencia = !textoNeutro(item && item.divergencia) ? String(item.divergencia).trim() : '';
+      const gaps = unicos([
+        divergencia,
+        ...((item && Array.isArray(item.pontos_melhorar)) ? item.pontos_melhorar : []),
+        relacionado && !textoNeutro(relacionado.divergencia) ? relacionado.divergencia : ''
+      ]).slice(0, 3);
+      const fortes = unicos((item && Array.isArray(item.pontos_fortes)) ? item.pontos_fortes : []).slice(0, 3);
+      const acao = String(
+        (item && (item.o_que_fazer || item.como_agir)) ||
+        (relacionado && (relacionado.correcao_pratica || relacionado.regra_pitch)) ||
+        ''
+      ).trim();
+      const pitch = String((item && item.texto_script) || (relacionado && relacionado.regra_pitch) || '').trim();
+      return {
+        item: item || {},
+        gaps: gaps,
+        fortes: fortes,
+        acao: acao,
+        pitch: pitch,
+        conforme: statusMomentoConformeCloserFront_(item),
+        naoAplicavel: statusMomentoNaoAplicavelCloserFront_(item)
+      };
+    };
+
+    const leituras = momentos.map(leituraMomento).filter(leitura => !leitura.naoAplicavel);
+    const aderentes = leituras.filter(leitura => leitura.conforme);
+    const melhorias = leituras.filter(leitura => !leitura.conforme && (leitura.gaps.length || leitura.acao || leitura.pitch));
 
     const listaAderentes = aderentes.length
-      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(item =>
-          '<li><strong>' + escapeHtml(item.titulo) + '</strong>' +
-          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.regra ? '<br><span class="muted">Referência do processo:</span> ' + escapeHtml(item.regra) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p class="muted">Nenhuma execução aderente foi registrada com a evidência disponível.</p>';
+      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(leitura => {
+          const item = leitura.item;
+          return '<li><strong>' + escapeHtml(item.nome || item.id || 'Momento') + '</strong>' +
+            (item.o_que_foi_dito ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.o_que_foi_dito) : '') +
+            (leitura.fortes.length ? '<br><span class="muted">Acertos:</span> ' + escapeHtml(leitura.fortes.join(' • ')) : '') +
+            '</li>';
+        }).join('') + '</ul>'
+      : '<p class="muted">Nenhum momento foi classificado como plenamente conforme.</p>';
 
-    const listaDesvios = desvios.length
-      ? '<ul class="audit-executive-list">' + desvios.slice(0, 6).map(item =>
-          '<li><strong>' + escapeHtml(item.titulo) + '</strong>: ' + escapeHtml(item.divergencia) +
-          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.correcao ? '<br><span class="muted">Correção prática:</span> ' + escapeHtml(item.correcao) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
+    const listaMelhorias = melhorias.length
+      ? '<div class="audit-executive-moments">' + melhorias.slice(0, 6).map(leitura => {
+          const item = leitura.item;
+          const cor = String(item.cor || item.status || '').toUpperCase();
+          const classe = cor === 'VERMELHO' ? 'danger' : 'warning';
+          const nota = item.nota === null || item.nota === undefined ? '' : ' · ' + item.nota + '/5';
+          return '<article class="audit-executive-moment">' +
+            '<div class="audit-executive-moment-head"><strong>' + escapeHtml(item.nome || item.id || 'Momento') + '</strong>' +
+            '<span class="status ' + classe + '">' + escapeHtml((cor || 'ATENÇÃO') + nota) + '</span></div>' +
+            (item.o_que_foi_dito ? '<p><span class="muted">Evidência:</span> ' + escapeHtml(item.o_que_foi_dito) + '</p>' : '') +
+            (leitura.fortes.length ? '<p class="line-success">✅ <strong>Acertos:</strong> ' + escapeHtml(leitura.fortes.join(' • ')) + '</p>' : '') +
+            (leitura.gaps.length ? '<p class="line-danger">❌ <strong>O que faltou:</strong> ' + escapeHtml(leitura.gaps.join(' • ')) + '</p>' : '') +
+            (leitura.acao ? '<p><strong>Ação concreta:</strong> ' + escapeHtml(leitura.acao) + '</p>' : '') +
+            (leitura.pitch ? '<p class="line-tip">💡 <strong>Referência / texto do pitch:</strong> ' + escapeHtml(leitura.pitch) + '</p>' : '') +
+            (item.como_agir && item.como_agir !== leitura.acao ? '<p><strong>Como aplicar:</strong> ' + escapeHtml(item.como_agir) + '</p>' : '') +
+            '</article>';
+        }).join('') + '</div>'
+      : '<p>Nenhuma prioridade de melhoria foi identificada com evidência suficiente.</p>';
 
     const acoes = consolidarIntervencoesCloserFront_(r);
-
     const listaAcoes = acoes.length
       ? '<ol class="audit-executive-list">' + acoes.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
       : '<p class="muted">Manter a execução aderente e repetir os comportamentos que funcionaram nesta reunião.</p>';
@@ -7378,8 +7464,8 @@
         </section>
 
         <section class="audit-executive-block audit-executive-gap">
-          <h3>Desvios em relação ao pitch/processo</h3>
-          ${listaDesvios}
+          <h3>Prioridades de melhoria por momento</h3>
+          ${listaMelhorias}
         </section>
 
         <section class="audit-executive-block audit-executive-action">
@@ -7495,17 +7581,22 @@
       <p><strong>Mensurabilidade:</strong> ${escapeHtml(temporal.rotulo_mensurabilidade)} · <strong>Duração total da gravação:</strong> ${escapeHtml(temporal.duracao_total)}</p>
       ${temporal.mensurabilidade === 'NAO_MENSURAVEL'
         ? `<p class="muted">A duração total está disponível, mas a transcrição não possui timestamps suficientes para cronometrar cada etapa. Abaixo está a cadência recomendada e a leitura qualitativa.</p>${tabelaAuditoriaV3(
-            ['Etapa','Janela de referência','Leitura da execução'],
-            temporal.etapas.map(item => [item.nome, item.janela_esperada, item.observacao])
+            ['Etapa','Janela de referência','Aderência'],
+            temporal.etapas.map(item => [item.nome, item.janela_esperada, item.aderencia || 'Leitura qualitativa'])
           )}`
         : tabelaAuditoriaV3(
-            ['Etapa','Janela esperada','Início','Fim','Duração','Aderência','Observação'],
+            ['Etapa','Janela esperada','Início','Fim','Duração','Aderência'],
             temporal.etapas.map(item => [
               item.nome, item.janela_esperada, item.inicio || 'Não localizado', item.fim || 'Não localizado',
               item.duracao_minutos === null || item.duracao_minutos === undefined ? 'Não mensurável' : item.duracao_minutos + ' min',
-              item.aderencia || 'Leitura qualitativa', item.observacao
+              item.aderencia || 'Leitura qualitativa'
             ])
           )}
+      <div class="audit-temporal-notes">
+        ${temporal.etapas.filter(item => item && item.observacao).map(item =>
+          `<div class="audit-temporal-note"><strong>${escapeHtml(item.nome || 'Etapa')}</strong>${escapeHtml(item.observacao)}</div>`
+        ).join('')}
+      </div>
       ${(temporal.limitacoes || []).length ? `<p><strong>Limitações:</strong> ${escapeHtml(temporal.limitacoes.join(' • '))}</p>` : ''}
       <h3>Perguntas de diagnóstico</h3>
       <p><strong>Total realizado:</strong> ${escapeHtml(perguntas.total_realizadas === null || perguntas.total_realizadas === undefined ? 'Não mensurável' : perguntas.total_realizadas)}</p>
