@@ -97,7 +97,12 @@ jobs:
 
           code="$(curl -sS --max-time 420 --location-trusted             --oauth2-bearer "$TOKEN"             -o /tmp/client-groups-repair-stage1-result.txt             -w '%{http_code}'             "$URL" || true)"
           echo "CLIENT_GROUPS_REPAIR_STAGE1_HTTP_STATUS=$code"
-          test "$code" = "200"
+          if [ "$code" != "200" ]; then
+            echo "CLIENT_GROUPS_REPAIR_STAGE1_RESPONSE_BEGIN"
+            sed -n '1,160p' /tmp/client-groups-repair-stage1-result.txt || true
+            echo "CLIENT_GROUPS_REPAIR_STAGE1_RESPONSE_END"
+            exit 1
+          fi
 
           node <<'NODE'
           const fs = require('fs');
