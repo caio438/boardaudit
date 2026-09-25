@@ -45,6 +45,10 @@ assert.doesNotMatch(opsWorkflow, /REPARAR_CONFLITOS|executarReparo|repair_client
 assert.match(code, /ops_repair_client_groups_stage1/);
 assert.match(jornada, /REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1/);
 assert.match(jornada, /BACKUP_REPARO_GRUPOS_/);
+assert.match(jornada, /limiteParte = 30000/);
+assert.match(jornada, /function jornadaAplicarAlteracoesReparoEmLote_/);
+assert.match(jornada, /function jornadaRestaurarReparoEmLote_/);
+assert.match(jornada, /Reparo etapa 1 incompleto/);
 assert.match(jornada, /RESULTADO_JSON = resultadoJson/);
 assert.match(repairWorkflow, /Ops repair client groups stage1:/);
 assert.match(repairWorkflow, /CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1/);
