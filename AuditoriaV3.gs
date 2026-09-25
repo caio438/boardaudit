@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.1.0
+ * Versão: 6.2.0
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.1.0',
+  versao: '6.2.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1660,6 +1660,15 @@ function executarAuditoriaV3(dados) {
   transcricao.CONTEUDO = transcricaoPreparada.conteudo;
   transcricao.QUALIDADE_TRANSCRICAO = transcricaoPreparada.qualidade.status;
   transcricao.QUALIDADE_JSON = JSON.stringify(transcricaoPreparada.qualidade);
+  transcricao.NORMALIZACAO_VERSAO = transcricaoPreparada.normalizacaoVersao;
+  if (['SDR', 'CLOSER'].includes(tipo) && transcricaoPreparada.qualidade.apta_para_auditoria !== true) {
+    const metricasQualidade = transcricaoPreparada.qualidade.metricas || {};
+    throw new Error(
+      'A transcrição não atingiu o gate mínimo de autoria para uma auditoria assertiva. ' +
+      'Cobertura identificada: ' + String(metricasQualidade.cobertura_identificada_pct || 0) + '%. ' +
+      (Array.isArray(transcricaoPreparada.qualidade.alertas) ? transcricaoPreparada.qualidade.alertas.join(' | ') : '')
+    );
+  }
   const clienteInteracao = String(interacao.ID_CLIENTE || '').trim();
   if (clienteInteracao && clienteInteracao !== String(cliente.ID_CLIENTE)) {
     if (!dados.reclassificarInteracao) {
@@ -1802,6 +1811,12 @@ function executarAuditoriaV3(dados) {
       const normalizado = audV3NormalizarResultado_(respostaIa, criterios, identidade, interacao, pitch, tipo);
       normalizado.metadados = normalizado.metadados || {};
       normalizado.metadados.modelo_ia = modeloUsado;
+      if (tipo === 'CLOSER') {
+        audV3ReconciliarContextoCloserComFonte_(normalizado, transcricao.CONTEUDO, contextoIa.contextoOperacional || {});
+        audV3AplicarRegrasDeterministicasCloser_(normalizado, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
+        audV3ReconciliarChecklistCloser_(normalizado, criterios);
+        audV3DerivarSuperficiesExecutivasCloser_(normalizado);
+      }
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
       normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
       if (audV3MotivoAutorreparoGate_(normalizado.validacao_board)) {
@@ -1995,10 +2010,7 @@ function repararCoachingAuditoriaV3(idAuditoria) {
 function audV3ExigirGatePublicavel_(resultado, tipo) {
   const gate = audV3ValidarQualidadeBoard_(resultado, tipo);
   if (String(gate.status || '').toUpperCase() === 'BLOQUEADO') {
-    gate.statusOriginal = 'BLOQUEADO';
-    gate.status = 'REVISAR';
-    gate.alertas = gate.alertas || [];
-    gate.alertas.unshift('Gate informativo: os pontos abaixo recomendam revisão, mas não impedem aprovação ou publicação.');
+    throw new Error('A auditoria possui inconsistências factuais bloqueantes e não pode ser aprovada/publicada: ' + (gate.bloqueios || []).join(' | '));
   }
   return gate;
 }
@@ -2216,9 +2228,9 @@ function aprovarAuditoriaV3(idAuditoria) {
   };
   const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
   if (!transcricao) throw new Error('A transcrição original desta auditoria não está disponível.');
-  const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
-  const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
-  transcricao.CONTEUDO = String(normalizacaoFonte.texto || conteudoOriginal || '').trim();
+  const fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO);
+  transcricao.CONTEUDO = String(fontePreparada.conteudo || '').trim();
+  transcricao.NORMALIZACAO_VERSAO = fontePreparada.normalizacaoVersao || '';
   if (!String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
   const hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, auditoria.TIPO_AUDITORIA);
   if (!String(auditoria.HASH_FONTE || '').trim()) {
@@ -2364,7 +2376,7 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
-const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '1.0';
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.0';
 
 function audV3DistanciaEdicaoCurta_(a, b) {
   a = String(a || '');
@@ -2401,53 +2413,119 @@ function audV3RotuloPareceNome_(rotulo, nome) {
   return Math.min(rp.length, np.length) >= 4 && audV3DistanciaEdicaoCurta_(rp, np) <= limite;
 }
 
+function audV3ProfissionalCanonicoTranscricao_(interacao) {
+  const item = interacao || {};
+  const funcao = String(item.FUNCAO || '').trim().toUpperCase();
+  const bruto = String(item.COLABORADOR || item.VENDEDOR || '').trim();
+  if (funcao === 'CLOSER' && String(item.ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A') {
+    if (audV3CloserIngeeValido_(bruto)) return bruto;
+    return 'Sinergia Engenharia';
+  }
+  return bruto;
+}
+
 function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
   const bruto = String(rotulo || '').replace(/^[-*•\s]+/, '').trim();
   const n = audV3NormalizarTrechoRastreavel_(bruto);
   const funcao = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
   const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
-  const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
+  const profissional = audV3ProfissionalCanonicoTranscricao_(interacao || {});
   const lead = String((interacao || {}).LEAD || '').trim();
 
   if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
-    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional), fonte: 'ROTULO_EXPLICITO' };
   }
   if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
-    return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
+    return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead', fonte: 'ROTULO_EXPLICITO' };
   }
   if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
-    return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true };
+    return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true, fonte: 'ROTULO_DESCONHECIDO' };
   }
   if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
-    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional) };
+    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional), fonte: 'NOME_METADADO' };
+  }
+  if (papelProfissional === 'CLOSER' && String((interacao || {}).ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A' && audV3CloserIngeeValido_(bruto)) {
+    return { rotulo: 'CLOSER (' + bruto + ')', tipo: 'CLOSER', identificado: true, corrigido: true, fonte: 'NOME_INGEE' };
   }
   if (lead && audV3RotuloPareceNome_(bruto, lead)) {
-    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead) };
+    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead), fonte: 'NOME_METADADO' };
   }
-  return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false };
+  return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false, fonte: 'ROTULO_NAO_RECONHECIDO' };
 }
 
-function audV3NormalizarTranscricaoTexto_(texto, interacao) {
+function audV3AssinaturaTextoLeve_(texto) {
+  const valor = String(texto || '');
+  let hash = 2166136261;
+  for (let i = 0; i < valor.length; i++) {
+    hash ^= valor.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return valor.length + ':' + (hash >>> 0).toString(16);
+}
+
+function audV3TimestampTranscricao_(linha) {
+  const match = String(linha || '').trim().match(/^\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?$/);
+  return match ? match[1] : '';
+}
+
+function audV3RotuloTurnoPorTipo_(tipo, interacao) {
+  const papel = String(tipo || '').toUpperCase();
+  const profissional = audV3ProfissionalCanonicoTranscricao_(interacao || {});
+  const lead = String((interacao || {}).LEAD || '').trim();
+  if (papel === 'SDR' || papel === 'CLOSER' || papel === 'PROFISSIONAL') {
+    return papel + (profissional ? ' (' + profissional + ')' : '');
+  }
+  if (papel === 'LEAD') return 'LEAD' + (lead ? ' (' + lead + ')' : '');
+  return 'LOCUTOR_NAO_IDENTIFICADO';
+}
+
+function audV3InferirLocutorPorAncora_(fala, interacao) {
+  const texto = audV3NormalizarTrechoRastreavel_(fala || '');
+  if (!texto) return null;
+  const item = interacao || {};
+  const funcao = String(item.FUNCAO || '').trim().toUpperCase();
+  const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
+  const profissional = audV3ProfissionalCanonicoTranscricao_(item);
+  const lead = String(item.LEAD || '').trim();
+
+  if (papelProfissional === 'CLOSER' && String(item.ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A') {
+    const nomes = ['juliana', 'jessica', 'maira'];
+    for (let i = 0; i < nomes.length; i++) {
+      const nome = nomes[i];
+      const padrao = new RegExp('\\b(?:eu sou|me chamo|aqui e|me apresentando[^.]{0,80}sou)\\s+(?:a\\s+)?' + nome + '\\b');
+      if (padrao.test(texto)) {
+        return { tipo: 'CLOSER', rotulo: 'CLOSER (' + nome.charAt(0).toUpperCase() + nome.slice(1) + ')', fonte: 'ANCORA_AUTOAPRESENTACAO' };
+      }
+    }
+  }
+
+  if (profissional) {
+    const nome = audV3NormalizarTrechoRastreavel_(profissional).split(' ')[0];
+    if (nome && nome.length >= 4) {
+      const padrao = new RegExp('\\b(?:eu sou|me chamo|aqui e)\\s+(?:a|o)?\\s*' + nome + '\\b');
+      if (padrao.test(texto)) return { tipo: papelProfissional, rotulo: audV3RotuloTurnoPorTipo_(papelProfissional, item), fonte: 'ANCORA_AUTOAPRESENTACAO' };
+    }
+  }
+  if (lead && !/\b(?:empresa|engenharia|tecnologia|sistemas|consultoria|empilhadeiras)\b/.test(audV3NormalizarTrechoRastreavel_(lead))) {
+    const nomeLead = audV3NormalizarTrechoRastreavel_(lead).split(' ')[0];
+    if (nomeLead && nomeLead.length >= 4) {
+      const padraoLead = new RegExp('\\b(?:eu sou|me chamo|aqui e)\\s+(?:a|o)?\\s*' + nomeLead + '\\b');
+      if (padraoLead.test(texto)) return { tipo: 'LEAD', rotulo: audV3RotuloTurnoPorTipo_('LEAD', item), fonte: 'ANCORA_AUTOAPRESENTACAO' };
+    }
+  }
+  return null;
+}
+
+function audV3NormalizarTranscricaoTextoLegado_(texto, interacao) {
   const original = String(texto || '').replace(/\r\n?/g, '\n').trim();
   if (!original) return { texto: '', turnos: [], metricas: { linhas: 0, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0 } };
-
   const linhas = original.split('\n');
   const turnos = [];
-  const metricas = {
-    linhas: linhas.length,
-    turnos: 0,
-    semRotulo: 0,
-    rotulosDesconhecidos: 0,
-    rotulosCorrigidos: 0,
-    duplicadasRemovidas: 0,
-    continuacoesUnidas: 0
-  };
-
+  const metricas = { linhas: linhas.length, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0 };
   linhas.forEach(function(linhaOriginal) {
     let linha = String(linhaOriginal || '').trim();
     if (!linha) return;
     linha = linha.replace(/^[-*•]\s+/, '').trim();
-
     const match = linha.match(/^(\[[^\]]{1,24}\]\s*)?([^:\n]{1,80}):\s*(.+)$/);
     if (match) {
       const timestamp = String(match[1] || '').trim();
@@ -2456,7 +2534,6 @@ function audV3NormalizarTranscricaoTexto_(texto, interacao) {
       if (!fala) return;
       if (!info.identificado) metricas.rotulosDesconhecidos += 1;
       if (info.corrigido) metricas.rotulosCorrigidos += 1;
-
       const anterior = turnos.length ? turnos[turnos.length - 1] : null;
       const chaveFala = audV3NormalizarTrechoRastreavel_(fala);
       const chaveAnterior = anterior ? audV3NormalizarTrechoRastreavel_(anterior.fala) : '';
@@ -2472,7 +2549,6 @@ function audV3NormalizarTranscricaoTexto_(texto, interacao) {
       turnos.push({ timestamp: timestamp, rotulo: info.rotulo, tipo: info.tipo, fala: fala });
       return;
     }
-
     const anterior = turnos.length ? turnos[turnos.length - 1] : null;
     const trecho = linha.replace(/\s+/g, ' ').trim();
     if (!trecho) return;
@@ -2485,8 +2561,135 @@ function audV3NormalizarTranscricaoTexto_(texto, interacao) {
       metricas.rotulosDesconhecidos += 1;
     }
   });
+  metricas.turnos = turnos.length;
+  const normalizado = turnos.map(function(turno) {
+    return (turno.timestamp ? turno.timestamp + ' ' : '') + turno.rotulo + ': ' + turno.fala;
+  }).join('\n').trim();
+  return { texto: normalizado || original, turnos: turnos, metricas: metricas };
+}
+
+function audV3NormalizarTranscricaoTexto_(texto, interacao, mapaLocutores) {
+  const original = String(texto || '').replace(/\r\n?/g, '\n').trim();
+  if (!original) {
+    return { texto: '', turnos: [], metricas: { linhas: 0, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0, marcadoresDuploMaior: 0, turnosReparadosMapa: 0, turnosIdentificadosAncora: 0 } };
+  }
+
+  const linhas = original.split('\n');
+  const turnos = [];
+  const mapa = mapaLocutores && typeof mapaLocutores === 'object' ? mapaLocutores : {};
+  const metricas = {
+    linhas: linhas.length,
+    turnos: 0,
+    semRotulo: 0,
+    rotulosDesconhecidos: 0,
+    rotulosCorrigidos: 0,
+    duplicadasRemovidas: 0,
+    continuacoesUnidas: 0,
+    marcadoresDuploMaior: 0,
+    turnosReparadosMapa: 0,
+    turnosIdentificadosAncora: 0
+  };
+  let timestampPendente = '';
+
+  const adicionarTurno = function(timestamp, info, fala, fonte) {
+    const textoFala = String(fala || '').replace(/\s+/g, ' ').trim();
+    if (!textoFala) return;
+    const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+    const chaveFala = audV3NormalizarTrechoRastreavel_(textoFala);
+    const chaveAnterior = anterior ? audV3NormalizarTrechoRastreavel_(anterior.fala) : '';
+    if (anterior && anterior.rotulo === info.rotulo && chaveFala && chaveFala === chaveAnterior) {
+      metricas.duplicadasRemovidas += 1;
+      return;
+    }
+    const id = 'T' + String(turnos.length + 1).padStart(4, '0');
+    turnos.push({
+      id: id,
+      timestamp: timestamp ? '[' + String(timestamp).replace(/^\[|\]$/g, '') + ']' : '',
+      rotulo: info.rotulo,
+      tipo: info.tipo,
+      fala: textoFala,
+      fonte_locutor: fonte || info.fonte || ''
+    });
+  };
+
+  linhas.forEach(function(linhaOriginal) {
+    let linha = String(linhaOriginal || '').trim();
+    if (!linha) return;
+    linha = linha.replace(/^[-*•]\s+/, '').trim();
+
+    const timestampIsolado = audV3TimestampTranscricao_(linha);
+    if (timestampIsolado) {
+      timestampPendente = timestampIsolado;
+      return;
+    }
+
+    const matchRotulo = linha.match(/^(\[([^\]]{1,24})\]\s*)?([^:\n]{1,80}):\s*(.+)$/);
+    if (matchRotulo && !/^\d{1,2}:\d{2}$/.test(String(matchRotulo[3] || '').trim())) {
+      const timestamp = String(matchRotulo[2] || timestampPendente || '').trim();
+      const info = audV3NormalizarRotuloLocutor_(matchRotulo[3], interacao || {});
+      const fala = String(matchRotulo[4] || '').trim();
+      if (!info.identificado) metricas.rotulosDesconhecidos += 1;
+      if (info.corrigido) metricas.rotulosCorrigidos += 1;
+      adicionarTurno(timestamp, info, fala, info.fonte);
+      timestampPendente = '';
+      return;
+    }
+
+    const marcadorDuploMaior = /^>>\s*/.test(linha);
+    if (marcadorDuploMaior) {
+      metricas.marcadoresDuploMaior += 1;
+      linha = linha.replace(/^>>\s*/, '').trim();
+    }
+    if (!linha) {
+      timestampPendente = '';
+      return;
+    }
+
+    const anterior = turnos.length ? turnos[turnos.length - 1] : null;
+    if (!marcadorDuploMaior && anterior && timestampPendente) {
+      anterior.fala = (anterior.fala + ' ' + linha.replace(/\s+/g, ' ').trim()).trim();
+      metricas.continuacoesUnidas += 1;
+      timestampPendente = '';
+      return;
+    }
+
+    metricas.semRotulo += 1;
+    adicionarTurno(
+      timestampPendente,
+      { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: false, fonte: marcadorDuploMaior ? 'MARCADOR_SEM_IDENTIDADE' : 'SEM_ROTULO' },
+      linha,
+      marcadorDuploMaior ? 'MARCADOR_SEM_IDENTIDADE' : 'SEM_ROTULO'
+    );
+    timestampPendente = '';
+  });
+
+  turnos.forEach(function(turno) {
+    if (!turno || !['NAO_IDENTIFICADO', 'OUTRO'].includes(String(turno.tipo || ''))) return;
+    const ancora = audV3InferirLocutorPorAncora_(turno.fala, interacao || {});
+    if (ancora) {
+      turno.tipo = ancora.tipo;
+      turno.rotulo = ancora.rotulo;
+      turno.fonte_locutor = ancora.fonte;
+      metricas.turnosIdentificadosAncora += 1;
+      return;
+    }
+    const atribuido = String(mapa[turno.id] || '').trim().toUpperCase();
+    const esperado = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
+    let tipoMapa = atribuido;
+    if (tipoMapa === 'PROFISSIONAL' && ['SDR', 'CLOSER'].includes(esperado)) tipoMapa = esperado;
+    if (['SDR', 'CLOSER'].includes(tipoMapa) && ['SDR', 'CLOSER'].includes(esperado) && tipoMapa !== esperado) return;
+    if (!['SDR', 'CLOSER', 'LEAD'].includes(tipoMapa)) return;
+    turno.tipo = tipoMapa;
+    turno.rotulo = audV3RotuloTurnoPorTipo_(tipoMapa, interacao || {});
+    turno.fonte_locutor = 'MAPA_IA_ALTA_CONFIANCA';
+    metricas.turnosReparadosMapa += 1;
+  });
 
   metricas.turnos = turnos.length;
+  metricas.rotulosDesconhecidos = turnos.filter(function(turno) {
+    return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
+  }).length;
+
   const normalizado = turnos.map(function(turno) {
     return (turno.timestamp ? turno.timestamp + ' ' : '') + turno.rotulo + ': ' + turno.fala;
   }).join('\n').trim();
@@ -2500,57 +2703,227 @@ function audV3AvaliarQualidadeTranscricao_(normalizacao, original) {
   const metricas = normalizacao.metricas || {};
   const alertas = [];
   const total = turnos.length;
-  const naoIdentificados = turnos.filter(function(t) { return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((t || {}).tipo || '')); }).length;
-  const profissionais = turnos.filter(function(t) { return ['SDR', 'CLOSER', 'PROFISSIONAL'].includes(String((t || {}).tipo || '')); }).length;
-  const leads = turnos.filter(function(t) { return String((t || {}).tipo || '') === 'LEAD'; }).length;
   const tamanho = String(original || '').trim().length;
+  const caracteresFalados = turnos.reduce(function(totalChars, turno) { return totalChars + String((turno || {}).fala || '').length; }, 0);
+  const naoIdentificados = turnos.filter(function(t) { return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((t || {}).tipo || '')); });
+  const profissionais = turnos.filter(function(t) { return ['SDR', 'CLOSER', 'PROFISSIONAL'].includes(String((t || {}).tipo || '')); });
+  const leads = turnos.filter(function(t) { return String((t || {}).tipo || '') === 'LEAD'; });
+  const charsNaoIdentificados = naoIdentificados.reduce(function(totalChars, turno) { return totalChars + String((turno || {}).fala || '').length; }, 0);
+  const charsProfissional = profissionais.reduce(function(totalChars, turno) { return totalChars + String((turno || {}).fala || '').length; }, 0);
+  const charsLead = leads.reduce(function(totalChars, turno) { return totalChars + String((turno || {}).fala || '').length; }, 0);
+  const proporcaoNaoIdentificada = caracteresFalados ? charsNaoIdentificados / caracteresFalados : 1;
 
   let status = 'BOA';
   if (tamanho < 120 || total < 4) {
     status = 'BAIXA';
     alertas.push('Transcrição muito curta para sustentar uma auditoria confiável.');
   }
-  if (!profissionais) {
-    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
-    alertas.push('Nenhuma fala do profissional foi identificada de forma segura.');
-  }
-  if (!leads) {
-    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
-    alertas.push('Nenhuma fala do lead foi identificada de forma segura.');
-  }
-  if (total && naoIdentificados / total >= 0.30) {
+  const minimoCaracteresPorPapel = Math.min(80, Math.max(15, Math.round(caracteresFalados * 0.05)));
+  if (!profissionais.length || charsProfissional < minimoCaracteresPorPapel) {
     status = 'BAIXA';
-    alertas.push('Muitos turnos possuem locutor não identificado.');
-  } else if (total && naoIdentificados / total >= 0.10 && status === 'BOA') {
+    alertas.push('Não há cobertura suficiente de falas do profissional com autoria segura.');
+  }
+  if (!leads.length || charsLead < minimoCaracteresPorPapel) {
+    status = 'BAIXA';
+    alertas.push('Não há cobertura suficiente de falas do lead com autoria segura.');
+  }
+  if (proporcaoNaoIdentificada >= 0.38) {
+    status = 'BAIXA';
+    alertas.push('Mais de 38% do conteúdo falado permanece sem autoria segura.');
+  } else if (proporcaoNaoIdentificada >= 0.15 && status === 'BOA') {
     status = 'ATENCAO';
-    alertas.push('Há turnos com locutor não identificado que exigem cautela na autoria das evidências.');
+    alertas.push('Entre 15% e 38% do conteúdo falado permanece sem autoria segura; conclusões dependentes desses trechos exigem cautela.');
   }
-  if (Number(metricas.semRotulo || 0) >= Math.max(4, Math.ceil(total * 0.25))) {
-    status = status === 'BAIXA' ? 'BAIXA' : 'ATENCAO';
-    alertas.push('A transcrição contém várias linhas sem rótulo explícito de locutor.');
-  }
+  const coberturaIdentificada = caracteresFalados ? ((caracteresFalados - charsNaoIdentificados) / caracteresFalados) * 100 : 0;
+  const apta = status !== 'BAIXA' && profissionais.length > 0 && leads.length > 0;
 
   return {
     status: status,
+    apta_para_auditoria: apta,
     alertas: alertas,
     metricas: {
       caracteres_original: tamanho,
+      caracteres_falados: caracteresFalados,
       turnos: total,
-      turnos_profissional: profissionais,
-      turnos_lead: leads,
-      turnos_nao_identificados: naoIdentificados,
+      turnos_profissional: profissionais.length,
+      turnos_lead: leads.length,
+      turnos_nao_identificados: naoIdentificados.length,
+      caracteres_profissional: charsProfissional,
+      caracteres_lead: charsLead,
+      caracteres_nao_identificados: charsNaoIdentificados,
+      cobertura_identificada_pct: Math.round(coberturaIdentificada * 10) / 10,
+      cobertura_profissional_pct: caracteresFalados ? Math.round((charsProfissional / caracteresFalados) * 1000) / 10 : 0,
+      cobertura_lead_pct: caracteresFalados ? Math.round((charsLead / caracteresFalados) * 1000) / 10 : 0,
       linhas_sem_rotulo: Number(metricas.semRotulo || 0),
+      marcadores_duplo_maior: Number(metricas.marcadoresDuploMaior || 0),
       rotulos_corrigidos: Number(metricas.rotulosCorrigidos || 0),
+      turnos_reparados_mapa: Number(metricas.turnosReparadosMapa || 0),
+      turnos_identificados_ancora: Number(metricas.turnosIdentificadosAncora || 0),
       duplicadas_removidas: Number(metricas.duplicadasRemovidas || 0),
       continuacoes_unidas: Number(metricas.continuacoesUnidas || 0)
     }
   };
 }
 
+function audV3MapaLocutoresPersistido_(transcricao, assinaturaOriginal) {
+  let qualidade = {};
+  try { qualidade = JSON.parse(String((transcricao || {}).QUALIDADE_JSON || '{}')); } catch (e) {}
+  if (String((transcricao || {}).NORMALIZACAO_VERSAO || qualidade.normalizacao_versao || '') !== AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO) return {};
+  if (String(qualidade.assinatura_original || '') !== String(assinaturaOriginal || '')) return {};
+  const mapa = qualidade.normalizacao_mapa;
+  return mapa && typeof mapa === 'object' && !Array.isArray(mapa) ? mapa : {};
+}
+
+function audV3PrecisaReparoLocutores_(normalizacao, qualidade) {
+  const turnos = Array.isArray((normalizacao || {}).turnos) ? normalizacao.turnos : [];
+  const desconhecidos = turnos.filter(function(turno) {
+    return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
+  });
+  if (desconhecidos.length < 4) return false;
+  const cobertura = Number((((qualidade || {}).metricas || {}).cobertura_identificada_pct) || 0);
+  return String((qualidade || {}).status || '').toUpperCase() === 'BAIXA' || cobertura < 85;
+}
+
+function audV3PromptReparoLocutores_(normalizacao, interacao) {
+  const item = interacao || {};
+  const funcao = String(item.FUNCAO || '').trim().toUpperCase();
+  const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
+  const profissional = audV3ProfissionalCanonicoTranscricao_(item);
+  const lead = String(item.LEAD || '').trim();
+  const inge = String(item.ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A';
+  const linhas = (normalizacao.turnos || []).map(function(turno) {
+    return [turno.id, turno.timestamp || '-', String(turno.tipo || 'NAO_IDENTIFICADO'), String(turno.fala || '')].join(' | ');
+  }).join('\n');
+
+  return [
+    'Você fará SOMENTE atribuição conservadora de papel de locutor em uma transcrição comercial. Não audite a reunião.',
+    'A fala de cada ID é imutável. Não reescreva, não corrija, não resuma e não invente texto.',
+    'Classifique por lado comercial: ' + papelProfissional + ' é o profissional vendedor/consultor; LEAD é o comprador/prospect. OUTROS e trechos incertos devem ser omitidos do mapa.',
+    'Retorne SOMENTE JSON no formato {"mapa":{"T0001":"' + papelProfissional + '","T0002":"LEAD"}}.',
+    'Inclua no mapa apenas atribuições de ALTA confiança. Se houver dúvida real, omita o ID.',
+    'Não alterne papéis mecanicamente. Os marcadores >> e timestamps NÃO identificam sozinhos quem fala.',
+    'Use como âncoras: autoapresentações explícitas, nomes, quem descreve a operação do comprador, quem apresenta a solução, perguntas e respostas encadeadas e continuidade semântica da conversa.',
+    'Nunca atribua ao profissional uma resposta, condição interna, objeção, processo de compra ou descrição operacional dita pelo comprador.',
+    'Metadados podem estar desatualizados; uma fala explícita da transcrição prevalece.',
+    profissional ? 'Profissional conhecido/canônico: ' + profissional + ' | papel esperado: ' + papelProfissional + '.' : '',
+    lead ? 'Lead informado no cadastro: ' + lead + '. Use apenas se for compatível com a própria transcrição.' : '',
+    inge ? 'Regra INGEE: Juliana, Jéssica/Jessica, Maíra/Maira e Sinergia Engenharia pertencem ao lado CLOSER. Evandro e demais representantes da empresa prospect pertencem ao lado LEAD quando isso estiver claro na conversa.' : '',
+    '<TURNOS>',
+    linhas,
+    '</TURNOS>'
+  ].filter(Boolean).join('\n');
+}
+
+function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao) {
+  const chave = audV3Segredo_('GEMINI_API_KEY');
+  if (!chave) throw new Error('Chave Gemini não configurada para reparar autoria da transcrição.');
+  const modelos = typeof consumoIaModelosTextoDisponiveis_ === 'function'
+    ? consumoIaModelosTextoDisponiveis_()
+    : [AUDITORIA_V3.modeloGeminiPadrao];
+  const prompt = audV3PromptReparoLocutores_(normalizacao, interacao || {});
+  let ultimoErro = null;
+
+  for (let indice = 0; indice < modelos.length; indice++) {
+    const modelo = String(modelos[indice] || '').trim();
+    if (!modelo) continue;
+    try {
+      if (typeof consumoIaValidarAntes_ === 'function') consumoIaValidarAntes_(modelo);
+      const inicio = Date.now();
+      const resposta = UrlFetchApp.fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent',
+        {
+          method: 'post',
+          contentType: 'application/json',
+          headers: { 'x-goog-api-key': chave },
+          payload: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+          }),
+          muteHttpExceptions: true
+        }
+      );
+      const status = Number(resposta.getResponseCode() || 0);
+      const corpo = String(resposta.getContentText() || '');
+      if (typeof registrarConsumoIa_ === 'function') {
+        registrarConsumoIa_(modelo, 'NORMALIZACAO_LOCUTORES', status, corpo, '', inicio, {
+          idInteracao: String((interacao || {}).ID_INTERACAO || ''),
+          tipoAuditoria: String((interacao || {}).FUNCAO || 'TRANSCRICAO'),
+          tentativa: 1
+        });
+      }
+      if (status < 200 || status >= 300) {
+        ultimoErro = new Error('Normalização de locutores retornou HTTP ' + status + ' no modelo ' + modelo + '.');
+        if ([429, 500, 502, 503, 504].includes(status)) continue;
+        throw ultimoErro;
+      }
+      const envelope = audV3ParseJson_(corpo, 'A resposta HTTP da normalização de locutores não é válida.');
+      const candidato = (envelope.candidates || [])[0] || {};
+      const texto = (((candidato.content || {}).parts || [])).map(function(parte) { return parte.text || ''; }).join('').trim();
+      const json = audV3ParseJsonRespostaSegura_(texto);
+      const bruto = json && json.mapa && typeof json.mapa === 'object' ? json.mapa : {};
+      const idsValidos = {};
+      (normalizacao.turnos || []).forEach(function(turno) { idsValidos[String(turno.id || '')] = turno; });
+      const esperado = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
+      const mapa = {};
+      Object.keys(bruto).forEach(function(id) {
+        if (!idsValidos[id]) return;
+        let papel = String(bruto[id] || '').trim().toUpperCase();
+        if (papel === 'PROFISSIONAL' && ['SDR', 'CLOSER'].includes(esperado)) papel = esperado;
+        if (!['SDR', 'CLOSER', 'LEAD'].includes(papel)) return;
+        if (['SDR', 'CLOSER'].includes(papel) && ['SDR', 'CLOSER'].includes(esperado) && papel !== esperado) return;
+        mapa[id] = papel;
+      });
+      return { mapa: mapa, modelo: modelo };
+    } catch (erro) {
+      ultimoErro = erro;
+    }
+  }
+  throw ultimoErro || new Error('Nenhum modelo concluiu a normalização conservadora de locutores.');
+}
+
+function audV3PrepararTranscricaoPersistida_(transcricao, interacao) {
+  const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const assinatura = audV3AssinaturaTextoLeve_(original);
+  const mapa = audV3MapaLocutoresPersistido_(transcricao || {}, assinatura);
+  const normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {}, mapa);
+  const qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+  qualidade.normalizacao_versao = AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO;
+  qualidade.assinatura_original = assinatura;
+  qualidade.normalizacao_mapa = mapa;
+  return {
+    original: original,
+    conteudo: String(normalizacao.texto || original || '').trim(),
+    qualidade: qualidade,
+    normalizacaoVersao: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO
+  };
+}
+
 function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
   const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
-  const normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {});
-  const qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+  const assinatura = audV3AssinaturaTextoLeve_(original);
+  let mapa = audV3MapaLocutoresPersistido_(transcricao || {}, assinatura);
+  let normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {}, mapa);
+  let qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+  let reparo = { usado: false, modelo: '', atribuicoes: Object.keys(mapa).length, erro: '' };
+
+  if (!Object.keys(mapa).length && audV3PrecisaReparoLocutores_(normalizacao, qualidade)) {
+    try {
+      const resposta = audV3ChamarReparoLocutoresGemini_(normalizacao, interacao || {});
+      mapa = resposta.mapa || {};
+      normalizacao = audV3NormalizarTranscricaoTexto_(original, interacao || {}, mapa);
+      qualidade = audV3AvaliarQualidadeTranscricao_(normalizacao, original);
+      reparo = { usado: true, modelo: String(resposta.modelo || ''), atribuicoes: Object.keys(mapa).length, erro: '' };
+    } catch (erro) {
+      reparo = { usado: true, modelo: '', atribuicoes: 0, erro: String(erro && erro.message ? erro.message : erro) };
+      qualidade.alertas = qualidade.alertas || [];
+      qualidade.alertas.push('O reparo conservador de autoria não concluiu: ' + reparo.erro);
+    }
+  }
+
+  qualidade.normalizacao_versao = AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO;
+  qualidade.assinatura_original = assinatura;
+  qualidade.normalizacao_mapa = mapa;
+  qualidade.reparo_locutores = reparo;
   const conteudo = String(normalizacao.texto || original || '').trim();
 
   if ((transcricao || {}).ID_TRANSCRICAO) {
@@ -2571,6 +2944,26 @@ function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
     qualidade: qualidade,
     normalizacaoVersao: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO
   };
+}
+
+function audV3UsaNormalizacaoV2_(engineVersao) {
+  const versao = audV3NormalizarVersao_(engineVersao || '');
+  const partes = String(versao || '').split('.').map(function(item) { return Number(item || 0); });
+  return (partes[0] || 0) > 6 || ((partes[0] || 0) === 6 && (partes[1] || 0) >= 2);
+}
+
+function audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, engineVersao) {
+  const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  if (!audV3UsaNormalizacaoV2_(engineVersao)) {
+    const legado = audV3NormalizarTranscricaoTextoLegado_(original, interacao || {});
+    return {
+      original: original,
+      conteudo: String(legado.texto || original || '').trim(),
+      qualidade: audV3AvaliarQualidadeTranscricao_(legado, original),
+      normalizacaoVersao: ''
+    };
+  }
+  return audV3PrepararTranscricaoPersistida_(transcricao, interacao);
 }
 
 function audV3ConteudoCompletoTranscricao_(transcricao, interacao) {
@@ -3416,6 +3809,18 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
       const reparada = repararFala(item.o_que_foi_dito);
       if (reparada) {
         item.o_que_foi_dito = reparada;
+        const locutorFonte = resolverLocutorFonte(reparada);
+        if (locutorFonte === tipo || locutorFonte === 'PROFISSIONAL') {
+          item.locutor_evidencia = tipo;
+        } else {
+          item.locutor_evidencia = 'NAO_IDENTIFICADO';
+          item.gatilho_alcancado = false;
+          item.status = 'VERMELHO';
+          item.divergencia = locutorFonte
+            ? 'A evidência literal não pertence de forma inequívoca ao Closer e não comprova este momento.'
+            : 'A autoria da evidência literal não pôde ser confirmada com segurança.';
+          item.justificativa_nota = 'Momento não comprovado por falta de autoria profissional inequívoca.';
+        }
       } else {
         item.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
         item.locutor_evidencia = 'NAO_IDENTIFICADO';
@@ -3437,9 +3842,9 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
         const reparada = repararFala(item.pergunta);
         if (!reparada) return null;
         const locutorFonte = resolverLocutorFonte(reparada);
-        if (locutorFonte && locutorFonte !== tipo && locutorFonte !== 'PROFISSIONAL') return null;
+        if (locutorFonte !== tipo && locutorFonte !== 'PROFISSIONAL') return null;
         item.pergunta = reparada;
-        item.locutor = locutorFonte ? tipo : 'NAO_IDENTIFICADO';
+        item.locutor = tipo;
         return item;
       })
       .filter(Boolean);
@@ -3512,7 +3917,7 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
 }
 
 function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
-  const base = JSON.stringify({
+  const fonteHash = {
     tipo: String(tipo || '').toUpperCase(),
     idCliente: String((cliente || {}).ID_CLIENTE || ''),
     idTranscricao: String((transcricao || {}).ID_TRANSCRICAO || ''),
@@ -3524,7 +3929,11 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
     versaoModelo: String((modelo || {}).VERSAO_MODELO || ''),
     promptOficial: audV3PromptOficial_(modelo, tipo),
     criterios: String((modelo || {}).CRITERIOS_JSON || '')
-  });
+  };
+  if (String((transcricao || {}).NORMALIZACAO_VERSAO || '').trim()) {
+    fonteHash.normalizacaoVersao = String(transcricao.NORMALIZACAO_VERSAO);
+  }
+  const base = JSON.stringify(fonteHash);
   const bytes = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
     base,
@@ -3950,6 +4359,158 @@ function audV3MotivoAutorreparoGate_(validacaoBoard) {
   ].join(' ');
 }
 
+
+function audV3ReconciliarContextoCloserComFonte_(resultado, transcricao, contextoOperacional) {
+  resultado = resultado || {};
+  const contexto = resultado.contexto_interacao || {};
+  const fonte = audV3NormalizarTrechoRastreavel_(transcricao || '');
+  const historico = Array.isArray((contextoOperacional || {}).historico) ? contextoOperacional.historico : [];
+  const evidenciaInformada = String(contexto.evidencia_continuidade || '').trim();
+  const evidenciaLiteral = evidenciaInformada ? audV3RecuperarTrechoLiteral_(evidenciaInformada, transcricao) : '';
+  const continuidadeObjetiva = Boolean(historico.length || evidenciaLiteral);
+
+  if (contexto.continuidade_confirmada === true && !continuidadeObjetiva) {
+    contexto.continuidade_confirmada = false;
+    contexto.evidencia_continuidade = '';
+    contexto.etapas_ja_concluidas = [];
+    contexto.necessita_revisao = true;
+  } else if (continuidadeObjetiva) {
+    contexto.continuidade_confirmada = true;
+    if (evidenciaLiteral) contexto.evidencia_continuidade = evidenciaLiteral;
+  }
+
+  const propostaFutura = /(?:segunda|proxima|outra)\s+reuniao.{0,120}(?:apresentar|mostrar).{0,80}proposta|(?:marcar|agendar).{0,120}(?:apresentar|mostrar).{0,80}proposta|(?:montar|preparar|fazer).{0,80}proposta.{0,120}(?:segunda|proxima|outra)\s+reuniao/.test(fonte);
+  const propostaAnteriorComprovada = /proposta\s+(?:que\s+)?(?:eu|nos|a gente).{0,40}(?:enviei|enviamos|mandei|mandamos|apresentei|apresentamos)|proposta\s+(?:ja\s+)?(?:enviada|apresentada)|(?:recebeu|receberam).{0,50}proposta|retomando.{0,50}proposta/.test(fonte);
+  if (propostaFutura && !propostaAnteriorComprovada) {
+    contexto.classificacao = contexto.continuidade_confirmada === true ? 'FOLLOW_UP_DIAGNOSTICO' : 'PRIMEIRA_REUNIAO';
+    contexto.momento_jornada = 'REUNIAO_DIAGNOSTICO';
+    contexto.etapas_ja_concluidas = (Array.isArray(contexto.etapas_ja_concluidas) ? contexto.etapas_ja_concluidas : []).filter(function(item) {
+      return !/proposta|apresentacao/i.test(String(item || ''));
+    });
+    contexto.reconciliacao_fonte = 'A própria reunião indica que a proposta será apresentada em encontro futuro; a interação atual não pode ser classificada como apresentação de proposta.';
+  }
+  resultado.contexto_interacao = contexto;
+  return resultado;
+}
+
+function audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) {
+  const pitch = audV3NormalizarTrechoRastreavel_(conteudoPitch || '');
+  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,40}10|quanto.{0,80}solucao.{0,80}problema/.test(pitch);
+}
+
+function audV3ScoreInteresseRealizado_(transcricao) {
+  const fonte = audV3NormalizarTrechoRastreavel_(transcricao || '');
+  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,50}(?:0|1|2|3|4|5|6|7|8|9|10)|quanto.{0,80}(?:solucao|estamos).{0,80}(?:problema|necessitam)/.test(fonte);
+}
+
+function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcricao, conteudoPitch) {
+  resultado = resultado || {};
+  const contexto = resultado.contexto_interacao || {};
+  const classificacao = String(contexto.classificacao || '').toUpperCase();
+  const primeiraOuDiagnostico = !classificacao || ['PRIMEIRA_REUNIAO', 'FOLLOW_UP_DIAGNOSTICO'].includes(classificacao);
+  if (primeiraOuDiagnostico && audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) && !audV3ScoreInteresseRealizado_(transcricao)) {
+    const criterio = (resultado.criterios_avaliados || []).find(function(item) { return String((item || {}).id || '') === 'validacao_interesse'; });
+    if (criterio) {
+      criterio.aplicavel = true;
+      criterio.status = 'NAO_EXECUTADO';
+      criterio.o_que_foi_dito = 'Não evidenciado na fala do profissional.';
+      criterio.locutor_evidencia = 'NAO_IDENTIFICADO';
+      criterio.divergencia = 'A validação de entendimento/interesse prevista no pitch não foi realizada de forma rastreável.';
+      criterio.justificativa_nota = 'O pitch exige validação objetiva do interesse; nenhuma pergunta de score de zero a dez ou equivalente foi localizada na transcrição.';
+      criterio.correcao_pratica = 'Após apresentar a solução, pergunte exatamente a validação de interesse prevista no pitch e trate a resposta antes de avançar.';
+      criterio.pontuacao = 0;
+    }
+  }
+  return resultado;
+}
+
+function audV3ReconciliarChecklistCloser_(resultado, criterios) {
+  resultado = resultado || {};
+  const criteriosAvaliados = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const momentos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+  const porId = {};
+  criteriosAvaliados.forEach(function(item) { porId[String((item || {}).id || '')] = item || {}; });
+  const momento = function(id) { return momentos.find(function(item) { return String((item || {}).id || '') === id; }) || {}; };
+  const mapa = [
+    { padrao: /contextualizacao|rapport|agenda|objetivo/, fonte: function() { return momento('momento_0'); } },
+    { padrao: /motivacao|cenario atual|tentativas anteriores|urgencia|decisao|qualificacao tecnica/, fonte: function() { return porId.aderencia_diagnostico || momento('momento_1'); } },
+    { padrao: /dor|impacto|consequencia financeira/, fonte: function() { return porId.exploracao_dor_impacto || momento('momento_1'); } },
+    { padrao: /demonstracao conectada/, fonte: function() { return porId.demonstracao_solucao || momento('momento_2'); } },
+    { padrao: /validacao do entendimento|validacao.*interesse/, fonte: function() { return porId.validacao_interesse || momento('momento_2'); } },
+    { padrao: /plano e condicoes/, fonte: function() { return momento('momento_2'); } },
+    { padrao: /tratamento de objecoes/, fonte: function() { return porId.tratamento_objecoes || momento('momento_3'); } },
+    { padrao: /urgencia|onboarding|proximo passo|encerramento/, fonte: function() { return momento('momento_3'); } }
+  ];
+  const statusFonte = function(fonte) {
+    fonte = fonte || {};
+    if (fonte.aplicavel === false) return 'NAO_EVIDENCIADO';
+    const status = String(fonte.status || fonte.cor || '').toUpperCase();
+    if (['CONFORME', 'VERDE', 'ATINGIDO', 'ATENDIDO'].includes(status)) return 'ATENDIDO';
+    if (['DESVIO_EXECUCAO', 'AMARELO', 'PARCIAL'].includes(status)) return 'PARCIAL';
+    if (['NAO_EXECUTADO', 'VERMELHO', 'NAO_ATENDIDO'].includes(status)) return 'NAO_ATENDIDO';
+    return 'NAO_EVIDENCIADO';
+  };
+  resultado.checklist = (Array.isArray(resultado.checklist) ? resultado.checklist : []).map(function(item) {
+    item = item || {};
+    const nome = audV3NormalizarTrechoRastreavel_(item.item || '');
+    const regra = mapa.find(function(entrada) { return entrada.padrao.test(nome); });
+    if (!regra) return item;
+    const fonte = regra.fonte() || {};
+    const status = statusFonte(fonte);
+    const observacao = String(
+      fonte.justificativa_nota || fonte.divergencia || fonte.o_que_foi_dito ||
+      (status === 'NAO_EVIDENCIADO' ? 'Não há evidência profissional suficiente para classificar este item.' : '')
+    ).trim();
+    return { item: String(item.item || ''), resultado: status, observacao: observacao };
+  });
+  return resultado;
+}
+
+function audV3DerivarSuperficiesExecutivasCloser_(resultado) {
+  resultado = resultado || {};
+  const criterios = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const fortes = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && String(item.status || '').toUpperCase() === 'CONFORME' && String(item.o_que_foi_dito || '').trim();
+  }).slice(0, 3).map(function(item) {
+    return String(item.nome || item.id || 'Critério') + ': ' + String(item.o_que_foi_dito || '');
+  });
+  const melhorias = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && ['DESVIO_EXECUCAO', 'NAO_EXECUTADO'].includes(String(item.status || '').toUpperCase());
+  }).slice(0, 3).map(function(item) {
+    return String(item.nome || item.id || 'Critério') + ': ' + String(item.divergencia || item.justificativa_nota || '');
+  });
+  resultado.feedback = { pontos_fortes: fortes, areas_melhoria: melhorias };
+
+  const publicacao = resultado.resumo_publicacao || {};
+  publicacao.highlights = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && String(item.o_que_foi_dito || '').trim() && !/^n[aã]o evidenciado/i.test(String(item.o_que_foi_dito || ''));
+  }).slice(0, 3).map(function(item) {
+    return {
+      ponto: String(item.nome || item.id || 'Critério'),
+      evidencia: String(item.o_que_foi_dito || ''),
+      impacto: String(item.justificativa_nota || item.divergencia || '')
+    };
+  });
+  resultado.resumo_publicacao = publicacao;
+  return resultado;
+}
+
+function audV3ValidarAfirmacoesFatuaisCloser_(resultado, transcricao, conteudoPitch) {
+  if (!audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) || audV3ScoreInteresseRealizado_(transcricao)) return true;
+  const superficies = {
+    resumo_executivo: resultado.resumo_executivo || {},
+    feedback: resultado.feedback || {},
+    checklist: resultado.checklist || [],
+    resumo_publicacao: resultado.resumo_publicacao || {},
+    semaforo_geral: resultado.semaforo_geral || {}
+  };
+  const texto = audV3NormalizarTrechoRastreavel_(JSON.stringify(superficies));
+  if (/(?:score|nota).{0,30}10.{0,50}(?:aplicad|realizad|confirmad|sucesso|atingid)|(?:de|do)\s+zero\s+a\s+dez.{0,50}(?:aplicad|realizad|confirmad)/.test(texto)) {
+    throw new Error('A auditoria afirmou que o score de interesse foi aplicado, mas essa validação não existe na transcrição.');
+  }
+  return true;
+}
+
 function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
   resultado = resultado || {};
   const tipo = String(tipoAuditoria || '').toUpperCase();
@@ -3977,7 +4538,7 @@ function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
   if (/APRESENTACAO_PROPOSTA|FOLLOW_UP_PROPOSTA|NEGOCIACAO|FECHAMENTO|JURIDICO/.test(classificacao) &&
       contexto.continuidade_confirmada !== true &&
       tipo === 'CLOSER') {
-    alertas.push('Contexto tardio sem continuidade comprovada: confirmar se esta é a primeira reunião antes de retirar diagnóstico da régua.');
+    bloqueios.push('Contexto tardio sem continuidade comprovada: a auditoria não pode retirar diagnóstico da régua sem histórico ou evidência objetiva.');
   }
 
   const falasLead = [];
@@ -4155,8 +4716,9 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
       }
     });
     momentos.forEach(function(item) {
-      validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia || 'CLOSER', 'O momento CLOSER ' + String(item.id || 'sem id'));
+      validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia || 'NAO_IDENTIFICADO', 'O momento CLOSER ' + String(item.id || 'sem id'));
     });
+    audV3ValidarAfirmacoesFatuaisCloser_(resultado, transcricao, conteudoPitch);
     const perguntas = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
     (Array.isArray(perguntas) ? perguntas : []).forEach(function(item) {
       validarEvidencia(item.pergunta, item.locutor || 'CLOSER', 'Uma pergunta de diagnóstico CLOSER');
@@ -4710,6 +5272,7 @@ function audV3NormalizarMomentosCloser_(resultado, criterios) {
       gatilho_alcancado: gatilho,
       o_que_se_espera: String(item.o_que_se_espera || oficial.objetivo || ''),
       o_que_foi_dito: String(item.o_que_foi_dito || ''),
+      locutor_evidencia: String(item.locutor_evidencia || 'NAO_IDENTIFICADO'),
       divergencia_identificada: cor !== 'VERDE',
       divergencia: cor === 'VERDE' ? 'Não houve divergência.' : divergencia,
       nota: cor === 'VERDE' ? 5 : (cor === 'AMARELO' ? 2.5 : 0),

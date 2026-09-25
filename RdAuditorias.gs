@@ -123,9 +123,9 @@ function audRdCtx_(id) {
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
   var transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', a.ID_INTERACAO);
   if (!transcricao) throw new Error('A transcrição original da auditoria não foi encontrada.');
-  var conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, i);
-  var normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, i || {});
-  transcricao.CONTEUDO = String(normalizacaoFonte.texto || conteudoOriginal || '').trim();
+  var fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, i, a.ENGINE_VERSAO);
+  transcricao.CONTEUDO = String(fontePreparada.conteudo || '').trim();
+  transcricao.NORMALIZACAO_VERSAO = fontePreparada.normalizacaoVersao || '';
 
   var pitch = {
     ID_PITCH: a.ID_PITCH || '',
