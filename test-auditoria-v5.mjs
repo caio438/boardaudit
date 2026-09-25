@@ -288,8 +288,12 @@ const fimResumoCloserFront = front.indexOf('function renderizarPontuacaoQualidad
 assert.ok(inicioResumoCloserFront >= 0 && fimResumoCloserFront > inicioResumoCloserFront, 'Resumo executivo Closer não pôde ser isolado.');
 const resumoCloserFront = front.slice(inicioResumoCloserFront, fimResumoCloserFront);
 assert.ok(resumoCloserFront.includes('audit-executive-good'), 'Closer não usa destaque verde para execuções corretas.');
-assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa destaque vermelho para desvios.');
+assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa destaque vermelho para prioridades de melhoria.');
 assert.ok(resumoCloserFront.includes('audit-executive-action'), 'Closer não usa destaque amarelo para coaching prático.');
+assert.ok(resumoCloserFront.includes('audit-executive-moment'), 'Closer não traz os detalhes dos momentos para o resumo executivo.');
+assert.ok(resumoCloserFront.includes('Prioridades de melhoria por momento'), 'Resumo Closer não prioriza os gaps detalhados por momento.');
+assert.ok(resumoCloserFront.includes('Referência / texto do pitch'), 'Resumo Closer não sobe a referência prática do pitch para o topo.');
+assert.ok(resumoCloserFront.includes('textoNeutro'), 'Resumo Closer não filtra divergências neutras como "Não houve divergência".');
 assert.ok(resumoCloserFront.includes('O que foi executado corretamente'), 'Closer não replica o bloco de acertos do SDR.');
 assert.ok(resumoCloserFront.includes('Se eu fosse o Closer, faria assim'), 'Closer não possui o bloco prático equivalente ao SDR.');
 assert.ok(front.includes('function consolidarIntervencoesCloserFront_'), 'Closer não possui consolidação executiva de intervenções e perguntas SPIN.');
@@ -302,6 +306,8 @@ assert.ok(!resumoCloserFront.includes('Próximos passos conforme o pitch/process
 assert.ok(front.includes('function renderizarConclusaoObjetivaCloserFront_'), 'Conclusão objetiva Closer não foi implementada.');
 assert.ok(front.includes('Cenário da reunião'), 'Cenário executivo do Closer está ausente.');
 assert.ok(front.includes('Análise detalhada da auditoria Closer'), 'Detalhamento Closer não foi preservado em seção própria.');
+assert.ok(front.includes('audit-temporal-notes'), 'Observações longas da análise temporal ainda ficam espremidas dentro da tabela.');
+assert.ok(front.includes("['Etapa','Janela esperada','Início','Fim','Duração','Aderência']"), 'Tabela temporal Closer ainda mantém a coluna larga de observação.');
 assert.ok(front.includes('function renderizarPontuacaoQualidadeCloserFront_'), 'Pontuação de Qualidade Closer não possui visualização legível própria.');
 assert.ok(front.includes("['Fala do Closer', item.o_que_foi_dito"), 'Detalhamento da Pontuação Closer perdeu a fala do Closer.');
 assert.ok(!front.includes("['Critério','Status','Nota','Fala do Closer','Regra do pitch','Divergência','Justificativa da nota']"), 'Tabela Closer antiga de sete colunas ainda está presente.');
@@ -373,9 +379,13 @@ const sdrContexto = rd.indexOf("'CONTEXTO DA INTERAÇÃO'", rd.indexOf('function
 assert.ok(sdrNota >= 0 && sdrTabela > sdrNota && sdrContexto > sdrTabela, 'Tabela de notas SDR precisa ficar logo abaixo da nota geral.');
 
 const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoCloser_'));
-const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
 const closerCenario = rd.indexOf("'CENÁRIO DA REUNIÃO'", rd.indexOf('function audRdTextoCloser_'));
-assert.ok(closerNota >= 0 && closerTabela > closerNota && closerCenario > closerTabela, 'Tabela de notas Closer precisa ficar logo abaixo da nota geral.');
+const closerLeitura = rd.indexOf("'LEITURA EXECUTIVA DOS MOMENTOS'", rd.indexOf('function audRdTextoCloser_'));
+const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
+assert.ok(
+  closerNota >= 0 && closerCenario > closerNota && closerLeitura > closerCenario && closerTabela > closerLeitura,
+  'RD Closer precisa priorizar cenário e leitura executiva antes da tabela de notas.'
+);
 const closerFormatter = rd.slice(rd.indexOf('function audRdTextoCloser_'), rd.indexOf('function audRdTextoSdr_'));
 assert.ok(!/\bcurto\(/.test(closerFormatter), 'Formatter Closer chama helper curto inexistente; deve usar somente curtoCloser.');
 
@@ -438,6 +448,7 @@ assert.ok(inicioCloserRd >= 0 && fimCloserRd > inicioCloserRd, 'Formatter do Clo
 assert.ok(!closerRd.includes('DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'), 'Closer ainda publica o bloco antigo de desvios no RD.');
 for (const titulo of [
   'CENÁRIO DA REUNIÃO',
+  'LEITURA EXECUTIVA DOS MOMENTOS',
   'EXECUÇÕES ADERENTES AO PROCESSO',
   'PERGUNTAS REALIZADAS PELO CLOSER',
   'PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS',

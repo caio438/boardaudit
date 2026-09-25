@@ -303,6 +303,18 @@ function audRdTextoCloser_(c) {
     var s = normCloser((x || {}).cor || (x || {}).status);
     return s === 'NAO_APLICAVEL' || s === 'NAO_EVIDENCIADO';
   }
+  function divergenciaNeutraCloser(v) {
+    var s = normCloser(v).replace(/[.!]+$/g, '').replace(/\s+/g, ' ').trim();
+    return !s || [
+      'NAO HOUVE DIVERGENCIA',
+      'NENHUMA DIVERGENCIA',
+      'NENHUMA DIVERGENCIA REGISTRADA',
+      'SEM DIVERGENCIA',
+      'NAO EVIDENCIADO',
+      'NAO APLICAVEL',
+      'N/A'
+    ].includes(s);
+  }
   function rotuloStatus(v) {
     var s = normCloser(v).replace(/[ -]+/g, '_');
     if (s === 'CONFORME') return 'CONFORME';
@@ -323,6 +335,23 @@ function audRdTextoCloser_(c) {
     vistos[chave] = true;
     lista.push(limpo);
   }
+  function listaUnicaCloser(itens) {
+    var lista = [];
+    var vistos = {};
+    (itens || []).forEach(function(item) { adicionarUnico(lista, vistos, item); });
+    return lista;
+  }
+  function criterioRelacionadoCloser(momento) {
+    var nome = chaveUnica([(momento || {}).nome, (momento || {}).id].join(' '));
+    var tokens = nome.split(' ').filter(function(token) { return token.length > 4; });
+    return criterios.find(function(crit) {
+      if (!crit || crit.aplicavel === false) return false;
+      var statusCrit = normCloser(crit.status);
+      if (statusCrit === 'CONFORME' || statusCrit === 'NAO_APLICAVEL' || statusCrit === 'NAO_EVIDENCIADO') return false;
+      var alvo = chaveUnica([crit.nome, crit.id].join(' '));
+      return tokens.some(function(token) { return alvo.indexOf(token) >= 0; });
+    }) || null;
+  }
   function ehTemaImplicacaoNecessidade(v) {
     var t = normCloser(v);
     return /(IMPLIC|IMPACT|CONSEQU|CUSTO|FINANCEIR|INA[CÇ]AO|NECESS|RESULTADO|PRIORIDADE|URGENC|RISCO|PERDA|GANHO)/.test(t);
@@ -338,11 +367,45 @@ function audRdTextoCloser_(c) {
     return bruto.length >= 90 && /(COMO|QUANDO|ANTES DE|DEPOIS DE|PARA QUE|ATE QUE|ATÉ QUE)/.test(t);
   }
 
-  var aderentes = momentos.filter(conforme);
-  var desviosMomentos = momentos.filter(function(x) { return !conforme(x) && !naoAplicavelCloser(x); });
+  var leiturasMomentos = momentos.filter(function(item) {
+    return item && !naoAplicavelCloser(item);
+  }).map(function(item) {
+    var criterio = criterioRelacionadoCloser(item);
+    var gaps = listaUnicaCloser(
+      (!divergenciaNeutraCloser(item.divergencia) ? [item.divergencia] : [])
+        .concat(Array.isArray(item.pontos_melhorar) ? item.pontos_melhorar : [])
+        .concat(criterio && !divergenciaNeutraCloser(criterio.divergencia) ? [criterio.divergencia] : [])
+    ).slice(0, 3);
+    var fortes = listaUnicaCloser(Array.isArray(item.pontos_fortes) ? item.pontos_fortes : []).slice(0, 3);
+    var acao = String(item.o_que_fazer || item.como_agir || (criterio && (criterio.correcao_pratica || criterio.regra_pitch)) || '').trim();
+    var pitch = String(item.texto_script || (criterio && criterio.regra_pitch) || '').trim();
+    return { item: item, gaps: gaps, fortes: fortes, acao: acao, pitch: pitch, conforme: conforme(item) };
+  });
+
+  var aderentes = leiturasMomentos.filter(function(x) { return x.conforme; }).map(function(x) { return x.item; });
+  var desviosMomentos = leiturasMomentos.filter(function(x) { return !x.conforme; }).map(function(x) { return x.item; });
+
+  var leituraExecutivaMomentos = leiturasMomentos.slice(0, 6).map(function(leitura) {
+    var x = leitura.item;
+    var cor = String(x.cor || x.status || (leitura.conforme ? 'VERDE' : 'AMARELO')).toUpperCase();
+    var nota = x.nota === null || x.nota === undefined ? '' : ' · ' + String(x.nota) + '/5';
+    var linhas = ['- ' + String(x.nome || x.id || 'Momento') + ' [' + cor + nota + ']'];
+    if (x.o_que_foi_dito) linhas.push('  Evidência: ' + curtoCloser(x.o_que_foi_dito, 330));
+    if (leitura.fortes.length) linhas.push('  Acertos: ' + leitura.fortes.map(function(item) { return curtoCloser(item, 210); }).join(' | '));
+    if (!leitura.conforme && leitura.gaps.length) linhas.push('  O que faltou: ' + leitura.gaps.map(function(item) { return curtoCloser(item, 260); }).join(' | '));
+    if (!leitura.conforme && leitura.acao) linhas.push('  Ação concreta: ' + curtoCloser(leitura.acao, 320));
+    if (!leitura.conforme && leitura.pitch) linhas.push('  Referência / texto do pitch: ' + curtoCloser(leitura.pitch, 300));
+    if (!leitura.conforme && x.como_agir && String(x.como_agir).trim() !== leitura.acao) {
+      linhas.push('  Como aplicar: ' + curtoCloser(x.como_agir, 280));
+    }
+    return linhas.join(n);
+  });
 
   var acertos = aderentes.slice(0, 4).map(function(x) {
-    return '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 210);
+    var fortes = Array.isArray(x.pontos_fortes) ? x.pontos_fortes.filter(Boolean).slice(0, 2) : [];
+    var linha = '- ' + String(x.nome || x.id || 'Momento') + ': ' + curtoCloser(x.o_que_foi_dito || 'Execução evidenciada na transcrição.', 230);
+    if (fortes.length) linha += ' | Acertos: ' + fortes.map(function(item) { return curtoCloser(item, 150); }).join(' • ');
+    return linha;
   });
 
   var perguntasRealizadasBase = (Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [])
@@ -354,12 +417,14 @@ function audRdTextoCloser_(c) {
     var contexto = [x.categoria, x.timestamp].filter(Boolean).join(' · ');
     var linha = '- ' + (contexto ? '[' + contexto + '] ' : '') + '"' + curtoCloser(x.pergunta, 220) + '"';
     if (x.resposta_lead) linha += ' | Resposta: ' + curtoCloser(x.resposta_lead, 180);
+    if (x.o_que_melhorar) linha += ' | Aprofundamento: ' + curtoCloser(x.o_que_melhorar, 180);
     return linha;
   });
 
   var perguntasFaltantes = perguntasFaltantesBase.slice(0, 8).map(function(x) {
     var linha = '- ' + (x.categoria ? '[' + curtoCloser(x.categoria, 60) + '] ' : '') + '"' + curtoCloser(x.pergunta, 230) + '"';
     if (x.motivo_importancia) linha += ' | Por que importa: ' + curtoCloser(x.motivo_importancia, 170);
+    if (x.sugestao_aplicacao) linha += ' | Como aplicar: ' + curtoCloser(x.sugestao_aplicacao, 170);
     return linha;
   });
 
@@ -374,10 +439,10 @@ function audRdTextoCloser_(c) {
   var implicacaoNecessidade = [];
   var vistosImplicacao = {};
   (Array.isArray(impacto.lacunas) ? impacto.lacunas : []).slice(0, 4).forEach(function(item) {
-    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Lacuna a aprofundar: ' + curtoCloser(item, 220));
+    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Lacuna a aprofundar: ' + curtoCloser(item, 240));
   });
   (Array.isArray(impacto.impactos_identificados) ? impacto.impactos_identificados : []).slice(0, 4).forEach(function(item) {
-    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Impacto do lead que deveria ser aprofundado: ' + curtoCloser(item, 220));
+    adicionarUnico(implicacaoNecessidade, vistosImplicacao, '- Impacto do lead que deveria ser aprofundado: ' + curtoCloser(item, 240));
   });
   perguntasFaltantesBase.filter(function(item) {
     return ehTemaImplicacaoNecessidade([item.categoria, item.motivo_importancia, item.impacto_da_ausencia, item.pergunta].join(' '));
@@ -386,7 +451,7 @@ function audRdTextoCloser_(c) {
       implicacaoNecessidade,
       vistosImplicacao,
       '- Pergunta do pitch para aprofundar: "' + curtoCloser(item.pergunta, 230) + '"' +
-        (item.sugestao_aplicacao ? ' | Como aplicar: ' + curtoCloser(item.sugestao_aplicacao, 170) : '')
+        (item.sugestao_aplicacao ? ' | Como aplicar: ' + curtoCloser(item.sugestao_aplicacao, 190) : '')
     );
   });
   perguntasSugeridasBase.filter(function(item) {
@@ -396,7 +461,7 @@ function audRdTextoCloser_(c) {
       implicacaoNecessidade,
       vistosImplicacao,
       '- Sugestão de enablement para aprofundar: "' + curtoCloser(item.pergunta_sugerida, 230) + '"' +
-        (item.objetivo ? ' | Objetivo: ' + curtoCloser(item.objetivo, 160) : '')
+        (item.objetivo ? ' | Objetivo: ' + curtoCloser(item.objetivo, 170) : '')
     );
   });
 
@@ -408,38 +473,19 @@ function audRdTextoCloser_(c) {
       vistosAjustes,
       '- ' + (item.categoria ? curtoCloser(item.categoria, 60) + ': ' : 'Diagnóstico: ') +
         'pergunte "' + curtoCloser(item.pergunta, 230) + '"' +
-        (item.sugestao_aplicacao ? ' | Aplicação: ' + curtoCloser(item.sugestao_aplicacao, 170) : '')
+        (item.sugestao_aplicacao ? ' | Aplicação: ' + curtoCloser(item.sugestao_aplicacao, 190) : '')
     );
   });
 
-  desviosMomentos.slice(0, 4).forEach(function(item) {
+  leiturasMomentos.filter(function(leitura) { return !leitura.conforme; }).slice(0, 4).forEach(function(leitura) {
+    var item = leitura.item;
     var nome = String(item.nome || item.id || 'Momento');
-    if (String(item.texto_script || '').trim() && coachingAcionavelCloser(item.texto_script)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': orientação prática — ' + curtoCloser(item.texto_script, 240));
+    if (leitura.acao && coachingAcionavelCloser(leitura.acao)) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(leitura.acao, 300));
       return;
     }
-    if (String(item.como_agir || '').trim() && coachingAcionavelCloser(item.como_agir)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.como_agir, 240));
-      return;
-    }
-    if (String(item.o_que_fazer || '').trim() && coachingAcionavelCloser(item.o_que_fazer)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(item.o_que_fazer, 240));
-      return;
-    }
-    var criterioRelacionado = criterios.find(function(crit) {
-      if (!crit || crit.aplicavel === false) return false;
-      var statusCrit = normCloser(crit.status);
-      if (statusCrit === 'CONFORME') return false;
-      return chaveUnica([crit.nome, crit.id].join(' ')).split(' ').some(function(token) {
-        return token.length > 4 && chaveUnica(nome).indexOf(token) >= 0;
-      });
-    });
-    if (criterioRelacionado && String(criterioRelacionado.correcao_pratica || '').trim() && coachingAcionavelCloser(criterioRelacionado.correcao_pratica)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': ' + curtoCloser(criterioRelacionado.correcao_pratica, 240));
-      return;
-    }
-    if (criterioRelacionado && /\?/.test(String(criterioRelacionado.regra_pitch || '')) && !audV3TemRecomendacaoGenerica_(criterioRelacionado.regra_pitch)) {
-      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a regra do pitch "' + curtoCloser(criterioRelacionado.regra_pitch, 240) + '"');
+    if (leitura.pitch && coachingAcionavelCloser(leitura.pitch)) {
+      adicionarUnico(ajustesObjetivos, vistosAjustes, '- ' + nome + ': execute conforme a regra do pitch "' + curtoCloser(leitura.pitch, 280) + '"');
     }
   });
 
@@ -454,7 +500,7 @@ function audRdTextoCloser_(c) {
     adicionarUnico(
       ajustesObjetivos,
       vistosAjustes,
-      '- Fechamento: termine com duas opções objetivas de agenda. Exemplo de execução: "Posso te enviar o convite para terça às 14h ou quarta às 16h. Qual funciona melhor?"'
+      '- Fechamento: termine com duas opções objetivas de agenda. Exemplo: "Posso te enviar o convite para terça às 14h ou quarta às 16h. Qual funciona melhor?"'
     );
   }
 
@@ -465,20 +511,9 @@ function audRdTextoCloser_(c) {
     }).slice(0, 5).forEach(function(x) {
       adicionarUnico(
         proximos,
-        {},
-        '- ' + curtoCloser(x.acao, 210) +
-          (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 170) : '')
-      );
-    });
-  }
-  if (!proximos.length) {
-    perguntasSugeridasBase.slice(0, 3).forEach(function(item) {
-      adicionarUnico(
-        proximos,
         vistosAjustes,
-        '- Enablement: pergunte "' + curtoCloser(item.pergunta_sugerida, 230) + '"' +
-          (item.quando_usar ? ' | Quando usar: ' + curtoCloser(item.quando_usar, 150) : '') +
-          (item.objetivo ? ' | Objetivo: ' + curtoCloser(item.objetivo, 150) : '')
+        '- ' + curtoCloser(x.acao, 240) +
+          (x.criterio_conclusao ? ' | Concluído quando: ' + curtoCloser(x.criterio_conclusao, 180) : '')
       );
     });
   }
@@ -501,10 +536,10 @@ function audRdTextoCloser_(c) {
   var acordoResumo = String(co.resultado_reuniao || '').trim();
   var acordoEvidencia = String(fechamento.o_que_foi_dito || '').trim();
   var acordoLinhas = [];
-  if (acordoResumo) acordoLinhas.push('Acordo registrado: ' + curtoCloser(acordoResumo, 320));
+  if (acordoResumo) acordoLinhas.push('Acordo registrado: ' + curtoCloser(acordoResumo, 360));
   else acordoLinhas.push('Acordo registrado: Não evidenciado na reunião.');
   if (acordoEvidencia && !/^n[aã]o evidenciado/i.test(acordoEvidencia)) {
-    acordoLinhas.push('Evidência do fechamento: "' + curtoCloser(acordoEvidencia, 240) + '"');
+    acordoLinhas.push('Evidência do fechamento: "' + curtoCloser(acordoEvidencia, 280) + '"');
   }
 
   var scoreLinhas = criterios.slice(0, 8).map(function(item) {
@@ -522,18 +557,21 @@ function audRdTextoCloser_(c) {
     'AUDITORIA CLOSER — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
     'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
     'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
-    'PONTUAÇÃO DE QUALIDADE',
-    scoreLinhas.length ? scoreLinhas.join(n) : '- Pontuação por critério indisponível.',
-    'Média dos critérios aplicáveis: ' + String(score != null && score !== '' ? score : '-') + '/5',
     '',
     'CENÁRIO DA REUNIÃO',
-    curtoCloser(co.resumo_conversa || 'Não evidenciado', 450),
-    co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 250) : '',
-    co.impacto_principal ? 'Impacto principal: ' + curtoCloser(co.impacto_principal, 250) : '',
-    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 300) : '',
+    curtoCloser(co.resumo_conversa || 'Não evidenciado', 520),
+    co.dor_principal ? 'Dor principal: ' + curtoCloser(co.dor_principal, 300) : '',
+    co.impacto_principal ? 'Impacto principal: ' + curtoCloser(co.impacto_principal, 300) : '',
+    co.resultado_reuniao ? 'Resultado da reunião: ' + curtoCloser(co.resultado_reuniao, 360) : '',
+    '',
+    'LEITURA EXECUTIVA DOS MOMENTOS',
+    leituraExecutivaMomentos.length ? leituraExecutivaMomentos.join(n + n) : '- Nenhum momento aplicável foi registrado.',
     '',
     'EXECUÇÕES ADERENTES AO PROCESSO',
     acertos.length ? acertos.join(n) : '- Nenhum momento foi classificado como plenamente conforme.',
+    '',
+    'AJUSTES OBJETIVOS PARA A PRÓXIMA REUNIÃO',
+    proximos.length ? proximos.join(n) : '- Nenhum ajuste objetivo adicional foi identificado.',
     '',
     'PERGUNTAS REALIZADAS PELO CLOSER',
     perguntasRealizadas.length ? perguntasRealizadas.join(n) : '- Nenhuma pergunta foi registrada com evidência literal suficiente.',
@@ -551,8 +589,9 @@ function audRdTextoCloser_(c) {
     'ACORDO DE PRÓXIMO PASSO',
     acordoLinhas.join(n),
     '',
-    'AJUSTES OBJETIVOS PARA A PRÓXIMA REUNIÃO',
-    proximos.length ? proximos.join(n) : '- Nenhum ajuste objetivo adicional foi identificado.',
+    'PONTUAÇÃO DE QUALIDADE',
+    scoreLinhas.length ? scoreLinhas.join(n) : '- Pontuação por critério indisponível.',
+    'Média dos critérios aplicáveis: ' + String(score != null && score !== '' ? score : '-') + '/5',
     '',
     'CONCLUSÃO',
     p1,
