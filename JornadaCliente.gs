@@ -1682,6 +1682,42 @@ function validarRealizacaoEntregaAgendaCliente(dados) {
   });
 }
 
+function jornadaResolverAmbiguidadeMesmoGrupo_(ordenados) {
+  ordenados = Array.isArray(ordenados) ? ordenados : [];
+  if (ordenados.length < 2) return null;
+  const topo = Number(ordenados[0].pontos || 0);
+  const proximos = ordenados.filter(item => !item.internoVolum && Math.abs(topo - Number(item.pontos || 0)) < 5);
+  if (proximos.length < 2) return null;
+
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const porId = {};
+  clientes.forEach(item => { porId[String(item.ID_CLIENTE)] = item; });
+
+  const filhos = proximos
+    .map(item => ({ candidato: item, cliente: porId[String(item.idCliente || '')] }))
+    .filter(item => item.cliente && String(item.cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() !== 'GRUPO' && String(item.cliente.GRUPO_CLIENTE || '').trim());
+  if (filhos.length < 2) return null;
+
+  const grupos = Array.from(new Set(filhos.map(item => String(item.cliente.GRUPO_CLIENTE || '').trim()).filter(Boolean)));
+  const idsFilhos = Array.from(new Set(filhos.map(item => String(item.cliente.ID_CLIENTE || ''))));
+  if (grupos.length !== 1 || idsFilhos.length < 2) return null;
+
+  const grupoNome = grupos[0];
+  const grupo = clientes.find(item =>
+    String(item.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO' &&
+    jornadaNormalizar_(item.NOME_CLIENTE) === jornadaNormalizar_(grupoNome)
+  );
+  if (!grupo) return null;
+
+  return {
+    idCliente: String(grupo.ID_CLIENTE),
+    pontos: topo,
+    motivo: 'múltiplas empresas do grupo no título: ' + grupoNome,
+    internoVolum: false
+  };
+}
+
 function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
   const titulo = String(evento.getTitle() || '');
   const tituloNormalizado = jornadaNormalizar_(titulo);
@@ -1722,7 +1758,11 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
   let ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
   if (ordenados.some(item => !item.internoVolum)) ordenados = ordenados.filter(item => !item.internoVolum);
   if (!ordenados.length) return null;
-  if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) return null;
+  if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) {
+    const grupoComum = jornadaResolverAmbiguidadeMesmoGrupo_(ordenados);
+    if (grupoComum) return grupoComum;
+    return null;
+  }
   return ordenados[0];
 }
 
@@ -2046,7 +2086,8 @@ function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
       idAtual: String(registro[campoId] || ''),
       idEsperado: String(candidato.idCliente || ''),
       grupo: grupo,
-      motivo: candidato.motivo
+      motivo: candidato.motivo,
+      confianca: Math.round(Number(candidato.pontos || 0))
     });
   };
 
@@ -2099,6 +2140,169 @@ function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
       vinculosCruzados: conflitos.vinculosCruzados.slice(0, 100)
     }
   };
+}
+
+const REPARO_GRUPOS_CLIENTES_ETAPA1_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1';
+
+function jornadaNomeClientePorId_(idCliente, clientesInformados) {
+  const clientes = Array.isArray(clientesInformados) ? clientesInformados : lerObjetos_(APP.sheets.clientes);
+  const cliente = clientes.find(item => String(item.ID_CLIENTE || '') === String(idCliente || ''));
+  return cliente ? String(cliente.NOME_CLIENTE || '') : '';
+}
+
+function jornadaBackupReparoGruposEtapa1_(diagnostico) {
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_REPARO_GRUPOS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const linhas = [['ABA', 'CHAVE', 'ID_REGISTRO', 'ID_ATUAL', 'ID_ESPERADO', 'TITULO', 'DADOS_JSON']];
+  const specs = [
+    { aba: APP.sheets.reunioesCalendario, chave: 'ID_REUNIAO', itens: diagnostico.conflitos.reunioes || [] },
+    { aba: APP.sheets.interacoes, chave: 'ID_INTERACAO', itens: diagnostico.conflitos.interacoes || [] },
+    { aba: APP.sheets.formalizacoes, chave: 'ID_FORMALIZACAO', itens: diagnostico.conflitos.formalizacoes || [] }
+  ];
+
+  specs.forEach(spec => {
+    if (!spec.itens.length) return;
+    const porId = {};
+    lerObjetos_(spec.aba).forEach(item => {
+      if (item[spec.chave]) porId[String(item[spec.chave])] = item;
+    });
+    spec.itens.forEach(conflito => {
+      const registro = porId[String(conflito.id || '')];
+      if (!registro) throw new Error('Registro não encontrado para backup: ' + spec.aba + ' / ' + conflito.id);
+      linhas.push([
+        spec.aba,
+        spec.chave,
+        String(conflito.id || ''),
+        String(conflito.idAtual || ''),
+        String(conflito.idEsperado || ''),
+        String(conflito.titulo || ''),
+        JSON.stringify(registro)
+      ]);
+    });
+  });
+
+  aba.getRange(1, 1, linhas.length, linhas[0].length).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  return { nome: nome, registros: Math.max(0, linhas.length - 1) };
+}
+
+function jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente) {
+  const bruto = String((registro || {}).RESULTADO_JSON || '').trim();
+  if (!bruto) return null;
+  try {
+    const resultado = JSON.parse(bruto);
+    resultado.metadados = resultado.metadados && typeof resultado.metadados === 'object' ? resultado.metadados : {};
+    resultado.metadados.cliente = nomeCliente;
+    return JSON.stringify(resultado);
+  } catch (erro) {
+    return null;
+  }
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA1_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo de grupos etapa 1.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  try {
+    const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const totaisAntes = antes.totais || {};
+    ['reunioes', 'interacoes', 'formalizacoes'].forEach(chave => {
+      if (Number(totaisAntes[chave] || 0) > 200) {
+        throw new Error('Reparo abortado: quantidade inesperada em ' + chave + ': ' + totaisAntes[chave]);
+      }
+      if (Number(totaisAntes[chave] || 0) > ((antes.conflitos[chave] || []).length)) {
+        throw new Error('Reparo abortado: diagnóstico truncado em ' + chave + '.');
+      }
+    });
+
+    const clientes = lerObjetos_(APP.sheets.clientes)
+      .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+    const idsValidos = new Set(clientes.map(item => String(item.ID_CLIENTE)));
+    const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+    ['reunioes', 'interacoes', 'formalizacoes'].forEach(chave => {
+      (antes.conflitos[chave] || []).forEach(item => {
+        if (!idsValidos.has(String(item.idEsperado || ''))) throw new Error('ID esperado inválido no reparo: ' + item.idEsperado);
+        if (!gruposGeridos.has(String(item.grupo || ''))) throw new Error('Grupo fora do escopo do reparo: ' + item.grupo);
+      });
+    });
+
+    const backup = jornadaBackupReparoGruposEtapa1_(antes);
+    const agora = new Date();
+    const aplicados = { reunioes: 0, interacoes: 0, formalizacoes: 0, jsonFormalizacao: 0 };
+
+    (antes.conflitos.reunioes || []).forEach(item => {
+      atualizarPorCampo_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', item.id, {
+        ID_CLIENTE: item.idEsperado,
+        CONFIANCA_CLIENTE: Number(item.confianca || 0),
+        MOTIVO_IDENTIFICACAO: 'reparo histórico: ' + String(item.motivo || ''),
+        ATUALIZADO_EM: agora
+      });
+      aplicados.reunioes++;
+    });
+
+    (antes.conflitos.interacoes || []).forEach(item => {
+      atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', item.id, {
+        ID_CLIENTE: item.idEsperado,
+        ATUALIZADO_EM: agora
+      });
+      aplicados.interacoes++;
+    });
+
+    const formalizacoesPorId = {};
+    lerObjetos_(APP.sheets.formalizacoes).forEach(item => {
+      if (item.ID_FORMALIZACAO) formalizacoesPorId[String(item.ID_FORMALIZACAO)] = item;
+    });
+    (antes.conflitos.formalizacoes || []).forEach(item => {
+      const registro = formalizacoesPorId[String(item.id || '')] || {};
+      const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
+      const alteracoes = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+      const resultadoJson = jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente);
+      if (resultadoJson) {
+        alteracoes.RESULTADO_JSON = resultadoJson;
+        aplicados.jsonFormalizacao++;
+      }
+      atualizarPorCampo_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', item.id, alteracoes);
+      aplicados.formalizacoes++;
+    });
+
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    const depois = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const validacao = validarEstruturaBanco_();
+    const concluida = Number(depois.totais.reunioes || 0) === 0 &&
+      Number(depois.totais.interacoes || 0) === 0 &&
+      Number(depois.totais.formalizacoes || 0) === 0;
+
+    registrarLog_(
+      'CLIENTES',
+      'REPARO_GRUPOS_ETAPA1',
+      'Aplicados R/I/F: ' + aplicados.reunioes + '/' + aplicados.interacoes + '/' + aplicados.formalizacoes +
+      ' | backup: ' + backup.nome +
+      ' | pós R/I/F: ' + depois.totais.reunioes + '/' + depois.totais.interacoes + '/' + depois.totais.formalizacoes +
+      ' | vínculos cruzados: ' + depois.totais.vinculosCruzados
+    );
+
+    if (!validacao.valido) throw new Error('Estrutura inválida após reparo: ' + validacao.erros.join(' | '));
+
+    return {
+      sucesso: true,
+      etapa: 1,
+      concluida: concluida,
+      backup: backup,
+      aplicados: aplicados,
+      antes: antes.totais,
+      depois: depois.totais,
+      vinculosCruzados: depois.conflitos.vinculosCruzados || [],
+      validacao: validacao
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function jornadaGarantirRegrasPadrao_(idCliente, regrasInformadas) {
