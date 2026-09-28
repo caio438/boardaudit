@@ -137,6 +137,41 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
   return opsResumoAuditoriaPublicada_(auditoria, interacao, idTranscricaoReal, false, gate, aprovacao);
 }
 
+function OPS_NORMALIZAR_TRANSCRICAO(idTranscricao) {
+  const alvo = String(idTranscricao || '').trim();
+  if (!alvo) throw new Error('ID da transcricao nao informado.');
+
+  const resolvido = opsResolverAlvoAuditoria_(alvo);
+  const transcricao = resolvido.transcricao;
+  const interacao = resolvido.interacao;
+  if (String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') {
+    throw new Error('A transcricao ainda nao esta concluida.');
+  }
+
+  const tipo = String(interacao.FUNCAO || '').trim().toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) {
+    throw new Error('Nao foi possivel determinar SDR ou CLOSER para esta interacao.');
+  }
+
+  const preparada = audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao);
+  return {
+    sucesso: true,
+    modo: 'NORMALIZACAO_SEM_AUDITORIA',
+    idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
+    idInteracao: String(interacao.ID_INTERACAO || ''),
+    idCliente: String(interacao.ID_CLIENTE || ''),
+    tipoAuditoria: tipo,
+    titulo: String(interacao.TITULO || interacao.OPORTUNIDADE || ''),
+    responsavel: String(interacao.COLABORADOR || interacao.VENDEDOR || ''),
+    lead: String(interacao.LEAD || ''),
+    normalizacaoVersao: String(preparada.normalizacaoVersao || ''),
+    qualidadeTranscricao: preparada.qualidade || {},
+    auditoriaGerada: false,
+    rdPublicada: false,
+    aprovada: false
+  };
+}
+
 function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
   const alvo = String(idTranscricao || '').trim();
   if (!alvo) throw new Error('ID da transcricao nao informado.');
