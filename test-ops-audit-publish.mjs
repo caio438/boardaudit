@@ -5,6 +5,7 @@ const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url), 'utf8');
 const previewWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url), 'utf8');
+const normalizeWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-transcript-normalize.yml', import.meta.url), 'utf8');
 const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
 
 assert.ok(ops.includes('function OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'Runner operacional nao existe.');
@@ -46,6 +47,26 @@ assert.ok(trechoPreview.includes('aprovada: false'), 'Preview deve declarar que 
 assert.ok(!trechoPreview.includes('aprovarAuditoriaV3('), 'Preview nao pode aprovar auditoria.');
 assert.ok(!trechoPreview.includes('enviarAuditoriaParaRd('), 'Preview nao pode publicar no RD.');
 assert.ok(!trechoPreview.includes('reprocessarAutomacaoAuditoriaV3('), 'Preview nao pode acionar automacao de publicacao.');
+
+
+assert.ok(ops.includes('function OPS_NORMALIZAR_TRANSCRICAO'), 'Runner isolado de normalizacao nao existe.');
+const inicioNormalize = ops.indexOf('function OPS_NORMALIZAR_TRANSCRICAO');
+const fimNormalize = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO', inicioNormalize);
+assert.ok(inicioNormalize >= 0 && fimNormalize > inicioNormalize, 'Runner de normalizacao precisa ficar isolado do preview.');
+const trechoNormalize = ops.slice(inicioNormalize, fimNormalize);
+assert.ok(trechoNormalize.includes('audV3PrepararTranscricaoParaAuditoria_'), 'Normalizacao operacional nao usa o reparo conservador oficial.');
+assert.ok(trechoNormalize.includes("modo: 'NORMALIZACAO_SEM_AUDITORIA'"), 'Normalizacao nao identifica modo seguro.');
+assert.ok(trechoNormalize.includes('auditoriaGerada: false'), 'Normalizacao nao declara ausencia de auditoria.');
+assert.ok(trechoNormalize.includes('rdPublicada: false'), 'Normalizacao nao declara ausencia de publicacao RD.');
+assert.ok(!trechoNormalize.includes('executarAuditoriaV3('), 'Normalizacao isolada nao pode gerar auditoria.');
+assert.ok(!trechoNormalize.includes('aprovarAuditoriaV3('), 'Normalizacao isolada nao pode aprovar auditoria.');
+assert.ok(!trechoNormalize.includes('reprocessarAutomacaoAuditoriaV3('), 'Normalizacao isolada nao pode publicar no RD.');
+assert.ok(code.includes("parametros.ops_transcript_normalize"), 'doGet nao expoe a rota autenticada de normalizacao.');
+assert.ok(code.includes('OPS_NORMALIZAR_TRANSCRICAO'), 'doGet nao chama o runner isolado de normalizacao.');
+assert.ok(normalizeWorkflow.includes('Deploy Apps Script automatically'), 'Normalizacao operacional nao aguarda deploy concluido.');
+assert.ok(normalizeWorkflow.includes('Ops transcript normalize: '), 'Normalizacao exige commit operacional explicito.');
+assert.ok(normalizeWorkflow.includes('ops_transcript_normalize=1'), 'Workflow nao chama a rota isolada de normalizacao.');
+assert.ok(normalizeWorkflow.includes('result.auditoriaGerada !== false || result.rdPublicada !== false || result.aprovada !== false'), 'Workflow nao bloqueia efeitos colaterais na normalizacao.');
 
 assert.ok(code.includes("parametros.ops_audit_preview"), 'doGet nao expoe a rota autenticada de preview.');
 assert.ok(code.includes('OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'doGet nao chama o runner seguro de preview.');
