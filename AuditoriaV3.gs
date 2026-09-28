@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.8
+ * Versão: 6.2.9
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.8',
+  versao: '6.2.9',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -3665,13 +3665,13 @@ function audV3ChamarGemini_(ctx) {
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
   const statusTrocaModeloImediata = [503];
-  const esperaCurtaQuotaMs_ = function(corpoErro) {
+  const esperaQuotaPermitidaMs_ = function(corpoErro) {
     const textoErro = String(corpoErro || '');
     const match = textoErro.match(/retry in\s+([0-9]+(?:\.[0-9]+)?)s/i);
     if (!match) return 0;
     const segundos = Number(match[1] || 0);
-    if (!isFinite(segundos) || segundos <= 0 || segundos > 15) return 0;
-    return Math.min(16000, Math.ceil(segundos * 1000) + 750);
+    if (!isFinite(segundos) || segundos <= 0 || segundos > 60) return 0;
+    return Math.min(61000, Math.ceil(segundos * 1000) + 1000);
   };
   const consumoBase = {
     idAuditoria: String(ctx.idAuditoria || ''),
@@ -3786,13 +3786,17 @@ function audV3ChamarGemini_(ctx) {
     // Quando a espera é curta, aguardar o mesmo modelo é mais eficiente do que
     // disparar a mesma entrada grande contra todos os fallbacks no mesmo minuto.
     if (status === 429 && tentativa < esperasMs.length - 1) {
-      const esperaQuota = esperaCurtaQuotaMs_(corpo);
-      if (esperaQuota > 0) {
-        console.warn('Cota por minuto: aguardando ' + esperaQuota + ' ms antes de repetir o mesmo modelo.');
+      const esperaQuota = esperaQuotaPermitidaMs_(corpo);
+      if (esperaQuota > 0 && indiceModelo === 0 && tentativa === 0) {
+        console.warn('Cota por minuto: aguardando uma única janela de ' + esperaQuota + ' ms no modelo preferido.');
         Utilities.sleep(esperaQuota);
         continue;
       }
-      console.warn('Janela de cota longa ou ausente; tentando o próximo modelo gratuito.');
+      if (esperaQuota > 0 && tentativa > 0) {
+        console.warn('A cota do modelo preferido ainda está ocupada após uma espera controlada; tentando fallback sem nova espera longa.');
+      } else {
+        console.warn('Janela de cota longa/ausente ou fallback; tentando o próximo modelo gratuito.');
+      }
       break;
     }
     if (trocarModeloAgora) {
