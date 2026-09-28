@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.4
+ * Versão: 6.2.5
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.4',
+  versao: '6.2.5',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -2822,45 +2822,96 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao, opcoes) {
   opcoes = opcoes || {};
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Chave Gemini não configurada para reparar autoria da transcrição.');
-  const modelos = typeof consumoIaModelosTextoDisponiveis_ === 'function'
+
+  const disponiveis = typeof consumoIaModelosTextoDisponiveis_ === 'function'
     ? consumoIaModelosTextoDisponiveis_()
     : [AUDITORIA_V3.modeloGeminiPadrao];
+  const ordemPreferida = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash'
+  ];
+  const modelos = ordemPreferida.filter(function(modelo) {
+    return disponiveis.indexOf(modelo) >= 0;
+  }).concat(disponiveis.filter(function(modelo) {
+    return ordemPreferida.indexOf(modelo) < 0;
+  })).slice(0, Number(opcoes.maxModelos || 3));
+
   const prompt = audV3PromptReparoLocutores_(normalizacao, interacao || {});
+  const esperasTransientesMs = [0, 2500];
+  const errosModelos = [];
   let ultimoErro = null;
 
   for (let indice = 0; indice < modelos.length; indice++) {
     const modelo = String(modelos[indice] || '').trim();
     if (!modelo) continue;
-    try {
-      if (typeof consumoIaValidarAntes_ === 'function') consumoIaValidarAntes_(modelo);
-      const inicio = Date.now();
-      const resposta = UrlFetchApp.fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent',
-        {
-          method: 'post',
-          contentType: 'application/json',
-          headers: { 'x-goog-api-key': chave },
-          payload: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
-          }),
-          muteHttpExceptions: true
+
+    let resposta = null;
+    let status = 0;
+    let corpo = '';
+    let falhaModelo = null;
+
+    for (let tentativa = 0; tentativa < esperasTransientesMs.length; tentativa++) {
+      try {
+        if (tentativa > 0 && esperasTransientesMs[tentativa] > 0) {
+          Utilities.sleep(esperasTransientesMs[tentativa]);
         }
-      );
-      const status = Number(resposta.getResponseCode() || 0);
-      const corpo = String(resposta.getContentText() || '');
-      if (typeof registrarConsumoIa_ === 'function') {
-        registrarConsumoIa_(modelo, 'NORMALIZACAO_LOCUTORES', status, corpo, '', inicio, {
-          idInteracao: String((interacao || {}).ID_INTERACAO || ''),
-          tipoAuditoria: String((interacao || {}).FUNCAO || 'TRANSCRICAO'),
-          tentativa: 1
-        });
+        if (typeof consumoIaValidarAntes_ === 'function') consumoIaValidarAntes_(modelo);
+
+        const inicio = Date.now();
+        resposta = UrlFetchApp.fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent',
+          {
+            method: 'post',
+            contentType: 'application/json',
+            headers: { 'x-goog-api-key': chave },
+            payload: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+            }),
+            muteHttpExceptions: true
+          }
+        );
+        status = Number(resposta.getResponseCode() || 0);
+        corpo = String(resposta.getContentText() || '');
+
+        if (typeof registrarConsumoIa_ === 'function') {
+          registrarConsumoIa_(modelo, 'NORMALIZACAO_LOCUTORES', status, corpo, '', inicio, {
+            idInteracao: String((interacao || {}).ID_INTERACAO || ''),
+            tipoAuditoria: String((interacao || {}).FUNCAO || 'TRANSCRICAO'),
+            tentativa: tentativa + 1
+          });
+        }
+
+        if (status >= 200 && status < 300) {
+          falhaModelo = null;
+          break;
+        }
+
+        falhaModelo = new Error(
+          'Normalização de locutores retornou HTTP ' + status +
+          ' no modelo ' + modelo + ' (tentativa ' + String(tentativa + 1) + ').'
+        );
+        const transiente = [429, 500, 502, 503, 504].includes(status);
+        if (!transiente || tentativa + 1 >= esperasTransientesMs.length) break;
+      } catch (erroFetch) {
+        falhaModelo = erroFetch;
+        const textoErro = String(erroFetch && erroFetch.message ? erroFetch.message : erroFetch);
+        const transiente = /429|500|502|503|504|temporari|unavailable|high demand/i.test(textoErro);
+        if (!transiente || tentativa + 1 >= esperasTransientesMs.length) break;
       }
-      if (status < 200 || status >= 300) {
-        ultimoErro = new Error('Normalização de locutores retornou HTTP ' + status + ' no modelo ' + modelo + '.');
-        if ([429, 500, 502, 503, 504].includes(status)) continue;
-        throw ultimoErro;
-      }
+    }
+
+    if (falhaModelo || status < 200 || status >= 300) {
+      ultimoErro = falhaModelo || new Error('Normalização de locutores falhou no modelo ' + modelo + '.');
+      errosModelos.push(String(ultimoErro && ultimoErro.message ? ultimoErro.message : ultimoErro));
+      continue;
+    }
+
+    try {
       const envelope = audV3ParseJson_(corpo, 'A resposta HTTP da normalização de locutores não é válida.');
       const candidato = (envelope.candidates || [])[0] || {};
       const texto = (((candidato.content || {}).parts || [])).map(function(parte) { return parte.text || ''; }).join('').trim();
@@ -2878,6 +2929,7 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao, opcoes) {
         if (['SDR', 'CLOSER'].includes(papel) && ['SDR', 'CLOSER'].includes(esperado) && papel !== esperado) return;
         mapa[id] = papel;
       });
+
       const desconhecidos = (normalizacao.turnos || []).filter(function(turno) {
         return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
       });
@@ -2904,6 +2956,7 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao, opcoes) {
           coberturaMapaPct + '% dos caracteres desconhecidos classificados' +
           (exigeDoisLados ? ', com ambos os lados exigidos=' + String(temProfissional && temLead) : '') + '.'
         );
+        errosModelos.push(String(ultimoErro.message || ultimoErro));
         continue;
       }
 
@@ -2911,13 +2964,19 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao, opcoes) {
         mapa: mapa,
         modelo: modelo,
         cobertura_mapa_pct: coberturaMapaPct,
-        ambos_lados: !exigeDoisLados || (temProfissional && temLead)
+        ambos_lados: !exigeDoisLados || (temProfissional && temLead),
+        tentativas_http: esperasTransientesMs.length
       };
-    } catch (erro) {
-      ultimoErro = erro;
+    } catch (erroParse) {
+      ultimoErro = erroParse;
+      errosModelos.push(String(erroParse && erroParse.message ? erroParse.message : erroParse));
     }
   }
-  throw ultimoErro || new Error('Nenhum modelo concluiu a normalização conservadora de locutores.');
+
+  throw new Error(
+    'Nenhum modelo concluiu a normalização conservadora de locutores. ' +
+    (errosModelos.length ? errosModelos.slice(-3).join(' | ') : String(ultimoErro || 'Sem detalhe adicional.'))
+  );
 }
 
 function audV3ChamarReparoLocutoresRobusto_(normalizacao, interacao) {
@@ -2936,8 +2995,8 @@ function audV3ChamarReparoLocutoresRobusto_(normalizacao, interacao) {
     });
   }
 
-  const tamanhoMaxTurnos = 60;
-  const tamanhoMaxChars = 14000;
+  const tamanhoMaxTurnos = 110;
+  const tamanhoMaxChars = 25000;
   const lotes = [];
   let atual = [];
   let charsAtual = 0;
