@@ -108,7 +108,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.5'/, 'O engine não foi versionado para a correção do limite de célula v6.2.5.');
+assert.match(audit, /versao:\s*'6\.2\.6'/, 'O engine não foi versionado para a correção do limite de célula v6.2.6.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -329,7 +329,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.5'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.5.');
+assert.match(audit, /versao:\s*'6\.2\.6'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.6.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -415,6 +415,9 @@ assert.ok(audit.includes('esperasTransientesMs = [0, 2500]'), 'Reparo de locutor
 assert.ok(audit.includes('[429, 500, 502, 503, 504].includes(status)'), 'Reparo de locutores não reconhece falhas HTTP transitórias.');
 assert.ok(audit.includes("slice(0, Number(opcoes.maxModelos || 3))"), 'Reparo de locutores não limita o número de fallbacks por lote.');
 assert.ok(audit.includes("'gemini-3.5-flash-lite'") && audit.includes("'gemini-3.1-flash-lite'"), 'Reparo de locutores não prioriza modelos Lite para alta vazão.');
+const consumo = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
+assert.ok(consumo.includes("const indiceSucesso = CONSUMO_IA.colunas.indexOf('SUCESSO');"), 'Controle de IA não distingue chamadas concluídas de falhas transitórias.');
+assert.ok(consumo.includes("String(linha[indiceSucesso] || '').toUpperCase() === 'SIM'"), 'Falhas 503 ainda consomem o teto diário interno e escondem modelos fallback gratuitos.');
 
 
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
