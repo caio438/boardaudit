@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.9
+ * Versão: 6.2.10
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.9',
+  versao: '6.2.10',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -4128,10 +4128,28 @@ function audV3RepararEvidenciasRastreaveis_(resultado, tipoAuditoria, criterios,
   const resolverLocutorFonte = function(fala) {
     const trecho = String(fala || '').trim();
     if (!trecho || /^n[aã]o evidenciado/i.test(trecho)) return '';
+
+    // Quando a recuperação literal devolve a linha canônica da transcrição
+    // normalizada (ex.: "[0:58] CLOSER (Juliana): ..."), preserve o papel que
+    // já foi validado pelo gate de autoria. O rótulo só é aceito se a fala
+    // correspondente existir em um turno do mesmo papel.
+    const linhaNormalizada = trecho.match(/^\[(?:\d{1,2}:)?\d{1,2}:\d{2}\]\s+(SDR|CLOSER|PROFISSIONAL|LEAD)(?:\s+\([^)]+\))?:\s*(.+)$/i);
+    if (linhaNormalizada) {
+      const tipoRotulado = String(linhaNormalizada[1] || '').toUpperCase();
+      const falaRotulada = String(linhaNormalizada[2] || '').trim();
+      const rotuloConfirmado = turnosFonte.some(function(turno) {
+        turno = turno || {};
+        return String(turno.tipo || '').trim().toUpperCase() === tipoRotulado &&
+          audV3TrechoExisteNaFonte_(falaRotulada, turno.fala || '');
+      });
+      if (rotuloConfirmado) return tipoRotulado;
+    }
+
+    const falaComparavel = linhaNormalizada ? String(linhaNormalizada[2] || '').trim() : trecho;
     const tiposEncontrados = {};
     turnosFonte.forEach(function(turno) {
       turno = turno || {};
-      if (!audV3TrechoExisteNaFonte_(trecho, turno.fala || '')) return;
+      if (!audV3TrechoExisteNaFonte_(falaComparavel, turno.fala || '')) return;
       const tipoTurno = String(turno.tipo || '').trim().toUpperCase();
       if (tipoTurno) tiposEncontrados[tipoTurno] = true;
     });
@@ -4746,7 +4764,10 @@ function audV3ReconciliarContextoCloserComFonte_(resultado, transcricao, context
   const fonte = audV3NormalizarTrechoRastreavel_(transcricao || '');
   const historico = Array.isArray((contextoOperacional || {}).historico) ? contextoOperacional.historico : [];
   const evidenciaInformada = String(contexto.evidencia_continuidade || '').trim();
-  const evidenciaLiteral = evidenciaInformada ? audV3RecuperarTrechoLiteral_(evidenciaInformada, transcricao) : '';
+  const evidenciaMarcadaAusente = /^n[aã]o[\s_-]*evidenciado/i.test(evidenciaInformada);
+  const evidenciaLiteral = evidenciaInformada && !evidenciaMarcadaAusente
+    ? audV3RecuperarTrechoLiteral_(evidenciaInformada, transcricao)
+    : '';
   const continuidadeObjetiva = Boolean(historico.length || evidenciaLiteral);
 
   if (contexto.continuidade_confirmada === true && !continuidadeObjetiva) {
