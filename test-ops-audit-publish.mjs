@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url), 'utf8');
+const previewWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url), 'utf8');
 const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
 
 assert.ok(ops.includes('function OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'Runner operacional nao existe.');
@@ -27,6 +28,31 @@ assert.ok(ops.includes('será preservada no histórico e uma nova análise será
 assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
 assert.ok(ops.includes('reprocessarAutomacaoAuditoriaV3'), 'Runner nao possui contingencia idempotente para RD.');
 assert.ok(!ops.includes('publicarPlanoCircle'), 'Runner de RD nao pode publicar automaticamente no Circle.');
+assert.ok(ops.includes('function OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'Runner seguro de preview real nao existe.');
+const inicioPreview = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO');
+const fimPreview = ops.indexOf('function opsResolverAlvoAuditoria_', inicioPreview);
+assert.ok(inicioPreview >= 0 && fimPreview > inicioPreview, 'Runner de preview nao pode ser isolado.');
+const trechoPreview = ops.slice(inicioPreview, fimPreview);
+assert.ok(trechoPreview.includes('evitarDuplicidade: false'), 'Preview precisa forcar uma nova analise no engine atual.');
+assert.ok(trechoPreview.includes('audV3ExigirGatePublicavel_'), 'Preview precisa validar o gate publicavel.');
+assert.ok(trechoPreview.includes('audRdTexto_(contextoRd)'), 'Preview precisa gerar exatamente o formatter atual do RD.');
+assert.ok(trechoPreview.includes("modo: 'PREVIEW_SEM_PUBLICACAO'"), 'Preview nao identifica explicitamente o modo seguro.');
+assert.ok(trechoPreview.includes('rdPublicada: false'), 'Preview deve declarar que nao publicou no RD.');
+assert.ok(trechoPreview.includes('aprovada: false'), 'Preview deve declarar que nao aprovou a auditoria.');
+assert.ok(!trechoPreview.includes('aprovarAuditoriaV3('), 'Preview nao pode aprovar auditoria.');
+assert.ok(!trechoPreview.includes('enviarAuditoriaParaRd('), 'Preview nao pode publicar no RD.');
+assert.ok(!trechoPreview.includes('reprocessarAutomacaoAuditoriaV3('), 'Preview nao pode acionar automacao de publicacao.');
+
+assert.ok(code.includes("parametros.ops_audit_preview"), 'doGet nao expoe a rota autenticada de preview.');
+assert.ok(code.includes('OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'doGet nao chama o runner seguro de preview.');
+
+assert.ok(previewWorkflow.includes('Deploy Apps Script automatically'), 'Preview operacional nao aguarda deploy concluido.');
+assert.ok(previewWorkflow.includes('environment: apps-script-production'), 'Preview operacional nao usa ambiente protegido.');
+assert.ok(previewWorkflow.includes("Ops audit preview: "), 'Preview exige commit operacional explicito.');
+assert.ok(previewWorkflow.includes('ops_audit_preview=1'), 'Workflow de preview nao chama a rota segura.');
+assert.ok(previewWorkflow.includes('OPS_RD_PREVIEW_BEGIN'), 'Workflow de preview nao expoe o texto final do RD para conferencia.');
+assert.ok(previewWorkflow.includes('result.rdPublicada !== false || result.aprovada !== false'), 'Workflow nao bloqueia qualquer aprovacao/publicacao acidental no preview.');
+
 
 assert.ok(code.includes("parametros.ops_audit_publish"), 'doGet nao expoe a rota operacional autenticada.');
 assert.ok(code.includes('Session.getActiveUser().getEmail()'), 'Rota operacional nao valida usuario ativo.');

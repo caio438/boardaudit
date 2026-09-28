@@ -401,6 +401,24 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_audit_preview || '') === '1') {
+    const ativoOpsPreview = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsPreview = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsPreview || !efetivoOpsPreview || ativoOpsPreview !== efetivoOpsPreview) {
+      throw new Error('Preview operacional de auditoria permitido somente para a conta proprietaria autenticada.');
+    }
+    const idTranscricaoPreview = String(parametros.transcript || '').trim();
+    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+)$/.test(idTranscricaoPreview)) {
+      throw new Error('ID de transcricao/interacao operacional invalido.');
+    }
+    if (typeof OPS_AUDITAR_PREVIEW_TRANSCRICAO !== 'function') {
+      throw new Error('Runner de preview de auditoria nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricaoPreview), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_audit_publish || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();

@@ -137,6 +137,106 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
   return opsResumoAuditoriaPublicada_(auditoria, interacao, idTranscricaoReal, false, gate, aprovacao);
 }
 
+function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
+  const alvo = String(idTranscricao || '').trim();
+  if (!alvo) throw new Error('ID da transcricao nao informado.');
+
+  const resolvido = opsResolverAlvoAuditoria_(alvo);
+  const transcricao = resolvido.transcricao;
+  const interacao = resolvido.interacao;
+  if (String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA') {
+    throw new Error('A transcricao ainda nao esta concluida.');
+  }
+
+  const tipo = String(interacao.FUNCAO || '').trim().toUpperCase();
+  if (!['SDR', 'CLOSER'].includes(tipo)) {
+    throw new Error('Nao foi possivel determinar SDR ou CLOSER para esta interacao.');
+  }
+
+  const pitchAtual = audV3PitchAtualAutomatico_(interacao.ID_CLIENTE, tipo);
+  if (!pitchAtual) throw new Error('Nenhum pitch atual ' + tipo + ' foi definido para o cliente.');
+  const pitchConferido = audV3AtualizarPitchDocumentoAutomatico_(pitchAtual).pitch;
+
+  const gerada = executarAuditoriaV3({
+    idCliente: interacao.ID_CLIENTE,
+    idPitch: pitchConferido.ID_PITCH,
+    idInteracao: interacao.ID_INTERACAO,
+    tipoAuditoria: tipo,
+    nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
+    nomeLead: interacao.LEAD || '',
+    evitarDuplicidade: false
+  });
+  if (!gerada || !gerada.auditoria || !String(gerada.auditoria.idAuditoria || '').trim()) {
+    throw new Error('A auditoria de preview nao foi criada corretamente.');
+  }
+
+  let auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', gerada.auditoria.idAuditoria);
+  if (!auditoria) throw new Error('Auditoria de preview nao encontrada apos processamento.');
+
+  let resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado invalido.');
+  if (String(auditoria.STATUS || '').toUpperCase() === 'EM_REVISAO' &&
+      audV3ColetarOrientacoesGenericas_(resultado, tipo).length) {
+    repararCoachingAuditoriaV3(auditoria.ID_AUDITORIA);
+    auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA);
+    resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado invalido apos reparo.');
+  }
+
+  let gatePublicavel = true;
+  let gateErro = '';
+  let gate = (resultado || {}).validacao_board || {};
+  try {
+    gate = audV3ExigirGatePublicavel_(resultado, tipo) || gate;
+  } catch (erroGate) {
+    gatePublicavel = false;
+    gateErro = String(erroGate && erroGate.message ? erroGate.message : erroGate);
+  }
+
+  const contextoRd = {
+    a: auditoria,
+    i: interacao,
+    r: resultado,
+    dealId: audRdDeal_(interacao),
+    token: '',
+    sdr: {
+      id: '',
+      nome: String(interacao.COLABORADOR || interacao.VENDEDOR || ((resultado.metadados || {}).closer) || ''),
+      email: ''
+    },
+    volum: { id: '', nome: 'VOLUM', email: '' }
+  };
+  const rdPreview = audRdTexto_(contextoRd);
+
+  return {
+    sucesso: true,
+    modo: 'PREVIEW_SEM_PUBLICACAO',
+    idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
+    idInteracao: String(interacao.ID_INTERACAO || ''),
+    idAuditoria: String(auditoria.ID_AUDITORIA || ''),
+    tipoAuditoria: String(auditoria.TIPO_AUDITORIA || ''),
+    engineVersao: String(auditoria.ENGINE_VERSAO || ''),
+    modeloIa: String(auditoria.MODELO_IA || ''),
+    status: String(auditoria.STATUS || ''),
+    validacaoStatus: String(auditoria.VALIDACAO_STATUS || ''),
+    automacaoStatus: String(auditoria.AUTOMACAO_STATUS || ''),
+    gateStatus: String((gate || {}).status || ''),
+    gatePublicavel: gatePublicavel,
+    gateErro: gateErro,
+    score: auditoria.SCORE,
+    scorePercentual: auditoria.SCORE_PERCENTUAL,
+    semaforo: auditoria.SEMAFORO,
+    resumoReuniao: resultado.resumo_reuniao || {},
+    criteriosAvaliados: resultado.criterios_avaliados || [],
+    momentos: resultado.momentos || [],
+    perguntasDiagnostico: resultado.perguntas_diagnostico || {},
+    analiseImpactoImplicacao: resultado.analise_impacto_implicacao || {},
+    proximosPassos: resultado.proximos_passos || [],
+    validacaoBoard: resultado.validacao_board || {},
+    rdPreview: rdPreview,
+    rdPublicada: false,
+    aprovada: false
+  };
+}
+
 function opsResolverAlvoAuditoria_(alvo) {
   const chave = String(alvo || '').trim();
   let transcricao = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', chave);
