@@ -401,6 +401,24 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_transcript_normalize || '') === '1') {
+    const ativoOpsNormalize = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsNormalize = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsNormalize || !efetivoOpsNormalize || ativoOpsNormalize !== efetivoOpsNormalize) {
+      throw new Error('Normalizacao operacional permitida somente para a conta proprietaria autenticada.');
+    }
+    const idTranscricaoNormalize = String(parametros.transcript || '').trim();
+    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+)$/.test(idTranscricaoNormalize)) {
+      throw new Error('ID de transcricao/interacao operacional invalido.');
+    }
+    if (typeof OPS_NORMALIZAR_TRANSCRICAO !== 'function') {
+      throw new Error('Runner de normalizacao nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(OPS_NORMALIZAR_TRANSCRICAO(idTranscricaoNormalize), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_audit_preview || '') === '1') {
     const ativoOpsPreview = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsPreview = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
