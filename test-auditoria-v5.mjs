@@ -118,7 +118,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.7'/, 'O engine não foi versionado para a correção do limite de célula v6.2.7.');
+assert.match(audit, /versao:\s*'6\.2\.8'/, 'O engine não foi versionado para a correção do limite de célula v6.2.8.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -339,7 +339,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.7'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.7.');
+assert.match(audit, /versao:\s*'6\.2\.8'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.8.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -428,6 +428,10 @@ assert.ok(audit.includes("'gemini-3.5-flash-lite'") && audit.includes("'gemini-3
 const consumo = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
 assert.ok(consumo.includes("const indiceSucesso = CONSUMO_IA.colunas.indexOf('SUCESSO');"), 'Controle de IA não distingue chamadas concluídas de falhas transitórias.');
 assert.ok(consumo.includes("String(linha[indiceSucesso] || '').toUpperCase() === 'SIM'"), 'Falhas 503 ainda consomem o teto diário interno e escondem modelos fallback gratuitos.');
+assert.ok(audit.includes('const statusTrocaModeloImediata = [503];'), '429 ainda pula imediatamente para todos os modelos e congestiona a mesma janela de cota.');
+assert.ok(audit.includes('const esperaCurtaQuotaMs_ = function(corpoErro)'), 'Auditoria não interpreta o retry recomendado pelo Gemini em 429.');
+assert.ok(audit.includes('segundos > 15'), 'Retry de 429 não possui limite curto para proteger o tempo máximo do Apps Script.');
+assert.ok(audit.includes("Utilities.sleep(esperaQuota);"), 'Auditoria não aguarda a janela curta de 429 antes de repetir o mesmo modelo.');
 
 
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
