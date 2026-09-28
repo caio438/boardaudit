@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.8
+ * Versão: 6.2.9
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.8',
+  versao: '6.2.9',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -3670,8 +3670,8 @@ function audV3ChamarGemini_(ctx) {
     const match = textoErro.match(/retry in\s+([0-9]+(?:\.[0-9]+)?)s/i);
     if (!match) return 0;
     const segundos = Number(match[1] || 0);
-    if (!isFinite(segundos) || segundos <= 0 || segundos > 15) return 0;
-    return Math.min(16000, Math.ceil(segundos * 1000) + 750);
+    if (!isFinite(segundos) || segundos <= 0 || segundos > 65) return 0;
+    return Math.min(66000, Math.ceil(segundos * 1000) + 1250);
   };
   const consumoBase = {
     idAuditoria: String(ctx.idAuditoria || ''),
@@ -3783,8 +3783,8 @@ function audV3ChamarGemini_(ctx) {
     const trocarModeloAgora = statusTrocaModeloImediata.indexOf(status) >= 0;
     console.warn('Gemini HTTP ' + status + ' na tentativa ' + (tentativa + 1) + '.');
     // Em 429 o Google informa a janela exata para liberar novamente a cota por minuto.
-    // Quando a espera é curta, aguardar o mesmo modelo é mais eficiente do que
-    // disparar a mesma entrada grande contra todos os fallbacks no mesmo minuto.
+    // Esperar a janela informada (inclusive janelas de ~60s) evita disparar a mesma
+    // entrada grande contra todos os fallbacks e perpetuar o bloqueio de TPM.
     if (status === 429 && tentativa < esperasMs.length - 1) {
       const esperaQuota = esperaCurtaQuotaMs_(corpo);
       if (esperaQuota > 0) {
