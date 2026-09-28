@@ -93,8 +93,11 @@ function consumoIaContarHojeModelo_(modelo) {
   const linhas = aba.getRange(2, 1, aba.getLastRow() - 1, CONSUMO_IA.colunas.length).getValues();
   const indiceDia = CONSUMO_IA.colunas.indexOf('DATA_DIA_PT');
   const indiceModelo = CONSUMO_IA.colunas.indexOf('MODELO');
+  const indiceSucesso = CONSUMO_IA.colunas.indexOf('SUCESSO');
   return linhas.filter(function(linha) {
-    return consumoIaDiaChave_(linha[indiceDia]) === hojePt && String(linha[indiceModelo] || '') === String(modelo || '');
+    return consumoIaDiaChave_(linha[indiceDia]) === hojePt &&
+      String(linha[indiceModelo] || '') === String(modelo || '') &&
+      String(linha[indiceSucesso] || '').toUpperCase() === 'SIM';
   }).length;
 }
 
