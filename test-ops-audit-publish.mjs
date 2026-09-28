@@ -35,6 +35,7 @@ assert.ok(inicioPreview >= 0 && fimPreview > inicioPreview, 'Runner de preview n
 const trechoPreview = ops.slice(inicioPreview, fimPreview);
 assert.ok(trechoPreview.includes('opsAuditoriaAtualInteracao_'), 'Preview precisa tentar reutilizar a auditoria atual antes de gerar outra.');
 assert.ok(trechoPreview.includes('opsValidarAuditoriaNoEngineAtual_'), 'Preview precisa revalidar a auditoria atual no engine antes de reutiliza-la.');
+assert.match(trechoPreview, /audV3NormalizarVersao_\(auditoria\.ENGINE_VERSAO\) === audV3NormalizarVersao_\(AUDITORIA_V3\.versao\)/, 'Preview não restringe reutilização à versão exata do engine atual.');
 assert.ok(trechoPreview.includes('evitarDuplicidade: false'), 'Preview precisa gerar nova analise apenas quando nao houver auditoria atual valida.');
 assert.ok(trechoPreview.includes('reutilizada: reutilizada'), 'Preview precisa informar quando reutilizou a auditoria atual.');
 assert.ok(trechoPreview.includes('audV3ExigirGatePublicavel_'), 'Preview precisa validar o gate publicavel.');
