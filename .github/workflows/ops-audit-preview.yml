@@ -120,12 +120,17 @@ jobs:
           const last = raw.lastIndexOf('}');
           if (first < 0 || last < first) throw new Error('Resposta do preview nao contem JSON.');
           const result = JSON.parse(raw.slice(first, last + 1));
-          if (result.sucesso !== true) throw new Error('Runner de preview nao retornou sucesso=true.');
+          fs.writeFileSync('/tmp/ops-audit-preview-summary.json', JSON.stringify(result, null, 2));
+          if (result.sucesso !== true) {
+            console.log('OPS_AUDIT_PREVIEW_FAILED=1');
+            console.log('OPS_AUDIT_PREVIEW_ERROR=' + String(result.erro || 'sem erro informado'));
+            console.log('OPS_QUALIDADE_TRANSCRICAO=' + JSON.stringify(result.qualidadeTranscricao || {}));
+            throw new Error('Runner de preview nao retornou sucesso=true.');
+          }
           if (String(result.modo || '') !== 'PREVIEW_SEM_PUBLICACAO') throw new Error('Runner nao confirmou modo seguro de preview.');
           if (result.rdPublicada !== false || result.aprovada !== false) throw new Error('Preview tentou aprovar ou publicar auditoria.');
           if (!String(result.idAuditoria || '').trim()) throw new Error('ID da auditoria ausente.');
           if (!String(result.rdPreview || '').trim()) throw new Error('Texto de preview do RD ausente.');
-          fs.writeFileSync('/tmp/ops-audit-preview-summary.json', JSON.stringify(result, null, 2));
           console.log('OPS_AUDIT_PREVIEW_OK=1');
           console.log('OPS_AUDIT_ID=' + result.idAuditoria);
           console.log('OPS_ENGINE=' + result.engineVersao);
