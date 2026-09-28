@@ -1,2 +1,3 @@
 Target: INT-20260925175419-2A39E974
 Purpose: validate full real Closer audit for Sinergia/Unimed with engine 6.2.7 and normalization 2.4. No approval or RD publication.
+Requested-at: 2026-09-28T13:34-03:00
