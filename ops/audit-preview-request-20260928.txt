@@ -1,8 +1,2 @@
-Target: INT-20260924150944-A689EB77
-Purpose: real Closer audit preview without approval or RD publication.
-
-Retry after speaker coverage fix v6.2.3.
-
-Retry after batched speaker repair v6.2.4.
-
-Retry after current validated audit reuse fix.
+Target: INT-20260925175419-2A39E974
+Purpose: validate full real Closer audit for Sinergia/Unimed with engine 6.2.7 and normalization 2.4. No approval or RD publication.
