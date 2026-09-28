@@ -2502,11 +2502,14 @@ function audV3ContextoEquipeCloser_(interacao) {
     if (nome) nomes.push(nome);
   });
 
+  const grupoSinergia = audV3NormalizarTrechoRastreavel_(grupo) === 'grupo sinergia' ||
+    ['CLI-20260806105306-25F3490A', 'CLI-20260806112340-E575DA0D', 'CLI_VOL_SEMEIO_CBI'].includes(idCliente);
   const profissionalInformado = String(item.COLABORADOR || item.VENDEDOR || '').trim();
-  if (profissionalInformado) nomes.push(profissionalInformado);
+  if (profissionalInformado && (!grupoSinergia || audV3CloserIngeeValido_(profissionalInformado))) {
+    nomes.push(profissionalInformado);
+  }
 
-  if (audV3NormalizarTrechoRastreavel_(grupo) === 'grupo sinergia' ||
-      ['CLI-20260806105306-25F3490A', 'CLI-20260806112340-E575DA0D', 'CLI_VOL_SEMEIO_CBI'].includes(idCliente)) {
+  if (grupoSinergia) {
     ['Juliana', 'Jéssica Paulo', 'Maíra Aquino', 'Jessica', 'Maira'].forEach(function(nome) { nomes.push(nome); });
   }
 
@@ -2546,10 +2549,15 @@ function audV3ProfissionalCanonicoTranscricao_(interacao) {
   const funcao = String(item.FUNCAO || '').trim().toUpperCase();
   const bruto = String(item.COLABORADOR || item.VENDEDOR || '').trim();
   if (funcao === 'CLOSER') {
-    if (bruto) return bruto;
     const contexto = audV3ContextoEquipeCloser_(item);
+    const grupoSinergia = audV3NormalizarTrechoRastreavel_(contexto.grupo) === 'grupo sinergia' ||
+      ['CLI-20260806105306-25F3490A', 'CLI-20260806112340-E575DA0D', 'CLI_VOL_SEMEIO_CBI'].includes(String(item.ID_CLIENTE || '').trim());
+    if (grupoSinergia) {
+      if (bruto && audV3CloserIngeeValido_(bruto)) return bruto;
+      return 'Sinergia Engenharia';
+    }
+    if (bruto) return bruto;
     if (contexto.nomes.length === 1) return contexto.nomes[0];
-    if (audV3NormalizarTrechoRastreavel_(contexto.grupo) === 'grupo sinergia') return 'Sinergia Engenharia';
   }
   return bruto;
 }
