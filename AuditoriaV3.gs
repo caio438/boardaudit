@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.2
+ * Versão: 6.2.3
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.2',
+  versao: '6.2.3',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -2376,7 +2376,7 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
-const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.1';
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.2';
 
 function audV3DistanciaEdicaoCurta_(a, b) {
   a = String(a || '');
@@ -2877,7 +2877,38 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao) {
         if (['SDR', 'CLOSER'].includes(papel) && ['SDR', 'CLOSER'].includes(esperado) && papel !== esperado) return;
         mapa[id] = papel;
       });
-      return { mapa: mapa, modelo: modelo };
+      const desconhecidos = (normalizacao.turnos || []).filter(function(turno) {
+        return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
+      });
+      const charsDesconhecidos = desconhecidos.reduce(function(total, turno) {
+        return total + String((turno || {}).fala || '').length;
+      }, 0);
+      const charsMapeados = desconhecidos.reduce(function(total, turno) {
+        return total + (mapa[String((turno || {}).id || '')] ? String((turno || {}).fala || '').length : 0);
+      }, 0);
+      const coberturaMapaPct = charsDesconhecidos
+        ? Math.round((charsMapeados / charsDesconhecidos) * 1000) / 10
+        : 100;
+      const papeisMapeados = Object.keys(mapa).map(function(id) { return mapa[id]; });
+      const temProfissional = papeisMapeados.some(function(papel) { return papel === esperado; });
+      const temLead = papeisMapeados.some(function(papel) { return papel === 'LEAD'; });
+      const exigeDoisLados = desconhecidos.length >= 8 && charsDesconhecidos >= 500;
+
+      if (coberturaMapaPct < 45 || (exigeDoisLados && (!temProfissional || !temLead))) {
+        ultimoErro = new Error(
+          'Modelo ' + modelo + ' devolveu mapa de locutores insuficiente: ' +
+          coberturaMapaPct + '% dos caracteres desconhecidos classificados' +
+          (exigeDoisLados ? ', com ambos os lados exigidos=' + String(temProfissional && temLead) : '') + '.'
+        );
+        continue;
+      }
+
+      return {
+        mapa: mapa,
+        modelo: modelo,
+        cobertura_mapa_pct: coberturaMapaPct,
+        ambos_lados: !exigeDoisLados || (temProfissional && temLead)
+      };
     } catch (erro) {
       ultimoErro = erro;
     }
