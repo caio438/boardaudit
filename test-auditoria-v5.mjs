@@ -118,7 +118,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.9'/, 'O engine não foi versionado para a correção do limite de célula v6.2.9.');
+assert.match(audit, /versao:\s*'6\.2\.10'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.10.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -339,7 +339,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.9'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.9.');
+assert.match(audit, /versao:\s*'6\.2\.10'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.10.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');

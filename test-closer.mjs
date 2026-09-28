@@ -106,6 +106,37 @@ assert.equal(contextoErradoIngee.contexto_interacao.classificacao, 'PRIMEIRA_REU
 assert.equal(contextoErradoIngee.contexto_interacao.continuidade_confirmada, false, 'Continuidade inventada precisa ser removida quando não existe na fonte nem no histórico.');
 assert.equal(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas.length, 0, 'Etapas anteriores não podem permanecer concluídas com continuidade não comprovada.');
 
+const contextoContinuidadeSentinela = {
+  contexto_interacao: {
+    classificacao: 'FOLLOW_UP_DIAGNOSTICO',
+    momento_jornada: 'REUNIAO_DIAGNOSTICO',
+    objetivo_principal: 'Diagnosticar e apresentar a solução',
+    confianca: 'ALTA',
+    etapas_aplicaveis: ['Contexto e Rapport', 'Diagnóstico', 'Apresentação da Solução', 'Fechamento'],
+    etapas_ja_concluidas: ['Diagnóstico'],
+    etapas_nao_aplicaveis: [],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'Não evidenciado na fala do profissional',
+    necessita_revisao: false
+  }
+};
+context.api.reconcileContext(
+  contextoContinuidadeSentinela,
+  '[0:58] CLOSER (Juliana e Jessica): Vamos entender o cenário atual. Mais adiante vamos marcar uma segunda reunião para apresentar a proposta.',
+  { historico: [] }
+);
+assert.equal(
+  contextoContinuidadeSentinela.contexto_interacao.continuidade_confirmada,
+  false,
+  'Sentinela "Não evidenciado" não pode comprovar continuidade comercial.'
+);
+assert.equal(
+  contextoContinuidadeSentinela.contexto_interacao.classificacao,
+  'PRIMEIRA_REUNIAO',
+  'Sem histórico nem evidência literal de continuidade, proposta futura deve manter a reunião como primeira reunião.'
+);
+
+
 const resultadoScoreIngee = {
   contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
   criterios_avaliados: criterios.dimensoes.map(item => ({
@@ -262,6 +293,68 @@ assert.equal(
   'CLOSER',
   'O reparo deve reconciliar o nome real do profissional pelo turno literal da transcricao.'
 );
+
+const transcricaoIngeeNormalizadaRotulada = [
+  '[0:58] CLOSER (Juliana e Jessica): Eh, e aí, antes de começar, queria entender um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?',
+  '[1:07] LEAD (Evandro): Não, não. A gente fez lá atrás e agora precisa retomar o inventário.'
+].join('\n');
+const interacaoIngeeCorreta = {
+  ID_CLIENTE: 'CLI-20260806105306-25F3490A',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Juliana e Jessica',
+  VENDEDOR: 'Juliana e Jessica',
+  LEAD: 'Evandro'
+};
+const evidenciaCanonicaIngee = '[0:58] CLOSER (Juliana e Jessica): Eh, e aí, antes de começar, queria entender um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?';
+const respostaLinhaNormalizada = {
+  momentos: [{
+    id: 'momento_1',
+    nome: 'Momento 1 — Diagnóstico',
+    status: 'VERDE',
+    gatilho_alcancado: true,
+    o_que_foi_dito: evidenciaCanonicaIngee,
+    locutor_evidencia: 'CLOSER',
+    divergencia: 'Não houve divergência.',
+    justificativa_nota: 'Diagnóstico comprovado.'
+  }],
+  criterios_avaliados: [{
+    id: 'aderencia_diagnostico',
+    nome: 'Aderência ao Script de Diagnóstico',
+    aplicavel: true,
+    status: 'CONFORME',
+    o_que_foi_dito: evidenciaCanonicaIngee,
+    locutor_evidencia: 'CLOSER',
+    regra_pitch: 'Não previsto no pitch.',
+    divergencia: 'Não houve divergência.',
+    correcao_pratica: 'Manter.',
+    justificativa_nota: 'Evidência profissional rastreável.'
+  }],
+  checklist: []
+};
+context.api.repairEvidence(
+  respostaLinhaNormalizada,
+  'CLOSER',
+  criterios,
+  transcricaoIngeeNormalizadaRotulada,
+  'Comportamento obrigatório descrito no pitch.',
+  interacaoIngeeCorreta
+);
+assert.equal(
+  respostaLinhaNormalizada.criterios_avaliados[0].locutor_evidencia,
+  'CLOSER',
+  'Linha canônica da transcrição normalizada não pode perder a autoria CLOSER.'
+);
+assert.equal(
+  respostaLinhaNormalizada.criterios_avaliados[0].aplicavel,
+  true,
+  'Critério com linha canônica comprovadamente CLOSER deve continuar aplicável.'
+);
+assert.equal(
+  respostaLinhaNormalizada.momentos[0].status,
+  'VERDE',
+  'Momento comprovado por linha canônica CLOSER não pode ser rebaixado para vermelho.'
+);
+
 
 const respostaFalaLead = {
   momentos: JSON.parse(JSON.stringify(momentos)),
