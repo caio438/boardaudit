@@ -430,7 +430,7 @@ assert.ok(consumo.includes("const indiceSucesso = CONSUMO_IA.colunas.indexOf('SU
 assert.ok(consumo.includes("String(linha[indiceSucesso] || '').toUpperCase() === 'SIM'"), 'Falhas 503 ainda consomem o teto diário interno e escondem modelos fallback gratuitos.');
 assert.ok(audit.includes('const statusTrocaModeloImediata = [503];'), '429 ainda pula imediatamente para todos os modelos e congestiona a mesma janela de cota.');
 assert.ok(audit.includes('const esperaCurtaQuotaMs_ = function(corpoErro)'), 'Auditoria não interpreta o retry recomendado pelo Gemini em 429.');
-assert.ok(audit.includes('segundos > 15'), 'Retry de 429 não possui limite curto para proteger o tempo máximo do Apps Script.');
+assert.ok(audit.includes('segundos > 65'), 'Retry de 429 precisa respeitar a janela de TPM informada pelo Gemini sem ultrapassar 65s.');
 assert.ok(audit.includes("Utilities.sleep(esperaQuota);"), 'Auditoria não aguarda a janela curta de 429 antes de repetir o mesmo modelo.');
 
 
