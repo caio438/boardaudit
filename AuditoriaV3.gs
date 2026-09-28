@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.10
+ * Versão: 6.2.11
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.10',
+  versao: '6.2.11',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1745,6 +1745,7 @@ function executarAuditoriaV3(dados) {
         String(item.ID_PITCH || '') === String(pitch.ID_PITCH || '') &&
         String(item.ID_MODELO || '') === String(modelo.ID_MODELO || '') &&
         String(item.TIPO_AUDITORIA || '').toUpperCase() === tipo &&
+        audV3NormalizarVersao_(item.ENGINE_VERSAO) === audV3NormalizarVersao_(AUDITORIA_V3.versao) &&
         String(item.HASH_FONTE || '') === hashFonte &&
         String(item.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
         ['EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase()) &&
