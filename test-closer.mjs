@@ -53,6 +53,36 @@ const qualidadeIngee = context.api.transcriptQuality(comMapa, transcricaoIngeeFo
 assert.equal(qualidadeIngee.apta_para_auditoria, true, 'Transcrição com autoria reparada e cobertura suficiente deve passar o gate pré-auditoria.');
 assert.ok(qualidadeIngee.metricas.cobertura_identificada_pct > 80, 'Cobertura de autoria reparada ficou abaixo do mínimo esperado no caso de regressão.');
 
+const interacaoUnimed = {
+  ID_CLIENTE: 'CLI-20260806112340-E575DA0D',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Jessica',
+  VENDEDOR: 'Jessica',
+  LEAD: 'Unimed'
+};
+const transcricaoUnimedNomeada = [
+  '00:00:02',
+  'Jéssica Paulo: Boa tarde. Quero entender a necessidade de vocês e como está organizada hoje a gestão ambiental da operação.',
+  'João Frigeri: Boa tarde. Estamos estruturando o sistema de gestão ambiental e queremos deixar a organização preparada para a ISO 14001.',
+  'Maíra Aquino: Vocês já possuem metas formais de redução e como essa gestão está distribuída entre as áreas e unidades atualmente?',
+  'Caroline Basso: A gestão está pulverizada entre várias áreas e responsáveis, então buscamos centralização, padronização e clareza de responsabilidades.',
+  'Jéssica Paulo: Para o orçamento, precisamos entender unidades, metragem, funcionários e o CNPJ contratante antes de montar os cenários.',
+  'Caroline Basso: Podemos enviar essa relação e depois fazer a reunião de apresentação da proposta com os diferentes cenários.'
+].join('\n');
+const unimedNormalizada = context.api.normalizeTranscript(transcricaoUnimedNomeada, interacaoUnimed, {});
+assert.deepEqual(
+  Array.from(unimedNormalizada.turnos).map(turno => turno.tipo),
+  ['CLOSER','LEAD','CLOSER','LEAD','CLOSER','LEAD'],
+  'Transcrição nomeada da Unimed precisa separar automaticamente Sinergia/Closer de todos os participantes externos sem configurar um lead por vez.'
+);
+assert.equal(unimedNormalizada.turnos[0].fonte_locutor, 'NOME_METADADO');
+assert.equal(unimedNormalizada.turnos[2].fonte_locutor, 'EQUIPE_CLIENTE');
+assert.equal(unimedNormalizada.turnos[3].fonte_locutor, 'NOME_EXTERNO_EXPLICITO');
+const qualidadeUnimed = context.api.transcriptQuality(unimedNormalizada, transcricaoUnimedNomeada);
+assert.equal(qualidadeUnimed.apta_para_auditoria, true, 'Transcrição Closer com nomes explícitos deve passar o gate sem reparo por Gemini.');
+assert.equal(qualidadeUnimed.metricas.cobertura_identificada_pct, 100, 'Todos os turnos nomeados da Unimed devem ficar com autoria resolvida deterministicamente.');
+
+
 const contextoErradoIngee = {
   contexto_interacao: {
     classificacao: 'APRESENTACAO_PROPOSTA',
@@ -514,7 +544,7 @@ assert.match(
 assert.match(
   source,
   /AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2\.3'/,
-  'A revisão precisa invalidar mapas persistidos da normalização 2.2.'
+  'A revisão precisa invalidar mapas persistidos da normalização 2.3.'
 );
 assert.match(
   source,
