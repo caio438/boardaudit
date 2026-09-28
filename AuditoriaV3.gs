@@ -2580,7 +2580,8 @@ function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
     return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true, fonte: 'ROTULO_DESCONHECIDO' };
   }
   if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
-    return { rotulo: papelProfissional + ' (' + bruto + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional), fonte: 'NOME_METADADO' };
+    const nomeExibicao = papelProfissional === 'CLOSER' ? bruto : profissional;
+    return { rotulo: papelProfissional + ' (' + nomeExibicao + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional), fonte: 'NOME_METADADO' };
   }
   if (papelProfissional === 'CLOSER') {
     const membroInterno = audV3RotuloEhMembroInternoCloser_(bruto, interacao || {});
