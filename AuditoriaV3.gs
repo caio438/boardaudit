@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.6
+ * Versão: 6.2.7
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.6',
+  versao: '6.2.7',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1226,6 +1226,51 @@ function audV3ResumoConexoesClientes_(dados, mapaConfiguracoes) {
   });
 }
 
+function audV3MetadadosMinimosTranscricao_(conteudo, cliente, funcao) {
+  const texto = String(conteudo || '').replace(/\r\n?/g, '\n').trim();
+  const linhas = texto.split('\n').map(function(linha) { return String(linha || '').trim(); }).filter(Boolean);
+  let titulo = '';
+  for (let i = 0; i < Math.min(linhas.length, 12); i++) {
+    const linha = linhas[i];
+    if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(linha)) continue;
+    if (/^[^:\n]{1,80}:\s+/.test(linha)) continue;
+    if (/^(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z.]*\s+\d{1,2},?\s+\d{4}$/i.test(linha)) continue;
+    if (/reuni[aã]o|transcri[cç][aã]o|liga[cç][aã]o/i.test(linha) && linha.length <= 180) {
+      titulo = linha;
+      break;
+    }
+  }
+
+  const interacaoTemporaria = {
+    ID_CLIENTE: String((cliente || {}).ID_CLIENTE || ''),
+    FUNCAO: String(funcao || '').toUpperCase(),
+    COLABORADOR: '',
+    VENDEDOR: '',
+    LEAD: ''
+  };
+  const rotulos = [];
+  linhas.forEach(function(linha) {
+    const match = linha.match(/^([^:\n]{2,80}):\s*(.+)$/);
+    if (!match) return;
+    const rotulo = String(match[1] || '').trim();
+    if (rotulo && rotulos.indexOf(rotulo) < 0) rotulos.push(rotulo);
+  });
+
+  let colaborador = '';
+  const leads = [];
+  rotulos.forEach(function(rotulo) {
+    const info = audV3NormalizarRotuloLocutor_(rotulo, interacaoTemporaria);
+    if (!colaborador && String(info.tipo || '') === String(funcao || '').toUpperCase()) colaborador = rotulo;
+    if (String(info.tipo || '') === 'LEAD') leads.push(rotulo);
+  });
+
+  return {
+    titulo: titulo || ('Reunião ' + String(funcao || 'Closer') + ' — ' + String((cliente || {}).NOME_CLIENTE || 'Cliente')),
+    colaborador: colaborador,
+    lead: leads.join(', ')
+  };
+}
+
 function importarTranscricaoManualV3(dados) {
   dados = dados || {};
   const fonte = String(dados.fonte || 'MANUAL').trim().toUpperCase();
@@ -1242,9 +1287,6 @@ function importarTranscricaoManualV3(dados) {
     throw new Error('O cliente selecionado está inativo.');
   }
 
-  const titulo = String(dados.titulo || '').trim();
-  if (!titulo) throw new Error('Informe um título para identificar a transcrição.');
-
   const conteudo = String(dados.transcricao || '').trim();
   if (conteudo.length < 20) throw new Error('Cole a transcrição completa antes de importar.');
   if (conteudo.length > AUDITORIA_V3.maxCaracteresTranscricao) {
@@ -1254,8 +1296,10 @@ function importarTranscricaoManualV3(dados) {
   const funcao = String(dados.funcao || 'SDR').trim().toUpperCase();
   if (!['SDR', 'CLOSER', 'PLANO'].includes(funcao)) throw new Error('A função deve ser SDR, CLOSER ou PLANO.');
 
-  const colaborador = String(dados.colaborador || '').trim();
-  const lead = String(dados.lead || '').trim();
+  const inferidos = audV3MetadadosMinimosTranscricao_(conteudo, cliente, funcao);
+  const titulo = String(dados.titulo || inferidos.titulo || '').trim();
+  const colaborador = String(dados.colaborador || inferidos.colaborador || '').trim();
+  const lead = String(dados.lead || inferidos.lead || '').trim();
   const nomeArquivo = String(dados.nomeArquivoOrigem || '').trim();
   const partesArquivo = nomeArquivo.replace(/\.[^.]+$/, '').split('-').map(item => item.trim()).filter(Boolean);
   const agora = new Date();
@@ -1641,7 +1685,15 @@ function executarAuditoriaV3(dados) {
   }
 
   const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', String(dados.idCliente || ''));
-  const pitchEncontrado = audV3Localizar_('PITCHES', 'ID_PITCH', String(dados.idPitch || ''));
+  let pitchEncontrado = audV3Localizar_('PITCHES', 'ID_PITCH', String(dados.idPitch || ''));
+  if (tipo !== 'PLANO' && !pitchEncontrado && cliente && typeof audV3PitchAtualAutomatico_ === 'function') {
+    const pitchAtual = audV3PitchAtualAutomatico_(cliente.ID_CLIENTE, tipo);
+    if (pitchAtual) {
+      pitchEncontrado = typeof audV3AtualizarPitchDocumentoAutomatico_ === 'function'
+        ? audV3AtualizarPitchDocumentoAutomatico_(pitchAtual).pitch
+        : pitchAtual;
+    }
+  }
   const pitch = tipo === 'PLANO' ? {
     ID_PITCH: 'PLANO-' + equipePlano,
     ID_CLIENTE: String(dados.idCliente || ''),
@@ -2376,7 +2428,8 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
-const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.3';
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.4';
+var AUDV3_CACHE_EQUIPE_CLOSER = {};
 
 function audV3DistanciaEdicaoCurta_(a, b) {
   a = String(a || '');
@@ -2413,13 +2466,90 @@ function audV3RotuloPareceNome_(rotulo, nome) {
   return Math.min(rp.length, np.length) >= 4 && audV3DistanciaEdicaoCurta_(rp, np) <= limite;
 }
 
+function audV3ContextoEquipeCloser_(interacao) {
+  const item = interacao || {};
+  const idCliente = String(item.ID_CLIENTE || '').trim();
+  const chave = idCliente || '__SEM_CLIENTE__';
+  if (AUDV3_CACHE_EQUIPE_CLOSER[chave]) return AUDV3_CACHE_EQUIPE_CLOSER[chave];
+
+  let clientes = [];
+  let equipe = [];
+  try { clientes = audV3Ler_('CLIENTES'); } catch (erroClientes) {}
+  try {
+    equipe = (typeof APP !== 'undefined' && APP.sheets && APP.sheets.equipeClientes)
+      ? audV3Ler_(APP.sheets.equipeClientes)
+      : [];
+  } catch (erroEquipe) {}
+
+  const cliente = clientes.find(function(registro) {
+    return String(registro.ID_CLIENTE || '') === idCliente;
+  }) || {};
+  const grupo = String(cliente.GRUPO_CLIENTE || '').trim();
+  const idsMesmoGrupo = clientes.filter(function(registro) {
+    if (!registro.ID_CLIENTE) return false;
+    if (String(registro.ID_CLIENTE) === idCliente) return true;
+    return grupo && String(registro.GRUPO_CLIENTE || '').trim() === grupo;
+  }).map(function(registro) {
+    return String(registro.ID_CLIENTE || '');
+  });
+
+  const nomes = [];
+  equipe.forEach(function(membro) {
+    if (!membro || String(membro.ATIVO || 'SIM').toUpperCase() === 'NAO') return;
+    if (String(membro.PAPEL || '').toUpperCase() !== 'CLOSER') return;
+    if (idsMesmoGrupo.indexOf(String(membro.ID_CLIENTE || '')) < 0) return;
+    const nome = String(membro.NOME || '').trim();
+    if (nome) nomes.push(nome);
+  });
+
+  const profissionalInformado = String(item.COLABORADOR || item.VENDEDOR || '').trim();
+  if (profissionalInformado) nomes.push(profissionalInformado);
+
+  if (audV3NormalizarTrechoRastreavel_(grupo) === 'grupo sinergia' ||
+      ['CLI-20260806105306-25F3490A', 'CLI-20260806112340-E575DA0D', 'CLI_VOL_SEMEIO_CBI'].includes(idCliente)) {
+    ['Juliana', 'Jéssica Paulo', 'Maíra Aquino', 'Jessica', 'Maira'].forEach(function(nome) { nomes.push(nome); });
+  }
+
+  const unicos = [];
+  nomes.forEach(function(nome) {
+    const chaveNome = audV3NormalizarTrechoRastreavel_(nome);
+    if (!chaveNome) return;
+    if (!unicos.some(function(existente) { return audV3NormalizarTrechoRastreavel_(existente) === chaveNome; })) unicos.push(nome);
+  });
+
+  const retorno = { idCliente: idCliente, grupo: grupo, nomes: unicos };
+  AUDV3_CACHE_EQUIPE_CLOSER[chave] = retorno;
+  return retorno;
+}
+
+function audV3RotuloEhMembroInternoCloser_(rotulo, interacao) {
+  const contexto = audV3ContextoEquipeCloser_(interacao || {});
+  return contexto.nomes.find(function(nome) {
+    return audV3RotuloPareceNome_(rotulo, nome);
+  }) || '';
+}
+
+function audV3RotuloParecePessoaExterna_(rotulo) {
+  const bruto = String(rotulo || '').trim();
+  const n = audV3NormalizarTrechoRastreavel_(bruto);
+  if (!n || n.length < 3 || n.length > 80) return false;
+  if (/\d|https?|www|@/.test(n)) return false;
+  if (/\b(empresa|engenharia|consultoria|software|sistemas|tecnologia|unimed|sinergia|ingee|semeio|grupo|equipe|reuniao|transcricao|speaker|locutor|participante|cliente|lead|closer|sdr)\b/.test(n)) return false;
+  const partes = n.split(/\s+/).filter(Boolean);
+  if (!partes.length || partes.length > 5) return false;
+  return partes.every(function(parte) { return /^[a-z'-]+$/.test(parte); }) &&
+    partes.some(function(parte) { return parte.length >= 3; });
+}
+
 function audV3ProfissionalCanonicoTranscricao_(interacao) {
   const item = interacao || {};
   const funcao = String(item.FUNCAO || '').trim().toUpperCase();
   const bruto = String(item.COLABORADOR || item.VENDEDOR || '').trim();
-  if (funcao === 'CLOSER' && String(item.ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A') {
-    if (audV3CloserIngeeValido_(bruto)) return bruto;
-    return 'Sinergia Engenharia';
+  if (funcao === 'CLOSER') {
+    if (bruto) return bruto;
+    const contexto = audV3ContextoEquipeCloser_(item);
+    if (contexto.nomes.length === 1) return contexto.nomes[0];
+    if (audV3NormalizarTrechoRastreavel_(contexto.grupo) === 'grupo sinergia') return 'Sinergia Engenharia';
   }
   return bruto;
 }
@@ -2442,13 +2572,19 @@ function audV3NormalizarRotuloLocutor_(rotulo, interacao) {
     return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true, fonte: 'ROTULO_DESCONHECIDO' };
   }
   if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
-    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional), fonte: 'NOME_METADADO' };
+    return { rotulo: papelProfissional + ' (' + bruto + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional), fonte: 'NOME_METADADO' };
   }
-  if (papelProfissional === 'CLOSER' && String((interacao || {}).ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A' && audV3CloserIngeeValido_(bruto)) {
-    return { rotulo: 'CLOSER (' + bruto + ')', tipo: 'CLOSER', identificado: true, corrigido: true, fonte: 'NOME_INGEE' };
+  if (papelProfissional === 'CLOSER') {
+    const membroInterno = audV3RotuloEhMembroInternoCloser_(bruto, interacao || {});
+    if (membroInterno) {
+      return { rotulo: 'CLOSER (' + bruto + ')', tipo: 'CLOSER', identificado: true, corrigido: false, fonte: 'EQUIPE_CLIENTE' };
+    }
   }
   if (lead && audV3RotuloPareceNome_(bruto, lead)) {
-    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead), fonte: 'NOME_METADADO' };
+    return { rotulo: 'LEAD (' + bruto + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead), fonte: 'NOME_METADADO' };
+  }
+  if (papelProfissional === 'CLOSER' && audV3RotuloParecePessoaExterna_(bruto)) {
+    return { rotulo: 'LEAD (' + bruto + ')', tipo: 'LEAD', identificado: true, corrigido: false, fonte: 'NOME_EXTERNO_EXPLICITO' };
   }
   return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false, fonte: 'ROTULO_NAO_RECONHECIDO' };
 }
@@ -2488,13 +2624,14 @@ function audV3InferirLocutorPorAncora_(fala, interacao) {
   const profissional = audV3ProfissionalCanonicoTranscricao_(item);
   const lead = String(item.LEAD || '').trim();
 
-  if (papelProfissional === 'CLOSER' && String(item.ID_CLIENTE || '').trim() === 'CLI-20260806105306-25F3490A') {
-    const nomes = ['juliana', 'jessica', 'maira'];
-    for (let i = 0; i < nomes.length; i++) {
-      const nome = nomes[i];
-      const padrao = new RegExp('\\b(?:eu sou|me chamo|aqui e|me apresentando[^.]{0,80}sou)\\s+(?:a\\s+)?' + nome + '\\b');
+  if (papelProfissional === 'CLOSER') {
+    const nomesEquipe = audV3ContextoEquipeCloser_(item).nomes || [];
+    for (let i = 0; i < nomesEquipe.length; i++) {
+      const primeiroNome = audV3NormalizarTrechoRastreavel_(nomesEquipe[i]).split(' ')[0];
+      if (!primeiroNome || primeiroNome.length < 4) continue;
+      const padrao = new RegExp('\\b(?:eu sou|me chamo|aqui e|me apresentando[^.]{0,80}sou)\\s+(?:a\\s+)?' + primeiroNome + '\\b');
       if (padrao.test(texto)) {
-        return { tipo: 'CLOSER', rotulo: 'CLOSER (' + nome.charAt(0).toUpperCase() + nome.slice(1) + ')', fonte: 'ANCORA_AUTOAPRESENTACAO' };
+        return { tipo: 'CLOSER', rotulo: 'CLOSER (' + nomesEquipe[i] + ')', fonte: 'ANCORA_EQUIPE_CLIENTE' };
       }
     }
   }
