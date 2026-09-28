@@ -118,7 +118,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.10'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.10.');
+assert.match(audit, /versao:\s*'6\.2\.11'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.11.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -265,6 +265,7 @@ assert.deepEqual(idsVisiveis, [
 assert.ok(audit.includes("function audV3NormalizarVersao_"), 'Motor não normaliza versões convertidas em data pelo Google Sheets.');
 assert.ok(audit.includes("return 'v' + AUDITORIA_V3.versao"), 'Novas versões do motor ainda podem ser persistidas como data pelo Sheets.');
 assert.ok(!audit.includes("ENGINE_VERSAO: AUDITORIA_V3.versao"), 'Há gravação de ENGINE_VERSAO ainda sujeita à conversão automática para data.');
+assert.match(audit, /audV3NormalizarVersao_\(item\.ENGINE_VERSAO\) === audV3NormalizarVersao_\(AUDITORIA_V3\.versao\)/, 'Deduplicação não restringe reutilização à versão exata do engine atual.');
 assert.ok(audit.includes("audV3NormalizarVersao_(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO)"), 'Configuração do motor ainda compara uma data do Sheets diretamente com a versão semântica.');
 
 assert.ok(front.includes("if (item.auditoriaLegada || item.auditoriaSubstituida) return false;"), 'Frontend não possui defesa contra cache antigo de auditorias legadas.');
@@ -339,7 +340,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.10'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.10.');
+assert.match(audit, /versao:\s*'6\.2\.11'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.11.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
