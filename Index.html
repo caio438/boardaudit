@@ -1799,8 +1799,8 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Nova auditoria</h3>
-              <p>Primeiro selecione o cliente. Depois escolha a Função e a transcrição.</p>
+              <h3 id="audNovaTitulo">Nova auditoria</h3>
+              <p id="audNovaSubtitulo">Primeiro selecione o cliente. Depois escolha a função e a transcrição.</p>
             </div>
           </div>
 
@@ -1814,7 +1814,7 @@
                 </select>
               </div>
             </div>
-            <button class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
+            <button id="audGerenciarPitchesBtn" class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
           </div>
 
           <div id="avisoAuditoria" class="empty" style="padding:18px;margin:14px 0">
@@ -1822,7 +1822,7 @@
           </div>
 
           <div class="form-grid">
-            <div class="field">
+            <div id="audTipoBox" class="field">
               <label for="audTipo">Função auditada</label>
               <select id="audTipo" onchange="alterarTipoAuditoriaFront_()">
                 <option value="">Selecione a função</option>
@@ -1843,7 +1843,7 @@
               <div class="small muted" style="margin-top:6px">A mesma transcrição pode ser usada uma vez para SDR e outra para Closer.</div>
             </div>
 
-            <div class="field">
+            <div id="audFonteBox" class="field">
               <label for="audFonte">Tipo da interação</label>
               <select id="audFonte" onchange="atualizarSeletoresAuditoria()">
                 <option value="">Selecione o tipo da interação</option>
@@ -1854,15 +1854,15 @@
               </select>
             </div>
 
-            <div class="field full">
+            <div id="audModeloBox" class="field full">
               <label for="audModelo">Modelo de auditoria</label>
               <select id="audModelo" onchange="atualizarResumoAuditoria()">
                 <option value="">Selecione o cliente e o tipo</option>
               </select>
             </div>
 
-            <div class="field full">
-              <label>Transcrições <span class="muted">(selecione até 3)</span></label>
+            <div id="audTranscricoesBox" class="field full">
+              <label id="audTranscricoesLabel">Transcrições <span class="muted">(selecione até 3)</span></label>
               <select id="audInteracao" multiple onchange="selecionarTranscricaoAuditoriaFront_()" style="display:none!important" aria-hidden="true">
                 <option value="">Selecione uma ou mais transcrições</option>
               </select>
@@ -1885,7 +1885,7 @@
               </select>
             </div>
 
-            <div class="field full">
+            <div id="audNomeColaboradorBox" class="field full">
               <label id="audNomeColaboradorLabel" for="audNomeSdr">Nome do Responsável</label>
               <input id="audNomeSdr" list="audColaboradoresSugestoes" placeholder="Preenchido pela transcrição; ajuste se necessário">
               <datalist id="audColaboradoresSugestoes"></datalist>
@@ -5114,10 +5114,11 @@
 
   function importarTranscricaoManualFrontV3() {
     const idCliente = valor('audCliente');
-    const titulo = valor('manualTitulo');
+    const closerSimplificado = modoSimplificadoCloserFront_();
+    const titulo = closerSimplificado ? '' : valor('manualTitulo');
     const transcricao = valor('manualTranscricao');
     if (!idCliente) return mostrarToast('Selecione o cliente da transcrição.', 'error');
-    if (!titulo) return mostrarToast('Informe um título para a transcrição.', 'error');
+    if (!closerSimplificado && !titulo) return mostrarToast('Informe um título para a transcrição.', 'error');
     if (transcricao.length < 20) return mostrarToast('Cole a transcrição completa antes de importar.', 'error');
 
     const botao = document.getElementById('btnImportarTranscricaoManual');
@@ -5176,13 +5177,13 @@
         idCliente: idCliente,
         funcao: funcao,
         titulo: titulo,
-        colaborador: valor('manualColaborador'),
-        lead: valor('manualLead'),
-        dataInteracao: valor('manualDataInteracao'),
+        colaborador: closerSimplificado ? '' : valor('manualColaborador'),
+        lead: closerSimplificado ? '' : valor('manualLead'),
+        dataInteracao: closerSimplificado ? '' : valor('manualDataInteracao'),
         duracaoSegundos: '',
         oportunidade: '',
-        rdDealId: valor('manualRdDealId'),
-        nomeArquivoOrigem: valor('manualNomeArquivo'),
+        rdDealId: closerSimplificado ? '' : valor('manualRdDealId'),
+        nomeArquivoOrigem: closerSimplificado ? '' : valor('manualNomeArquivo'),
         transcricao: transcricao
       });
   }
@@ -5383,6 +5384,10 @@
     select.innerHTML = '<option value="">Selecione o modelo</option>' + modelos.map(item =>
       `<option value="${escapeAtributo(item.idModelo)}">${escapeHtml(item.nomeModelo)} — v${escapeHtml(item.versaoModelo || '-')} ${item.global ? '— GLOBAL' : '— CLIENTE'}</option>`
     ).join('');
+    if (modoSimplificadoCloserFront_() && modelos.length) {
+      const especifico = modelos.find(function(item) { return String(item.idCliente || '') === String(idCliente); }) || modelos[0];
+      select.value = especifico.idModelo;
+    }
   }
 
   function idsTranscricoesSelecionadasAuditoria_() {
@@ -5465,10 +5470,17 @@
     if (!select) return;
     const opcao = Array.from(select.options || []).find(item => String(item.value) === String(idInteracao));
     if (!opcao) return;
-    if (marcada && idInteracao !== OPCAO_TRANSCRICAO_MANUAL && idsTranscricoesSelecionadasAuditoria_().length >= 3) {
-      mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
-      renderizarChecklistTranscricoesAuditoria_();
-      return;
+    const limite = modoSimplificadoCloserFront_() ? 1 : 3;
+    if (marcada && idInteracao !== OPCAO_TRANSCRICAO_MANUAL && idsTranscricoesSelecionadasAuditoria_().length >= limite) {
+      if (modoSimplificadoCloserFront_()) {
+        Array.from(select.options || []).forEach(function(item) {
+          if (item.value !== OPCAO_TRANSCRICAO_MANUAL) item.selected = false;
+        });
+      } else {
+        mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
+        renderizarChecklistTranscricoesAuditoria_();
+        return;
+      }
     }
     if (marcada && idInteracao === OPCAO_TRANSCRICAO_MANUAL) {
       Array.from(select.options || []).forEach(item => { item.selected = item === opcao; });
@@ -5506,9 +5518,10 @@
       Array.from(select.options).forEach(opcao => { opcao.selected = opcao.value === OPCAO_TRANSCRICAO_MANUAL; });
       selecionadas = Array.from(select.selectedOptions || []);
       mostrarToast('A transcrição manual deve ser usada sozinha.', 'warning');
-    } else if (!manualSelecionada && selecionadas.length > 3) {
-      selecionadas.slice(3).forEach(opcao => { opcao.selected = false; });
-      mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
+    } else if (!manualSelecionada && selecionadas.length > (modoSimplificadoCloserFront_() ? 1 : 3)) {
+      const limite = modoSimplificadoCloserFront_() ? 1 : 3;
+      selecionadas.slice(limite).forEach(opcao => { opcao.selected = false; });
+      if (!modoSimplificadoCloserFront_()) mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
     }
     const manual = atualizarPainelManualAuditoria_();
     if (manual) {
@@ -5542,13 +5555,83 @@
   }
 
 
-  function atualizarSeletoresAuditoria() {
+  function modoSimplificadoCloserFront_() {
+      return String(estado.auditoriaEspaco || '').toUpperCase() === 'CLOSER';
+    }
+
+    function sincronizarModoSimplificadoCloserFront_() {
+      const ativo = modoSimplificadoCloserFront_();
+      const tipo = document.getElementById('audTipo');
+      const fonte = document.getElementById('audFonte');
+      if (ativo) {
+        if (tipo) tipo.value = 'CLOSER';
+        if (fonte) fonte.value = 'TODAS';
+      }
+
+      ['audTipoBox','audFonteBox','audModeloBox','audPitchBox','audNomeColaboradorBox'].forEach(function(id) {
+        const elemento = document.getElementById(id);
+        if (elemento) elemento.style.display = ativo ? 'none' : '';
+      });
+      const botaoPitches = document.getElementById('audGerenciarPitchesBtn');
+      if (botaoPitches) botaoPitches.style.display = ativo ? 'none' : '';
+      const reclassificar = document.getElementById('audReclassificarBox');
+      if (ativo && reclassificar) reclassificar.style.display = 'none';
+
+      const titulo = document.getElementById('audNovaTitulo');
+      const subtitulo = document.getElementById('audNovaSubtitulo');
+      const labelTranscricoes = document.getElementById('audTranscricoesLabel');
+      const ajudaTranscricoes = document.querySelector('#audTranscricoesBox .small.muted');
+      const botao = document.getElementById('btnExecutarAuditoria');
+      if (ativo) {
+        if (titulo) titulo.textContent = 'Nova auditoria Closer';
+        if (subtitulo) subtitulo.textContent = 'Selecione o cliente e uma transcrição.';
+        if (labelTranscricoes) labelTranscricoes.textContent = 'Transcrição';
+        if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Selecione uma transcrição por auditoria.';
+        if (botao && !botao.disabled) botao.textContent = 'Auditar';
+      } else {
+        if (titulo) titulo.textContent = 'Nova auditoria';
+        if (subtitulo) subtitulo.textContent = 'Primeiro selecione o cliente. Depois escolha a função e a transcrição.';
+        if (labelTranscricoes) labelTranscricoes.innerHTML = 'Transcrições <span class="muted">(selecione até 3)</span>';
+        if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Marque até três transcrições. As auditorias serão executadas uma por vez.';
+      }
+
+      const manual = document.getElementById('audImportacaoManual');
+      if (manual) {
+        const idsOcultar = [
+          'manualDataInteracao','manualTitulo','manualColaborador','manualLead',
+          'manualNomeArquivo','manualRdDealId','manualUrlAudio'
+        ];
+        idsOcultar.forEach(function(id) {
+          const campo = document.getElementById(id);
+          const box = campo ? campo.closest('.field') : null;
+          if (box) box.style.display = ativo ? 'none' : '';
+        });
+        const audioBox = document.getElementById('manualAudioBox');
+        if (audioBox) audioBox.style.display = ativo ? 'none' : audioBox.style.display;
+        const btnAudio = document.getElementById('btnTranscreverAudioManual');
+        if (btnAudio) btnAudio.style.display = ativo ? 'none' : '';
+        const lote = Array.from(manual.querySelectorAll('.card')).find(function(card) {
+          return /Lote de ligações/i.test(String(card.textContent || ''));
+        });
+        if (lote) lote.style.display = ativo ? 'none' : '';
+        const textoAjuda = manual.querySelector('summary + p');
+        if (textoAjuda) textoAjuda.textContent = ativo
+          ? 'Cole a transcrição. Participantes, data e contexto serão detectados automaticamente.'
+          : 'Use o cliente, a função e o tipo de interação selecionados acima.';
+        const labelTexto = document.querySelector('label[for="manualTranscricao"]');
+        if (labelTexto && ativo) labelTexto.textContent = 'Transcrição';
+      }
+    }
+
+    function atualizarSeletoresAuditoria() {
       const idCliente = valor('audCliente');
       const filtroPitches = document.getElementById('filtroPitchesBase');
       if (filtroPitches && idCliente) filtroPitches.value = idCliente;
       renderizarPitchesBase();
+      sincronizarModoSimplificadoCloserFront_();
       const tipo = valor('audTipo');
       const fonte = valor('audFonte');
+      const closerSimplificado = modoSimplificadoCloserFront_();
       const ehPlano = String(tipo).toUpperCase() === 'PLANO';
       const pitchSelect = document.getElementById('audPitch');
       const pitchBox = document.getElementById('audPitchBox');
@@ -5567,10 +5650,19 @@
 
       pitchSelect.innerHTML = '<option value="">Selecione a versão do pitch/referência</option>' +
         pitches.map(pitch => `<option value="${escapeAtributo(pitch.idPitch)}">${escapeHtml(pitch.nomeVersao)} — v${escapeHtml(pitch.numeroVersao || '-')}${pitch.pitchAtual ? ' — ATUAL / RECOMENDADO' : ''}</option>`).join('');
+      if (closerSimplificado && pitches.length) {
+        const atual = pitches.find(function(pitch) { return pitch.pitchAtual; }) || pitches[0];
+        pitchSelect.value = atual.idPitch;
+      }
 
       const interacoes = !fonte ? [] : estado.interacoesAuditoria.filter(interacao => {
         const fonteInteracao = String(interacao.fonte || '').toUpperCase();
         const tipoInteracao = String(interacao.tipoInteracao || '').toUpperCase();
+        if (closerSimplificado) {
+          return String(interacao.idCliente || '') === String(idCliente || '') &&
+            ['REUNIAO', 'LIGACAO'].includes(tipoInteracao) &&
+            String(interacao.statusTranscricao || 'CONCLUIDA').toUpperCase() !== 'ERRO';
+        }
         
         const manualCompativel = fonteInteracao === 'MANUAL' && (
           (fonte === 'TLDV' && tipoInteracao === 'REUNIAO') ||
@@ -5622,6 +5714,7 @@
 
       const idCliente = valor('audCliente');
       const tipo = valor('audTipo');
+      const closerSimplificado = modoSimplificadoCloserFront_();
       const ehPlano = String(tipo).toUpperCase() === 'PLANO';
       const equipePlano = valor('audEquipePlano');
       const fonte = valor('audFonte');
@@ -5639,11 +5732,58 @@
       const reclassificarBox = document.getElementById('audReclassificarBox');
       const reclassificarCampo = document.getElementById('audReclassificarInteracao');
       const reclassificarAviso = document.getElementById('audReclassificarAviso');
-      if (reclassificarBox) reclassificarBox.style.display = clienteDiferente ? 'block' : 'none';
+      if (reclassificarBox) reclassificarBox.style.display = closerSimplificado ? 'none' : (clienteDiferente ? 'block' : 'none');
       if (reclassificarAviso) reclassificarAviso.textContent = clienteDiferente
         ? interacoesDiferentes.length + ' transcrição(ões) vinculada(s) a outro cliente. A confirmação atualizará somente esses vínculos.'
         : '';
       if (!clienteDiferente && reclassificarCampo) reclassificarCampo.checked = false;
+
+      if (closerSimplificado) {
+        const pronto = Boolean(cliente && pitch && modelo && interacoes.length === 1 && !manualSelecionada && !clienteDiferente);
+        botao.disabled = !pronto;
+        botao.textContent = 'Auditar';
+
+        if (!cliente) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Selecione o cliente.</div>';
+          return;
+        }
+        if (!pitch) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">O cliente não possui um pitch Closer atual configurado.</div>';
+          return;
+        }
+        if (!modelo) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Nenhum modelo Closer ativo está disponível para este cliente.</div>';
+          return;
+        }
+        if (manualSelecionada) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Cole a transcrição abaixo e clique em “Salvar e selecionar transcrição”.</div>';
+          return;
+        }
+        if (!interacoes.length) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Selecione uma transcrição.</div>';
+          return;
+        }
+
+        const interacao = interacoes[0] || {};
+        const responsavel = String(interacao.vendedor || '').trim();
+        alvo.innerHTML = `
+          <div class="section-title" style="margin-bottom:10px">
+            <div>
+              <strong>Dados detectados automaticamente</strong>
+              <div class="small muted">O pitch, o modelo e os participantes serão resolvidos pelo sistema.</div>
+            </div>
+            <span class="status success">PRONTO</span>
+          </div>
+          <div class="automation">
+            <div><small>Cliente</small><strong>${escapeHtml(cliente.nomeCliente || '-')}</strong></div>
+            <div><small>Auditoria</small><strong>Closer</strong></div>
+            <div><small>Pitch atual</small><strong>${escapeHtml(pitch.nomeVersao || '-')}</strong></div>
+            <div><small>Transcrição</small><strong>${escapeHtml(tituloInteracaoAuditoria_(interacao))}</strong></div>
+            ${responsavel ? '<div><small>Responsável detectado</small><strong>' + escapeHtml(responsavel) + '</strong></div>' : ''}
+          </div>
+        `;
+        return;
+      }
 
       const reclassificacaoConfirmada = !clienteDiferente || Boolean(reclassificarCampo && reclassificarCampo.checked);
       const pronto = Boolean(cliente && (ehPlano || pitch) && (!ehPlano || equipePlano) && modelo && interacoes.length && interacoes.length <= 3 && reclassificacaoConfirmada && !manualSelecionada);
@@ -5706,6 +5846,7 @@
       `;
     }
 
+    
     function preencherFiltroPitchesBase() {
       const select = document.getElementById('filtroPitchesBase');
       if (!select) return;
@@ -6517,13 +6658,15 @@
     function salvarConfiguracaoAuditoriaFront(){mostrarLoading('Salvando configurações...');google.script.run.withSuccessHandler(r=>{esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarConfiguracaoAuditoria({promptSdr:valor('audPromptSdr'),promptCloser:valor('audPromptCloser'),pastaDriveId:valor('audPastaDrive')});}
   async function executarAuditoriaV3Front() {
     if (!valor('audCliente')) return mostrarToast('Selecione o cliente.', 'error');
+    const closerSimplificado = modoSimplificadoCloserFront_();
     const ehPlano = String(valor('audTipo')).toUpperCase() === 'PLANO';
     if (ehPlano && !valor('audEquipePlano')) return mostrarToast('Selecione a equipe analisada no Plano de Otimização.', 'error');
-    if (!ehPlano && !valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
-    if (!valor('audModelo')) return mostrarToast('Selecione o modelo de auditoria.', 'error');
+    if (!closerSimplificado && !ehPlano && !valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
+    if (!closerSimplificado && !valor('audModelo')) return mostrarToast('Selecione o modelo de auditoria.', 'error');
     const idsInteracoes = idsTranscricoesSelecionadasAuditoria_();
-    if (!idsInteracoes.length) return mostrarToast('Selecione pelo menos uma transcrição.', 'error');
-    if (idsInteracoes.length > 3) return mostrarToast('Selecione no máximo três transcrições por lote.', 'error');
+    if (!idsInteracoes.length) return mostrarToast('Selecione uma transcrição.', 'error');
+    if (closerSimplificado && idsInteracoes.length !== 1) return mostrarToast('Selecione somente uma transcrição.', 'error');
+    if (!closerSimplificado && idsInteracoes.length > 3) return mostrarToast('Selecione no máximo três transcrições por lote.', 'error');
 
     const botao = document.getElementById('btnExecutarAuditoria');
     const resultado = document.getElementById('resultadoAuditoriaAtual');
@@ -6544,11 +6687,11 @@
           idCliente: valor('audCliente'),
           tipoAuditoria: valor('audTipo'),
           equipePlano: ehPlano ? valor('audEquipePlano') : '',
-          fonte: valor('audFonte'),
-          idPitch: valor('audPitch'),
-          idModelo: valor('audModelo'),
+          fonte: closerSimplificado ? 'AUTO' : valor('audFonte'),
+          idPitch: closerSimplificado ? '' : valor('audPitch'),
+          idModelo: closerSimplificado ? '' : valor('audModelo'),
           idInteracao: idInteracao,
-          nomeSdr: idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr')),
+          nomeSdr: closerSimplificado ? '' : (idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr'))),
           reclassificarInteracao: Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
           evitarDuplicidade: true
         });
@@ -6566,7 +6709,7 @@
     estado.auditoriaAtual = ultimaAuditoria;
     renderizarAuditorias();
     botao.disabled = false;
-    botao.textContent = idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão';
+    botao.textContent = closerSimplificado ? 'Auditar' : (idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão');
     if (ultimaAuditoria) renderizarPreviewAuditoriaV3(ultimaAuditoria);
     else resultado.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível concluir</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagensErro.join(' | ')) + '</div></div>';
     mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
@@ -8153,6 +8296,7 @@
     });
     const titulo = document.getElementById('audHistoricoTitulo');
     if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
+    sincronizarModoSimplificadoCloserFront_();
   }
 
   function auditoriasOperacionaisFront_() {
