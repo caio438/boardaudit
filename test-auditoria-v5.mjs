@@ -108,7 +108,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.3'/, 'O engine não foi versionado para a correção do limite de célula v6.2.3.');
+assert.match(audit, /versao:\s*'6\.2\.4'/, 'O engine não foi versionado para a correção do limite de célula v6.2.4.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -329,7 +329,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.3'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.3.');
+assert.match(audit, /versao:\s*'6\.2\.4'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.4.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -402,11 +402,16 @@ assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado n�
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
 assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
-assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.2';"), 'A normalização de transcrição não foi versionada para v2.2.');
+assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.3';"), 'A normalização de transcrição não foi versionada para v2.3.');
 assert.ok(audit.includes("audV3ChamarReparoLocutoresGemini_"), 'O fallback conservador de autoria não foi implementado.');
-assert.ok(audit.includes('coberturaMapaPct < 45'), 'Reparo de locutores ainda aceita mapa praticamente vazio como sucesso.');
+assert.ok(audit.includes('coberturaMapaPct < coberturaMinimaPct'), 'Reparo de locutores ainda aceita mapa praticamente vazio como sucesso.');
 assert.ok(audit.includes('continue;'), 'Reparo de locutores não tenta modelo alternativo quando o mapa é insuficiente.');
 assert.ok(audit.includes('temProfissional') && audit.includes('temLead'), 'Reparo de locutores não exige representação dos dois lados em transcrições longas.');
+assert.ok(audit.includes('function audV3ChamarReparoLocutoresRobusto_'), 'Transcrições longas não possuem reparo de autoria em lotes.');
+assert.ok(audit.includes('tamanhoMaxTurnos = 60'), 'Lotes de autoria não possuem limite de turnos.');
+assert.ok(audit.includes('tamanhoMaxChars = 14000'), 'Lotes de autoria não possuem limite de caracteres.');
+assert.ok(audit.includes('audV3ChamarReparoLocutoresRobusto_(normalizacao'), 'Preparação da transcrição ainda chama somente o reparo global.');
+
 
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
 assert.ok(audit.includes("audV3ReconciliarContextoCloserComFonte_"), 'A classificação Closer não possui reconciliação determinística com a fonte.');

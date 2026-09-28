@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.3
+ * Versão: 6.2.4
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.3',
+  versao: '6.2.4',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -2376,7 +2376,7 @@ function excluirAuditoriaV3(dados) {
   return { sucesso: true, mensagem: 'Auditoria excluída. A interação está liberada para uma nova geração.', auditorias: audV3ListarAuditoriasFront_() };
 }
 
-const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.2';
+const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.3';
 
 function audV3DistanciaEdicaoCurta_(a, b) {
   a = String(a || '');
@@ -2818,7 +2818,8 @@ function audV3PromptReparoLocutores_(normalizacao, interacao) {
   ].filter(Boolean).join('\n');
 }
 
-function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao) {
+function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao, opcoes) {
+  opcoes = opcoes || {};
   const chave = audV3Segredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Chave Gemini não configurada para reparar autoria da transcrição.');
   const modelos = typeof consumoIaModelosTextoDisponiveis_ === 'function'
@@ -2892,9 +2893,12 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao) {
       const papeisMapeados = Object.keys(mapa).map(function(id) { return mapa[id]; });
       const temProfissional = papeisMapeados.some(function(papel) { return papel === esperado; });
       const temLead = papeisMapeados.some(function(papel) { return papel === 'LEAD'; });
-      const exigeDoisLados = desconhecidos.length >= 8 && charsDesconhecidos >= 500;
+      const coberturaMinimaPct = Number(opcoes.coberturaMinimaPct || 45);
+      const exigeDoisLados = opcoes.exigirDoisLados === false
+        ? false
+        : (desconhecidos.length >= 8 && charsDesconhecidos >= 500);
 
-      if (coberturaMapaPct < 45 || (exigeDoisLados && (!temProfissional || !temLead))) {
+      if (coberturaMapaPct < coberturaMinimaPct || (exigeDoisLados && (!temProfissional || !temLead))) {
         ultimoErro = new Error(
           'Modelo ' + modelo + ' devolveu mapa de locutores insuficiente: ' +
           coberturaMapaPct + '% dos caracteres desconhecidos classificados' +
@@ -2914,6 +2918,92 @@ function audV3ChamarReparoLocutoresGemini_(normalizacao, interacao) {
     }
   }
   throw ultimoErro || new Error('Nenhum modelo concluiu a normalização conservadora de locutores.');
+}
+
+function audV3ChamarReparoLocutoresRobusto_(normalizacao, interacao) {
+  const turnos = Array.isArray((normalizacao || {}).turnos) ? normalizacao.turnos : [];
+  const desconhecidos = turnos.filter(function(turno) {
+    return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
+  });
+  const charsDesconhecidos = desconhecidos.reduce(function(total, turno) {
+    return total + String((turno || {}).fala || '').length;
+  }, 0);
+
+  if (turnos.length <= 120 && charsDesconhecidos <= 26000) {
+    return audV3ChamarReparoLocutoresGemini_(normalizacao, interacao || {}, {
+      coberturaMinimaPct: 45,
+      exigirDoisLados: true
+    });
+  }
+
+  const tamanhoMaxTurnos = 60;
+  const tamanhoMaxChars = 14000;
+  const lotes = [];
+  let atual = [];
+  let charsAtual = 0;
+
+  turnos.forEach(function(turno) {
+    const tamanhoTurno = String((turno || {}).fala || '').length;
+    if (atual.length && (atual.length >= tamanhoMaxTurnos || charsAtual + tamanhoTurno > tamanhoMaxChars)) {
+      lotes.push(atual);
+      atual = [];
+      charsAtual = 0;
+    }
+    atual.push(turno);
+    charsAtual += tamanhoTurno;
+  });
+  if (atual.length) lotes.push(atual);
+
+  const mapa = {};
+  const modelos = [];
+  const erros = [];
+  let lotesTentados = 0;
+  let lotesComMapa = 0;
+
+  lotes.forEach(function(lote) {
+    const desconhecidosLote = lote.filter(function(turno) {
+      return ['NAO_IDENTIFICADO', 'OUTRO'].includes(String((turno || {}).tipo || ''));
+    });
+    if (!desconhecidosLote.length) return;
+    lotesTentados += 1;
+    try {
+      const resposta = audV3ChamarReparoLocutoresGemini_({ turnos: lote }, interacao || {}, {
+        coberturaMinimaPct: 35,
+        exigirDoisLados: false
+      });
+      const parcial = resposta.mapa && typeof resposta.mapa === 'object' ? resposta.mapa : {};
+      Object.keys(parcial).forEach(function(id) { mapa[id] = parcial[id]; });
+      if (Object.keys(parcial).length) lotesComMapa += 1;
+      if (resposta.modelo && modelos.indexOf(resposta.modelo) < 0) modelos.push(resposta.modelo);
+    } catch (erro) {
+      erros.push(String(erro && erro.message ? erro.message : erro));
+    }
+  });
+
+  const charsMapeados = desconhecidos.reduce(function(total, turno) {
+    return total + (mapa[String((turno || {}).id || '')] ? String((turno || {}).fala || '').length : 0);
+  }, 0);
+  const coberturaMapaPct = charsDesconhecidos
+    ? Math.round((charsMapeados / charsDesconhecidos) * 1000) / 10
+    : 100;
+
+  if (!Object.keys(mapa).length) {
+    throw new Error(
+      'Nenhum lote produziu mapa de locutores utilizável. ' +
+      (erros.length ? erros.slice(-2).join(' | ') : 'Sem detalhe adicional.')
+    );
+  }
+
+  return {
+    mapa: mapa,
+    modelo: modelos.join(' + ') || 'LOTEADO',
+    cobertura_mapa_pct: coberturaMapaPct,
+    ambos_lados: Object.keys(mapa).some(function(id) { return mapa[id] === 'LEAD'; }) &&
+      Object.keys(mapa).some(function(id) { return ['SDR', 'CLOSER'].includes(mapa[id]); }),
+    lotes_tentados: lotesTentados,
+    lotes_com_mapa: lotesComMapa,
+    erros_lotes: erros.slice(-3)
+  };
 }
 
 function audV3PrepararTranscricaoPersistida_(transcricao, interacao) {
@@ -2951,7 +3041,7 @@ function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
       while (tentativas < maxTentativas && audV3PrecisaReparoLocutores_(normalizacao, qualidade)) {
         tentativas += 1;
         const quantidadeAntes = Object.keys(mapa).length;
-        const resposta = audV3ChamarReparoLocutoresGemini_(normalizacao, interacao || {});
+        const resposta = audV3ChamarReparoLocutoresRobusto_(normalizacao, interacao || {});
         const mapaNovo = resposta.mapa && typeof resposta.mapa === 'object' ? resposta.mapa : {};
         modeloReparo = String(resposta.modelo || modeloReparo || '');
 
