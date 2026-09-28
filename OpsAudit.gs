@@ -157,6 +157,7 @@ function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
   let reutilizada = false;
   if (auditoria &&
       String(auditoria.TIPO_AUDITORIA || '').toUpperCase() === tipo &&
+      audV3NormalizarVersao_(auditoria.ENGINE_VERSAO) === audV3NormalizarVersao_(AUDITORIA_V3.versao) &&
       ['EM_REVISAO', 'APROVADA'].includes(String(auditoria.STATUS || '').toUpperCase()) &&
       String(auditoria.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
       String(auditoria.HASH_FONTE || '').trim()) {
