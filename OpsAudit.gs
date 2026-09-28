@@ -157,15 +157,33 @@ function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
   if (!pitchAtual) throw new Error('Nenhum pitch atual ' + tipo + ' foi definido para o cliente.');
   const pitchConferido = audV3AtualizarPitchDocumentoAutomatico_(pitchAtual).pitch;
 
-  const gerada = executarAuditoriaV3({
-    idCliente: interacao.ID_CLIENTE,
-    idPitch: pitchConferido.ID_PITCH,
-    idInteracao: interacao.ID_INTERACAO,
-    tipoAuditoria: tipo,
-    nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
-    nomeLead: interacao.LEAD || '',
-    evitarDuplicidade: false
-  });
+  let gerada = null;
+  try {
+    gerada = executarAuditoriaV3({
+      idCliente: interacao.ID_CLIENTE,
+      idPitch: pitchConferido.ID_PITCH,
+      idInteracao: interacao.ID_INTERACAO,
+      tipoAuditoria: tipo,
+      nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
+      nomeLead: interacao.LEAD || '',
+      evitarDuplicidade: false
+    });
+  } catch (erroExecucao) {
+    const transcricaoAtual = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', transcricao.ID_TRANSCRICAO) || transcricao;
+    let qualidadeTranscricao = {};
+    try { qualidadeTranscricao = JSON.parse(String(transcricaoAtual.QUALIDADE_JSON || '{}')); } catch (erroJson) {}
+    return {
+      sucesso: false,
+      modo: 'PREVIEW_SEM_PUBLICACAO',
+      idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
+      idInteracao: String(interacao.ID_INTERACAO || ''),
+      tipoAuditoria: tipo,
+      erro: String(erroExecucao && erroExecucao.message ? erroExecucao.message : erroExecucao),
+      qualidadeTranscricao: qualidadeTranscricao,
+      rdPublicada: false,
+      aprovada: false
+    };
+  }
   if (!gerada || !gerada.auditoria || !String(gerada.auditoria.idAuditoria || '').trim()) {
     throw new Error('A auditoria de preview nao foi criada corretamente.');
   }
