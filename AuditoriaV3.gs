@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.7
+ * Versão: 6.2.8
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.7',
+  versao: '6.2.8',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -3664,7 +3664,15 @@ function audV3ChamarGemini_(ctx) {
   };
   const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
-  const statusTrocaModeloImediata = [429, 503];
+  const statusTrocaModeloImediata = [503];
+  const esperaCurtaQuotaMs_ = function(corpoErro) {
+    const textoErro = String(corpoErro || '');
+    const match = textoErro.match(/retry in\s+([0-9]+(?:\.[0-9]+)?)s/i);
+    if (!match) return 0;
+    const segundos = Number(match[1] || 0);
+    if (!isFinite(segundos) || segundos <= 0 || segundos > 15) return 0;
+    return Math.min(16000, Math.ceil(segundos * 1000) + 750);
+  };
   const consumoBase = {
     idAuditoria: String(ctx.idAuditoria || ''),
     idInteracao: String(((ctx || {}).interacao || {}).ID_INTERACAO || ''),
@@ -3774,9 +3782,19 @@ function audV3ChamarGemini_(ctx) {
     const temporario = statusTemporarios.indexOf(status) >= 0;
     const trocarModeloAgora = statusTrocaModeloImediata.indexOf(status) >= 0;
     console.warn('Gemini HTTP ' + status + ' na tentativa ' + (tentativa + 1) + '.');
-    // 429 e 503 indicam indisponibilidade/capacidade do modelo atual. Insistir
-    // três vezes no mesmo endpoint aumenta a latência e pode estourar o tempo
-    // do Apps Script sem melhorar a chance de concluir a auditoria.
+    // Em 429 o Google informa a janela exata para liberar novamente a cota por minuto.
+    // Quando a espera é curta, aguardar o mesmo modelo é mais eficiente do que
+    // disparar a mesma entrada grande contra todos os fallbacks no mesmo minuto.
+    if (status === 429 && tentativa < esperasMs.length - 1) {
+      const esperaQuota = esperaCurtaQuotaMs_(corpo);
+      if (esperaQuota > 0) {
+        console.warn('Cota por minuto: aguardando ' + esperaQuota + ' ms antes de repetir o mesmo modelo.');
+        Utilities.sleep(esperaQuota);
+        continue;
+      }
+      console.warn('Janela de cota longa ou ausente; tentando o próximo modelo gratuito.');
+      break;
+    }
     if (trocarModeloAgora) {
       console.warn('Pulando imediatamente para o próximo modelo gratuito configurado.');
       break;
