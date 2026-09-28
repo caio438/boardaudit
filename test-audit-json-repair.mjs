@@ -91,7 +91,8 @@ assert.match(sameModelRecoverySource, /audV3PromptRecuperacaoTruncada_\(promptOr
 assert.match(callSource, /return audV3RecuperarTruncamentoNoMesmoModelo_\(/, 'A última tentativa truncada deve repetir no mesmo modelo antes do fallback.');
 assert.match(callSource, /tentativa \+ 2/, 'A recuperação extra deve ser registrada como tentativa adicional.');
 
-assert.match(callSource, /const statusTrocaModeloImediata = \[429, 503\]/, '429 e 503 precisam trocar de modelo sem insistência.');
+assert.match(callSource, /const statusTrocaModeloImediata = \[503\]/, '503 precisa trocar de modelo sem insistência.');
+assert.match(callSource, /status === 429[\s\S]*?esperaCurtaQuotaMs_\(corpo\)[\s\S]*?Utilities\.sleep\(esperaQuota\)/, '429 com retry curto precisa aguardar a janela indicada antes de trocar de modelo.');
 assert.match(callSource, /if \(trocarModeloAgora\)[\s\S]*?break;/, 'Erros de capacidade precisam interromper as retentativas do modelo atual.');
 
 for (const modeloNovo of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) {
