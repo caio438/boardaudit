@@ -108,7 +108,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.4'/, 'O engine não foi versionado para a correção do limite de célula v6.2.4.');
+assert.match(audit, /versao:\s*'6\.2\.5'/, 'O engine não foi versionado para a correção do limite de célula v6.2.5.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -329,7 +329,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.4'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.4.');
+assert.match(audit, /versao:\s*'6\.2\.5'/, 'Engine de auditoria não foi versionado para a correção do limite de célula v6.2.5.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -408,9 +408,13 @@ assert.ok(audit.includes('coberturaMapaPct < coberturaMinimaPct'), 'Reparo de lo
 assert.ok(audit.includes('continue;'), 'Reparo de locutores não tenta modelo alternativo quando o mapa é insuficiente.');
 assert.ok(audit.includes('temProfissional') && audit.includes('temLead'), 'Reparo de locutores não exige representação dos dois lados em transcrições longas.');
 assert.ok(audit.includes('function audV3ChamarReparoLocutoresRobusto_'), 'Transcrições longas não possuem reparo de autoria em lotes.');
-assert.ok(audit.includes('tamanhoMaxTurnos = 60'), 'Lotes de autoria não possuem limite de turnos.');
-assert.ok(audit.includes('tamanhoMaxChars = 14000'), 'Lotes de autoria não possuem limite de caracteres.');
+assert.ok(audit.includes('tamanhoMaxTurnos = 110'), 'Lotes de autoria não usam o tamanho ampliado para reduzir chamadas ao Gemini.');
+assert.ok(audit.includes('tamanhoMaxChars = 25000'), 'Lotes de autoria não usam o limite ampliado de caracteres.');
 assert.ok(audit.includes('audV3ChamarReparoLocutoresRobusto_(normalizacao'), 'Preparação da transcrição ainda chama somente o reparo global.');
+assert.ok(audit.includes('esperasTransientesMs = [0, 2500]'), 'Reparo de locutores não possui retentativa curta para 503/429.');
+assert.ok(audit.includes('[429, 500, 502, 503, 504].includes(status)'), 'Reparo de locutores não reconhece falhas HTTP transitórias.');
+assert.ok(audit.includes("slice(0, Number(opcoes.maxModelos || 3))"), 'Reparo de locutores não limita o número de fallbacks por lote.');
+assert.ok(audit.includes("'gemini-3.5-flash-lite'") && audit.includes("'gemini-3.1-flash-lite'"), 'Reparo de locutores não prioriza modelos Lite para alta vazão.');
 
 
 assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
