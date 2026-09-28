@@ -543,8 +543,8 @@ assert.match(
 );
 assert.match(
   source,
-  /AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2\.3'/,
-  'A revisão precisa invalidar mapas persistidos da normalização 2.3.'
+  /AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2\.4'/,
+  'A revisão precisa invalidar mapas persistidos da normalização 2.3 com a versão 2.4.'
 );
 assert.match(
   source,
