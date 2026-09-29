@@ -402,6 +402,32 @@ function doGet(e) {
   }
 
 
+
+  if (String(parametros.ops_sdr_batch_targets || '') === '1') {
+    const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativo || !efetivo || ativo !== efetivo) {
+      throw new Error('Lote SDR permitido somente para a conta proprietaria autenticada.');
+    }
+    const limite = Math.min(20, Math.max(1, Number(parametros.limit || 20)));
+    return ContentService
+      .createTextOutput(JSON.stringify(OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR(limite), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_sdr_publish_one || '') === '1') {
+    const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativo || !efetivo || ativo !== efetivo) {
+      throw new Error('Publicacao SDR permitida somente para a conta proprietaria autenticada.');
+    }
+    const idInteracao = String(parametros.interaction || '').trim();
+    if (!/^INT-[A-Za-z0-9-]+$/.test(idInteracao)) throw new Error('ID de interacao SDR invalido.');
+    return ContentService
+      .createTextOutput(JSON.stringify(OPS_SDR_PUBLICAR_INTERACAO_SEGURO(idInteracao), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_status || '') === '1') {
     const ativoOpsSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
