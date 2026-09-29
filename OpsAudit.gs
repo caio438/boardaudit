@@ -398,7 +398,7 @@ function opsCriarReparoDeterministico_(base, interacao) {
 
   audV3ValidarResultadoOficial_(resultado, tipo, criterios, preparada.conteudo, pitch.CONTEUDO_PITCH);
   resultado.validacao_board = audV3ValidarQualidadeBoard_(resultado, tipo);
-  const gate = audV3ExigirGatePublicavel_(resultado, tipo);
+  const gate = resultado.validacao_board || {};
 
   const hashFonte = audV3HashFonte_(
     cliente,
@@ -445,7 +445,7 @@ function opsCriarReparoDeterministico_(base, interacao) {
     HASH_FONTE: hashFonte,
     MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA',
     ENGINE_VERSAO: audV3VersaoPersistida_(),
-    VALIDACAO_STATUS: 'VALIDADA',
+    VALIDACAO_STATUS: String((gate || {}).status || '').toUpperCase() === 'BLOQUEADO' ? 'BLOQUEADA' : 'VALIDADA',
     VALIDADA_EM: agora,
     AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
     AUTOMACAO_ERRO: '',

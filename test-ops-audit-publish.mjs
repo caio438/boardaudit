@@ -33,6 +33,12 @@ assert.ok(ops.includes('function opsUltimaFalhaModeloInteracao_'), 'Preview nao 
 assert.ok(ops.includes('falhaModeloRecente && anteriorValidada'), 'Preview nao prefere reparo deterministico quando a mesma interacao ja falhou por modelo indisponivel.');
 assert.ok(ops.includes("codigoErro === 'MODELO_INDISPONIVEL'"), 'Preview nao aciona fallback apenas para indisponibilidade de modelo.');
 assert.ok(ops.includes("MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA'"), 'Auditoria reparada sem IA nao fica rastreavel.');
+const inicioReparoDet = ops.indexOf('function opsCriarReparoDeterministico_');
+const fimReparoDet = ops.indexOf('function opsValidarAuditoriaNoEngineAtual_', inicioReparoDet);
+const trechoReparoDet = ops.slice(inicioReparoDet, fimReparoDet);
+assert.ok(trechoReparoDet.includes('audV3ValidarQualidadeBoard_'), 'Reparo em revisão precisa calcular o gate sem abortar a inspeção.');
+assert.ok(!trechoReparoDet.includes('audV3ExigirGatePublicavel_'), 'Reparo em revisão não pode exigir gate publicável antes de ser salvo para inspeção.');
+assert.ok(trechoReparoDet.includes("'BLOQUEADA' : 'VALIDADA'"), 'Reparo bloqueado precisa ficar explicitamente marcado sem publicação.');
 assert.ok(ops.includes('function OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'Runner seguro de preview real nao existe.');
 const inicioPreview = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO');
 const fimPreview = ops.indexOf('function opsResolverAlvoAuditoria_', inicioPreview);
@@ -59,6 +65,9 @@ assert.ok(!trechoPreview.includes('reprocessarAutomacaoAuditoriaV3('), 'Preview 
 
 assert.ok(code.includes("parametros.ops_audit_preview"), 'doGet nao expoe a rota autenticada de preview.');
 assert.ok(code.includes('OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'doGet nao chama o runner seguro de preview.');
+assert.ok(code.includes('resultadoPreviewOps'), 'Rota autenticada de preview nao encapsula o resultado em JSON.');
+assert.ok(code.includes("modo: 'PREVIEW_SEM_PUBLICACAO'"), 'Rota de preview nao devolve erro seguro em JSON.');
+assert.ok(code.includes('erroPreviewOps'), 'Rota de preview ainda pode esconder excecoes do runner em HTML.');
 
 assert.ok(previewWorkflow.includes('Deploy Apps Script automatically'), 'Preview operacional nao aguarda deploy concluido.');
 assert.ok(previewWorkflow.includes('environment: apps-script-production'), 'Preview operacional nao usa ambiente protegido.');
