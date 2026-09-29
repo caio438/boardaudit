@@ -33,6 +33,12 @@ assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A inte
 assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
 assert.ok(front.includes("fonte.value = 'TODAS'"), 'Closer simplificado ainda exige seleção manual da origem.');
 assert.ok(front.includes("botao.textContent = 'Auditar'"), 'Closer simplificado não usa ação única de auditoria.');
+const inicioGeracaoManual = front.indexOf('async function executarAuditoriaV3Front()');
+const fimGeracaoManual = front.indexOf('function renderizarContextoAuditoriaFront_', inicioGeracaoManual);
+const trechoGeracaoManual = front.slice(inicioGeracaoManual, fimGeracaoManual);
+assert.ok(trechoGeracaoManual.includes('evitarDuplicidade: false'), 'Board manual precisa gerar nova auditoria em cada execução.');
+assert.ok(!trechoGeracaoManual.includes('evitarDuplicidade: true'), 'Board manual nao pode reaproveitar auditoria anterior e bloquear a operacao atual.');
+
 assert.ok(front.includes("idPitch: closerSimplificado ? '' : valor('audPitch')"), 'Closer ainda envia pitch selecionado manualmente em vez de resolver o atual no backend.');
 assert.ok(front.includes("idModelo: closerSimplificado ? '' : valor('audModelo')"), 'Closer ainda exige modelo selecionado manualmente.');
 assert.ok(front.includes("subtitulo.textContent = 'Selecione o cliente e uma transcrição.'"), 'Interface Closer ainda expõe configuração além de cliente e transcrição.');

@@ -30,10 +30,8 @@ assert.ok(ops.includes('será preservada no histórico e uma nova análise será
 assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
 assert.ok(ops.includes('reprocessarAutomacaoAuditoriaV3'), 'Runner nao possui contingencia idempotente para RD.');
 assert.ok(!ops.includes('publicarPlanoCircle'), 'Runner de RD nao pode publicar automaticamente no Circle.');
-assert.ok(ops.includes('function opsCriarReparoDeterministico_'), 'Preview nao possui fallback deterministico para indisponibilidade de modelo.');
-assert.ok(ops.includes('function opsUltimaFalhaModeloInteracao_'), 'Preview nao reconhece falha recente de modelo para evitar nova rodada inútil de IA.');
-assert.ok(ops.includes('falhaModeloRecente && anteriorValidada'), 'Preview nao prefere reparo deterministico quando a mesma interacao ja falhou por modelo indisponivel.');
-assert.ok(ops.includes("codigoErro === 'MODELO_INDISPONIVEL'"), 'Preview nao aciona fallback apenas para indisponibilidade de modelo.');
+assert.ok(ops.includes('function opsCriarReparoDeterministico_'), 'Reparo deterministico legado precisa permanecer disponivel para fluxos controlados fora do preview rapido.');
+assert.ok(ops.includes('function opsUltimaFalhaModeloInteracao_'), 'Historico de falha de modelo precisa permanecer rastreavel fora do preview rapido.');
 assert.ok(ops.includes("MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA'"), 'Auditoria reparada sem IA nao fica rastreavel.');
 assert.ok(ops.includes('function opsPrepararTranscricaoPersistidaValidadaParaReparo_'), 'Reparo deterministico precisa reutilizar gate persistido validado.');
 assert.ok(ops.includes('return audV3PrepararTranscricaoPersistidaValidada_(transcricao, interacao);'), 'Reparo deterministico precisa delegar para a fonte persistida canonica compartilhada.');
@@ -51,16 +49,12 @@ const inicioPreview = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO');
 const fimPreview = ops.indexOf('function opsResolverAlvoAuditoria_', inicioPreview);
 assert.ok(inicioPreview >= 0 && fimPreview > inicioPreview, 'Runner de preview nao pode ser isolado.');
 const trechoPreview = ops.slice(inicioPreview, fimPreview);
-assert.ok(trechoPreview.includes('opsAuditoriaAtualInteracao_'), 'Preview precisa tentar reutilizar a auditoria atual antes de gerar outra.');
-assert.ok(trechoPreview.includes('opsValidarAuditoriaNoEngineAtual_'), 'Preview precisa revalidar a auditoria atual no engine antes de reutiliza-la.');
-assert.match(trechoPreview, /audV3NormalizarVersao_\(auditoria\.ENGINE_VERSAO\) === audV3NormalizarVersao_\(AUDITORIA_V3\.versao\)/, 'Preview não restringe reutilização à versão exata do engine atual.');
-assert.ok(trechoPreview.includes('evitarDuplicidade: false'), 'Preview precisa gerar nova analise apenas quando nao houver auditoria atual valida.');
-assert.ok(
-  trechoPreview.indexOf('falhaModeloRecente') >= 0 &&
-  trechoPreview.indexOf('falhaModeloRecente') < trechoPreview.indexOf('executarAuditoriaV3'),
-  'O reparo imediato precisa acontecer antes de uma nova chamada de IA quando ja existe falha recente de modelo.'
-);
-assert.ok(trechoPreview.includes('reutilizada: reutilizada'), 'Preview precisa informar quando reutilizou a auditoria atual.');
+assert.ok(!trechoPreview.includes('opsAuditoriaAtualInteracao_'), 'Preview operacional nao deve reaproveitar auditoria antiga.');
+assert.ok(!trechoPreview.includes('opsValidarAuditoriaNoEngineAtual_'), 'Preview operacional nao deve bloquear nova auditoria por hash antigo.');
+assert.ok(trechoPreview.includes('evitarDuplicidade: false'), 'Preview operacional precisa sempre gerar uma auditoria nova.');
+assert.ok(!trechoPreview.includes('opsCriarReparoDeterministico_'), 'Preview operacional nao deve cair em reparo deterministico de auditoria antiga.');
+assert.ok(!trechoPreview.includes('repararCoachingAuditoriaV3'), 'Preview operacional nao deve reparar auditoria antiga antes de exibir o resultado.');
+assert.ok(trechoPreview.includes('reutilizada: false'), 'Preview operacional precisa declarar explicitamente que a auditoria e nova.');
 assert.ok(trechoPreview.includes('audV3ExigirGatePublicavel_'), 'Preview precisa validar o gate publicavel.');
 assert.ok(trechoPreview.includes('audRdTexto_(contextoRd)'), 'Preview precisa gerar exatamente o formatter atual do RD.');
 assert.ok(trechoPreview.includes("modo: 'PREVIEW_SEM_PUBLICACAO'"), 'Preview nao identifica explicitamente o modo seguro.');

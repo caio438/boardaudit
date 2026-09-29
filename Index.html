@@ -6719,7 +6719,9 @@
           idInteracao: idInteracao,
           nomeSdr: closerSimplificado ? '' : (idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr'))),
           reclassificarInteracao: Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
-          evitarDuplicidade: true
+          // No Board manual, cada clique gera uma auditoria nova e independente.
+          // O histórico anterior é preservado, mas nunca bloqueia a operação atual.
+          evitarDuplicidade: false
         });
         estado.auditorias = resposta.auditorias || [];
         ultimaAuditoria = resposta.auditoria || ultimaAuditoria;
