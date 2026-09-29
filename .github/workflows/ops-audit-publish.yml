@@ -97,13 +97,33 @@ jobs:
           TARGET: ${{ steps.target.outputs.transcript }}
         run: |
           set -euo pipefail
-          TOKEN="$(cat /tmp/google_access_token)"
-          encoded="$(node -e "process.stdout.write(encodeURIComponent(process.env.TARGET))")"
-          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_audit_publish=1&transcript=$encoded"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
 
-          code="$(curl -sS --max-time 380 --location-trusted             --oauth2-bearer "$TOKEN"             -o /tmp/ops-audit-result.txt             -w '%{http_code}'             "$URL" || true)"
-          echo "OPS_WEBAPP_HTTP_STATUS=$code"
-          test "$code" = "200"
+          const token = fs.readFileSync('/tmp/google_access_token', 'utf8').trim();
+          if (!token) throw new Error('Access token Google ausente.');
+          const target = String(process.env.TARGET || '').trim();
+          if (!target) throw new Error('Interacao operacional ausente.');
+          const url = new URL('https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec');
+          url.searchParams.set('ops_audit_publish', '1');
+          url.searchParams.set('transcript', target);
+
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 380000);
+          try {
+            const response = await fetch(url, {
+              redirect: 'follow',
+              headers: { Authorization: 'Bearer ' + token },
+              signal: controller.signal
+            });
+            const raw = await response.text();
+            fs.writeFileSync('/tmp/ops-audit-result.txt', raw);
+            console.log('OPS_WEBAPP_HTTP_STATUS=' + response.status);
+            if (!response.ok) throw new Error('Web app retornou HTTP ' + response.status + '.');
+          } finally {
+            clearTimeout(timer);
+          }
+          NODE
 
           node <<'NODE'
           const fs = require('fs');

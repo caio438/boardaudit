@@ -87,11 +87,12 @@ assert.ok(code.includes('INT-[A-Za-z0-9-]+'), 'Rota operacional nao aceita ID in
 
 assert.ok(workflow.includes('Deploy Apps Script automatically'), 'Operacao nao aguarda deploy concluido.');
 assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao nao usa ambiente protegido.');
-assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Operacao nao autentica a chamada ao web app HEAD.');
-assert.ok(workflow.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_audit_publish=1'), 'Workflow nao chama o web app de producao para a operacao.');
+assert.ok(workflow.includes("headers: { Authorization: 'Bearer ' + token }"), 'Operacao nao autentica a chamada ao web app HEAD.');
+assert.ok(workflow.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec'), 'Workflow nao chama o web app de producao para a operacao.');
+assert.ok(workflow.includes("url.searchParams.set('ops_audit_publish', '1')"), 'Workflow nao fixa a operacao de publicacao na URL de producao.');
 assert.ok(!workflow.includes('/dev?ops_audit_publish=1'), 'Workflow operacional ainda depende do endpoint /dev.');
-assert.ok(workflow.includes('--location-trusted'), 'Workflow nao preserva autenticacao OAuth nos redirects do Google.');
-assert.ok(workflow.includes('--oauth2-bearer "$TOKEN"'), 'Workflow nao envia o OAuth Bearer de forma explicita.');
+assert.ok(workflow.includes("redirect: 'follow'"), 'Workflow nao acompanha os redirects autenticados do Google.');
+assert.ok(!workflow.includes('--location-trusted'), 'Workflow nao deve voltar ao curl que perdeu a autenticacao no redirect do Google.');
 assert.ok(workflow.includes("sed -E 's/ \\(#[0-9]+\\)$//'"), 'Workflow nao remove o sufixo de PR adicionado pelo squash merge.');
 assert.ok(!workflow.includes('script.googleapis.com/v1/scripts/'), 'Workflow ainda depende da Execution API bloqueada por permissao.');
 assert.ok(workflow.includes("Ops audit publish: "), 'Workflow nao exige commit operacional explicito.');
