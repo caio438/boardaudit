@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: apps-script-production
@@ -120,4 +121,11 @@ jobs:
           git push origin "HEAD:refs/heads/main"
           echo "PROMOTED_TARGET_SHA=$TARGET_SHA"
           echo "PROMOTED_MAIN_SHA=$merge_sha"
-          echo "O workflow Deploy Apps Script automatically assumirá o deploy após a validação de main."
+          echo "O workflow Validate Apps Script será acionado explicitamente para o novo main."
+
+      - name: Dispatch main validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run validate.yml --ref main
+          echo "Validate Apps Script acionado; o deploy automático assumirá após a validação."
