@@ -403,9 +403,10 @@ context.api.applyCloserRules(
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].aplicavel, true, 'Diagnóstico com autoria recuperada precisa voltar para a régua.');
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].status, 'DESVIO_EXECUCAO', 'Diagnóstico recuperado com lacunas deve voltar como desvio, não N/A.');
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
-assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'CONFORME', 'Próximo passo datado deve recuperar Fechamento quando o N/A era apenas de autoria.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'DESVIO_EXECUCAO', 'Próximo passo datado deve recolocar Fechamento na régua sem promover execução parcial a 5/5.');
 assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
-assert.equal(resultadoAutoriaRecuperada.momentos[2].status, 'VERDE', 'Fechamento com data e hora confirmadas deve sair do falso vermelho.');
+assert.equal(resultadoAutoriaRecuperada.momentos[2].status, 'AMARELO', 'Fechamento com data e hora confirmadas deve sair do falso vermelho, mas permanecer conservador quando há outros gaps.');
+assert.equal(resultadoAutoriaRecuperada.semaforo_geral.cor, 'AMARELO', 'Semáforo geral precisa ser recalculado depois de recuperar falsos vermelhos por autoria.');
 
 
 
