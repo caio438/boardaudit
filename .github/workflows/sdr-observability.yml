@@ -1,0 +1,124 @@
+name: SDR automation observability
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  status:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/sdr-status' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Collect production SDR status
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sdr_status=1"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/sdr-status-result.txt -w '%{http_code}' "$URL" || true)"
+          echo "SDR_STATUS_HTTP_STATUS=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/sdr-status-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,500))) throw new Error('Resposta invalida do endpoint SDR.');
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('JSON de status SDR ausente.');
+          const r = JSON.parse(raw.slice(first,last+1));
+          if (r.sucesso !== true) throw new Error('Endpoint SDR nao retornou sucesso=true.');
+          fs.writeFileSync('/tmp/sdr-status.json', JSON.stringify(r,null,2));
+          const x=r.resumo||{}, st=r.status||{};
+          const lines=[
+            '## Status automacao SDR',
+            '',
+            '- Gerado em: '+String(r.geradoEm||''),
+            '- Automacao ativa: '+String(st.ativa),
+            '- Gatilhos instalados: '+String(x.gatilhosInstalados||0),
+            '- Elegiveis no backlog: '+String(x.elegiveis||0),
+            '- Aguardando transcricao: '+String(x.aguardandoTranscricao||0),
+            '- Transcritas aguardando auditoria: '+String(x.transcritasAguardandoAuditoria||0),
+            '- Processadas hoje: '+String(x.processadasHoje||0),
+            '- Saldo hoje: '+String(x.saldoHoje||0),
+            '- Erros no backlog: '+String(x.errosNoBacklog||0),
+            '- Clientes sem pitch SDR atual: '+String(x.clientesSemPitchAtual||0),
+            '- Ultima execucao: '+String(st.ultimaExecucao||''),
+            '',
+            '### Backlog por cliente',
+            ...((r.porCliente||[]).slice(0,25).map(v=>'- '+v.cliente+': '+v.elegiveis+' elegiveis | '+v.transcritas+' transcritas | '+v.aguardandoTranscricao+' aguardando transcricao | '+v.comErro+' erro(s)')),
+            '',
+            '### Erros',
+            ...((r.erros||[]).slice(0,20).map(v=>'- '+v.cliente+' | '+v.idInteracao+' | tentativas '+v.tentativasErro+' | '+(v.erro||v.statusAuditoria||'sem detalhe'))),
+            '',
+            '### Clientes sem pitch',
+            ...((r.clientesSemPitchAtual||[]).slice(0,25).map(v=>'- '+(v.nomeCliente||v.idCliente)))
+          ];
+          fs.writeFileSync('/tmp/sdr-status.md', lines.join('\n'));
+          console.log(lines.join('\n'));
+          NODE
+
+      - name: Comment status on Ops Control
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/sdr-status.md
+
+      - name: Save observability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdr-observability-${{ github.run_id }}
+          path: |
+            /tmp/sdr-status.json
+            /tmp/sdr-status.md
+            /tmp/sdr-status-result.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
