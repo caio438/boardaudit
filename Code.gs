@@ -401,6 +401,21 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+
+  if (String(parametros.ops_sdr_status || '') === '1') {
+    const ativoOpsSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsSdr || !efetivoOpsSdr || ativoOpsSdr !== efetivoOpsSdr) {
+      throw new Error('Observabilidade SDR permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof OBSERVAR_AUTOMACAO_SDR_V3 !== 'function') {
+      throw new Error('Observabilidade SDR nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(OBSERVAR_AUTOMACAO_SDR_V3(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_audit_preview || '') === '1') {
     const ativoOpsPreview = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsPreview = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
