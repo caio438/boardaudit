@@ -41,6 +41,12 @@ assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A inte
 assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
 assert.ok(front.includes("fonte.value = 'TODAS'"), 'Closer simplificado ainda exige seleção manual da origem.');
 assert.ok(front.includes("botao.textContent = 'Auditar'"), 'Closer simplificado não usa ação única de auditoria.');
+assert.ok(front.includes('audit-table-pitch'), 'Tabela de aderência do pitch não possui layout dedicado para leitura.');
+assert.ok(front.includes('overflow-wrap: break-word'), 'Tabelas ainda podem quebrar palavras em qualquer caractere.');
+const cssTabelaAuditoria = front.slice(front.indexOf('.audit-report th,'), front.indexOf('.audit-review-actions'));
+assert.ok(!cssTabelaAuditoria.includes('overflow-wrap: anywhere'), 'CSS da tabela de auditoria ainda quebra palavras no meio.');
+assert.ok(front.includes('min-width: 1380px'), 'Tabela longa do pitch não reserva largura mínima legível.');
+
 assert.ok(front.includes("!/^(não houve divergência|nenhuma divergência"), 'Detalhe do Closer ainda exibe divergência neutra como erro visual.');
 
 const inicioGeracaoManual = front.indexOf('async function executarAuditoriaV3Front()');

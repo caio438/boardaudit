@@ -1075,29 +1075,65 @@
     .audit-json-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 0; }
     .audit-json-code { margin: 12px 16px 16px; padding: 16px; max-height: 520px; overflow: auto; border-radius: 10px; background: #101828; color: #e4e7ec; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; tab-size: 2; }
 
+    .audit-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      margin: 16px 0 24px;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .audit-report table {
       width: 100%;
       min-width: 0;
       max-width: 100%;
       table-layout: fixed;
       border-collapse: collapse;
-      margin: 16px 0 24px;
+      margin: 0;
     }
 
     .audit-report th,
     .audit-report td {
       border: 1px solid #344054;
-      padding: 9px;
+      padding: 10px 11px;
       text-align: left;
       vertical-align: top;
       white-space: normal;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
       word-break: normal;
+      hyphens: none;
+      line-height: 1.45;
     }
 
     .audit-report th { background: #f2f4f7; }
     .audit-report th:first-child,
     .audit-report td:first-child { width: 28%; }
+
+    .audit-table-pitch table {
+      min-width: 1380px;
+      table-layout: fixed;
+    }
+
+    .audit-table-pitch th:nth-child(1),
+    .audit-table-pitch td:nth-child(1) { width: 140px; }
+    .audit-table-pitch th:nth-child(2),
+    .audit-table-pitch td:nth-child(2) { width: 112px; }
+    .audit-table-pitch th:nth-child(3),
+    .audit-table-pitch td:nth-child(3) { width: 72px; white-space: nowrap; }
+    .audit-table-pitch th:nth-child(4),
+    .audit-table-pitch td:nth-child(4) { width: 210px; }
+    .audit-table-pitch th:nth-child(5),
+    .audit-table-pitch td:nth-child(5) { width: 220px; }
+    .audit-table-pitch th:nth-child(6),
+    .audit-table-pitch td:nth-child(6) { width: 210px; }
+    .audit-table-pitch th:nth-child(7),
+    .audit-table-pitch td:nth-child(7) { width: 236px; }
+    .audit-table-pitch th:nth-child(8),
+    .audit-table-pitch td:nth-child(8) { width: 180px; }
+
+    .audit-table-pitch th,
+    .audit-table-pitch td {
+      min-width: 0;
+    }
 
     .audit-review-actions {
       position: sticky;
@@ -7283,7 +7319,7 @@
       <p><strong>Necessidade principal:</strong> ${escapeHtml(contexto.necessidade_principal || 'Não evidenciado')}</p>
       <p><strong>Resultado do contato:</strong> ${escapeHtml(contexto.resultado_contato || 'Não evidenciado')}</p>
       <h3>Aderência por etapa do pitch</h3>
-      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Nota','Fala do SDR','O que consta no pitch','Divergência','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao, item.regra_pitch, item.desvio, item.correcao_pratica, item.impacto_resultado])) : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
+      ${etapas.length ? tabelaAuditoriaV3(['Etapa','Status','Nota','Fala do SDR','O que consta no pitch','Divergência','Correção prática','Impacto provável'], etapas.map(item => [item.etapa, item.status, item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5', item.fato_transcricao, item.regra_pitch, item.desvio, item.correcao_pratica, item.impacto_resultado]), 'audit-table-pitch') : '<p class="muted">Não foi possível avaliar as etapas do pitch com a evidência disponível.</p>'}
       <h3>1. Aderência ao pitch completo e à introdução</h3>
       ${renderizarAderenciaSdrV3(r.aderencia_script || {})}
       <h3>2. Perguntas de Qualificação</h3>
@@ -8004,8 +8040,9 @@
     return valor;
   }
 
-  function tabelaAuditoriaV3(cabecalhos, linhas) {
-    return `<table><thead><tr>${cabecalhos.map(item => `<th>${escapeHtml(item)}</th>`).join('')}</tr></thead><tbody>${(linhas || []).map(linha => `<tr>${linha.map(celula => `<td>${escapeHtml(formatarStatusAuditoriaV3(celula === null || celula === undefined || celula === '' ? '-' : celula))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  function tabelaAuditoriaV3(cabecalhos, linhas, classeExtra) {
+    const classe = ['audit-table-wrap', String(classeExtra || '').trim()].filter(Boolean).join(' ');
+    return `<div class="${classe}"><table><thead><tr>${cabecalhos.map(item => `<th>${escapeHtml(item)}</th>`).join('')}</tr></thead><tbody>${(linhas || []).map(linha => `<tr>${linha.map(celula => `<td>${escapeHtml(formatarStatusAuditoriaV3(celula === null || celula === undefined || celula === '' ? '-' : celula))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
 
   function repararCoachingAuditoriaFront(idAuditoria) {
