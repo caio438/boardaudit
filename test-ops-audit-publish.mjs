@@ -90,6 +90,11 @@ assert.ok(workflow.includes('environment: apps-script-production'), 'Operacao na
 assert.ok(workflow.includes("headers: { Authorization: 'Bearer ' + token }"), 'Operacao nao autentica a chamada ao web app HEAD.');
 assert.ok(workflow.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec'), 'Workflow nao chama o web app de producao para a operacao.');
 assert.ok(workflow.includes("url.searchParams.set('ops_audit_publish', '1')"), 'Workflow nao fixa a operacao de publicacao na URL de producao.');
+assert.ok(workflow.includes("url.searchParams.set('ops_sdr_publish_one', '1')"), 'Interacao INT nao entra pelo fluxo SDR completo de transcricao e auditoria.');
+assert.ok(workflow.includes("url.searchParams.set('single', '1')"), 'Fluxo SDR explicito nao exige execucao unitaria.');
+assert.ok(workflow.includes("url.searchParams.set('interaction', target)"), 'Fluxo SDR explicito nao fixa o ID da interacao solicitada.');
+assert.ok(workflow.includes("String(envelope.idInteracaoSolicitada || '') !== target"), 'Workflow nao bloqueia resposta de outra interacao SDR.');
+assert.ok(workflow.includes("String(envelope.classificacao || '').toUpperCase() !== 'PUBLICADA'"), 'Workflow nao exige classificacao PUBLICADA do fluxo SDR completo.');
 assert.ok(!workflow.includes('/dev?ops_audit_publish=1'), 'Workflow operacional ainda depende do endpoint /dev.');
 assert.ok(workflow.includes("redirect: 'follow'"), 'Workflow nao acompanha os redirects autenticados do Google.');
 assert.ok(!workflow.includes('--location-trusted'), 'Workflow nao deve voltar ao curl que perdeu a autenticacao no redirect do Google.');
