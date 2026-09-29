@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.12
+ * Versão: 6.2.13
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.12',
+  versao: '6.2.13',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -4859,11 +4859,12 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
     if (id === 'tratamento_objecoes' && proximoPassoConcreto) {
       aplicarStatus(
         item,
-        'CONFORME',
-        5,
-        'A reunião terminou com próximo passo concreto, data e horário confirmados; não houve objeção explícita que exigisse tratamento adicional.'
+        'DESVIO_EXECUCAO',
+        2.5,
+        'O próximo passo foi concretamente agendado com data e horário, mas isso não comprova sozinho a execução completa de todos os comportamentos de fechamento previstos no pitch.'
       );
-      item.correcao_pratica = 'Manter o fechamento com próximo passo datado e responsável definido.';
+      item.divergencia = 'Houve próximo passo concreto e datado, porém o fechamento não deve ser considerado integralmente conforme apenas por esse compromisso.';
+      item.correcao_pratica = 'Manter o próximo passo datado e, quando aplicável ao contexto, confirmar autoridade, percepção de valor e condição de avanço previstas no pitch.';
       return;
     }
     if (id === 'aderencia_diagnostico' && perguntas.length >= 3) {
@@ -4909,9 +4910,9 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
   if (proximoPassoConcreto) {
     recuperarMomento(
       'momento_3',
-      'VERDE',
-      5,
-      'O fechamento da reunião estabeleceu próximo passo concreto com data e horário confirmados.'
+      'AMARELO',
+      2.5,
+      'O fechamento estabeleceu próximo passo concreto com data e horário confirmados, mas ainda deve ser avaliado junto aos demais comportamentos de fechamento previstos no pitch.'
     );
   }
   if (scoreRealizado) {
@@ -4937,6 +4938,7 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
 function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcricao, conteudoPitch) {
   resultado = resultado || {};
   audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch);
+  audV3NormalizarMomentosCloser_(resultado, criterios);
   const contexto = resultado.contexto_interacao || {};
   const classificacao = String(contexto.classificacao || '').toUpperCase();
   const primeiraOuDiagnostico = !classificacao || ['PRIMEIRA_REUNIAO', 'FOLLOW_UP_DIAGNOSTICO'].includes(classificacao);
