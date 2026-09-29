@@ -1,0 +1,6 @@
+Execução operacional única após a correção de concorrência da persistência SDR.
+
+Interação: INT-20260925063520-6D758A84
+Escopo: transcrever, auditar, validar, aprovar e publicar somente esta interação.
+Critério de sucesso: APROVADA + VALIDADA + RD_STATUS=PUBLICADA.
+Não selecionar nem avançar para a próxima SDR.
