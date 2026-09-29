@@ -355,6 +355,59 @@ assert.equal(
   'Momento comprovado por linha canônica CLOSER não pode ser rebaixado para vermelho.'
 );
 
+const resultadoAutoriaRecuperada = {
+  contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
+  criterios_avaliados: [
+    {
+      id: 'aderencia_diagnostico', nome: 'Aderência ao Script de Diagnóstico', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários? Da onde que veio essa demanda?',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    },
+    {
+      id: 'validacao_interesse', nome: 'Validação do Interesse do Lead', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[53:29] CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    },
+    {
+      id: 'tratamento_objecoes', nome: 'Tratamento de Objeções e Fechamento', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[1:06:59] CLOSER (Juliana e Jessica): sexta-feira de manhã, dia 18, ou na segunda-feira à tarde, dia 21.',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    }
+  ],
+  momentos: [
+    { id:'momento_1', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários?', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' },
+    { id:'momento_2', status:'AMARELO', cor:'AMARELO', nota:2.5, gatilho_alcancado:true, locutor_evidencia:'CLOSER', o_que_foi_dito:'CLOSER: apresentação', pontos_melhorar:['Aplicar rigorosamente a pergunta de score de zero a dez prevista no pitch'], divergencia:'Não houve divergência.', justificativa_nota:'Parcial.' },
+    { id:'momento_3', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[1:06:59] CLOSER (Juliana e Jessica): dia 18 ou dia 21 às 14:30', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' }
+  ],
+  perguntas_diagnostico: {
+    perguntas_realizadas: [{pergunta:'Q1'},{pergunta:'Q2'},{pergunta:'Q3'},{pergunta:'Q4'}],
+    perguntas_esperadas_nao_realizadas: [{pergunta:'impacto financeiro'}]
+  }
+};
+context.api.applyCloserRules(
+  resultadoAutoriaRecuperada,
+  criterios,
+  [
+    'CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
+    'LEAD (Evandro): 10.',
+    'CLOSER (Juliana e Jessica): vamos marcar uma segunda reunião para dia 21 às 14:30.'
+  ].join('\n'),
+  'De zero a dez, o quanto a solução resolve seu problema?'
+);
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].aplicavel, true, 'Diagnóstico com autoria recuperada precisa voltar para a régua.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].status, 'DESVIO_EXECUCAO', 'Diagnóstico recuperado com lacunas deve voltar como desvio, não N/A.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'CONFORME', 'Próximo passo datado deve recuperar Fechamento quando o N/A era apenas de autoria.');
+assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
+assert.equal(resultadoAutoriaRecuperada.momentos[2].status, 'VERDE', 'Fechamento com data e hora confirmadas deve sair do falso vermelho.');
+
+
 
 const respostaFalaLead = {
   momentos: JSON.parse(JSON.stringify(momentos)),
