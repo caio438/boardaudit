@@ -414,8 +414,21 @@ function doGet(e) {
     if (typeof OPS_AUDITAR_PREVIEW_TRANSCRICAO !== 'function') {
       throw new Error('Runner de preview de auditoria nao esta disponivel no HEAD do Apps Script.');
     }
+    let resultadoPreviewOps;
+    try {
+      resultadoPreviewOps = OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricaoPreview);
+    } catch (erroPreviewOps) {
+      resultadoPreviewOps = {
+        sucesso: false,
+        modo: 'PREVIEW_SEM_PUBLICACAO',
+        idTranscricao: idTranscricaoPreview,
+        erro: String(erroPreviewOps && erroPreviewOps.message ? erroPreviewOps.message : erroPreviewOps),
+        rdPublicada: false,
+        aprovada: false
+      };
+    }
     return ContentService
-      .createTextOutput(JSON.stringify(OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricaoPreview), null, 2))
+      .createTextOutput(JSON.stringify(resultadoPreviewOps, null, 2))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
