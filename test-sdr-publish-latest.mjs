@@ -22,3 +22,6 @@ assert.ok(workflow.includes("github.event.comment.body == '/sdr-publish-next'"))
 assert.ok(workflow.includes('Comment final result on Ops Control'));
 
 console.log('Controlled SDR latest batch publication validated.');
+
+assert.ok(!gs.includes("if (ta !== tb) return ta ? -1 : 1;"), 'SDR selector must not prioritize transcript readiness over recency.');
+console.log('SDR strict recency ordering validated.');

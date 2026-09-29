@@ -31,9 +31,6 @@ function OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR(limite, somenteTranscritas) {
       (!somenteTranscritas || Boolean(transcricoes[id])) &&
       Boolean(audV3PitchAtualAutomatico_(idCliente, 'SDR', pitches));
   }).sort(function(a, b) {
-    const ta = Boolean(transcricoes[String(a.ID_INTERACAO || '')]);
-    const tb = Boolean(transcricoes[String(b.ID_INTERACAO || '')]);
-    if (ta !== tb) return ta ? -1 : 1;
     const da = new Date(a.DATA_INTERACAO || a.ATUALIZADO_EM || 0).getTime() || 0;
     const db = new Date(b.DATA_INTERACAO || b.ATUALIZADO_EM || 0).getTime() || 0;
     return db - da || String(b.ID_INTERACAO || '').localeCompare(String(a.ID_INTERACAO || ''));
