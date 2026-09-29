@@ -2012,9 +2012,8 @@ function repararCoachingAuditoriaV3(idAuditoria) {
     const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
     const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
     if (!interacao || !transcricao) throw new Error('A fonte original não está disponível.');
-    const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
-    const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
-    const conteudo = String(normalizacaoFonte.texto || conteudoOriginal || '').trim();
+    const fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO);
+    const conteudo = String(fontePreparada.conteudo || '').trim();
     const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', auditoria.ID_CLIENTE);
     const pitch = {
       ID_PITCH: auditoria.ID_PITCH, NUMERO_VERSAO: auditoria.VERSAO_PITCH_SNAPSHOT,
@@ -2025,7 +2024,10 @@ function repararCoachingAuditoriaV3(idAuditoria) {
       PROMPT_AUDITORIA: auditoria.PROMPT_SNAPSHOT, CRITERIOS_JSON: auditoria.CRITERIOS_SNAPSHOT_JSON
     };
     if (!auditoria.HASH_FONTE || auditoria.HASH_FONTE !== audV3HashFonte_(cliente, pitch, modelo,
-        Object.assign({}, transcricao, { CONTEUDO: conteudo }), tipo)) {
+        Object.assign({}, transcricao, {
+          CONTEUDO: conteudo,
+          NORMALIZACAO_VERSAO: fontePreparada.normalizacaoVersao
+        }), tipo)) {
       throw new Error('A fonte mudou desde a geração; o reparo seletivo não pode alterar esta auditoria.');
     }
     const criterios = audV3ParseJson_(auditoria.CRITERIOS_SNAPSHOT_JSON, 'Critérios originais inválidos.');
