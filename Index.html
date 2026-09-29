@@ -2906,12 +2906,12 @@
     let boardInicializado = false;
 
     function iniciarProtecaoAcesso_() {
-      const validade = Number(sessionStorage.getItem(BOARD_AUTH_SESSION_KEY) || 0);
+      const validade = Number(localStorage.getItem(BOARD_AUTH_SESSION_KEY) || 0);
       if (validade > Date.now()) {
         liberarBoard_();
         return;
       }
-      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      localStorage.removeItem(BOARD_AUTH_SESSION_KEY);
       document.getElementById('accessGate').hidden = false;
       document.querySelector('.app').hidden = true;
       document.getElementById('accessEmail').focus();
@@ -2940,7 +2940,7 @@
             return;
           }
           const horas = Number(retorno.validadeHoras || 8);
-          sessionStorage.setItem(BOARD_AUTH_SESSION_KEY, String(Date.now() + horas * 60 * 60 * 1000));
+          localStorage.setItem(BOARD_AUTH_SESSION_KEY, String(Date.now() + horas * 60 * 60 * 1000));
           liberarBoard_();
         })
         .withFailureHandler(() => {
@@ -2962,7 +2962,7 @@
     }
 
     function encerrarAcessoBoard_() {
-      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      localStorage.removeItem(BOARD_AUTH_SESSION_KEY);
       document.querySelector('.app').hidden = true;
       document.getElementById('accessGate').hidden = false;
       document.getElementById('accessEmail').value = '';
