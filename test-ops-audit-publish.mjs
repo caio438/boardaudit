@@ -16,8 +16,9 @@ assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interaca
 assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao consulta a validacao de qualidade antes de publicar.');
 assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
 assert.ok(ops.includes('function opsValidarAuditoriaNoEngineAtual_'), 'Runner nao revalida auditoria antiga no engine atual.');
-assert.ok(ops.includes('audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {})'), 'Runner nao recalcula a fonte com a identidade atual da interacao.');
+assert.ok(ops.includes('audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)'), 'Runner nao recompõe a mesma fonte persistida usada no hash da auditoria.');
 assert.ok(ops.includes('const hashAtual = audV3HashFonte_('), 'Runner nao compara o hash atual antes do reparo seletivo.');
+assert.ok(ops.includes('NORMALIZACAO_VERSAO: fontePreparada.normalizacaoVersao'), 'Runner nao inclui a versao de normalizacao persistida ao revalidar o hash.');
 assert.ok(ops.includes('A fonte atual difere da auditoria existente; preserve o histórico e gere uma nova análise.'), 'Runner nao invalida auditoria antiga quando a fonte mudou.');
 assert.ok(ops.includes('forcarNovaAnalise = true'), 'Runner nao força nova análise quando a auditoria antiga viola travas atuais.');
 assert.ok(ops.includes('falhaCriterioLegada'), 'Runner nao distingue a falha legada de criterio verificavel.');
