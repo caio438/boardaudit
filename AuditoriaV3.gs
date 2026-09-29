@@ -1315,9 +1315,7 @@ function importarTranscricaoManualV3(dados) {
   const idTranscricao = audV3Id_('TRA');
   const idExterno = fonte + '-MANUAL-' + Utilities.getUuid();
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  try {
+  audV3ComLockPersistenciaSdr_('nova-interacao:' + idInteracao, function() {
     audV3Adicionar_('INTERACOES', {
       ID_INTERACAO: idInteracao,
       FONTE: fonte,
@@ -1357,9 +1355,7 @@ function importarTranscricaoManualV3(dados) {
       IMPORTADO_EM: agora,
       ATUALIZADO_EM: agora
     });
-  } finally {
-    lock.releaseLock();
-  }
+  }, 5000);
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   if (typeof registrarLog_ === 'function') {
@@ -1419,6 +1415,30 @@ function audV3LocalizarTranscricaoPorAudio_(idCliente, urlAudio) {
     }
   }
   return null;
+}
+
+/**
+ * Serializa somente as escritas do fluxo SDR executadas pelo mesmo usuário
+ * efetivo (o proprietário nos gatilhos e no web app). UserLock usa um domínio
+ * separado do ScriptLock global empregado por formalizações e outras rotinas.
+ * A operação recebida deve conter apenas releituras de idempotência e escrita;
+ * chamadas externas, IA e validações pesadas precisam acontecer antes daqui.
+ */
+function audV3ComLockPersistenciaSdr_(recurso, operacao, timeoutMs) {
+  const lock = LockService.getUserLock();
+  const esperaMs = Math.max(1, Number(timeoutMs || 5000));
+  if (!lock.tryLock(esperaMs)) {
+    throw new Error('Persistência SDR ocupada para ' + String(recurso || 'recurso não identificado') + '. Tente novamente em alguns segundos.');
+  }
+  try {
+    return operacao();
+  } finally {
+    try {
+      if (typeof SpreadsheetApp !== 'undefined' && typeof SpreadsheetApp.flush === 'function') SpreadsheetApp.flush();
+    } finally {
+      lock.releaseLock();
+    }
+  }
 }
 
 function transcreverAudioMp3V3(dados) {
@@ -1607,9 +1627,7 @@ function transcreverAudioMp3V3(dados) {
   if (interacaoExistente) {
     let idTranscricaoExistente = audV3Id_('TRA');
     const agoraTranscricao = new Date();
-    const lockTranscricao = LockService.getScriptLock();
-    lockTranscricao.waitLock(30000);
-    try {
+    audV3ComLockPersistenciaSdr_('transcricao:' + interacaoExistente.ID_INTERACAO, function() {
       const jaCriada = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacaoExistente.ID_INTERACAO);
       if (jaCriada) {
         idTranscricaoExistente = jaCriada.ID_TRANSCRICAO;
@@ -1640,9 +1658,7 @@ function transcreverAudioMp3V3(dados) {
         STATUS_TRANSCRICAO: 'CONCLUIDA',
         ATUALIZADO_EM: agoraTranscricao
       });
-    } finally {
-      lockTranscricao.releaseLock();
-    }
+    }, 5000);
     if (typeof limparCachesDados_ === 'function') limparCachesDados_();
     return JSON.parse(JSON.stringify({
       sucesso: true,
@@ -2000,10 +2016,7 @@ function executarAuditoriaV3(dados) {
 // Existing blocked audits, including @261, can be repaired without generating
 // another analysis or changing its score/source snapshots/history.
 function repararCoachingAuditoriaV3(idAuditoria) {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(1000)) throw new Error('Já há uma operação em andamento. Aguarde sua conclusão.');
-  try {
-    const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', String(idAuditoria || '').trim());
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', String(idAuditoria || '').trim());
     if (!auditoria || auditoria.STATUS !== 'EM_REVISAO' || auditoria.VALIDACAO_STATUS !== 'VALIDADA') {
       throw new Error('O reparo requer uma auditoria validada e ainda em revisão.');
     }
@@ -2038,14 +2051,25 @@ function repararCoachingAuditoriaV3(idAuditoria) {
     });
     if (reparo.tentou) {
       audV3ValidarResultadoOficial_(resultado, tipo, criterios, conteudo, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
-      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA, {
-        RESULTADO_JSON: JSON.stringify(resultado),
-        RESULTADO_COMPLETO: audV3ResultadoTexto_(resultado, tipo),
-        ENGINE_VERSAO: audV3VersaoPersistida_(),
-        AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
-        AUTOMACAO_ERRO: reparo.sucesso ? '' : String((reparo.erro || {}).message || 'Reparo seletivo falhou.'),
-        AUTOMACAO_ATUALIZADO_EM: new Date()
-      });
+      const resultadoJson = JSON.stringify(resultado);
+      const resultadoCompleto = audV3ResultadoTexto_(resultado, tipo);
+      audV3ComLockPersistenciaSdr_('auditoria:' + auditoria.ID_AUDITORIA, function() {
+        const atual = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA);
+        if (!atual || atual.STATUS !== 'EM_REVISAO' || atual.VALIDACAO_STATUS !== 'VALIDADA') {
+          throw new Error('A auditoria mudou durante o reparo; nenhuma alteração foi persistida.');
+        }
+        if (String(atual.HASH_FONTE || '') !== String(auditoria.HASH_FONTE || '')) {
+          throw new Error('A fonte da auditoria mudou durante o reparo; nenhuma alteração foi persistida.');
+        }
+        audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA, {
+          RESULTADO_JSON: resultadoJson,
+          RESULTADO_COMPLETO: resultadoCompleto,
+          ENGINE_VERSAO: audV3VersaoPersistida_(),
+          AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
+          AUTOMACAO_ERRO: reparo.sucesso ? '' : String((reparo.erro || {}).message || 'Reparo seletivo falhou.'),
+          AUTOMACAO_ATUALIZADO_EM: new Date()
+        });
+      }, 5000);
     }
     const gateAtual = audV3ValidarQualidadeBoard_(resultado, tipo);
     const revisaoRecomendada = String(gateAtual.status || '').toUpperCase() === 'BLOQUEADO';
@@ -2058,9 +2082,6 @@ function repararCoachingAuditoriaV3(idAuditoria) {
       auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', auditoria.ID_AUDITORIA)),
       auditorias: audV3ListarAuditoriasFront_()
     };
-  } finally {
-    lock.releaseLock();
-  }
 }
 
 function audV3ExigirGatePublicavel_(resultado, tipo) {
