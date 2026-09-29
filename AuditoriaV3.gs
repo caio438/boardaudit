@@ -3232,6 +3232,47 @@ function audV3PrepararTranscricaoPersistida_(transcricao, interacao) {
   };
 }
 
+function audV3PrepararTranscricaoPersistidaValidada_(transcricao, interacao) {
+  const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
+  const assinaturaAtual = audV3AssinaturaTextoLeve_(original);
+  let qualidade = {};
+  try { qualidade = JSON.parse(String((transcricao || {}).QUALIDADE_JSON || '{}')); } catch (erroJson) {}
+
+  const versaoLinha = String((transcricao || {}).NORMALIZACAO_VERSAO || '').trim();
+  const versaoGate = String((qualidade || {}).normalizacao_versao || '').trim();
+  const assinaturaGate = String((qualidade || {}).assinatura_original || '').trim();
+  const statusGate = String((qualidade || {}).status || '').trim().toUpperCase();
+  const mapa = (qualidade || {}).normalizacao_mapa;
+  const conteudoNormalizado = String((transcricao || {}).CONTEUDO_NORMALIZADO || '').trim();
+
+  const versaoConfere =
+    versaoLinha === AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO &&
+    versaoGate === AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO;
+  const assinaturaConfere = Boolean(assinaturaGate) && assinaturaGate === String(assinaturaAtual || '');
+  const qualidadeConfere = ['BOA', 'ATENCAO'].includes(statusGate) && qualidade.apta_para_auditoria === true;
+  const mapaConfere = mapa && typeof mapa === 'object' && !Array.isArray(mapa) && Object.keys(mapa).length > 0;
+  const conteudoConfere = Boolean(conteudoNormalizado);
+
+  if (!versaoConfere || !assinaturaConfere || !qualidadeConfere || !mapaConfere || !conteudoConfere) {
+    throw new Error(
+      'Gate persistido da transcrição não confere com a fonte atual. ' +
+      'versao=' + String(versaoConfere) +
+      ' assinatura=' + String(assinaturaConfere) +
+      ' qualidade=' + String(qualidadeConfere) +
+      ' mapa=' + String(mapaConfere) +
+      ' conteudo=' + String(conteudoConfere) + '.'
+    );
+  }
+
+  return {
+    original: original,
+    conteudo: conteudoNormalizado,
+    qualidade: qualidade,
+    normalizacaoVersao: AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO,
+    reutilizadaPersistida: true
+  };
+}
+
 function audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao) {
   const original = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
   const assinatura = audV3AssinaturaTextoLeve_(original);
@@ -3329,7 +3370,11 @@ function audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, engine
       normalizacaoVersao: ''
     };
   }
-  return audV3PrepararTranscricaoPersistida_(transcricao, interacao);
+  try {
+    return audV3PrepararTranscricaoPersistidaValidada_(transcricao, interacao);
+  } catch (erroPersistido) {
+    return audV3PrepararTranscricaoPersistida_(transcricao, interacao);
+  }
 }
 
 function audV3ConteudoCompletoTranscricao_(transcricao, interacao) {
