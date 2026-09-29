@@ -13,6 +13,8 @@ assert.ok(gs.includes("classificacao = 'REVISAO_HUMANA'"));
 assert.ok(code.includes('ops_sdr_batch_targets'));
 assert.ok(code.includes('ops_sdr_publish_one'));
 assert.ok(runner.includes('ops_sdr_publish_one'));
+assert.ok(runner.includes('single: 1'));
+assert.ok(code.includes("parametros.single"));
 assert.ok(runner.includes('const limit = 1;'));
 assert.ok(runner.includes("'/sdr-publish-next'"));
 assert.ok(runner.includes('sdr-batch-report.md'));
