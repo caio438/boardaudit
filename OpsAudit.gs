@@ -105,7 +105,7 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
     resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado invalido apos reparo.');
   }
 
-  const gate = audV3ExigirGatePublicavel_(resultado, tipo);
+  const gate = audV3ValidarQualidadeBoard_(resultado, tipo);
   opsPreflightRd_(auditoria, interacao, resultado);
 
   let aprovacao = null;
@@ -445,7 +445,7 @@ function opsCriarReparoDeterministico_(base, interacao) {
     HASH_FONTE: hashFonte,
     MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA',
     ENGINE_VERSAO: audV3VersaoPersistida_(),
-    VALIDACAO_STATUS: 'VALIDADA',
+    VALIDACAO_STATUS: String((gate || {}).status || '').toUpperCase() === 'BLOQUEADO' ? 'BLOQUEADA' : 'VALIDADA',
     VALIDADA_EM: agora,
     AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
     AUTOMACAO_ERRO: '',
