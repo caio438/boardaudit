@@ -105,8 +105,14 @@ jobs:
           const target = String(process.env.TARGET || '').trim();
           if (!target) throw new Error('Interacao operacional ausente.');
           const url = new URL('https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec');
-          url.searchParams.set('ops_audit_publish', '1');
-          url.searchParams.set('transcript', target);
+          if (/^INT-[A-Za-z0-9-]+$/.test(target)) {
+            url.searchParams.set('ops_sdr_publish_one', '1');
+            url.searchParams.set('single', '1');
+            url.searchParams.set('interaction', target);
+          } else {
+            url.searchParams.set('ops_audit_publish', '1');
+            url.searchParams.set('transcript', target);
+          }
 
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 380000);
@@ -135,14 +141,26 @@ jobs:
           const first = raw.indexOf('{');
           const last = raw.lastIndexOf('}');
           if (first < 0 || last < first) throw new Error('Resposta do runner nao contem JSON.');
-          const result = JSON.parse(raw.slice(first, last + 1));
-          if (result.sucesso !== true) throw new Error('Runner nao retornou sucesso=true.');
+          const envelope = JSON.parse(raw.slice(first, last + 1));
+          const target = String(process.env.TARGET || '').trim();
+          let result = envelope;
+          if (/^INT-[A-Za-z0-9-]+$/.test(target)) {
+            if (String(envelope.idInteracaoSolicitada || '') !== target) {
+              throw new Error('Runner SDR retornou uma interacao diferente do alvo explicito.');
+            }
+            if (envelope.sucesso !== true || String(envelope.classificacao || '').toUpperCase() !== 'PUBLICADA') {
+              throw new Error('Runner SDR falhou em ' + String(envelope.classificacao || 'SEM_CLASSIFICACAO') + ': ' + String(envelope.erro || 'sem detalhe'));
+            }
+            result = envelope.resultado || {};
+          } else if (envelope.sucesso !== true) {
+            throw new Error('Runner nao retornou sucesso=true.');
+          }
           if (String(result.status || '').toUpperCase() !== 'APROVADA') throw new Error('Auditoria nao ficou APROVADA.');
           if (String(result.validacaoStatus || '').toUpperCase() !== 'VALIDADA') throw new Error('Auditoria nao ficou VALIDADA.');
           if (String(result.rdStatus || '').toUpperCase() !== 'PUBLICADA') throw new Error('RD nao ficou PUBLICADA.');
           if (!String(result.idAuditoria || '').trim()) throw new Error('ID da auditoria ausente.');
           if (!String(result.linkCrm || '').trim()) throw new Error('Link CRM ausente.');
-          fs.writeFileSync('/tmp/ops-audit-summary.json', JSON.stringify(result, null, 2));
+          fs.writeFileSync('/tmp/ops-audit-summary.json', JSON.stringify(envelope, null, 2));
           console.log('OPS_AUDIT_PUBLISHED=1');
           console.log('OPS_AUDIT_ID=' + result.idAuditoria);
           console.log('OPS_RD_STATUS=' + result.rdStatus);
