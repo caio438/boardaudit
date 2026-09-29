@@ -519,6 +519,7 @@ for (const titulo of ['CONTEXTO E RESULTADO', 'PONTOS FORTES', 'QUALIFICAÇÃO',
 const sdrCompacto = rd.slice(rd.indexOf('function audRdTextoSdr_'));
 assert.ok(!sdrCompacto.includes("'SE EU FOSSE O SDR, FARIA ASSIM'"), 'Formatter SDR voltou a repetir o coaching em um bloco separado.');
 assert.ok(!sdrCompacto.includes("'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'"), 'Formatter SDR voltou ao bloco extenso com pitch literal.');
-assert.match(rd, /texto=String\(audRdTexto_\(c\)\)\.trim\(\)/, 'Envio ao RD deve regenerar o texto canônico no servidor.');
+assert.ok(rd.includes("textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim()"), 'Envio ao RD deve aceitar exatamente o texto revisado pelo usuário.');
+assert.ok(rd.includes("texto=textoEditado||String(audRdTexto_(c)).trim()"), 'Envio ao RD deve manter o formatter canônico apenas como fallback.');
 
 console.log('Auditoria v5 validada: integridade, documento e gate do RD CRM.');
