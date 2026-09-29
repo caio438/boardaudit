@@ -3,7 +3,7 @@
  * Selects the most recent eligible API4COM/RD calls and publishes one item per
  * independent authenticated request so a single failure never blocks the batch.
  */
-function OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR(limite) {
+function OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR(limite, somenteTranscritas) {
   const config = audV3ConfigAutomacaoLigacoes_();
   const max = Math.min(20, Math.max(1, Number(limite || 20)));
   const pitches = audV3Ler_('PITCHES');
@@ -28,6 +28,7 @@ function OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR(limite) {
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       idCliente &&
       !publicadas[id] &&
+      (!somenteTranscritas || Boolean(transcricoes[id])) &&
       Boolean(audV3PitchAtualAutomatico_(idCliente, 'SDR', pitches));
   }).sort(function(a, b) {
     const da = new Date(a.DATA_INTERACAO || a.ATUALIZADO_EM || 0).getTime() || 0;
