@@ -1,3 +1,5 @@
 Target: INT-20260924151124-EA5E9220
 Purpose: regenerate the correct INGEE/ERB Closer audit after transcript normalization 2.4 reached 98.3% identified coverage. Generate RD preview only; do not approve or publish.
 Requested-at: 2026-09-28T17:44-03:00
+
+Retry after persisted normalization 2.4 gate reuse fix.
