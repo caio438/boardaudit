@@ -105,7 +105,7 @@ function OPS_AUDITAR_PUBLICAR_TRANSCRICAO(idTranscricao) {
     resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado invalido apos reparo.');
   }
 
-  const gate = audV3ValidarQualidadeBoard_(resultado, tipo);
+  const gate = audV3ExigirGatePublicavel_(resultado, tipo);
   opsPreflightRd_(auditoria, interacao, resultado);
 
   let aprovacao = null;
@@ -398,7 +398,7 @@ function opsCriarReparoDeterministico_(base, interacao) {
 
   audV3ValidarResultadoOficial_(resultado, tipo, criterios, preparada.conteudo, pitch.CONTEUDO_PITCH);
   resultado.validacao_board = audV3ValidarQualidadeBoard_(resultado, tipo);
-  const gate = audV3ExigirGatePublicavel_(resultado, tipo);
+  const gate = resultado.validacao_board || {};
 
   const hashFonte = audV3HashFonte_(
     cliente,
