@@ -4843,6 +4843,36 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
     item.justificativa_nota = justificativa;
   };
 
+  const faltaImpactoFinanceiro = ausentes.some(function(item) {
+    const texto = audV3NormalizarTrechoRastreavel_(
+      String((item || {}).categoria || '') + ' ' +
+      String((item || {}).pergunta || '') + ' ' +
+      String((item || {}).base_pitch || '')
+    );
+    return /impacto financeiro|quanto dinheiro|empresa perde|perda financeira|custo financeiro/.test(texto);
+  });
+
+  if (faltaImpactoFinanceiro) {
+    const criterioImpacto = criterios.find(function(item) {
+      return String((item || {}).id || '') === 'exploracao_dor_impacto';
+    });
+    if (criterioImpacto && criterioImpacto.aplicavel !== false &&
+        String(criterioImpacto.status || '').toUpperCase() === 'CONFORME') {
+      aplicarStatus(
+        criterioImpacto,
+        'DESVIO_EXECUCAO',
+        2.5,
+        'A dor e o esforço operacional foram explorados, mas a própria auditoria registra que a pergunta de impacto financeiro prevista no pitch não foi realizada.'
+      );
+      criterioImpacto.divergencia = 'Faltou quantificar o impacto financeiro conforme a pergunta explícita do pitch.';
+      criterioImpacto.correcao_pratica = 'Após dimensionar tempo e esforço, pergunte quanto dinheiro a empresa perde ou estima perder com o problema, quando essa pergunta for aplicável ao contexto.';
+    }
+    resultado.analise_impacto_implicacao = resultado.analise_impacto_implicacao || {};
+    if (String(resultado.analise_impacto_implicacao.status || '').toUpperCase() === 'CONFORME') {
+      resultado.analise_impacto_implicacao.status = 'AMARELO';
+    }
+  }
+
   criterios.forEach(function(item) {
     if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
     const id = String(item.id || '');
@@ -4885,6 +4915,33 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
 
   const momentoPorId = {};
   momentos.forEach(function(item) { if (item) momentoPorId[String(item.id || '')] = item; });
+
+  const momento0 = momentoPorId.momento_0;
+  if (momento0 && momento0.gatilho_alcancado === false) {
+    const motivoMomento0 = audV3NormalizarTrechoRastreavel_(
+      String(momento0.divergencia || '') + ' ' + String(momento0.justificativa_nota || '')
+    );
+    if (/evidencia literal|rastreavel|nao comprovado|sem fonte/.test(motivoMomento0)) {
+      const linhaRapport = String(transcricao || '').split(/\n+/).find(function(linha) {
+        return /\bCLOSER(?:\s+\([^)]+\))?:/i.test(String(linha || '')) &&
+          /\b(?:agradec\w*[^.]{0,50}tempo|prazer[^.]{0,40}conhec|me apresentando|eu sou|voce ta falando de onde)\b/i.test(String(linha || ''));
+      });
+      if (linhaRapport) {
+        momento0.o_que_foi_dito = String(linhaRapport).trim();
+        momento0.locutor_evidencia = 'CLOSER';
+        momento0.gatilho_alcancado = true;
+        momento0.status = 'AMARELO';
+        momento0.cor = 'AMARELO';
+        momento0.nota = 2.5;
+        momento0.divergencia_identificada = true;
+        momento0.divergencia = 'Há rapport e abertura rastreáveis, mas a agenda/dinâmica completa prevista no pitch não ficou comprovada na abertura.';
+        momento0.justificativa_nota = 'A abertura e o rapport foram comprovados por fala do Closer; a execução permanece parcial por falta de evidência completa da agenda/dinâmica do pitch.';
+        momento0.pontos_fortes = ['Abertura cordial e conexão inicial comprovadas na transcrição.'];
+        momento0.pontos_melhorar = ['Explicar de forma explícita a dinâmica/agenda da reunião antes de avançar para o diagnóstico.'];
+        momento0.o_que_fazer = 'Após o rapport, explique como a conversa será conduzida: confirmar o contexto, entender a necessidade e então apresentar a solução.';
+      }
+    }
+  }
   const recuperarMomento = function(id, status, nota, justificativa) {
     const item = momentoPorId[id];
     if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
