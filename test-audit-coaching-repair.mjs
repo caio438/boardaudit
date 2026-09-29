@@ -294,7 +294,10 @@ const existing = {
   RESULTADO_JSON: JSON.stringify(resultadoSuzana), ENGINE_VERSAO: '6.0.1'
 };
 let released = 0;
-context.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => released++ }) };
+context.LockService = {
+  getScriptLock: () => ({ tryLock: () => true, releaseLock: () => released++ }),
+  getUserLock: () => ({ tryLock: () => true, releaseLock: () => released++ })
+};
 context.audV3Localizar_ = table => table === 'AUDITORIAS' ? existing : { ID_INTERACAO: suzanaInteraction };
 let fontesPreparadasReparo = 0;
 context.audV3PrepararTranscricaoParaIntegridade_ = (transcricaoAtual, interacaoAtual, engineVersao) => {
@@ -325,7 +328,7 @@ assert.equal(existing.SCORE, 2.5);
 assert.equal(requests, 1);
 context.repararCoachingAuditoriaV3(existing.ID_AUDITORIA);
 assert.equal(requests, 1, 'Reabrir o caso existente não pode consumir outra tentativa.');
-assert.equal(released, 2);
+assert.equal(released, 1, 'O lock dedicado deve envolver apenas a persistência que realmente altera a auditoria.');
 context.audV3HashFonte_ = () => 'changed';
 assert.throws(() => context.repararCoachingAuditoriaV3(existing.ID_AUDITORIA), /fonte mudou/);
 assert.equal(requests, 1, 'Mudança de fonte impede o reparo.');
