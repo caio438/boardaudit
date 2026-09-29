@@ -506,7 +506,28 @@
     .meeting-outcome-btn.remarcada { background:#fffaeb; color:#b54708; }
     .meeting-outcome-btn.cancelada { background:#f2f4f7; color:#475467; }
     .meeting-outcome-btn.nao-identificada { background:#eff8ff; color:#175cd3; }
+    .meeting-outcome-btn.sem-transcricao { background:#fff7ed; color:#c2410c; }
     .meeting-outcome-btn.is-active { box-shadow: inset 0 0 0 2px currentColor; }
+
+    .formal-queue-toolbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin:0 0 14px;
+      padding:12px 14px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:var(--surface-2);
+    }
+    .formal-queue-summary { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+    .formal-queue-summary strong { font-size:20px; }
+    .formal-quick-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .formal-history-card.queue-current {
+      outline:2px solid rgba(22,128,58,.35);
+      box-shadow:0 10px 28px rgba(16,24,40,.12);
+    }
     .meeting-outcome-btn:disabled { opacity:.55; cursor:wait; }
 
     .status.info { background:#eff8ff; color:#175cd3; }
@@ -1723,14 +1744,18 @@
         <div id="formalEditor" style="display:none;margin-top:18px"></div>
 
         <div class="card" style="margin-top:18px">
-          <div class="section-title"><div><h3>Histórico de formalizações</h3><p>Rascunhos, reuniões aprovadas e conferência de publicação no Circle.</p></div></div>
+          <div class="section-title"><div><h3>Fila de formalizações</h3><p>Revisão, aprovação e classificação rápida sem precisar abrir item por item.</p></div></div>
+          <div class="formal-queue-toolbar">
+            <div id="formalFilaResumo" class="formal-queue-summary"><strong>0</strong><span class="muted">em revisão</span></div>
+            <button id="btnIniciarFilaFormalizacoes" class="btn success" type="button" onclick="iniciarFilaRevisaoFormalizacoes_()">Iniciar fila de revisão</button>
+          </div>
           <div class="toolbar">
             <div class="filters">
               <input id="formalHistoricoMes" type="month" aria-label="Filtrar formalizações por mês" onchange="renderizarHistoricoFormalizacoes()">
               <select id="formalHistoricoStatus" aria-label="Filtrar formalizações por situação" onchange="renderizarHistoricoFormalizacoes()">
                 <option value="">Todas as situações</option>
                 <option value="APROVADA">Aprovadas</option>
-                <option value="EM_REVISAO">Em revisão</option>
+                <option value="EM_REVISAO" selected>Em revisão</option>
                 <option value="ERRO">Com erro</option>
               </select>
               <select id="formalHistoricoResultado" aria-label="Filtrar por resultado da reunião" onchange="renderizarHistoricoFormalizacoes()">
@@ -1739,6 +1764,7 @@
                 <option value="NO_SHOW">No-show</option>
                 <option value="REMARCADA">Remarcada</option>
                 <option value="CANCELADA">Cancelada</option>
+                <option value="SEM_TRANSCRICAO">Sem transcrição</option>
                 <option value="NAO_IDENTIFICADA">Não identificada</option>
               </select>
               <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoFormalizacoes_()">Mostrar todas as datas</button>
@@ -9337,7 +9363,7 @@
 
     function formalNormalizarResultadoFront_(valor) {
       const resultado = String(valor || '').trim().toUpperCase();
-      return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+      return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'].includes(resultado)
         ? resultado
         : 'NAO_IDENTIFICADA';
     }
@@ -9349,6 +9375,7 @@
         NO_SHOW: 'NO-SHOW',
         REMARCADA: 'REMARCADA',
         CANCELADA: 'CANCELADA',
+        SEM_TRANSCRICAO: 'SEM TRANSCRIÇÃO',
         NAO_IDENTIFICADA: 'NÃO IDENTIFICADA'
       }[resultado] || 'NÃO IDENTIFICADA';
     }
@@ -9358,6 +9385,7 @@
       if (resultado === 'REALIZADA') return 'success';
       if (resultado === 'NO_SHOW') return 'danger';
       if (resultado === 'REMARCADA') return 'warning';
+      if (resultado === 'SEM_TRANSCRICAO') return 'warning';
       if (resultado === 'NAO_IDENTIFICADA') return 'info';
       return '';
     }
@@ -9384,6 +9412,7 @@
         ['NO_SHOW', 'No-show', 'no-show'],
         ['REMARCADA', 'Remarcada', 'remarcada'],
         ['CANCELADA', 'Cancelada', 'cancelada'],
+        ['SEM_TRANSCRICAO', 'Sem transcrição', 'sem-transcricao'],
         ['NAO_IDENTIFICADA', 'Não identificada', 'nao-identificada']
       ];
       const botoes = opcoes.map(item =>
@@ -9393,6 +9422,21 @@
       ).join('');
       return '<details class="meeting-classifier"><summary class="btn secondary">Classificar reunião</summary>' +
         '<div class="meeting-outcome-panel">' + botoes + '</div></details>';
+    }
+
+    function formalClassificadorRapidoHtml_(idReuniao, resultadoAtual) {
+      if (!idReuniao) return '';
+      const atual = formalNormalizarResultadoFront_(resultadoAtual);
+      const opcoes = [
+        ['REALIZADA', 'Realizada', 'realizada'],
+        ['NO_SHOW', 'No-show', 'no-show'],
+        ['SEM_TRANSCRICAO', 'Sem transcrição', 'sem-transcricao']
+      ];
+      return '<div class="formal-quick-actions" aria-label="Classificação rápida da reunião">' + opcoes.map(item =>
+        '<button class="meeting-outcome-btn ' + item[2] + (atual === item[0] ? ' is-active' : '') +
+        '" type="button" onclick="salvarResultadoReuniaoFront(\'' + escapeAtributo(idReuniao) + '\',\'' + item[0] + '\',this)">' +
+        escapeHtml(item[1]) + '</button>'
+      ).join('') + '</div>';
     }
 
     function formalReuniaoAssociadaFront_(formalizacao) {
@@ -9405,7 +9449,12 @@
 
     function salvarResultadoReuniaoFront(idReuniao, resultadoReuniao, botao) {
       if (!idReuniao) return mostrarToast('Reunião não localizada para classificação.', 'error');
-      const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel') : null;
+      const formalizacaoFila = (estado.formalizacoes || []).find(item => {
+        const reuniao = formalReuniaoAssociadaFront_(item);
+        return reuniao && String(reuniao.idReuniao || '') === String(idReuniao || '');
+      });
+      const idFormalizacaoFila = formalizacaoFila ? formalizacaoFila.idFormalizacao : '';
+      const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel, .formal-quick-actions') : null;
       if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = true; });
       google.script.run
         .withSuccessHandler(resposta => {
@@ -9419,6 +9468,7 @@
           renderizarHistoricoFormalizacoes();
           if (estado.formalizacaoAtual) renderizarEditorFormalizacao(estado.formalizacaoAtual);
           salvarCacheFormalizacoesFront_();
+          formalAvancarFilaRevisao_(idFormalizacaoFila);
           mostrarToast(resposta.mensagem || 'Resultado da reunião atualizado.', 'success');
         })
         .withFailureHandler(erro => {
@@ -9870,12 +9920,50 @@
       renderizarHistoricoFormalizacoes();
     }
 
+    function atualizarResumoFilaFormalizacoes_() {
+      const alvo = document.getElementById('formalFilaResumo');
+      if (!alvo) return;
+      const itens = estado.formalizacoes || [];
+      const revisao = itens.filter(item => String(item.status || '').toUpperCase() === 'EM_REVISAO').length;
+      const aprovadas = itens.filter(item => String(item.status || '').toUpperCase() === 'APROVADA').length;
+      alvo.innerHTML = '<strong>' + revisao + '</strong><span class="muted">em revisão</span><span class="status success">' + aprovadas + ' aprovadas</span>';
+    }
+
+    function iniciarFilaRevisaoFormalizacoes_() {
+      const mes = document.getElementById('formalHistoricoMes');
+      const status = document.getElementById('formalHistoricoStatus');
+      const resultado = document.getElementById('formalHistoricoResultado');
+      if (mes) mes.value = '';
+      if (status) status.value = 'EM_REVISAO';
+      if (resultado) resultado.value = '';
+      renderizarHistoricoFormalizacoes();
+      formalAvancarFilaRevisao_('');
+    }
+
+    function formalAvancarFilaRevisao_(idAtual) {
+      requestAnimationFrame(() => {
+        const cards = Array.from(document.querySelectorAll('#listaFormalizacoes .formal-history-card[data-formalizacao-status="EM_REVISAO"]'));
+        if (!cards.length) return;
+        const atual = String(idAtual || '');
+        const indiceAtual = cards.findIndex(card => String(card.dataset.formalizacaoId || '') === atual);
+        const alvo = indiceAtual >= 0
+          ? (cards[indiceAtual + 1] || cards.find(card => String(card.dataset.formalizacaoId || '') !== atual))
+          : cards[0];
+        if (!alvo) return;
+        alvo.classList.add('queue-current');
+        alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.setTimeout(() => alvo.classList.remove('queue-current'), 1600);
+      });
+    }
+
     function renderizarHistoricoFormalizacoes() {
       const alvo = document.getElementById('listaFormalizacoes');
       if (!alvo) return;
+      atualizarResumoFilaFormalizacoes_();
       const mes = String((document.getElementById('formalHistoricoMes') || {}).value || '');
       const statusFiltro = String((document.getElementById('formalHistoricoStatus') || {}).value || '').toUpperCase();
       const resultadoFiltro = String((document.getElementById('formalHistoricoResultado') || {}).value || '').toUpperCase();
+      const prioridadeStatus = { EM_REVISAO: 0, RASCUNHO: 1, ERRO: 2, PROCESSANDO: 3, APROVADA: 4 };
       const formalizacoes = (estado.formalizacoes || []).filter(item => {
         const chave = chaveDataHistorico_(item.dataReuniao || item.atualizadoEm || item.solicitadoEm);
         const reuniao = formalReuniaoAssociadaFront_(item);
@@ -9883,35 +9971,44 @@
         return (!mes || chave.slice(0, 7) === mes)
           && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro)
           && (!resultadoFiltro || resultado === resultadoFiltro);
+      }).slice().sort((a, b) => {
+        const sa = String(a.status || '').toUpperCase();
+        const sb = String(b.status || '').toUpperCase();
+        const pa = Object.prototype.hasOwnProperty.call(prioridadeStatus, sa) ? prioridadeStatus[sa] : 9;
+        const pb = Object.prototype.hasOwnProperty.call(prioridadeStatus, sb) ? prioridadeStatus[sb] : 9;
+        if (pa !== pb) return pa - pb;
+        return String(b.dataReuniao || b.atualizadoEm || b.solicitadoEm || '').localeCompare(String(a.dataReuniao || a.atualizadoEm || a.solicitadoEm || ''));
       });
       if (!formalizacoes.length) {
-        alvo.innerHTML = `<div class="empty">${(estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.'}</div>`;
+        alvo.innerHTML = '<div class="empty">' + ((estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.') + '</div>';
         salvarCacheFormalizacoesFront_();
         return;
       }
       alvo.innerHTML = historicoAgrupadoPorData_(formalizacoes, item => item.dataReuniao || item.atualizadoEm || item.solicitadoEm, item => {
-        const classe = item.status === 'APROVADA' ? 'success' : item.status === 'ERRO' ? 'danger' : 'warning';
-        const podeDescartar = ['EM_REVISAO', 'RASCUNHO', 'ERRO', 'PROCESSANDO'].includes(String(item.status || '').toUpperCase());
+        const statusAtual = String(item.status || '').toUpperCase();
+        const classe = statusAtual === 'APROVADA' ? 'success' : statusAtual === 'ERRO' ? 'danger' : 'warning';
+        const podeDescartar = ['EM_REVISAO', 'RASCUNHO', 'ERRO', 'PROCESSANDO'].includes(statusAtual);
         const circlePublicado = Boolean(item.circlePostUrl) || String(item.circleStatus || '').toUpperCase() === 'PUBLICADA';
         const classeCircle = circlePublicado ? 'success' : 'warning';
         const textoCircle = circlePublicado ? 'Circle: publicado' : 'Circle: não publicado';
         const indicadorCircle = item.circlePostUrl
-          ? `<a class="status ${classeCircle}" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener" title="Abrir post no Circle">${escapeHtml(textoCircle)}</a>`
-          : `<span class="status ${classeCircle}">${escapeHtml(textoCircle)}</span>`;
+          ? '<a class="status ' + classeCircle + '" href="' + escapeAtributo(item.circlePostUrl) + '" target="_blank" rel="noopener" title="Abrir post no Circle">' + escapeHtml(textoCircle) + '</a>'
+          : '<span class="status ' + classeCircle + '">' + escapeHtml(textoCircle) + '</span>';
         const comunidadePublicada = Boolean(item.comunidadePostUrl) || String(item.comunidadeStatus || '').toUpperCase() === 'PUBLICADA';
         const comunidadeComErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
         const classeComunidade = comunidadePublicada ? 'success' : comunidadeComErro ? 'danger' : 'warning';
         const textoComunidade = comunidadePublicada ? 'Comunidade: publicada' : comunidadeComErro ? 'Comunidade: erro' : 'Comunidade: não publicada';
         const indicadorComunidade = item.comunidadePostUrl
-          ? `<a class="status ${classeComunidade}" href="${escapeAtributo(item.comunidadePostUrl)}" target="_blank" rel="noopener" title="Abrir publicação na Comunidade">${escapeHtml(textoComunidade)}</a>`
-          : `<span class="status ${classeComunidade}">${escapeHtml(textoComunidade)}</span>`;
+          ? '<a class="status ' + classeComunidade + '" href="' + escapeAtributo(item.comunidadePostUrl) + '" target="_blank" rel="noopener" title="Abrir publicação na Comunidade">' + escapeHtml(textoComunidade) + '</a>'
+          : '<span class="status ' + classeComunidade + '">' + escapeHtml(textoComunidade) + '</span>';
         const avisoPreAprovada = item.preAprovada
-          ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
+          ? '<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ' + escapeHtml(item.proximoPasso || 'Formalizar no Circle') + '.</div></div>'
           : '';
-        const podeAprovar = item.status !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
+        const podeAprovar = statusAtual !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
         const reuniaoAssociada = formalReuniaoAssociadaFront_(item);
         const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
-        return `<div class="formal-history-card"><div class="section-title"><div><strong>${escapeHtml(formalTituloLimpo_(item.titulo || 'Formalização'))}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<details class="formal-card-details"><summary>Detalhes e publicação</summary><div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div></details><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Revisar</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar agora</button>` : ''}${reuniaoAssociada ? formalClassificadorReuniaoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const id = escapeAtributo(item.idFormalizacao);
+        return '<div class="formal-history-card" data-formalizacao-id="' + id + '" data-formalizacao-status="' + escapeAtributo(statusAtual) + '"><div class="section-title"><div><strong>' + escapeHtml(formalTituloLimpo_(item.titulo || 'Formalização')) + '</strong><div class="small muted">' + escapeHtml(formatarDataDia(item.dataReuniao)) + '</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ' + classe + '">' + escapeHtml(item.status || '') + '</span>' + formalBadgeResultadoReuniao_(resultadoReuniao) + indicadorCircle + indicadorComunidade + '</div></div>' + avisoPreAprovada + (item.erro ? '<div class="status danger">' + escapeHtml(item.erro) + '</div>' : '') + (item.comunidadeErro ? '<div class="status danger">' + escapeHtml(item.comunidadeErro) + '</div>' : '') + '<div class="actions">' + (reuniaoAssociada ? formalClassificadorRapidoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : '') + (podeAprovar ? '<button id="btnAprovarHistorico_' + id + '" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront(\'' + id + '\')">Aprovar agora</button>' : '') + (item.resultado && Object.keys(item.resultado).length ? '<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico(\'' + id + '\')">Revisar/editar</button>' : '') + (reuniaoAssociada ? formalClassificadorReuniaoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : '') + (podeDescartar ? '<button class="btn danger" type="button" onclick="descartarFormalizacaoFront(\'' + id + '\')">Descartar</button>' : '') + '</div><details class="formal-card-details"><summary>Detalhes e publicação</summary><div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_' + id + '">Link do post no Circle</label><input id="circleLink_' + id + '" type="url" value="' + escapeAtributo(item.circlePostUrl || '') + '" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_' + id + '" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront(\'' + id + '\')">' + (item.circlePostUrl ? 'Atualizar link' : 'Registrar link') + '</button></div></details></div>';
       });
       salvarCacheFormalizacoesFront_();
     }
@@ -9934,6 +10031,7 @@
             renderizarEditorFormalizacao(resposta.formalizacao);
           }
           renderizarHistoricoFormalizacoes();
+          formalAvancarFilaRevisao_(idFormalizacao);
           mostrarToast(resposta.mensagem || 'Formalização aprovada.', 'success');
         })
         .withFailureHandler(erro => {
