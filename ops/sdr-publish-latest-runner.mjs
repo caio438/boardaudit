@@ -46,7 +46,7 @@ for (const item of selected) {
   const id = String(item.idInteracao || '');
   if (!id) continue;
   try {
-    const result = await call({ ops_sdr_publish_one: 1, interaction: id }, 420000);
+    const result = await call({ ops_sdr_publish_one: 1, single: 1, interaction: id }, 420000);
     results.push(result);
   } catch (error) {
     results.push({
