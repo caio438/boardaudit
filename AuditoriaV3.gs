@@ -7767,6 +7767,78 @@ function obterStatusAutomacaoLigacoesV3() {
   };
 }
 
+
+function OBSERVAR_AUTOMACAO_SDR_V3() {
+  const config = audV3ConfigAutomacaoLigacoes_();
+  const status = obterStatusAutomacaoLigacoesV3();
+  const fila = audV3FilaAutomacaoLigacoes_(config);
+  const clientes = {};
+  audV3Ler_('CLIENTES').forEach(function(item) {
+    if (item.ID_CLIENTE) clientes[String(item.ID_CLIENTE)] = String(item.NOME_CLIENTE || item.ID_CLIENTE);
+  });
+  const estadoErros = audV3EstadoErrosAutomacaoLigacoes_();
+  const porCliente = {};
+  const backlog = fila.slice(0, 100).map(function(item) {
+    const interacao = item.interacao || {};
+    const idCliente = String(interacao.ID_CLIENTE || '');
+    const idInteracao = String(interacao.ID_INTERACAO || '');
+    const erro = estadoErros[idInteracao] || {};
+    if (!porCliente[idCliente]) {
+      porCliente[idCliente] = {
+        idCliente: idCliente,
+        cliente: clientes[idCliente] || idCliente || 'Sem cliente',
+        elegiveis: 0,
+        transcritas: 0,
+        aguardandoTranscricao: 0,
+        comErro: 0
+      };
+    }
+    porCliente[idCliente].elegiveis += 1;
+    if (item.transcrita) porCliente[idCliente].transcritas += 1;
+    else porCliente[idCliente].aguardandoTranscricao += 1;
+    if (String(interacao.STATUS_AUDITORIA || '').toUpperCase() === 'ERRO_AUTOMACAO' || Number(erro.tentativas || 0) > 0) {
+      porCliente[idCliente].comErro += 1;
+    }
+    return {
+      idInteracao: idInteracao,
+      idCliente: idCliente,
+      cliente: clientes[idCliente] || idCliente || 'Sem cliente',
+      responsavel: String(interacao.COLABORADOR || interacao.VENDEDOR || ''),
+      lead: String(interacao.LEAD || ''),
+      dataInteracao: audV3DataIso_(interacao.DATA_INTERACAO),
+      duracaoSegundos: Number(interacao.DURACAO_SEGUNDOS || 0),
+      transcrita: Boolean(item.transcrita),
+      statusAuditoria: String(interacao.STATUS_AUDITORIA || ''),
+      tentativasErro: Number(erro.tentativas || 0),
+      proximaTentativaEm: erro.proximaTentativaEm ? new Date(Number(erro.proximaTentativaEm)).toISOString() : '',
+      erro: String(erro.erro || '').slice(0, 300)
+    };
+  });
+  const errosBacklog = backlog.filter(function(item) {
+    return item.tentativasErro > 0 || String(item.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO';
+  });
+  return {
+    sucesso: true,
+    geradoEm: new Date().toISOString(),
+    status: status,
+    resumo: {
+      elegiveis: Number(status.elegiveis || 0),
+      aguardandoTranscricao: Number(status.aguardandoTranscricao || 0),
+      transcritasAguardandoAuditoria: Number(status.transcritasAguardandoAuditoria || 0),
+      processadasHoje: Number(status.processadasHoje || 0),
+      saldoHoje: Number(status.saldoHoje || 0),
+      errosNoBacklog: errosBacklog.length,
+      clientesSemPitchAtual: (status.clientesSemPitchAtual || []).length,
+      gatilhosInstalados: Number(status.gatilhosInstalados || 0)
+    },
+    porCliente: Object.keys(porCliente).map(function(id) { return porCliente[id]; })
+      .sort(function(a, b) { return b.elegiveis - a.elegiveis || a.cliente.localeCompare(b.cliente); }),
+    backlog: backlog,
+    erros: errosBacklog,
+    clientesSemPitchAtual: status.clientesSemPitchAtual || []
+  };
+}
+
 function instalarGatilhosAutomacaoLigacoesV3_() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === AUTOMACAO_LIGACOES_V3.handler) ScriptApp.deleteTrigger(trigger);
