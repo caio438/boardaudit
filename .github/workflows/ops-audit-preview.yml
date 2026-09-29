@@ -1,0 +1,161 @@
+name: Ops preview audit after deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  preview:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve requested transcript
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          prefix="Ops audit preview: "
+          if [[ "$subject" == "$prefix"* ]]; then
+            target="${subject#"$prefix"}"
+            target="$(printf '%s' "$target" | sed -E 's/ \(#[0-9]+\)$//')"
+            test -n "$target"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "transcript=$target" >> "$GITHUB_OUTPUT"
+            echo "OPS_PREVIEW_TARGET=$target"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "OPS_PREVIEW_SKIP=commit_not_operational"
+          fi
+
+      - name: Setup Node.js
+        if: steps.target.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.target.outputs.run == 'true'
+        run: npm ci
+
+      - name: Configure clasp authentication
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Refresh Google OAuth token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp versions > /tmp/clasp-versions.txt
+
+      - name: Extract Google access token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Generate audit preview without publishing
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        env:
+          TARGET: ${{ steps.target.outputs.transcript }}
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          encoded="$(node -e "process.stdout.write(encodeURIComponent(process.env.TARGET))")"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_audit_preview=1&transcript=$encoded"
+
+          code="$(curl -sS --max-time 420 --location-trusted \
+            --oauth2-bearer "$TOKEN" \
+            -o /tmp/ops-audit-preview-result.txt \
+            -w '%{http_code}' \
+            "$URL" || true)"
+          echo "OPS_PREVIEW_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/ops-audit-preview-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Web app autenticado retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Web app retornou HTML em vez de JSON.');
+          }
+          const first = raw.indexOf('{');
+          const last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta do preview nao contem JSON.');
+          const result = JSON.parse(raw.slice(first, last + 1));
+          fs.writeFileSync('/tmp/ops-audit-preview-summary.json', JSON.stringify(result, null, 2));
+          if (result.sucesso !== true) {
+            console.log('OPS_AUDIT_PREVIEW_FAILED=1');
+            console.log('OPS_AUDIT_PREVIEW_ERROR=' + String(result.erro || 'sem erro informado'));
+            console.log('OPS_QUALIDADE_TRANSCRICAO=' + JSON.stringify(result.qualidadeTranscricao || {}));
+            throw new Error('Runner de preview nao retornou sucesso=true.');
+          }
+          if (String(result.modo || '') !== 'PREVIEW_SEM_PUBLICACAO') throw new Error('Runner nao confirmou modo seguro de preview.');
+          if (result.rdPublicada !== false || result.aprovada !== false) throw new Error('Preview tentou aprovar ou publicar auditoria.');
+          if (!String(result.idAuditoria || '').trim()) throw new Error('ID da auditoria ausente.');
+          if (!String(result.rdPreview || '').trim()) throw new Error('Texto de preview do RD ausente.');
+          console.log('OPS_AUDIT_PREVIEW_OK=1');
+          console.log('OPS_AUDIT_ID=' + result.idAuditoria);
+          console.log('OPS_ENGINE=' + result.engineVersao);
+          console.log('OPS_STATUS=' + result.status);
+          console.log('OPS_VALIDACAO=' + result.validacaoStatus);
+          console.log('OPS_GATE=' + result.gateStatus);
+          console.log('OPS_GATE_PUBLICAVEL=' + result.gatePublicavel);
+          console.log('OPS_SCORE=' + result.score);
+          console.log('OPS_SCORE_PERCENTUAL=' + result.scorePercentual);
+          console.log('OPS_RD_PREVIEW_BEGIN');
+          console.log(result.rdPreview);
+          console.log('OPS_RD_PREVIEW_END');
+          NODE
+
+      - name: Save preview evidence
+        if: always() && steps.target.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-audit-preview-${{ github.run_id }}
+          path: |
+            /tmp/ops-audit-preview-summary.json
+            /tmp/ops-audit-preview-result.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always() && steps.target.outputs.run == 'true'
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt

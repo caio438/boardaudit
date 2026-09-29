@@ -1,0 +1,189 @@
+name: Ops finalize client group repair
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finalize-client-group-repair:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve operational request
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          prefix="Ops finalize client groups repair:"
+          if [[ "$subject" == "$prefix"* ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "OPS_FINAL_REPAIR_REQUESTED=1"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "OPS_FINAL_REPAIR_SKIPPED=commit_not_operational"
+          fi
+
+      - name: Setup Node.js
+        if: steps.target.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.target.outputs.run == 'true'
+        run: npm ci
+
+      - name: Configure clasp authentication
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions-final-repair.txt
+
+      - name: Extract Google access token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token_final_repair', token, {mode: 0o600});
+          NODE
+
+      - name: Repair meetings
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          URL="$BASE?ops_repair_client_groups_partial=1&target=REUNIOES&confirm=CONFIRMAR_REPARO_GRUPOS_CLIENTES_PARCIAL"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-reunioes.json -w '%{http_code}' "$URL" || true)"
+          echo "REPARO_REUNIOES_HTTP=$code"
+          test "$code" = "200"
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/final-repair-reunioes.json','utf8'));if(r.sucesso!==true||r.concluida!==true||r.depois!==0)throw new Error('Reuniões não zeraram');console.log('REUNIOES_APLICADAS='+Number(r.aplicados||0));console.log('REUNIOES_BACKUP='+(r.backup&&r.backup.nome||''));"
+
+      - name: Repair interactions
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          URL="$BASE?ops_repair_client_groups_partial=1&target=INTERACOES&confirm=CONFIRMAR_REPARO_GRUPOS_CLIENTES_PARCIAL"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-interacoes.json -w '%{http_code}' "$URL" || true)"
+          echo "REPARO_INTERACOES_HTTP=$code"
+          test "$code" = "200"
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/final-repair-interacoes.json','utf8'));if(r.sucesso!==true||r.concluida!==true||r.depois!==0)throw new Error('Interações não zeraram');console.log('INTERACOES_APLICADAS='+Number(r.aplicados||0));console.log('INTERACOES_BACKUP='+(r.backup&&r.backup.nome||''));"
+
+      - name: Repair formalizations and tasks
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          URL="$BASE?ops_repair_client_groups_partial=1&target=FORMALIZACOES&confirm=CONFIRMAR_REPARO_GRUPOS_CLIENTES_PARCIAL"
+          code="$(curl -sS --max-time 360 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-formalizacoes.json -w '%{http_code}' "$URL" || true)"
+          echo "REPARO_FORMALIZACOES_HTTP=$code"
+          test "$code" = "200"
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/final-repair-formalizacoes.json','utf8'));if(r.sucesso!==true||r.concluida!==true||r.depois!==0)throw new Error('Formalizações não zeraram');console.log('FORMALIZACOES_APLICADAS='+Number(r.aplicados||0));console.log('TAREFAS_ATUALIZADAS='+Number(r.tarefasAtualizadas||0));console.log('FORMALIZACOES_BACKUP='+(r.backup&&r.backup.nome||''));"
+
+      - name: Remove cross-group links
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          URL="$BASE?ops_repair_client_groups_stage3=1&confirm=CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA3"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-vinculos.json -w '%{http_code}' "$URL" || true)"
+          echo "REPARO_VINCULOS_HTTP=$code"
+          test "$code" = "200"
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/final-repair-vinculos.json','utf8'));if(r.sucesso!==true||r.concluida!==true)throw new Error('Vínculos não concluídos');console.log('VINCULOS_REMOVIDOS='+Number(r.aplicados&&r.aplicados.vinculosCruzados||0));console.log('VINCULOS_BACKUP='+(r.backup&&r.backup.nome||''));"
+
+      - name: Resync journey evidence
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-sync.json -w '%{http_code}' "$BASE?ops_sync_jornada=1" || true)"
+          echo "JORNADA_RESYNC_HTTP=$code"
+          test "$code" = "200"
+
+      - name: Final diagnostic
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_final_repair)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 360 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/final-repair-diagnostic.json -w '%{http_code}' "$BASE?ops_sync_client_groups=1" || true)"
+          echo "FINAL_DIAGNOSTIC_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs=require('fs');
+          const raw=fs.readFileSync('/tmp/final-repair-diagnostic.json','utf8').trim();
+          if(/<!doctype html|<html/i.test(raw.slice(0,500))) throw new Error('Diagnóstico final retornou HTML.');
+          const r=JSON.parse(raw);
+          const t=(r.diagnostico||{}).totais||{};
+          console.log('FINAL_REUNIOES='+Number(t.reunioes||0));
+          console.log('FINAL_INTERACOES='+Number(t.interacoes||0));
+          console.log('FINAL_FORMALIZACOES='+Number(t.formalizacoes||0));
+          console.log('FINAL_VINCULOS='+Number(t.vinculosCruzados||0));
+          if(Number(t.reunioes||0)||Number(t.interacoes||0)||Number(t.formalizacoes||0)||Number(t.vinculosCruzados||0)) {
+            throw new Error('Ainda restam conflitos no diagnóstico final.');
+          }
+          console.log('CLIENT_GROUP_REPAIR_COMPLETE=1');
+          NODE
+
+      - name: Save final repair evidence
+        if: always() && steps.target.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-groups-final-repair-${{ github.run_id }}
+          path: |
+            /tmp/final-repair-reunioes.json
+            /tmp/final-repair-interacoes.json
+            /tmp/final-repair-formalizacoes.json
+            /tmp/final-repair-vinculos.json
+            /tmp/final-repair-sync.json
+            /tmp/final-repair-diagnostic.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Cleanup authentication
+        if: always() && steps.target.outputs.run == 'true'
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token_final_repair /tmp/clasp-versions-final-repair.txt

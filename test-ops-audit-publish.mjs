@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url), 'utf8');
+const previewWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url), 'utf8');
 const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
 
 assert.ok(ops.includes('function OPS_AUDITAR_PUBLICAR_TRANSCRICAO'), 'Runner operacional nao existe.');
@@ -15,8 +16,9 @@ assert.ok(ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interaca
 assert.ok(ops.includes('audV3ExigirGatePublicavel_'), 'Runner nao consulta a validacao de qualidade antes de publicar.');
 assert.ok(ops.includes('opsPreflightRd_'), 'Runner nao faz preflight do RD antes da aprovacao.');
 assert.ok(ops.includes('function opsValidarAuditoriaNoEngineAtual_'), 'Runner nao revalida auditoria antiga no engine atual.');
-assert.ok(ops.includes('audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {})'), 'Runner nao recalcula a fonte com a identidade atual da interacao.');
+assert.ok(ops.includes('audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)'), 'Runner nao recompõe a mesma fonte persistida usada no hash da auditoria.');
 assert.ok(ops.includes('const hashAtual = audV3HashFonte_('), 'Runner nao compara o hash atual antes do reparo seletivo.');
+assert.ok(ops.includes('NORMALIZACAO_VERSAO: fontePreparada.normalizacaoVersao'), 'Runner nao inclui a versao de normalizacao persistida ao revalidar o hash.');
 assert.ok(ops.includes('A fonte atual difere da auditoria existente; preserve o histórico e gere uma nova análise.'), 'Runner nao invalida auditoria antiga quando a fonte mudou.');
 assert.ok(ops.includes('forcarNovaAnalise = true'), 'Runner nao força nova análise quando a auditoria antiga viola travas atuais.');
 assert.ok(ops.includes('falhaCriterioLegada'), 'Runner nao distingue a falha legada de criterio verificavel.');
@@ -27,6 +29,61 @@ assert.ok(ops.includes('será preservada no histórico e uma nova análise será
 assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
 assert.ok(ops.includes('reprocessarAutomacaoAuditoriaV3'), 'Runner nao possui contingencia idempotente para RD.');
 assert.ok(!ops.includes('publicarPlanoCircle'), 'Runner de RD nao pode publicar automaticamente no Circle.');
+assert.ok(ops.includes('function opsCriarReparoDeterministico_'), 'Preview nao possui fallback deterministico para indisponibilidade de modelo.');
+assert.ok(ops.includes('function opsUltimaFalhaModeloInteracao_'), 'Preview nao reconhece falha recente de modelo para evitar nova rodada inútil de IA.');
+assert.ok(ops.includes('falhaModeloRecente && anteriorValidada'), 'Preview nao prefere reparo deterministico quando a mesma interacao ja falhou por modelo indisponivel.');
+assert.ok(ops.includes("codigoErro === 'MODELO_INDISPONIVEL'"), 'Preview nao aciona fallback apenas para indisponibilidade de modelo.');
+assert.ok(ops.includes("MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA'"), 'Auditoria reparada sem IA nao fica rastreavel.');
+assert.ok(ops.includes('function opsPrepararTranscricaoPersistidaValidadaParaReparo_'), 'Reparo deterministico precisa reutilizar gate persistido validado.');
+assert.ok(ops.includes("versaoLinha === '2.4' && versaoGate === '2.4'"), 'Reparo deterministico precisa exigir normalizacao 2.4 persistida.');
+assert.ok(ops.includes("assinaturaGate === String(assinaturaAtual || '')"), 'Reparo deterministico precisa exigir assinatura identica.');
+assert.ok(ops.includes("['BOA', 'ATENCAO'].includes(statusGate) && qualidade.apta_para_auditoria === true"), 'Reparo deterministico precisa exigir qualidade BOA/ATENCAO e apta=true.');
+assert.ok(ops.includes('Object.keys(mapa).length > 0'), 'Reparo deterministico precisa exigir mapa de locutores persistido.');
+assert.ok(ops.includes("CONTEUDO_NORMALIZADO"), 'Reparo deterministico precisa reutilizar conteudo normalizado persistido.');
+assert.ok(ops.includes('const preparada = opsPrepararTranscricaoPersistidaValidadaParaReparo_(transcricao, interacao);'), 'Reparo deterministico ainda recalcula o gate em vez de reutiliza-lo.');
+const inicioReparoDet = ops.indexOf('function opsCriarReparoDeterministico_');
+const fimReparoDet = ops.indexOf('function opsValidarAuditoriaNoEngineAtual_', inicioReparoDet);
+const trechoReparoDet = ops.slice(inicioReparoDet, fimReparoDet);
+assert.ok(trechoReparoDet.includes('audV3ValidarQualidadeBoard_'), 'Reparo em revisão precisa calcular o gate sem abortar a inspeção.');
+assert.ok(!trechoReparoDet.includes('audV3ExigirGatePublicavel_'), 'Reparo em revisão não pode exigir gate publicável antes de ser salvo para inspeção.');
+assert.ok(trechoReparoDet.includes("'BLOQUEADA' : 'VALIDADA'"), 'Reparo bloqueado precisa ficar explicitamente marcado sem publicação.');
+assert.ok(ops.includes('function OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'Runner seguro de preview real nao existe.');
+const inicioPreview = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO');
+const fimPreview = ops.indexOf('function opsResolverAlvoAuditoria_', inicioPreview);
+assert.ok(inicioPreview >= 0 && fimPreview > inicioPreview, 'Runner de preview nao pode ser isolado.');
+const trechoPreview = ops.slice(inicioPreview, fimPreview);
+assert.ok(trechoPreview.includes('opsAuditoriaAtualInteracao_'), 'Preview precisa tentar reutilizar a auditoria atual antes de gerar outra.');
+assert.ok(trechoPreview.includes('opsValidarAuditoriaNoEngineAtual_'), 'Preview precisa revalidar a auditoria atual no engine antes de reutiliza-la.');
+assert.match(trechoPreview, /audV3NormalizarVersao_\(auditoria\.ENGINE_VERSAO\) === audV3NormalizarVersao_\(AUDITORIA_V3\.versao\)/, 'Preview não restringe reutilização à versão exata do engine atual.');
+assert.ok(trechoPreview.includes('evitarDuplicidade: false'), 'Preview precisa gerar nova analise apenas quando nao houver auditoria atual valida.');
+assert.ok(
+  trechoPreview.indexOf('falhaModeloRecente') >= 0 &&
+  trechoPreview.indexOf('falhaModeloRecente') < trechoPreview.indexOf('executarAuditoriaV3'),
+  'O reparo imediato precisa acontecer antes de uma nova chamada de IA quando ja existe falha recente de modelo.'
+);
+assert.ok(trechoPreview.includes('reutilizada: reutilizada'), 'Preview precisa informar quando reutilizou a auditoria atual.');
+assert.ok(trechoPreview.includes('audV3ExigirGatePublicavel_'), 'Preview precisa validar o gate publicavel.');
+assert.ok(trechoPreview.includes('audRdTexto_(contextoRd)'), 'Preview precisa gerar exatamente o formatter atual do RD.');
+assert.ok(trechoPreview.includes("modo: 'PREVIEW_SEM_PUBLICACAO'"), 'Preview nao identifica explicitamente o modo seguro.');
+assert.ok(trechoPreview.includes('rdPublicada: false'), 'Preview deve declarar que nao publicou no RD.');
+assert.ok(trechoPreview.includes('aprovada: false'), 'Preview deve declarar que nao aprovou a auditoria.');
+assert.ok(!trechoPreview.includes('aprovarAuditoriaV3('), 'Preview nao pode aprovar auditoria.');
+assert.ok(!trechoPreview.includes('enviarAuditoriaParaRd('), 'Preview nao pode publicar no RD.');
+assert.ok(!trechoPreview.includes('reprocessarAutomacaoAuditoriaV3('), 'Preview nao pode acionar automacao de publicacao.');
+
+assert.ok(code.includes("parametros.ops_audit_preview"), 'doGet nao expoe a rota autenticada de preview.');
+assert.ok(code.includes('OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'doGet nao chama o runner seguro de preview.');
+assert.ok(code.includes('resultadoPreviewOps'), 'Rota autenticada de preview nao encapsula o resultado em JSON.');
+assert.ok(code.includes("modo: 'PREVIEW_SEM_PUBLICACAO'"), 'Rota de preview nao devolve erro seguro em JSON.');
+assert.ok(code.includes('erroPreviewOps'), 'Rota de preview ainda pode esconder excecoes do runner em HTML.');
+
+assert.ok(previewWorkflow.includes('Deploy Apps Script automatically'), 'Preview operacional nao aguarda deploy concluido.');
+assert.ok(previewWorkflow.includes('environment: apps-script-production'), 'Preview operacional nao usa ambiente protegido.');
+assert.ok(previewWorkflow.includes("Ops audit preview: "), 'Preview exige commit operacional explicito.');
+assert.ok(previewWorkflow.includes('ops_audit_preview=1'), 'Workflow de preview nao chama a rota segura.');
+assert.ok(previewWorkflow.includes('OPS_RD_PREVIEW_BEGIN'), 'Workflow de preview nao expoe o texto final do RD para conferencia.');
+assert.ok(previewWorkflow.includes('result.rdPublicada !== false || result.aprovada !== false'), 'Workflow nao bloqueia qualquer aprovacao/publicacao acidental no preview.');
+
 
 assert.ok(code.includes("parametros.ops_audit_publish"), 'doGet nao expoe a rota operacional autenticada.');
 assert.ok(code.includes('Session.getActiveUser().getEmail()'), 'Rota operacional nao valida usuario ativo.');

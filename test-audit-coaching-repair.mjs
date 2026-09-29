@@ -276,10 +276,11 @@ alias.proximos_passos_por_equipe = { outros: clone(alias.proximos_passos) };
 alias.resumo_publicacao.proximos_passos_outros = ['Seguir rigorosamente o cardápio.'];
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'proximos_passos_por_equipe.outros.0.acao'));
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'resumo_publicacao.proximos_passos_outros.0'));
-const gateInformativo = context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER');
-assert.equal(gateInformativo.status, 'REVISAR');
-assert.equal(gateInformativo.statusOriginal, 'BLOQUEADO');
-assert.match(gateInformativo.alertas.join(' | '), /não impedem aprovação ou publicação/);
+assert.throws(
+  () => context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER'),
+  /inconsistências factuais bloqueantes/,
+  'Gate bloqueado precisa impedir aprovação/publicação.'
+);
 assert.doesNotThrow(() => context.audV3ExigirGatePublicavel_(success, 'CLOSER'));
 assert.ok(capturedPayload.contents[0].parts[0].text.includes('dados não confiáveis'));
 // Existing @261 record: repair in place; source integrity and one-attempt marker
@@ -295,16 +296,16 @@ const existing = {
 let released = 0;
 context.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => released++ }) };
 context.audV3Localizar_ = table => table === 'AUDITORIAS' ? existing : { ID_INTERACAO: suzanaInteraction };
-context.audV3ConteudoCompletoTranscricao_ = () => evidencia;
-let normalizacoesFonteReparo = 0;
-context.audV3NormalizarTranscricaoTexto_ = (conteudoOriginal, interacaoAtual) => {
-  assert.equal(conteudoOriginal, evidencia);
+let fontesPreparadasReparo = 0;
+context.audV3PrepararTranscricaoParaIntegridade_ = (transcricaoAtual, interacaoAtual, engineVersao) => {
   assert.equal(interacaoAtual.ID_INTERACAO, suzanaInteraction);
-  normalizacoesFonteReparo++;
-  return { texto: 'FONTE NORMALIZADA DO REPARO' };
+  assert.equal(engineVersao, existing.ENGINE_VERSAO);
+  fontesPreparadasReparo++;
+  return { conteudo: 'FONTE NORMALIZADA DO REPARO', normalizacaoVersao: '2.4' };
 };
 context.audV3HashFonte_ = (cliente, pitch, modelo, transcricaoHash) => {
   assert.equal(transcricaoHash.CONTEUDO, 'FONTE NORMALIZADA DO REPARO');
+  assert.equal(transcricaoHash.NORMALIZACAO_VERSAO, '2.4');
   return 'unchanged';
 };
 context.audV3ValidarResultadoOficial_ = () => true;
@@ -318,7 +319,7 @@ context.audV3Atualizar_ = (table, key, id, patch) => {
 context.audV3AuditoriaFront_ = value => value;
 context.audV3ListarAuditoriasFront_ = () => [existing];
 assert.equal(context.repararCoachingAuditoriaV3(existing.ID_AUDITORIA).sucesso, true);
-assert.equal(normalizacoesFonteReparo, 1, 'O reparo deve normalizar a fonte antes de recalcular o hash.');
+assert.equal(fontesPreparadasReparo, 1, 'O reparo deve usar a mesma fonte normalizada persistida antes de recalcular o hash.');
 assert.equal(existing.STATUS, 'EM_REVISAO');
 assert.equal(existing.SCORE, 2.5);
 assert.equal(requests, 1);

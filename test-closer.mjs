@@ -8,9 +8,166 @@ const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url)
 const Utilities = { formatDate: data => new Date(data).toISOString() };
 const context = { console, Date, JSON, Math, Number, String, Array, Object, Error, isFinite, Utilities };
 vm.createContext(context);
-vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,repairEvidence:audV3RepararEvidenciasRastreaveis_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_};', context);
+vm.runInContext(source + '\nthis.api={criteria:audV3CriteriosCloser_,normalize:audV3NormalizarResultado_,repairEvidence:audV3RepararEvidenciasRastreaveis_,validateOfficial:audV3ValidarResultadoOficial_,validateBoard:audV3ValidarQualidadeBoard_,promptOfficial:audV3PromptOficial_,schema:audV3SchemaResposta_,apiSchema:audV3SchemaRespostaApi_,documentText:audV3TextoDocumento_,normalizeTranscript:audV3NormalizarTranscricaoTexto_,transcriptQuality:audV3AvaliarQualidadeTranscricao_,reconcileContext:audV3ReconciliarContextoCloserComFonte_,applyCloserRules:audV3AplicarRegrasDeterministicasCloser_,reconcileChecklist:audV3ReconciliarChecklistCloser_,validateCloserFacts:audV3ValidarAfirmacoesFatuaisCloser_,requirePublishable:audV3ExigirGatePublicavel_};', context);
 
 const criterios = context.api.criteria();
+
+const interacaoIngee = {
+  ID_CLIENTE: 'CLI-20260806105306-25F3490A',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Luciana',
+  VENDEDOR: 'Luciana',
+  LEAD: 'Empiza Empilhadeiras'
+};
+const transcricaoIngeeFormatoDuploMaior = [
+  '0:00',
+  'Olá, boa tarde.',
+  '0:02',
+  '>> Oi, Evandro, boa tarde. Tudo bem?',
+  '0:04',
+  '>> Boa tarde. Tudo bem vocês?',
+  '0:58',
+  '>> Eh, e aí, antes de começar, queria entender',
+  '1:02',
+  'um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?',
+  '1:07',
+  '>> Não, não. A gente fez lá atrás 2013, 12, 13. Hoje a gente precisa organizar o inventário de todas as unidades e centralizar a coleta porque o processo manual consome muito tempo da equipe.',
+  '5:49',
+  '>> Sim, Evandro, boa tarde. Me apresentando aqui, eu sou a Jéssica, tava falando com você por mensagem.'
+].join('\n');
+
+const semMapa = context.api.normalizeTranscript(transcricaoIngeeFormatoDuploMaior, interacaoIngee, {});
+assert.equal(semMapa.turnos.length, 6, 'Timestamp + >> deve virar turnos reais, não duas linhas artificiais por fala.');
+assert.match(semMapa.turnos[3].fala, /Vocês já fazem os inventários\?/, 'Continuação sem >> precisa permanecer no mesmo turno.');
+assert.equal(semMapa.turnos[1].tipo, 'NAO_IDENTIFICADO', '>> não pode ser tratado sozinho como identidade de locutor.');
+assert.equal(semMapa.turnos[5].tipo, 'CLOSER', 'Autoapresentação explícita de Jéssica deve ancorar o lado Closer da INGEE.');
+
+const mapaIngee = { T0002: 'CLOSER', T0003: 'LEAD', T0004: 'CLOSER', T0005: 'LEAD' };
+const comMapa = context.api.normalizeTranscript(transcricaoIngeeFormatoDuploMaior, interacaoIngee, mapaIngee);
+assert.equal(comMapa.turnos[1].tipo, 'CLOSER');
+assert.equal(comMapa.turnos[2].tipo, 'LEAD');
+assert.equal(comMapa.turnos[3].tipo, 'CLOSER');
+assert.equal(comMapa.turnos[4].tipo, 'LEAD');
+assert.match(comMapa.texto, /\[0:58\] CLOSER \(Sinergia Engenharia\): Eh, e aí, antes de começar, queria entender um pouquinho\./, 'A normalização deve preservar a fala e apenas acrescentar autoria.');
+const qualidadeIngee = context.api.transcriptQuality(comMapa, transcricaoIngeeFormatoDuploMaior);
+assert.equal(qualidadeIngee.apta_para_auditoria, true, 'Transcrição com autoria reparada e cobertura suficiente deve passar o gate pré-auditoria.');
+assert.ok(qualidadeIngee.metricas.cobertura_identificada_pct > 80, 'Cobertura de autoria reparada ficou abaixo do mínimo esperado no caso de regressão.');
+
+const interacaoUnimed = {
+  ID_CLIENTE: 'CLI-20260806112340-E575DA0D',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Jessica',
+  VENDEDOR: 'Jessica',
+  LEAD: 'Unimed'
+};
+const transcricaoUnimedNomeada = [
+  '00:00:02',
+  'Jéssica Paulo: Boa tarde. Quero entender a necessidade de vocês e como está organizada hoje a gestão ambiental da operação.',
+  'João Frigeri: Boa tarde. Estamos estruturando o sistema de gestão ambiental e queremos deixar a organização preparada para a ISO 14001.',
+  'Maíra Aquino: Vocês já possuem metas formais de redução e como essa gestão está distribuída entre as áreas e unidades atualmente?',
+  'Caroline Basso: A gestão está pulverizada entre várias áreas e responsáveis, então buscamos centralização, padronização e clareza de responsabilidades.',
+  'Jéssica Paulo: Para o orçamento, precisamos entender unidades, metragem, funcionários e o CNPJ contratante antes de montar os cenários.',
+  'Caroline Basso: Podemos enviar essa relação e depois fazer a reunião de apresentação da proposta com os diferentes cenários.'
+].join('\n');
+const unimedNormalizada = context.api.normalizeTranscript(transcricaoUnimedNomeada, interacaoUnimed, {});
+assert.deepEqual(
+  Array.from(unimedNormalizada.turnos).map(turno => turno.tipo),
+  ['CLOSER','LEAD','CLOSER','LEAD','CLOSER','LEAD'],
+  'Transcrição nomeada da Unimed precisa separar automaticamente Sinergia/Closer de todos os participantes externos sem configurar um lead por vez.'
+);
+assert.equal(unimedNormalizada.turnos[0].fonte_locutor, 'NOME_METADADO');
+assert.equal(unimedNormalizada.turnos[2].fonte_locutor, 'EQUIPE_CLIENTE');
+assert.equal(unimedNormalizada.turnos[3].fonte_locutor, 'NOME_EXTERNO_EXPLICITO');
+const qualidadeUnimed = context.api.transcriptQuality(unimedNormalizada, transcricaoUnimedNomeada);
+assert.equal(qualidadeUnimed.apta_para_auditoria, true, 'Transcrição Closer com nomes explícitos deve passar o gate sem reparo por Gemini.');
+assert.equal(qualidadeUnimed.metricas.cobertura_identificada_pct, 100, 'Todos os turnos nomeados da Unimed devem ficar com autoria resolvida deterministicamente.');
+
+
+const contextoErradoIngee = {
+  contexto_interacao: {
+    classificacao: 'APRESENTACAO_PROPOSTA',
+    momento_jornada: 'PROPOSTA',
+    objetivo_principal: 'Apresentar proposta',
+    confianca: 'ALTA',
+    etapas_aplicaveis: ['Apresentação'],
+    etapas_ja_concluidas: ['Diagnóstico'],
+    etapas_nao_aplicaveis: [],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'conforme conversamos na última reunião',
+    necessita_revisao: false
+  }
+};
+context.api.reconcileContext(
+  contextoErradoIngee,
+  'CLOSER: E aí, Evandro, eu gosto de geralmente marcar uma segunda reunião, 10 minutinhos só para te apresentar a proposta.',
+  { historico: [] }
+);
+assert.equal(contextoErradoIngee.contexto_interacao.classificacao, 'PRIMEIRA_REUNIAO', 'Proposta futura não pode classificar a reunião atual como apresentação de proposta.');
+assert.equal(contextoErradoIngee.contexto_interacao.continuidade_confirmada, false, 'Continuidade inventada precisa ser removida quando não existe na fonte nem no histórico.');
+assert.equal(contextoErradoIngee.contexto_interacao.etapas_ja_concluidas.length, 0, 'Etapas anteriores não podem permanecer concluídas com continuidade não comprovada.');
+
+const contextoContinuidadeSentinela = {
+  contexto_interacao: {
+    classificacao: 'FOLLOW_UP_DIAGNOSTICO',
+    momento_jornada: 'REUNIAO_DIAGNOSTICO',
+    objetivo_principal: 'Diagnosticar e apresentar a solução',
+    confianca: 'ALTA',
+    etapas_aplicaveis: ['Contexto e Rapport', 'Diagnóstico', 'Apresentação da Solução', 'Fechamento'],
+    etapas_ja_concluidas: ['Diagnóstico'],
+    etapas_nao_aplicaveis: [],
+    continuidade_confirmada: true,
+    evidencia_continuidade: 'Não evidenciado na fala do profissional',
+    necessita_revisao: false
+  }
+};
+context.api.reconcileContext(
+  contextoContinuidadeSentinela,
+  '[0:58] CLOSER (Juliana e Jessica): Vamos entender o cenário atual. Mais adiante vamos marcar uma segunda reunião para apresentar a proposta.',
+  { historico: [] }
+);
+assert.equal(
+  contextoContinuidadeSentinela.contexto_interacao.continuidade_confirmada,
+  false,
+  'Sentinela "Não evidenciado" não pode comprovar continuidade comercial.'
+);
+assert.equal(
+  contextoContinuidadeSentinela.contexto_interacao.classificacao,
+  'PRIMEIRA_REUNIAO',
+  'Sem histórico nem evidência literal de continuidade, proposta futura deve manter a reunião como primeira reunião.'
+);
+
+
+const resultadoScoreIngee = {
+  contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
+  criterios_avaliados: criterios.dimensoes.map(item => ({
+    id: item.id, nome: item.nome, aplicavel: true, status: 'CONFORME', pontuacao: 5,
+    o_que_foi_dito: 'Evidência literal.', locutor_evidencia: 'CLOSER',
+    divergencia: 'Não houve divergência.', justificativa_nota: 'Conforme.', correcao_pratica: ''
+  })),
+  checklist: criterios.checklist.map(item => ({ item, resultado: 'ATENDIDO', observacao: 'Score 10 aplicado com sucesso.' })),
+  momentos: criterios.momentos.map(item => ({
+    id: item.id, nome: item.nome, status: 'VERDE', cor: 'VERDE', gatilho_alcancado: true,
+    o_que_foi_dito: 'Evidência literal.', locutor_evidencia: 'CLOSER',
+    justificativa_nota: 'Conforme.', divergencia: 'Não houve divergência.'
+  })),
+  resumo_executivo: { visao_geral: 'Score 10 aplicado com sucesso.' }
+};
+const pitchScore = 'Pergunta obrigatória: De zero a dez, o quanto a solução resolve seu problema? Se 10, podemos avançar.';
+const transcricaoSemScore = 'CLOSER: Conseguiu visualizar como vamos resolver o problema? LEAD: Sim, ficou claro. CLOSER: Vamos marcar uma segunda reunião para apresentar a proposta.';
+context.api.applyCloserRules(resultadoScoreIngee, criterios, transcricaoSemScore, pitchScore);
+const criterioScore = resultadoScoreIngee.criterios_avaliados.find(item => item.id === 'validacao_interesse');
+assert.equal(criterioScore.status, 'NAO_EXECUTADO', 'Score obrigatório ausente precisa virar desvio, não acerto ou N/A.');
+assert.equal(criterioScore.aplicavel, true, 'Score obrigatório em primeira reunião deve continuar aplicável.');
+assert.equal(resultadoScoreIngee.pontuacao_calculada.score_5, 4, 'A nota geral precisa ser recalculada depois que uma evidência determinística altera um critério.');
+context.api.reconcileChecklist(resultadoScoreIngee, criterios);
+const checklistScore = resultadoScoreIngee.checklist.find(item => /Validação do entendimento/i.test(item.item));
+assert.equal(checklistScore.resultado, 'NAO_ATENDIDO', 'Checklist deve ser derivado do critério validado e não repetir “Score 10” inventado.');
+assert.throws(
+  () => context.api.validateCloserFacts(resultadoScoreIngee, transcricaoSemScore, pitchScore),
+  /score de interesse foi aplicado/,
+  'Narrativa que afirma Score 10 sem evidência precisa bloquear a auditoria.'
+);
+
 const momentos = criterios.momentos.map((item, index) => ({
   id: item.id,
   nome: item.nome,
@@ -137,6 +294,133 @@ assert.equal(
   'O reparo deve reconciliar o nome real do profissional pelo turno literal da transcricao.'
 );
 
+const transcricaoIngeeNormalizadaRotulada = [
+  '[0:58] CLOSER (Juliana e Jessica): Eh, e aí, antes de começar, queria entender um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?',
+  '[1:07] LEAD (Evandro): Não, não. A gente fez lá atrás e agora precisa retomar o inventário.'
+].join('\n');
+const interacaoIngeeCorreta = {
+  ID_CLIENTE: 'CLI-20260806105306-25F3490A',
+  FUNCAO: 'CLOSER',
+  COLABORADOR: 'Juliana e Jessica',
+  VENDEDOR: 'Juliana e Jessica',
+  LEAD: 'Evandro'
+};
+const evidenciaCanonicaIngee = '[0:58] CLOSER (Juliana e Jessica): Eh, e aí, antes de começar, queria entender um pouquinho. Vocês já fazem os inventários? Da onde que veio essa demanda?';
+const respostaLinhaNormalizada = {
+  momentos: [{
+    id: 'momento_1',
+    nome: 'Momento 1 — Diagnóstico',
+    status: 'VERDE',
+    gatilho_alcancado: true,
+    o_que_foi_dito: evidenciaCanonicaIngee,
+    locutor_evidencia: 'CLOSER',
+    divergencia: 'Não houve divergência.',
+    justificativa_nota: 'Diagnóstico comprovado.'
+  }],
+  criterios_avaliados: [{
+    id: 'aderencia_diagnostico',
+    nome: 'Aderência ao Script de Diagnóstico',
+    aplicavel: true,
+    status: 'CONFORME',
+    o_que_foi_dito: evidenciaCanonicaIngee,
+    locutor_evidencia: 'CLOSER',
+    regra_pitch: 'Não previsto no pitch.',
+    divergencia: 'Não houve divergência.',
+    correcao_pratica: 'Manter.',
+    justificativa_nota: 'Evidência profissional rastreável.'
+  }],
+  checklist: []
+};
+context.api.repairEvidence(
+  respostaLinhaNormalizada,
+  'CLOSER',
+  criterios,
+  transcricaoIngeeNormalizadaRotulada,
+  'Comportamento obrigatório descrito no pitch.',
+  interacaoIngeeCorreta
+);
+assert.equal(
+  respostaLinhaNormalizada.criterios_avaliados[0].locutor_evidencia,
+  'CLOSER',
+  'Linha canônica da transcrição normalizada não pode perder a autoria CLOSER.'
+);
+assert.equal(
+  respostaLinhaNormalizada.criterios_avaliados[0].aplicavel,
+  true,
+  'Critério com linha canônica comprovadamente CLOSER deve continuar aplicável.'
+);
+assert.equal(
+  respostaLinhaNormalizada.momentos[0].status,
+  'VERDE',
+  'Momento comprovado por linha canônica CLOSER não pode ser rebaixado para vermelho.'
+);
+
+const resultadoAutoriaRecuperada = {
+  contexto_interacao: { classificacao: 'PRIMEIRA_REUNIAO' },
+  criterios_avaliados: [
+    {
+      id: 'aderencia_diagnostico', nome: 'Aderência ao Script de Diagnóstico', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários? Da onde que veio essa demanda?',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    },
+    {
+      id: 'exploracao_dor_impacto', nome: 'Exploração de Dor e Impacto Financeiro', aplicavel: true,
+      status: 'CONFORME', pontuacao: 5, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: 'CLOSER (Juliana e Jessica): Você já pensou no tempo que vai gastar para fazer esse inventário?',
+      divergencia: 'Não houve divergência.',
+      justificativa_nota: 'Exploração adequada da dor.'
+    },
+    {
+      id: 'validacao_interesse', nome: 'Validação do Interesse do Lead', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[53:29] CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    },
+    {
+      id: 'tratamento_objecoes', nome: 'Tratamento de Objeções e Fechamento', aplicavel: false,
+      status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: '[1:06:59] CLOSER (Juliana e Jessica): sexta-feira de manhã, dia 18, ou na segunda-feira à tarde, dia 21.',
+      divergencia: 'A autoria da evidência literal não pôde ser confirmada na transcrição.',
+      justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
+    }
+  ],
+  momentos: [
+    { id:'momento_0', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'NAO_IDENTIFICADO', o_que_foi_dito:'Não evidenciado na fala do profissional.', divergencia:'Não foi possível sustentar este momento com evidência literal rastreável.', justificativa_nota:'Momento mantido como não comprovado para evitar inferência sem fonte literal.', pontos_fortes:[], pontos_melhorar:['Revisar este momento com base em uma fala literal identificável da gravação.'] },
+    { id:'momento_1', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários?', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' },
+    { id:'momento_2', status:'AMARELO', cor:'AMARELO', nota:2.5, gatilho_alcancado:true, locutor_evidencia:'CLOSER', o_que_foi_dito:'CLOSER: apresentação', pontos_melhorar:['Aplicar rigorosamente a pergunta de score de zero a dez prevista no pitch'], divergencia:'Não houve divergência.', justificativa_nota:'Parcial.' },
+    { id:'momento_3', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[1:06:59] CLOSER (Juliana e Jessica): dia 18 ou dia 21 às 14:30', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' }
+  ],
+  perguntas_diagnostico: {
+    perguntas_realizadas: [{pergunta:'Q1'},{pergunta:'Q2'},{pergunta:'Q3'},{pergunta:'Q4'}],
+    perguntas_esperadas_nao_realizadas: [{categoria:'Impacto Financeiro', pergunta:'Chegaram a calcular quanto dinheiro a empresa perde quando esse problema ocorre?'}]
+  }
+};
+context.api.applyCloserRules(
+  resultadoAutoriaRecuperada,
+  criterios,
+  [
+    'CLOSER (Juliana e Jessica): Agradeço aí o tempo de vocês.',
+    'CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
+    'LEAD (Evandro): 10.',
+    'CLOSER (Juliana e Jessica): vamos marcar uma segunda reunião para dia 21 às 14:30.'
+  ].join('\n'),
+  'De zero a dez, o quanto a solução resolve seu problema?'
+);
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].aplicavel, true, 'Diagnóstico com autoria recuperada precisa voltar para a régua.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].status, 'DESVIO_EXECUCAO', 'Diagnóstico recuperado com lacunas deve voltar como desvio, não N/A.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'DESVIO_EXECUCAO', 'Impacto financeiro ausente no próprio inventário de perguntas não pode permanecer CONFORME/5.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[3].status, 'DESVIO_EXECUCAO', 'Próximo passo datado deve recolocar Fechamento na régua sem promover execução parcial a 5/5.');
+assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Rapport literal deve recuperar Momento 0 do falso vermelho sem promover execução parcial a verde.');
+assert.equal(resultadoAutoriaRecuperada.momentos[1].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
+assert.equal(resultadoAutoriaRecuperada.momentos[3].status, 'AMARELO', 'Fechamento com data e hora confirmadas deve sair do falso vermelho, mas permanecer conservador quando há outros gaps.');
+assert.equal(resultadoAutoriaRecuperada.semaforo_geral.cor, 'AMARELO', 'Semáforo geral precisa ser recalculado depois de recuperar falsos vermelhos por autoria.');
+
+
+
 const respostaFalaLead = {
   momentos: JSON.parse(JSON.stringify(momentos)),
   criterios_avaliados: JSON.parse(JSON.stringify(criteriosAvaliados)),
@@ -262,7 +546,7 @@ for (const modelo of ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-
 const ordemModelosTexto = [...poolModelosTexto.matchAll(/'([^']+)'/g)].map(match => match[1]);
 assert.deepEqual(
   ordemModelosTexto,
-  ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'],
+  ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'],
   'Ordem do fallback de texto está incorreta.'
 );
 if (trechoFormalizacao.includes("tipo === 'PLANO'")) {
@@ -287,6 +571,9 @@ const fimRdCloser = rdSource.indexOf('function audRdTextoSdr_', inicioRdCloser);
 const trechoRdCloser = rdSource.slice(inicioRdCloser, fimRdCloser);
 assert.ok(inicioRdCloser >= 0 && fimRdCloser > inicioRdCloser, 'Formatter Closer do RD não foi localizado.');
 assert.doesNotMatch(trechoRdCloser, /DESVIOS EM RELAÇÃO AO PITCH\/PROCESSO/, 'A seção antiga de desvios voltou ao texto do RD.');
+assert.match(trechoRdCloser, /LEITURA EXECUTIVA DOS MOMENTOS/, 'O RD precisa trazer a leitura detalhada dos momentos antes dos blocos auxiliares.');
+assert.match(trechoRdCloser, /O que faltou:/, 'A leitura executiva do RD precisa explicitar o gap real do momento.');
+assert.match(trechoRdCloser, /Ação concreta:/, 'A leitura executiva do RD precisa trazer a ação concreta do momento.');
 assert.match(trechoRdCloser, /PERGUNTAS REALIZADAS PELO CLOSER/, 'O RD precisa listar as perguntas realizadas pelo Closer.');
 assert.match(trechoRdCloser, /PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS/, 'O RD precisa listar perguntas obrigatórias ausentes.');
 assert.match(trechoRdCloser, /IMPLICAÇÃO E NECESSIDADE — O QUE DEVERIA TER SIDO EXPLORADO/, 'O RD precisa explicitar implicações e necessidades que deveriam ter sido aprofundadas.');
@@ -391,5 +678,36 @@ const negociacaoCobradaComoDiagnostico = JSON.parse(JSON.stringify(negociacaoVal
 negociacaoCobradaComoDiagnostico.perguntas_diagnostico.perguntas_esperadas_nao_realizadas = Array.from({ length: 7 }, (_, i) => ({ pergunta: 'Pergunta ' + i }));
 const gateDiagnosticoIndevido = context.api.validateBoard(negociacaoCobradaComoDiagnostico, 'CLOSER');
 assert.equal(gateDiagnosticoIndevido.status, 'REVISAR', 'Negociação com diagnóstico completo cobrado novamente deve exigir revisão.');
+
+
+const speakerRepairSource = source.slice(
+  source.indexOf('function audV3PrepararTranscricaoParaAuditoria_'),
+  source.indexOf('function audV3UsaNormalizacaoV2_')
+);
+assert.match(
+  speakerRepairSource,
+  /if \(audV3PrecisaReparoLocutores_\(normalizacao, qualidade\)\)/,
+  'Mapa persistido parcial não pode impedir nova tentativa de reparo de locutores.'
+);
+assert.match(
+  speakerRepairSource,
+  /Object\.assign\(\{\}, mapa, mapaNovo\)/,
+  'O novo reparo deve complementar o mapa existente em vez de descartá-lo.'
+);
+assert.match(
+  speakerRepairSource,
+  /maxTentativas = 2/,
+  'O reparo deve poder repetir a classificação quando a cobertura continuar insuficiente.'
+);
+assert.match(
+  source,
+  /AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2\.4'/,
+  'A revisão precisa invalidar mapas persistidos da normalização 2.3 com a versão 2.4.'
+);
+assert.match(
+  source,
+  /Use ALTA confiança para o lado comercial, não para a identidade da pessoa/,
+  'O prompt de reparo deve classificar o lado da conversa sem exigir descobrir o nome do locutor.'
+);
 
 console.log(`Teste Closer contextual válido: schema da API reduzido de ${schemaCompleto.required.length} para ${schemaApi.required.length} blocos obrigatórios, mantendo análise, contexto e gate.`);

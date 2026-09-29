@@ -8,7 +8,7 @@
  */
 
 const JORNADA_CLIENTE_CONFIG = Object.freeze({
-  versao: '1.9.5',
+  versao: '1.9.7',
   versaoChave: 'JORNADA_ENGINE_VERSAO',
   calendarioIdChave: 'JORNADA_CALENDARIO_ID',
   fontesReunioesChave: 'JORNADA_FONTES_REUNIOES_JSON',
@@ -31,6 +31,17 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
     { tipo: 'PLANO', escopo: 'CLOSER', nome: 'Plano de Otimização Closer', dia: 31 }
   ]
 });
+
+function jornadaNormalizarResultadoReuniao_(valor) {
+  const resultado = String(valor || '').trim().toUpperCase();
+  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'].includes(resultado)
+    ? resultado
+    : 'NAO_IDENTIFICADA';
+}
+
+function jornadaResultadoReuniaoEncerraAutomacao_(valor) {
+  return ['NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO'].includes(jornadaNormalizarResultadoReuniao_(valor));
+}
 
 const JORNADA_PASTAS_CONFIG = Object.freeze({
   maxArtefatosPorVarredura: 600,
@@ -727,6 +738,7 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
 }
 
 function jornadaReuniaoDeveFormalizar_(reuniao) {
+  if (jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) return false;
   if (String(reuniao.ID_CLIENTE || '').trim() && String(reuniao.ID_TRANSCRICAO || '').trim()) return true;
   const tipo = String(reuniao.TIPO_REUNIAO || '').toUpperCase();
   if (['EXECUTIVA', 'OPERACIONAL_SDR', 'OPERACIONAL_CLOSER'].includes(tipo)) return true;
@@ -812,7 +824,8 @@ function sincronizarAgendaTodosClientes(dados) {
         const reuniao = jornadaSalvarEvento_(evento, origem.calendario.getId(), candidato);
         const encerrada = new Date(reuniao.FIM).getTime() <= Date.now();
         const incompleta = !reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL;
-        if (reuniao.MEETING_CODE && encerrada && incompleta) {
+        const processamentoEncerrado = jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO);
+        if (reuniao.MEETING_CODE && encerrada && incompleta && !processamentoEncerrado) {
           try {
             const enriquecida = jornadaEnriquecerComMeet_(reuniao);
             if (enriquecida && (enriquecida.CONFERENCE_RECORD || enriquecida.TRANSCRICAO_URL || enriquecida.GRAVACAO_URL)) artefatos++;
@@ -993,7 +1006,8 @@ function jornadaSincronizarPastasCliente_(cliente, intervalo) {
     })
     .sort((a, b) => jornadaTimestampDrive_(b) - jornadaTimestampDrive_(a));
   const reunioesCliente = lerObjetos_(APP.sheets.reunioesCalendario)
-    .filter(item => !cliente.ID_CLIENTE || String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE || ''));
+    .filter(item => !cliente.ID_CLIENTE || String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE || ''))
+    .filter(item => !jornadaResultadoReuniaoEncerraAutomacao_(item.RESULTADO_REUNIAO));
   const interacoesPorExterno = {};
   lerObjetos_(APP.sheets.interacoes).forEach(item => { if (item.ID_EXTERNO) interacoesPorExterno[String(item.ID_EXTERNO)] = item; });
   const transcricoesPorInteracao = {};
@@ -1144,6 +1158,7 @@ function jornadaTokensDistintivosArquivo_(valor) {
 
 function jornadaVincularArtefatosPasta_(reuniao, transcricao, gravacao, idInteracao, idTranscricao) {
   if (!reuniao || !reuniao.ID_REUNIAO) return;
+  if (jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) return;
   const transcricaoUrl = transcricao ? transcricao.getUrl() : String(reuniao.TRANSCRICAO_URL || '');
   const gravacaoUrl = gravacao ? gravacao.getUrl() : String(reuniao.GRAVACAO_URL || '');
   const alteracoes = {
@@ -1480,7 +1495,7 @@ function sincronizarAgendaCliente(dados) {
         encontrados++;
         const reuniao = jornadaSalvarEvento_(evento, origem.calendario.getId(), candidato);
         atualizados++;
-        if (reuniao.MEETING_CODE && new Date(reuniao.FIM).getTime() <= Date.now() && (!reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL)) {
+        if (reuniao.MEETING_CODE && new Date(reuniao.FIM).getTime() <= Date.now() && (!reuniao.ID_TRANSCRICAO || !reuniao.GRAVACAO_URL) && !jornadaResultadoReuniaoEncerraAutomacao_(reuniao.RESULTADO_REUNIAO)) {
           try {
             const enriquecida = jornadaEnriquecerComMeet_(reuniao);
             if (enriquecida && (enriquecida.CONFERENCE_RECORD || enriquecida.TRANSCRICAO_URL || enriquecida.GRAVACAO_URL)) artefatos++;
@@ -1667,6 +1682,42 @@ function validarRealizacaoEntregaAgendaCliente(dados) {
   });
 }
 
+function jornadaResolverAmbiguidadeMesmoGrupo_(ordenados) {
+  ordenados = Array.isArray(ordenados) ? ordenados : [];
+  if (ordenados.length < 2) return null;
+  const topo = Number(ordenados[0].pontos || 0);
+  const proximos = ordenados.filter(item => !item.internoVolum && Math.abs(topo - Number(item.pontos || 0)) < 5);
+  if (proximos.length < 2) return null;
+
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const porId = {};
+  clientes.forEach(item => { porId[String(item.ID_CLIENTE)] = item; });
+
+  const filhos = proximos
+    .map(item => ({ candidato: item, cliente: porId[String(item.idCliente || '')] }))
+    .filter(item => item.cliente && String(item.cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() !== 'GRUPO' && String(item.cliente.GRUPO_CLIENTE || '').trim());
+  if (filhos.length < 2) return null;
+
+  const grupos = Array.from(new Set(filhos.map(item => String(item.cliente.GRUPO_CLIENTE || '').trim()).filter(Boolean)));
+  const idsFilhos = Array.from(new Set(filhos.map(item => String(item.cliente.ID_CLIENTE || ''))));
+  if (grupos.length !== 1 || idsFilhos.length < 2) return null;
+
+  const grupoNome = grupos[0];
+  const grupo = clientes.find(item =>
+    String(item.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO' &&
+    jornadaNormalizar_(item.NOME_CLIENTE) === jornadaNormalizar_(grupoNome)
+  );
+  if (!grupo) return null;
+
+  return {
+    idCliente: String(grupo.ID_CLIENTE),
+    pontos: topo,
+    motivo: 'múltiplas empresas do grupo no título: ' + grupoNome,
+    internoVolum: false
+  };
+}
+
 function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
   const titulo = String(evento.getTitle() || '');
   const tituloNormalizado = jornadaNormalizar_(titulo);
@@ -1679,28 +1730,39 @@ function jornadaIdentificarClienteEvento_(evento, regrasInformadas) {
     const id = String(regra.ID_CLIENTE);
     const tipo = String(regra.TIPO || '').toUpperCase();
     const valor = String(regra.VALOR || '').trim();
-    const normal = String(regra.VALOR_NORMALIZADO || jornadaNormalizar_(valor));
+    const normal = jornadaNormalizar_(regra.VALOR_NORMALIZADO || valor);
     if (!normal) return;
+    const tituloBusca = tipo === 'NOME' && tituloNormalizado.includes('grupo ' + normal)
+      ? tituloNormalizado.split('grupo ' + normal).join(' ')
+      : tituloNormalizado;
     const nomeNoTitulo = normal.length >= 4
-      ? tituloNormalizado.includes(normal)
-      : (' ' + tituloNormalizado + ' ').includes(' ' + normal + ' ');
+      ? tituloBusca.includes(normal)
+      : (' ' + tituloBusca + ' ').includes(' ' + normal + ' ');
     let pontos = 0;
     let motivo = '';
     if (tipo === 'EMAIL' && emails.some(email => jornadaNormalizar_(email) === normal)) {
       pontos = 100; motivo = 'e-mail exato: ' + valor;
     } else if (tipo === 'DOMINIO' && emails.some(email => jornadaDominio_(email) === jornadaDominio_(valor))) {
       pontos = 85; motivo = 'domínio do participante: ' + valor;
-    } else if ((tipo === 'NOME' || tipo === 'TITULO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
-      pontos = tipo === 'TITULO' ? 80 : 70; motivo = 'nome no título: ' + valor;
-    } else if (tipo === 'NOME' && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
-      pontos = 45; motivo = 'nome na descrição: ' + valor;
+    } else if ((tipo === 'NOME' || tipo === 'TITULO' || tipo === 'GRUPO') && nomeNoTitulo && (normal !== 'volum' || tituloNormalizado.indexOf('volum') === 0)) {
+      pontos = tipo === 'TITULO' ? 80 : (tipo === 'GRUPO' ? 60 : 70);
+      motivo = (tipo === 'GRUPO' ? 'grupo no título: ' : 'nome no título: ') + valor;
+    } else if ((tipo === 'NOME' || tipo === 'GRUPO') && normal.length >= 5 && jornadaNormalizar_(descricao).includes(normal)) {
+      pontos = tipo === 'GRUPO' ? 35 : 45;
+      motivo = (tipo === 'GRUPO' ? 'grupo na descrição: ' : 'nome na descrição: ') + valor;
     }
     pontos += pontos ? Number(regra.PRIORIDADE || 0) / 100 : 0;
-    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo };
+    const internoVolum = normal === 'volum';
+    if (!resultados[id] || pontos > resultados[id].pontos) resultados[id] = { idCliente: id, pontos: pontos, motivo: motivo, internoVolum: internoVolum };
   });
-  const ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  let ordenados = Object.keys(resultados).map(id => resultados[id]).filter(item => item.pontos > 0).sort((a, b) => b.pontos - a.pontos);
+  if (ordenados.some(item => !item.internoVolum)) ordenados = ordenados.filter(item => !item.internoVolum);
   if (!ordenados.length) return null;
-  if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) return null;
+  if (ordenados[1] && Math.abs(ordenados[0].pontos - ordenados[1].pontos) < 5) {
+    const grupoComum = jornadaResolverAmbiguidadeMesmoGrupo_(ordenados);
+    if (grupoComum) return grupoComum;
+    return null;
+  }
   return ordenados[0];
 }
 
@@ -1737,6 +1799,8 @@ function jornadaSalvarEvento_(evento, calendarId, candidato) {
     ID_INTERACAO: existente ? existente.ID_INTERACAO || '' : '',
     ID_TRANSCRICAO: existente ? existente.ID_TRANSCRICAO || '' : '',
     ERRO_MEET: '',
+    RESULTADO_REUNIAO: existente ? existente.RESULTADO_REUNIAO || '' : '',
+    RESULTADO_REUNIAO_ATUALIZADO_EM: existente ? existente.RESULTADO_REUNIAO_ATUALIZADO_EM || '' : '',
     ORIGEM: 'GOOGLE_CALENDAR',
     SINCRONIZADO_EM: agora,
     ATUALIZADO_EM: agora
@@ -1747,6 +1811,7 @@ function jornadaSalvarEvento_(evento, calendarId, candidato) {
 }
 
 function jornadaEnriquecerComMeet_(reuniao) {
+  if (jornadaResultadoReuniaoEncerraAutomacao_((reuniao || {}).RESULTADO_REUNIAO)) return reuniao;
   const codigo = String(reuniao.MEETING_CODE || '').trim();
   if (!codigo) return reuniao;
   const lista = jornadaMeetGet_('/v2/conferenceRecords', {
@@ -1889,8 +1954,9 @@ function jornadaGarantirIdentificadoresPadrao_(cliente, identificadoresInformado
       })
     : null;
   const nomes = [cliente.NOME_CLIENTE].concat((catalogo && catalogo.aliases) || []);
+  const tipoIdentificador = String(cliente.TIPO_CLIENTE || (catalogo && catalogo.tipoCliente) || 'EMPRESA').toUpperCase() === 'GRUPO' ? 'GRUPO' : 'NOME';
   nomes.filter(Boolean).forEach((nome, indice) => jornadaUpsertIdentificador_(
-    cliente.ID_CLIENTE, 'NOME', nome, 10 - indice, 'CATALOGO', identificadoresInformados
+    cliente.ID_CLIENTE, tipoIdentificador, nome, 10 - indice, 'CATALOGO', identificadoresInformados
   ));
 }
 
@@ -1922,7 +1988,7 @@ function jornadaUpsertIdentificador_(idCliente, tipo, valor, prioridade, origem,
     : lerObjetos_(APP.sheets.identificadoresClientes);
   const existente = identificadores.find(item =>
     String(item.ID_CLIENTE) === String(idCliente) && String(item.TIPO).toUpperCase() === String(tipo).toUpperCase() &&
-    String(item.VALOR_NORMALIZADO) === normal
+    jornadaNormalizar_(item.VALOR_NORMALIZADO || item.VALOR) === normal
   );
   const agora = new Date();
   const objeto = { VALOR: String(valor).trim(), VALOR_NORMALIZADO: normal, PRIORIDADE: prioridade || 0, ATIVO: 'SIM', ORIGEM: origem || 'MANUAL', ATUALIZADO_EM: agora };
@@ -1942,7 +2008,883 @@ function jornadaUpsertIdentificador_(idCliente, tipo, valor, prioridade, origem,
   identificadores.push(novo);
 }
 
+function jornadaReconciliarIdentificadoresCatalogo_() {
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const porChave = {};
+  clientes.forEach(item => { if (item.CHAVE_VOLUMBERG) porChave[String(item.CHAVE_VOLUMBERG)] = item; });
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes);
+  let desativados = 0;
+  let garantidos = 0;
+  const agora = new Date();
+
+  (typeof CATALOGO_CLIENTES_AUDIT !== 'undefined' ? CATALOGO_CLIENTES_AUDIT : []).forEach(itemCatalogo => {
+    const cliente = porChave[String(itemCatalogo.chave || '')];
+    if (!cliente) return;
+    const tipoCorreto = String(itemCatalogo.tipoCliente || cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() === 'GRUPO' ? 'GRUPO' : 'NOME';
+    const valores = [itemCatalogo.nome].concat(itemCatalogo.aliases || []).filter(Boolean);
+    valores.forEach((valor, indice) => {
+      const normal = jornadaNormalizar_(valor);
+      identificadores.forEach(item => {
+        if (jornadaNormalizar_(item.VALOR_NORMALIZADO || item.VALOR) !== normal) return;
+        if (String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE) && String(item.TIPO || '').toUpperCase() === tipoCorreto) return;
+        if (String(item.ORIGEM || '').toUpperCase() === 'MANUAL') return;
+        if (String(item.ATIVO || 'SIM').toUpperCase() === 'NAO') return;
+        atualizarPorCampo_(APP.sheets.identificadoresClientes, 'ID_IDENTIFICADOR', item.ID_IDENTIFICADOR, {
+          ATIVO: 'NAO',
+          ATUALIZADO_EM: agora
+        });
+        item.ATIVO = 'NAO';
+        desativados++;
+      });
+      jornadaUpsertIdentificador_(cliente.ID_CLIENTE, tipoCorreto, valor, 10 - indice, 'CATALOGO', identificadores);
+      garantidos++;
+    });
+  });
+
+  return { garantidos: garantidos, desativados: desativados };
+}
+
+function jornadaClassificarTextoCliente_(texto, regrasInformadas) {
+  const evento = {
+    getTitle: function() { return String(texto || ''); },
+    getDescription: function() { return ''; },
+    getGuestList: function() { return []; },
+    getCreators: function() { return []; }
+  };
+  const candidato = jornadaIdentificarClienteEvento_(evento, regrasInformadas);
+  return candidato && candidato.pontos >= 50 ? candidato : null;
+}
+
+function jornadaGrupoClientePorId_(idCliente, clientesInformados) {
+  const clientes = Array.isArray(clientesInformados) ? clientesInformados : lerObjetos_(APP.sheets.clientes);
+  const cliente = clientes.find(item => String(item.ID_CLIENTE || '') === String(idCliente || ''));
+  if (!cliente) return '';
+  if (String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return String(cliente.NOME_CLIENTE || '');
+  return String(cliente.GRUPO_CLIENTE || '');
+}
+
+function DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES() {
+  criarAbasAusentes_();
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes)
+    .filter(item => String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO');
+  const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+  const conflitos = { reunioes: [], interacoes: [], formalizacoes: [], vinculosCruzados: [] };
+
+  const registrarDivergencia = function(lista, registro, campoId, campoTitulo, campoChave) {
+    const titulo = String(registro[campoTitulo] || '');
+    const candidato = jornadaClassificarTextoCliente_(titulo, identificadores);
+    if (!candidato) return;
+    const grupo = jornadaGrupoClientePorId_(candidato.idCliente, clientes);
+    if (!gruposGeridos.has(grupo)) return;
+    if (String(registro[campoId] || '') === String(candidato.idCliente)) return;
+    lista.push({
+      id: String(registro[campoChave] || ''),
+      titulo: titulo,
+      idAtual: String(registro[campoId] || ''),
+      idEsperado: String(candidato.idCliente || ''),
+      grupo: grupo,
+      motivo: candidato.motivo,
+      confianca: Math.round(Number(candidato.pontos || 0))
+    });
+  };
+
+  const reunioes = lerObjetos_(APP.sheets.reunioesCalendario);
+  reunioes.forEach(item => registrarDivergencia(conflitos.reunioes, item, 'ID_CLIENTE', 'TITULO', 'ID_REUNIAO'));
+
+  const interacoes = lerObjetos_(APP.sheets.interacoes);
+  interacoes.forEach(item => {
+    if (String(item.TIPO_INTERACAO || '').toUpperCase() !== 'REUNIAO' && String(item.FONTE || '').toUpperCase() !== 'GOOGLE_MEET') return;
+    registrarDivergencia(conflitos.interacoes, item, 'ID_CLIENTE', 'TITULO', 'ID_INTERACAO');
+  });
+
+  const formalizacoes = lerObjetos_(APP.sheets.formalizacoes);
+  formalizacoes.forEach(item => registrarDivergencia(conflitos.formalizacoes, item, 'ID_CLIENTE', 'TITULO', 'ID_FORMALIZACAO'));
+
+  const interacoesPorId = {};
+  interacoes.forEach(item => { if (item.ID_INTERACAO) interacoesPorId[String(item.ID_INTERACAO)] = item; });
+  reunioes.forEach(reuniao => {
+    const interacao = interacoesPorId[String(reuniao.ID_INTERACAO || '')];
+    if (!interacao) return;
+    const candidatoReuniao = jornadaClassificarTextoCliente_(reuniao.TITULO, identificadores);
+    const candidatoInteracao = jornadaClassificarTextoCliente_(interacao.TITULO, identificadores);
+    if (!candidatoReuniao || !candidatoInteracao) return;
+    const grupoReuniao = jornadaGrupoClientePorId_(candidatoReuniao.idCliente, clientes);
+    const grupoInteracao = jornadaGrupoClientePorId_(candidatoInteracao.idCliente, clientes);
+    if (!gruposGeridos.has(grupoReuniao) || !gruposGeridos.has(grupoInteracao) || grupoReuniao === grupoInteracao) return;
+    conflitos.vinculosCruzados.push({
+      idReuniao: reuniao.ID_REUNIAO,
+      tituloReuniao: reuniao.TITULO,
+      idInteracao: interacao.ID_INTERACAO,
+      tituloInteracao: interacao.TITULO,
+      grupoReuniao: grupoReuniao,
+      grupoInteracao: grupoInteracao
+    });
+  });
+
+  return {
+    sucesso: true,
+    modo: 'DRY_RUN',
+    totais: {
+      reunioes: conflitos.reunioes.length,
+      interacoes: conflitos.interacoes.length,
+      formalizacoes: conflitos.formalizacoes.length,
+      vinculosCruzados: conflitos.vinculosCruzados.length
+    },
+    conflitos: {
+      reunioes: conflitos.reunioes.slice(0, 100),
+      interacoes: conflitos.interacoes.slice(0, 100),
+      formalizacoes: conflitos.formalizacoes.slice(0, 100),
+      vinculosCruzados: conflitos.vinculosCruzados.slice(0, 100)
+    }
+  };
+}
+
+const REPARO_GRUPOS_CLIENTES_ETAPA1_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA1';
+
+function jornadaNomeClientePorId_(idCliente, clientesInformados) {
+  const clientes = Array.isArray(clientesInformados) ? clientesInformados : lerObjetos_(APP.sheets.clientes);
+  const cliente = clientes.find(item => String(item.ID_CLIENTE || '') === String(idCliente || ''));
+  return cliente ? String(cliente.NOME_CLIENTE || '') : '';
+}
+
+function jornadaLimparBackupsVaziosReparoGrupos_() {
+  const ss = abrirPlanilha_();
+  let removidos = 0;
+  ss.getSheets().forEach(aba => {
+    if (!String(aba.getName() || '').startsWith('BACKUP_REPARO_GRUPOS_')) return;
+    if (aba.getLastRow() > 0) return;
+    ss.deleteSheet(aba);
+    removidos++;
+  });
+  return removidos;
+}
+
+function jornadaBackupReparoGruposEtapa1_(diagnostico) {
+  const ss = abrirPlanilha_();
+  jornadaLimparBackupsVaziosReparoGrupos_();
+  const nome = 'BACKUP_REPARO_GRUPOS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const linhas = [['ABA', 'CHAVE', 'ID_REGISTRO', 'ID_ATUAL', 'ID_ESPERADO', 'TITULO', 'PARTE', 'TOTAL_PARTES', 'DADOS_JSON_PARTE']];
+  const limiteParte = 30000;
+  const specs = [
+    { aba: APP.sheets.reunioesCalendario, chave: 'ID_REUNIAO', itens: diagnostico.conflitos.reunioes || [] },
+    { aba: APP.sheets.interacoes, chave: 'ID_INTERACAO', itens: diagnostico.conflitos.interacoes || [] },
+    { aba: APP.sheets.formalizacoes, chave: 'ID_FORMALIZACAO', itens: diagnostico.conflitos.formalizacoes || [] }
+  ];
+  let registros = 0;
+
+  try {
+    specs.forEach(spec => {
+      if (!spec.itens.length) return;
+      const porId = {};
+      lerObjetos_(spec.aba).forEach(item => {
+        if (item[spec.chave]) porId[String(item[spec.chave])] = item;
+      });
+      spec.itens.forEach(conflito => {
+        const registro = porId[String(conflito.id || '')];
+        if (!registro) throw new Error('Registro não encontrado para backup: ' + spec.aba + ' / ' + conflito.id);
+        const serializado = JSON.stringify(registro);
+        const totalPartes = Math.max(1, Math.ceil(serializado.length / limiteParte));
+        for (let parte = 0; parte < totalPartes; parte++) {
+          linhas.push([
+            spec.aba,
+            spec.chave,
+            String(conflito.id || ''),
+            String(conflito.idAtual || ''),
+            String(conflito.idEsperado || ''),
+            String(conflito.titulo || '').slice(0, 1000),
+            parte + 1,
+            totalPartes,
+            serializado.slice(parte * limiteParte, (parte + 1) * limiteParte)
+          ]);
+        }
+        registros++;
+      });
+    });
+
+    if (linhas.length > aba.getMaxRows()) {
+      aba.insertRowsAfter(aba.getMaxRows(), linhas.length - aba.getMaxRows());
+    }
+    if (linhas[0].length > aba.getMaxColumns()) {
+      aba.insertColumnsAfter(aba.getMaxColumns(), linhas[0].length - aba.getMaxColumns());
+    }
+    aba.getRange(1, 1, linhas.length, linhas[0].length).setValues(linhas);
+    aba.setFrozenRows(1);
+    aba.hideSheet();
+    SpreadsheetApp.flush();
+    return { nome: nome, registros: registros, linhas: Math.max(0, linhas.length - 1) };
+  } catch (erro) {
+    try {
+      if (aba && aba.getLastRow() === 0) ss.deleteSheet(aba);
+    } catch (erroLimpeza) {}
+    throw erro;
+  }
+}
+
+function jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente) {
+  const bruto = String((registro || {}).RESULTADO_JSON || '').trim();
+  if (!bruto) return null;
+  try {
+    const resultado = JSON.parse(bruto);
+    resultado.metadados = resultado.metadados && typeof resultado.metadados === 'object' ? resultado.metadados : {};
+    resultado.metadados.cliente = nomeCliente;
+    return JSON.stringify(resultado);
+  } catch (erro) {
+    return null;
+  }
+}
+
+function jornadaAplicarAlteracoesReparoEmLote_(nomeAba, campoChave, alteracoesPorId) {
+  const ids = Object.keys(alteracoesPorId || {});
+  if (!ids.length) return { quantidade: 0, restauracao: null };
+  const aba = abrirPlanilha_().getSheetByName(nomeAba);
+  if (!aba) throw new Error('Aba não encontrada no reparo: ' + nomeAba);
+  const dados = aba.getDataRange().getValues();
+  if (!dados.length) throw new Error('Aba vazia no reparo: ' + nomeAba);
+  const cabecalhos = dados[0].map(String);
+  const indiceChave = cabecalhos.indexOf(campoChave);
+  if (indiceChave < 0) throw new Error('Chave não encontrada no reparo: ' + nomeAba + ' / ' + campoChave);
+
+  const desconhecidos = new Set();
+  ids.forEach(id => Object.keys(alteracoesPorId[id] || {}).forEach(campo => {
+    if (!cabecalhos.includes(campo)) desconhecidos.add(campo);
+  }));
+  if (desconhecidos.size) throw new Error('Campos fora do schema de ' + nomeAba + ': ' + Array.from(desconhecidos).join(', '));
+
+  const pendentes = new Set(ids.map(String));
+  const mutacoes = [];
+  for (let i = 1; i < dados.length; i++) {
+    const id = String(dados[i][indiceChave] || '');
+    if (!pendentes.has(id)) continue;
+    const original = dados[i].slice();
+    const nova = dados[i].slice();
+    const alteracoes = alteracoesPorId[id] || {};
+    Object.keys(alteracoes).forEach(campo => {
+      nova[cabecalhos.indexOf(campo)] = alteracoes[campo];
+    });
+    mutacoes.push({ linha: i + 1, original: original, nova: nova });
+    pendentes.delete(id);
+  }
+  if (pendentes.size) throw new Error('Registros não encontrados em ' + nomeAba + ': ' + Array.from(pendentes).join(', '));
+
+  const aplicadas = [];
+  try {
+    mutacoes.forEach(item => {
+      aba.getRange(item.linha, 1, 1, cabecalhos.length).setValues([item.nova]);
+      aplicadas.push(item);
+    });
+  } catch (erro) {
+    aplicadas.reverse().forEach(item => {
+      try { aba.getRange(item.linha, 1, 1, cabecalhos.length).setValues([item.original]); } catch (erroRollback) {}
+    });
+    throw erro;
+  }
+
+  return {
+    quantidade: mutacoes.length,
+    restauracao: { nomeAba: nomeAba, colunas: cabecalhos.length, linhas: mutacoes.map(item => ({ linha: item.linha, original: item.original })) }
+  };
+}
+
+function jornadaRestaurarReparoEmLote_(restauracoes) {
+  (restauracoes || []).slice().reverse().forEach(item => {
+    if (!item || !item.nomeAba || !item.linhas) return;
+    const aba = abrirPlanilha_().getSheetByName(item.nomeAba);
+    if (!aba) return;
+    item.linhas.slice().reverse().forEach(linha => {
+      try { aba.getRange(linha.linha, 1, 1, item.colunas).setValues([linha.original]); } catch (erro) {}
+    });
+  });
+  SpreadsheetApp.flush();
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(confirmacao) {
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA1_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo de grupos etapa 1.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  const restauracoes = [];
+  try {
+    const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const totaisAntes = antes.totais || {};
+    ['reunioes', 'interacoes', 'formalizacoes'].forEach(chave => {
+      if (Number(totaisAntes[chave] || 0) > 200) {
+        throw new Error('Reparo abortado: quantidade inesperada em ' + chave + ': ' + totaisAntes[chave]);
+      }
+      if (Number(totaisAntes[chave] || 0) > ((antes.conflitos[chave] || []).length)) {
+        throw new Error('Reparo abortado: diagnóstico truncado em ' + chave + '.');
+      }
+    });
+
+    const clientes = lerObjetos_(APP.sheets.clientes)
+      .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+    const idsValidos = new Set(clientes.map(item => String(item.ID_CLIENTE)));
+    const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+    ['reunioes', 'interacoes', 'formalizacoes'].forEach(chave => {
+      (antes.conflitos[chave] || []).forEach(item => {
+        if (!idsValidos.has(String(item.idEsperado || ''))) throw new Error('ID esperado inválido no reparo: ' + item.idEsperado);
+        if (!gruposGeridos.has(String(item.grupo || ''))) throw new Error('Grupo fora do escopo do reparo: ' + item.grupo);
+      });
+    });
+
+    const backup = jornadaBackupReparoGruposEtapa1_(antes);
+    const agora = new Date();
+    const aplicados = { reunioes: 0, interacoes: 0, formalizacoes: 0, jsonFormalizacao: 0 };
+
+    const alteracoesReunioes = {};
+    (antes.conflitos.reunioes || []).forEach(item => {
+      alteracoesReunioes[String(item.id)] = {
+        ID_CLIENTE: item.idEsperado,
+        CONFIANCA_CLIENTE: Number(item.confianca || 0),
+        MOTIVO_IDENTIFICACAO: 'reparo histórico: ' + String(item.motivo || ''),
+        ATUALIZADO_EM: agora
+      };
+    });
+    const loteReunioes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoesReunioes);
+    if (loteReunioes.restauracao) restauracoes.push(loteReunioes.restauracao);
+    aplicados.reunioes = loteReunioes.quantidade;
+
+    const alteracoesInteracoes = {};
+    (antes.conflitos.interacoes || []).forEach(item => {
+      alteracoesInteracoes[String(item.id)] = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+    });
+    const loteInteracoes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.interacoes, 'ID_INTERACAO', alteracoesInteracoes);
+    if (loteInteracoes.restauracao) restauracoes.push(loteInteracoes.restauracao);
+    aplicados.interacoes = loteInteracoes.quantidade;
+
+    const formalizacoesPorId = {};
+    lerObjetos_(APP.sheets.formalizacoes).forEach(item => {
+      if (item.ID_FORMALIZACAO) formalizacoesPorId[String(item.ID_FORMALIZACAO)] = item;
+    });
+    const alteracoesFormalizacoes = {};
+    (antes.conflitos.formalizacoes || []).forEach(item => {
+      const registro = formalizacoesPorId[String(item.id || '')] || {};
+      const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
+      const alteracoes = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+      const resultadoJson = jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente);
+      if (resultadoJson) {
+        alteracoes.RESULTADO_JSON = resultadoJson;
+        aplicados.jsonFormalizacao++;
+      }
+      alteracoesFormalizacoes[String(item.id)] = alteracoes;
+    });
+    const loteFormalizacoes = jornadaAplicarAlteracoesReparoEmLote_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', alteracoesFormalizacoes);
+    if (loteFormalizacoes.restauracao) restauracoes.push(loteFormalizacoes.restauracao);
+    aplicados.formalizacoes = loteFormalizacoes.quantidade;
+
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    const depois = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const validacao = validarEstruturaBanco_();
+    const concluida = Number(depois.totais.reunioes || 0) === 0 &&
+      Number(depois.totais.interacoes || 0) === 0 &&
+      Number(depois.totais.formalizacoes || 0) === 0;
+
+    if (!validacao.valido) throw new Error('Estrutura inválida após reparo: ' + validacao.erros.join(' | '));
+    if (!concluida) {
+      throw new Error(
+        'Reparo etapa 1 incompleto. Restaram R/I/F: ' +
+        depois.totais.reunioes + '/' + depois.totais.interacoes + '/' + depois.totais.formalizacoes
+      );
+    }
+
+    registrarLog_(
+      'CLIENTES',
+      'REPARO_GRUPOS_ETAPA1',
+      'Aplicados R/I/F: ' + aplicados.reunioes + '/' + aplicados.interacoes + '/' + aplicados.formalizacoes +
+      ' | backup: ' + backup.nome +
+      ' | pós R/I/F: 0/0/0' +
+      ' | vínculos cruzados: ' + depois.totais.vinculosCruzados
+    );
+
+    return {
+      sucesso: true,
+      etapa: 1,
+      concluida: true,
+      backup: backup,
+      aplicados: aplicados,
+      antes: antes.totais,
+      depois: depois.totais,
+      vinculosCruzados: depois.conflitos.vinculosCruzados || [],
+      validacao: validacao
+    };
+  } catch (erro) {
+    if (restauracoes.length) {
+      jornadaRestaurarReparoEmLote_(restauracoes);
+      if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    }
+    throw erro;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+const REPARO_GRUPOS_CLIENTES_ETAPA2_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA2';
+
+function jornadaAplicarAlteracoesReparoPorColunas_(nomeAba, campoChave, alteracoesPorId) {
+  const ids = Object.keys(alteracoesPorId || {});
+  if (!ids.length) return { quantidade: 0, restauracoes: [] };
+  const aba = abrirPlanilha_().getSheetByName(nomeAba);
+  if (!aba) throw new Error('Aba não encontrada no reparo: ' + nomeAba);
+  const ultimaLinha = aba.getLastRow();
+  const ultimaColuna = aba.getLastColumn();
+  if (ultimaLinha < 2 || ultimaColuna < 1) throw new Error('Aba sem dados no reparo: ' + nomeAba);
+
+  const cabecalhos = aba.getRange(1, 1, 1, ultimaColuna).getValues()[0].map(String);
+  const indiceChave = cabecalhos.indexOf(campoChave);
+  if (indiceChave < 0) throw new Error('Chave não encontrada no reparo: ' + nomeAba + ' / ' + campoChave);
+
+  const campos = Array.from(new Set(ids.flatMap(id => Object.keys(alteracoesPorId[id] || {}))));
+  campos.forEach(campo => {
+    if (!cabecalhos.includes(campo)) throw new Error('Campo fora do schema de ' + nomeAba + ': ' + campo);
+  });
+
+  const chaves = aba.getRange(2, indiceChave + 1, ultimaLinha - 1, 1).getValues().map(linha => String(linha[0] || ''));
+  const linhaPorId = {};
+  chaves.forEach((id, indice) => { if (id) linhaPorId[id] = indice; });
+  ids.forEach(id => {
+    if (linhaPorId[String(id)] === undefined) throw new Error('Registro não encontrado em ' + nomeAba + ': ' + id);
+  });
+
+  const restauracoes = [];
+  try {
+    campos.forEach(campo => {
+      const coluna = cabecalhos.indexOf(campo) + 1;
+      const range = aba.getRange(2, coluna, ultimaLinha - 1, 1);
+      const valores = range.getValues();
+      const originais = [];
+      ids.forEach(id => {
+        const indice = linhaPorId[String(id)];
+        originais.push({ indice: indice, valor: valores[indice][0] });
+        valores[indice][0] = alteracoesPorId[id][campo];
+      });
+      range.setValues(valores);
+      restauracoes.push({ range: range, originais: originais });
+    });
+  } catch (erro) {
+    restauracoes.slice().reverse().forEach(item => {
+      try {
+        const valoresAtuais = item.range.getValues();
+        item.originais.forEach(origem => { valoresAtuais[origem.indice][0] = origem.valor; });
+        item.range.setValues(valoresAtuais);
+      } catch (erroRollback) {}
+    });
+    throw erro;
+  }
+
+  return { quantidade: ids.length, restauracoes: restauracoes };
+}
+
+function jornadaRestaurarAlteracoesReparoPorColunas_(restauracoes) {
+  (restauracoes || []).slice().reverse().forEach(item => {
+    if (!item || !item.range || !item.originais) return;
+    try {
+      const valores = item.range.getValues();
+      item.originais.forEach(origem => { valores[origem.indice][0] = origem.valor; });
+      item.range.setValues(valores);
+    } catch (erro) {}
+  });
+  SpreadsheetApp.flush();
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2(confirmacao) {
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA2_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo de grupos etapa 2.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  const restauracoes = [];
+  try {
+    if (typeof jornadaReconciliarIdentificadoresCatalogo_ === 'function') jornadaReconciliarIdentificadoresCatalogo_();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+    const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    ['reunioes', 'interacoes', 'formalizacoes'].forEach(chave => {
+      if (Number((antes.totais || {})[chave] || 0) > 200) {
+        throw new Error('Reparo etapa 2 abortado: quantidade inesperada em ' + chave + '.');
+      }
+      if (Number((antes.totais || {})[chave] || 0) > ((antes.conflitos || {})[chave] || []).length) {
+        throw new Error('Reparo etapa 2 abortado: diagnóstico truncado em ' + chave + '.');
+      }
+    });
+
+    const backup = jornadaBackupReparoGruposEtapa1_(antes);
+    const clientes = lerObjetos_(APP.sheets.clientes)
+      .filter(item => item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO');
+    const agora = new Date();
+    const aplicados = { reunioes: 0, interacoes: 0, formalizacoes: 0, jsonFormalizacao: 0 };
+
+    const alteracoesReunioes = {};
+    (antes.conflitos.reunioes || []).forEach(item => {
+      alteracoesReunioes[String(item.id)] = {
+        ID_CLIENTE: item.idEsperado,
+        CONFIANCA_CLIENTE: Number(item.confianca || 0),
+        MOTIVO_IDENTIFICACAO: 'reparo histórico etapa 2: ' + String(item.motivo || ''),
+        ATUALIZADO_EM: agora
+      };
+    });
+    const loteReunioes = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoesReunioes);
+    restauracoes.push.apply(restauracoes, loteReunioes.restauracoes || []);
+    aplicados.reunioes = loteReunioes.quantidade;
+
+    const alteracoesInteracoes = {};
+    (antes.conflitos.interacoes || []).forEach(item => {
+      alteracoesInteracoes[String(item.id)] = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+    });
+    const loteInteracoes = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.interacoes, 'ID_INTERACAO', alteracoesInteracoes);
+    restauracoes.push.apply(restauracoes, loteInteracoes.restauracoes || []);
+    aplicados.interacoes = loteInteracoes.quantidade;
+
+    const formalizacoesPorId = {};
+    lerObjetos_(APP.sheets.formalizacoes).forEach(item => {
+      if (item.ID_FORMALIZACAO) formalizacoesPorId[String(item.ID_FORMALIZACAO)] = item;
+    });
+    const alteracoesFormalizacoes = {};
+    (antes.conflitos.formalizacoes || []).forEach(item => {
+      const registro = formalizacoesPorId[String(item.id || '')] || {};
+      const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
+      const alteracoes = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+      const resultadoJson = jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente);
+      if (resultadoJson) {
+        alteracoes.RESULTADO_JSON = resultadoJson;
+        aplicados.jsonFormalizacao++;
+      }
+      alteracoesFormalizacoes[String(item.id)] = alteracoes;
+    });
+    const loteFormalizacoes = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', alteracoesFormalizacoes);
+    restauracoes.push.apply(restauracoes, loteFormalizacoes.restauracoes || []);
+    aplicados.formalizacoes = loteFormalizacoes.quantidade;
+
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    const depois = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const validacao = validarEstruturaBanco_();
+    const concluida = Number(depois.totais.reunioes || 0) === 0 &&
+      Number(depois.totais.interacoes || 0) === 0 &&
+      Number(depois.totais.formalizacoes || 0) === 0;
+
+    if (!validacao.valido) throw new Error('Estrutura inválida após reparo etapa 2: ' + validacao.erros.join(' | '));
+    if (!concluida) {
+      throw new Error('Reparo etapa 2 incompleto. Restaram R/I/F: ' +
+        depois.totais.reunioes + '/' + depois.totais.interacoes + '/' + depois.totais.formalizacoes);
+    }
+
+    registrarLog_('CLIENTES', 'REPARO_GRUPOS_ETAPA2',
+      'Aplicados R/I/F: ' + aplicados.reunioes + '/' + aplicados.interacoes + '/' + aplicados.formalizacoes +
+      ' | backup: ' + backup.nome + ' | pós R/I/F: 0/0/0 | vínculos cruzados: ' + depois.totais.vinculosCruzados);
+
+    return {
+      sucesso: true,
+      etapa: 2,
+      concluida: true,
+      backup: backup,
+      aplicados: aplicados,
+      antes: antes.totais,
+      depois: depois.totais,
+      vinculosCruzados: depois.conflitos.vinculosCruzados || [],
+      validacao: validacao
+    };
+  } catch (erro) {
+    if (restauracoes.length) {
+      jornadaRestaurarAlteracoesReparoPorColunas_(restauracoes);
+      if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    }
+    throw erro;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+const REPARO_GRUPOS_CLIENTES_ETAPA3_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_ETAPA3';
+
+function jornadaBackupVinculosCruzados_(vinculos) {
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_REPARO_VINCULOS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const reunioesPorId = {};
+  lerObjetos_(APP.sheets.reunioesCalendario).forEach(item => {
+    if (item.ID_REUNIAO) reunioesPorId[String(item.ID_REUNIAO)] = item;
+  });
+  const linhas = [['ID_REUNIAO','ID_INTERACAO','TITULO_REUNIAO','DADOS_JSON']];
+  (vinculos || []).forEach(item => {
+    const registro = reunioesPorId[String(item.idReuniao || '')];
+    if (!registro) throw new Error('Reunião não encontrada para backup de vínculo: ' + item.idReuniao);
+    linhas.push([
+      String(item.idReuniao || ''),
+      String(item.idInteracao || ''),
+      String(item.tituloReuniao || '').slice(0,1000),
+      JSON.stringify(registro)
+    ]);
+  });
+  aba.getRange(1,1,linhas.length,linhas[0].length).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  SpreadsheetApp.flush();
+  return { nome: nome, registros: Math.max(0, linhas.length - 1) };
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3(confirmacao) {
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_ETAPA3_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo de grupos etapa 3.');
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  const restauracoes = [];
+  try {
+    const antes = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const vinculos = (antes.conflitos || {}).vinculosCruzados || [];
+    if (Number((antes.totais || {}).reunioes || 0) !== 0 ||
+        Number((antes.totais || {}).interacoes || 0) !== 0 ||
+        Number((antes.totais || {}).formalizacoes || 0) !== 0) {
+      throw new Error('Etapa 3 exige divergências de cliente zeradas antes de corrigir vínculos.');
+    }
+    if (vinculos.length > 20) throw new Error('Quantidade inesperada de vínculos cruzados: ' + vinculos.length);
+    if (Number((antes.totais || {}).vinculosCruzados || 0) > vinculos.length) {
+      throw new Error('Diagnóstico de vínculos cruzados truncado.');
+    }
+
+    const backup = jornadaBackupVinculosCruzados_(vinculos);
+    const agora = new Date();
+    const alteracoes = {};
+    vinculos.forEach(item => {
+      alteracoes[String(item.idReuniao)] = {
+        ID_INTERACAO: '',
+        ID_TRANSCRICAO: '',
+        TRANSCRICAO_URL: '',
+        GRAVACAO_URL: '',
+        ERRO_MEET: 'Vínculo cruzado removido no reparo de grupos; aguardando nova evidência.',
+        STATUS: 'PENDENTE_EVIDENCIA',
+        ATUALIZADO_EM: agora
+      };
+    });
+
+    const lote = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoes);
+    restauracoes.push.apply(restauracoes, lote.restauracoes || []);
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+    const depois = DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES();
+    const validacao = validarEstruturaBanco_();
+    if (!validacao.valido) throw new Error('Estrutura inválida após etapa 3: ' + validacao.erros.join(' | '));
+    if (Number((depois.totais || {}).vinculosCruzados || 0) !== 0) {
+      throw new Error('Ainda existem vínculos cruzados após etapa 3: ' + depois.totais.vinculosCruzados);
+    }
+
+    registrarLog_('CLIENTES','REPARO_GRUPOS_ETAPA3',
+      'Vínculos cruzados removidos: ' + lote.quantidade + ' | backup: ' + backup.nome + ' | pós: 0');
+
+    return {
+      sucesso: true,
+      etapa: 3,
+      concluida: true,
+      backup: backup,
+      aplicados: { vinculosCruzados: lote.quantidade },
+      antes: antes.totais,
+      depois: depois.totais,
+      validacao: validacao
+    };
+  } catch (erro) {
+    if (restauracoes.length) {
+      jornadaRestaurarAlteracoesReparoPorColunas_(restauracoes);
+      if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    }
+    throw erro;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+const REPARO_GRUPOS_CLIENTES_PARCIAL_CONFIRMACAO = 'CONFIRMAR_REPARO_GRUPOS_CLIENTES_PARCIAL';
+
+function jornadaDiagnosticarConflitosGruposParcial_(alvo) {
+  alvo = String(alvo || '').trim().toUpperCase();
+  const configs = {
+    REUNIOES: { aba: APP.sheets.reunioesCalendario, chave: 'ID_REUNIAO', filtro: function() { return true; } },
+    INTERACOES: { aba: APP.sheets.interacoes, chave: 'ID_INTERACAO', filtro: function(item) {
+      return String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' || String(item.FONTE || '').toUpperCase() === 'GOOGLE_MEET';
+    } },
+    FORMALIZACOES: { aba: APP.sheets.formalizacoes, chave: 'ID_FORMALIZACAO', filtro: function() { return true; } }
+  };
+  const config = configs[alvo];
+  if (!config) throw new Error('Alvo inválido para diagnóstico parcial: ' + alvo);
+
+  const clientes = lerObjetos_(APP.sheets.clientes)
+    .filter(function(item) { return item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO'; });
+  const identificadores = lerObjetos_(APP.sheets.identificadoresClientes)
+    .filter(function(item) { return String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO'; });
+  const gruposGeridos = new Set(['Grupo Eleva', 'Grupo Sinergia']);
+  const conflitos = [];
+
+  lerObjetos_(config.aba).filter(config.filtro).forEach(function(registro) {
+    const titulo = String(registro.TITULO || '');
+    const candidato = jornadaClassificarTextoCliente_(titulo, identificadores);
+    if (!candidato) return;
+    const grupo = jornadaGrupoClientePorId_(candidato.idCliente, clientes);
+    if (!gruposGeridos.has(grupo)) return;
+    if (String(registro.ID_CLIENTE || '') === String(candidato.idCliente || '')) return;
+    conflitos.push({
+      id: String(registro[config.chave] || ''),
+      titulo: titulo,
+      idAtual: String(registro.ID_CLIENTE || ''),
+      idEsperado: String(candidato.idCliente || ''),
+      grupo: grupo,
+      motivo: candidato.motivo,
+      confianca: Math.round(Number(candidato.pontos || 0))
+    });
+  });
+
+  return {
+    sucesso: true,
+    modo: 'DRY_RUN_PARCIAL',
+    alvo: alvo,
+    total: conflitos.length,
+    conflitos: conflitos.slice(0, 200)
+  };
+}
+
+function jornadaBackupTarefasReparoGrupos_(idsFormalizacoes) {
+  const ids = new Set((idsFormalizacoes || []).map(String));
+  if (!ids.size) return null;
+  const tarefas = lerObjetos_(APP.sheets.tarefasFormalizacoes)
+    .filter(function(item) { return ids.has(String(item.ID_FORMALIZACAO || '')); });
+  if (!tarefas.length) return null;
+
+  const ss = abrirPlanilha_();
+  const nome = 'BACKUP_REPARO_TAREFAS_' + Utilities.formatDate(new Date(), APP.timezone, 'yyyyMMdd_HHmmss');
+  const aba = ss.insertSheet(nome);
+  const linhas = [['ID_TAREFA','ID_FORMALIZACAO','ID_CLIENTE','DADOS_JSON']];
+  tarefas.forEach(function(item) {
+    linhas.push([
+      String(item.ID_TAREFA || ''),
+      String(item.ID_FORMALIZACAO || ''),
+      String(item.ID_CLIENTE || ''),
+      JSON.stringify(item)
+    ]);
+  });
+  aba.getRange(1,1,linhas.length,linhas[0].length).setValues(linhas);
+  aba.setFrozenRows(1);
+  aba.hideSheet();
+  SpreadsheetApp.flush();
+  return { nome: nome, registros: tarefas.length };
+}
+
+function REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL(alvo, confirmacao) {
+  alvo = String(alvo || '').trim().toUpperCase();
+  if (String(confirmacao || '') !== REPARO_GRUPOS_CLIENTES_PARCIAL_CONFIRMACAO) {
+    throw new Error('Confirmação inválida para reparo parcial de grupos.');
+  }
+  if (!['REUNIOES','INTERACOES','FORMALIZACOES'].includes(alvo)) {
+    throw new Error('Alvo inválido para reparo parcial: ' + alvo);
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Outra atualização está em andamento.');
+  try {
+    if (typeof jornadaReconciliarIdentificadoresCatalogo_ === 'function') jornadaReconciliarIdentificadoresCatalogo_();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+
+    const antes = jornadaDiagnosticarConflitosGruposParcial_(alvo);
+    if (Number(antes.total || 0) > 200 || Number(antes.total || 0) > (antes.conflitos || []).length) {
+      throw new Error('Diagnóstico parcial truncado ou acima do limite seguro: ' + antes.total);
+    }
+
+    const diagnosticoBackup = { conflitos: { reunioes: [], interacoes: [], formalizacoes: [] } };
+    const chaveBackup = alvo === 'REUNIOES' ? 'reunioes' : (alvo === 'INTERACOES' ? 'interacoes' : 'formalizacoes');
+    diagnosticoBackup.conflitos[chaveBackup] = antes.conflitos || [];
+    const backup = jornadaBackupReparoGruposEtapa1_(diagnosticoBackup);
+    const agora = new Date();
+    const clientes = lerObjetos_(APP.sheets.clientes)
+      .filter(function(item) { return item.ID_CLIENTE && String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO'; });
+    let aplicados = 0;
+    let backupTarefas = null;
+    let tarefasAtualizadas = 0;
+
+    if (alvo === 'REUNIOES') {
+      const alteracoes = {};
+      (antes.conflitos || []).forEach(function(item) {
+        alteracoes[String(item.id)] = {
+          ID_CLIENTE: item.idEsperado,
+          CONFIANCA_CLIENTE: Number(item.confianca || 0),
+          MOTIVO_IDENTIFICACAO: 'reparo histórico granular: ' + String(item.motivo || ''),
+          ATUALIZADO_EM: agora
+        };
+      });
+      aplicados = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.reunioesCalendario, 'ID_REUNIAO', alteracoes).quantidade;
+    } else if (alvo === 'INTERACOES') {
+      const alteracoes = {};
+      (antes.conflitos || []).forEach(function(item) {
+        alteracoes[String(item.id)] = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+      });
+      aplicados = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.interacoes, 'ID_INTERACAO', alteracoes).quantidade;
+    } else {
+      const idsFormalizacoes = (antes.conflitos || []).map(function(item) { return String(item.id || ''); }).filter(Boolean);
+      backupTarefas = jornadaBackupTarefasReparoGrupos_(idsFormalizacoes);
+      const formalizacoesFonte = typeof audV3Ler_ === 'function' ? audV3Ler_(APP.sheets.formalizacoes) : lerObjetos_(APP.sheets.formalizacoes);
+      const porId = {};
+      formalizacoesFonte.forEach(function(item) { if (item.ID_FORMALIZACAO) porId[String(item.ID_FORMALIZACAO)] = item; });
+
+      (antes.conflitos || []).forEach(function(item) {
+        const registro = porId[String(item.id || '')] || {};
+        const nomeCliente = jornadaNomeClientePorId_(item.idEsperado, clientes);
+        const alteracoes = { ID_CLIENTE: item.idEsperado, ATUALIZADO_EM: agora };
+        const resultadoJson = jornadaAtualizarFormalizacaoClienteJson_(registro, nomeCliente);
+        if (resultadoJson) alteracoes.RESULTADO_JSON = resultadoJson;
+        if (typeof audV3Atualizar_ !== 'function' || !audV3Atualizar_(APP.sheets.formalizacoes, 'ID_FORMALIZACAO', item.id, alteracoes)) {
+          throw new Error('Falha ao atualizar formalização: ' + item.id);
+        }
+        aplicados++;
+      });
+
+      const esperadoPorFormalizacao = {};
+      (antes.conflitos || []).forEach(function(item) { esperadoPorFormalizacao[String(item.id)] = String(item.idEsperado); });
+      const alteracoesTarefas = {};
+      lerObjetos_(APP.sheets.tarefasFormalizacoes).forEach(function(tarefa) {
+        const esperado = esperadoPorFormalizacao[String(tarefa.ID_FORMALIZACAO || '')];
+        if (!esperado || String(tarefa.ID_CLIENTE || '') === esperado) return;
+        alteracoesTarefas[String(tarefa.ID_TAREFA || '')] = { ID_CLIENTE: esperado, ATUALIZADO_EM: agora };
+      });
+      if (Object.keys(alteracoesTarefas).length) {
+        tarefasAtualizadas = jornadaAplicarAlteracoesReparoPorColunas_(APP.sheets.tarefasFormalizacoes, 'ID_TAREFA', alteracoesTarefas).quantidade;
+      }
+    }
+
+    SpreadsheetApp.flush();
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    const depois = jornadaDiagnosticarConflitosGruposParcial_(alvo);
+    if (Number(depois.total || 0) !== 0) {
+      throw new Error('Reparo parcial incompleto em ' + alvo + ': restaram ' + depois.total + ' divergências.');
+    }
+
+    registrarLog_('CLIENTES','REPARO_GRUPOS_PARCIAL_' + alvo,
+      'Aplicados: ' + aplicados + ' | tarefas: ' + tarefasAtualizadas + ' | backup: ' + backup.nome + ' | pós: 0');
+
+    return {
+      sucesso: true,
+      etapa: alvo,
+      concluida: true,
+      antes: antes.total,
+      depois: depois.total,
+      aplicados: aplicados,
+      tarefasAtualizadas: tarefasAtualizadas,
+      backup: backup,
+      backupTarefas: backupTarefas
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function jornadaGarantirRegrasPadrao_(idCliente, regrasInformadas) {
+  const cliente = localizarObjeto_(APP.sheets.clientes, 'ID_CLIENTE', idCliente);
+  if (cliente && String(cliente.TIPO_CLIENTE || '').toUpperCase() === 'GRUPO') return;
   const todas = Array.isArray(regrasInformadas)
     ? regrasInformadas
     : lerObjetos_(APP.sheets.regrasEntregas);
@@ -2410,6 +3352,7 @@ function jornadaListarReunioes_(idCliente, periodo, itensInformados) {
   return (Array.isArray(itensInformados) ? itensInformados : lerObjetos_(APP.sheets.reunioesCalendario)).filter(item => String(item.ID_CLIENTE) === String(idCliente) && jornadaPeriodoData_(item.INICIO) === periodo).sort((a, b) => new Date(b.INICIO) - new Date(a.INICIO)).map(item => ({
     idReuniao: item.ID_REUNIAO, titulo: item.TITULO, tipoReuniao: item.TIPO_REUNIAO, inicio: serializarData_(item.INICIO), fim: serializarData_(item.FIM),
     organizador: item.ORGANIZADOR, participantes: typeof formalParticipantes_ === 'function' ? formalParticipantes_(item.PARTICIPANTES_JSON) : jornadaJsonLista_(item.PARTICIPANTES_JSON), meetUrl: item.MEET_URL, status: item.STATUS,
+    resultadoReuniao: jornadaNormalizarResultadoReuniao_(item.RESULTADO_REUNIAO), resultadoReuniaoAtualizadoEm: serializarData_(item.RESULTADO_REUNIAO_ATUALIZADO_EM),
     confianca: Number(item.CONFIANCA_CLIENTE || 0), motivo: item.MOTIVO_IDENTIFICACAO, gravacaoUrl: item.GRAVACAO_URL,
     transcricaoUrl: item.TRANSCRICAO_URL, idInteracao: item.ID_INTERACAO, idTranscricao: item.ID_TRANSCRICAO, erroMeet: item.ERRO_MEET
   }));

@@ -22,9 +22,11 @@ assert.ok(
   yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1'),
   'Restaurador de automações não usa o deployment de produção.'
 );
+assert.ok(yaml.includes('for attempt in 1 2 3 4'), 'Restaurador não tolera propagação transitória do web app.');
+assert.ok(yaml.includes('RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_'), 'Deploy não registra cada tentativa de restauração.');
 assert.ok(
   !yaml.includes('/dev?ops_restore_automation=1'),
-  'Restaurador de automações ainda depende do endpoint /dev.'
+  'Restaurador de automações não pode depender do endpoint /dev.'
 );
 assert.ok(yaml.includes('AUTOMATION_TRIGGERS_RESTORED=1'), 'Deploy não confirma a restauração dos acionadores.');
 

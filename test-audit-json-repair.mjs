@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const consumoSource = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
 const context = {
   console,
   Date,
@@ -71,6 +72,40 @@ assert.match(callSource, /candidato\.finishReason/, 'A chamada precisa inspecion
 assert.match(callSource, /finishReason === 'MAX_TOKENS'/, 'MAX_TOKENS precisa ter tratamento dedicado.');
 assert.match(callSource, /audV3ParseJsonRespostaSegura_\(texto\)/, 'A resposta não pode usar JSON.parse puro.');
 assert.match(callSource, /audV3RepararJsonComGemini_/, 'JSON sintaticamente inválido precisa acionar reparo controlado.');
+const truncatedRecoveryStart = source.indexOf('function audV3PromptRecuperacaoTruncada_');
+assert.ok(truncatedRecoveryStart >= 0, 'A recuperação específica para RESPOSTA_TRUNCADA precisa existir.');
+const truncatedRecoveryEnd = source.indexOf('function audV3ChamarGemini_', truncatedRecoveryStart);
+const truncatedRecoverySource = source.slice(truncatedRecoveryStart, truncatedRecoveryEnd);
+assert.match(truncatedRecoverySource, /MODO DE RECUPERAÇÃO/, 'A recuperação truncada deve instruir uma nova geração completa.');
+assert.match(truncatedRecoverySource, /no máximo 12 perguntas comercialmente mais relevantes/, 'O Closer precisa limitar perguntas realizadas durante recuperação.');
+assert.match(truncatedRecoverySource, /priorizando Problema, Implicação e Necessidade/, 'O Closer precisa preservar a prioridade SPIN na recuperação.');
+assert.match(truncatedRecoverySource, /Situação só quando faltar contexto essencial/, 'Situação não pode inflar a recuperação do Closer.');
+assert.match(callSource, /codigoErroJson === 'RESPOSTA_TRUNCADA'/, 'RESPOSTA_TRUNCADA precisa acionar tratamento dedicado.');
+assert.match(callSource, /audV3PromptRecuperacaoTruncada_\(prompt, tipo, erroJson\)/, 'A nova tentativa precisa usar o prompt compacto de recuperação.');
+const sameModelRecoveryStart = source.indexOf('function audV3RecuperarTruncamentoNoMesmoModelo_');
+assert.ok(sameModelRecoveryStart >= 0, 'A última tentativa truncada precisa ter recuperação no mesmo modelo.');
+const sameModelRecoveryEnd = source.indexOf('function audV3ChamarGemini_', sameModelRecoveryStart);
+const sameModelRecoverySource = source.slice(sameModelRecoveryStart, sameModelRecoveryEnd);
+assert.match(sameModelRecoverySource, /AUDITORIA_' \+ tipo \+ '_RECUPERACAO_TRUNCADA'/, 'A tentativa extra deve ser registrada separadamente no consumo de IA.');
+assert.match(sameModelRecoverySource, /audV3PromptRecuperacaoTruncada_\(promptOriginal, tipo, erroAnterior\)/, 'A tentativa extra precisa usar o prompt compacto.');
+assert.match(callSource, /return audV3RecuperarTruncamentoNoMesmoModelo_\(/, 'A última tentativa truncada deve repetir no mesmo modelo antes do fallback.');
+assert.match(callSource, /tentativa \+ 2/, 'A recuperação extra deve ser registrada como tentativa adicional.');
+
+assert.match(callSource, /const statusTrocaModeloImediata = \[503\]/, '503 precisa trocar de modelo sem insistência.');
+assert.match(callSource, /status === 429[\s\S]*?esperaCurtaQuotaMs_\(corpo\)[\s\S]*?Utilities\.sleep\(esperaQuota\)/, '429 com retry curto precisa aguardar a janela indicada antes de trocar de modelo.');
+assert.match(callSource, /if \(trocarModeloAgora\)[\s\S]*?break;/, 'Erros de capacidade precisam interromper as retentativas do modelo atual.');
+
+for (const modeloNovo of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) {
+  assert.ok(consumoSource.includes("'" + modeloNovo + "'"), modeloNovo + ' precisa estar disponível como fallback gratuito.');
+}
+assert.match(
+  consumoSource,
+  /modelosTextoGratuitos:\s*\[[\s\S]*?'gemini-3\.8-flash'[\s\S]*?'gemini-3\.7-flash'[\s\S]*?'gemini-3\.6-flash'/,
+  'Os modelos gratuitos novos precisam entrar no fallback de texto.'
+);
+
+
+
 
 for (const legacyFixture of ['WISETEC-ERRO', 'WISETEC-OK', 'STEC-90', 'STEC-91', 'STEC-92']) {
   assert.ok(

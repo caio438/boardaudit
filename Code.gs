@@ -50,8 +50,9 @@ const ACESSO_BOARD = Object.freeze({
  */
 const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'c9_compacta_9', nome: 'C9 Compacta 9', aliases: ['C9'] },
-  { chave: 'buffet_mais', nome: 'Buffet Mais' },
-  { chave: 'gestao_festa', nome: 'Gestão Festa' },
+  { chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' },
+  { chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' },
+  { chave: 'gestao_festa', nome: 'Gestão Festa', grupoCliente: 'Grupo Eleva' },
   { chave: 'impostograma', nome: 'Impostograma' },
   { chave: 'rtm', nome: 'RTM' },
   { chave: 'wisetec', nome: 'Wisetec' },
@@ -69,14 +70,17 @@ const CATALOGO_CLIENTES_VOLUMBERG = Object.freeze([
   { chave: 'informaction', nome: 'InformAction' },
   { chave: 'hitecnet', nome: 'Hitecnet' },
   { chave: 'melius', nome: 'Melius' },
-  { chave: 'ingee', nome: 'INGEE', aliases: ['Sinergia', 'Semeio', 'Semeio CBI', 'Semeio/CBI', 'CBI'] },
+  { chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' },
+  { chave: 'ingee', nome: 'INGEE', aliases: ['Ingee'], grupoCliente: 'Grupo Sinergia' },
+  { chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' },
+  { chave: 'semeio_cbi', nome: 'Semeio/CBI', aliases: ['Semeio', 'Semeio CBI', 'Grupo Semeio', 'CBI'], grupoCliente: 'Grupo Sinergia' },
   { chave: 'o_guia_transportes', nome: 'O Guia Transportes', aliases: ['O Guia Digital'] },
   { chave: 'tecnosoft', nome: 'Tecnosoft' },
   { chave: 'siptalk', nome: 'SipTalk', aliases: ['Sip Talk'] },
   { chave: 'liberado_app', nome: 'Liberado App', aliases: ['Liberado', 'LiberadoApp', 'Equity'] },
   { chave: 'ausland', nome: 'Ausland' },
   { chave: 'alphaplanos', nome: 'AlphaPlanos', aliases: ['Alfa Planos', 'Alfaplanos'] },
-  { chave: 'assine_mais', nome: 'Assine Mais' },
+  { chave: 'assine_mais', nome: 'Assine Mais', grupoCliente: 'Grupo Eleva' },
   { chave: 'manytalks', nome: 'ManyTalks', aliases: ['Many Talks'] },
   { chave: 'conac_flow', nome: 'Conac Flow', aliases: ['Conac'] },
   { chave: 'converta', nome: 'Converta', aliases: ['ConvertaApp', 'Converta App'] },
@@ -295,6 +299,80 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_repair_client_groups_partial || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo parcial de grupos permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL !== 'function') {
+      throw new Error('Reparo parcial de grupos indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_PARCIAL(
+        String(parametros.target || ''),
+        String(parametros.confirm || '')
+      ), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_repair_client_groups_stage3 || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo de grupos etapa 3 permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3 !== 'function') {
+      throw new Error('Reparo de grupos etapa 3 indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA3(String(parametros.confirm || '')), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_repair_client_groups_stage2 || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo de grupos etapa 2 permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2 !== 'function') {
+      throw new Error('Reparo de grupos etapa 2 indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA2(String(parametros.confirm || '')), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_repair_client_groups_stage1 || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Reparo de grupos permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1 !== 'function') {
+      throw new Error('Reparo de grupos etapa 1 indisponivel.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(REPARAR_CONFLITOS_GRUPOS_CLIENTES_ETAPA1(String(parametros.confirm || '')), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_sync_client_groups || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Sincronizacao de grupos permitida somente para a conta proprietaria autenticada.');
+    }
+    const sincronizacao = sincronizarClientesVolumberg();
+    const diagnostico = typeof DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES === 'function'
+      ? DIAGNOSTICAR_CONFLITOS_GRUPOS_CLIENTES()
+      : { sucesso: false, erro: 'Diagnostico de grupos indisponivel.' };
+    return ContentService
+      .createTextOutput(JSON.stringify({ sucesso: true, sincronizacao: sincronizacao, diagnostico: diagnostico }, null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sync_jornada || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -320,6 +398,37 @@ function doGet(e) {
     }
     return ContentService
       .createTextOutput(JSON.stringify(SINCRONIZAR_JORNADA_PASTAS_RECENTES(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_audit_preview || '') === '1') {
+    const ativoOpsPreview = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsPreview = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsPreview || !efetivoOpsPreview || ativoOpsPreview !== efetivoOpsPreview) {
+      throw new Error('Preview operacional de auditoria permitido somente para a conta proprietaria autenticada.');
+    }
+    const idTranscricaoPreview = String(parametros.transcript || '').trim();
+    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+)$/.test(idTranscricaoPreview)) {
+      throw new Error('ID de transcricao/interacao operacional invalido.');
+    }
+    if (typeof OPS_AUDITAR_PREVIEW_TRANSCRICAO !== 'function') {
+      throw new Error('Runner de preview de auditoria nao esta disponivel no HEAD do Apps Script.');
+    }
+    let resultadoPreviewOps;
+    try {
+      resultadoPreviewOps = OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricaoPreview);
+    } catch (erroPreviewOps) {
+      resultadoPreviewOps = {
+        sucesso: false,
+        modo: 'PREVIEW_SEM_PUBLICACAO',
+        idTranscricao: idTranscricaoPreview,
+        erro: String(erroPreviewOps && erroPreviewOps.message ? erroPreviewOps.message : erroPreviewOps),
+        rdPublicada: false,
+        aprovada: false
+      };
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(resultadoPreviewOps, null, 2))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -562,7 +671,8 @@ function obterCabecalhosOficiais_() {
     'ID_CLIENTE', 'NOME_CLIENTE', 'TIPO_OPERACAO', 'PRODUTO_SERVICO',
     'REGRAS_CLIENTE', 'STATUS', 'CRIADO_EM', 'ATUALIZADO_EM',
     'CHAVE_VOLUMBERG', 'URL_MATERIAIS', 'URL_PASTA_GRAVACOES',
-    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM'
+    'URL_PASTA_TRANSCRICOES', 'CARTEIRA_VOLUM', 'EXECUTOR_VOLUM',
+    'TIPO_CLIENTE', 'GRUPO_CLIENTE'
   ];
 
   estruturas[APP.sheets.materiaisClientes] = [
@@ -659,6 +769,7 @@ function obterCabecalhosOficiais_() {
     'MEET_URL', 'MEETING_CODE', 'CONFERENCE_RECORD', 'STATUS',
     'CONFIANCA_CLIENTE', 'MOTIVO_IDENTIFICACAO', 'GRAVACAO_URL',
     'TRANSCRICAO_URL', 'ID_INTERACAO', 'ID_TRANSCRICAO', 'ERRO_MEET',
+    'RESULTADO_REUNIAO', 'RESULTADO_REUNIAO_ATUALIZADO_EM',
     'ORIGEM', 'SINCRONIZADO_EM', 'ATUALIZADO_EM'
   ];
 
@@ -1003,8 +1114,11 @@ function limparAcionadoresDuplicados_() {
    INSTALAÇÃO E BANCO
 ========================================================= */
 
+let APP_PLANILHA_CACHE_ = null;
+
 function abrirPlanilha_() {
-  return SpreadsheetApp.openById(APP.spreadsheetId);
+  if (!APP_PLANILHA_CACHE_) APP_PLANILHA_CACHE_ = SpreadsheetApp.openById(APP.spreadsheetId);
+  return APP_PLANILHA_CACHE_;
 }
 
 function criarEstruturaBanco_() {
@@ -1297,6 +1411,8 @@ function listarClientes(integracoesInformadas, materiaisInformados, clientesInfo
         idCliente: item.ID_CLIENTE,
         nomeCliente: item.NOME_CLIENTE,
         chaveVolumberg: item.CHAVE_VOLUMBERG || '',
+        tipoCliente: item.TIPO_CLIENTE || 'EMPRESA',
+        grupoCliente: item.GRUPO_CLIENTE || '',
         carteiraVolum: item.CARTEIRA_VOLUM || '',
         executorVolum: item.EXECUTOR_VOLUM || '',
         urlMateriais: item.URL_MATERIAIS || '',
@@ -1874,6 +1990,7 @@ function unificacaoIngeeGarantirAliases_() {
 }
 
 function executarUnificacaoIngeeSinergiaSemeioCbi(confirmacao) {
+  throw new Error('Rotina desativada: INGEE, Sinergia e Semeio/CBI agora são clientes separados dentro do Grupo Sinergia.');
   if (String(confirmacao || '') !== UNIFICACAO_INGEE.confirmacao) {
     throw new Error('Confirmação inválida. Execute primeiro o dry-run e informe a confirmação exigida.');
   }
@@ -1995,15 +2112,21 @@ function sincronizarClientesVolumberg() {
         const operacao = OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {};
         const materialPrincipal = (MATERIAIS_CATALOGO_VOLUMBERG[itemCatalogo.chave] || [])
           .find(material => material.funcao === 'SDR' && material.status !== 'SEM_ACESSO');
+        const tipoClienteCatalogo = String(itemCatalogo.tipoCliente || 'EMPRESA').toUpperCase();
+        const grupoClienteCatalogo = String(itemCatalogo.grupoCliente || '');
         const precisaVincular = String(existente.CHAVE_VOLUMBERG || '') !== itemCatalogo.chave ||
           String(existente.NOME_CLIENTE || '') !== itemCatalogo.nome ||
           String(existente.STATUS || 'ATIVO').toUpperCase() !== 'ATIVO' ||
+          String(existente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() !== tipoClienteCatalogo ||
+          String(existente.GRUPO_CLIENTE || '') !== grupoClienteCatalogo ||
           String(existente.CARTEIRA_VOLUM || '') !== String(operacao.carteira || '') ||
           (!String(existente.URL_MATERIAIS || '').trim() && Boolean(materialPrincipal));
         if (precisaVincular) {
           atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', existente.ID_CLIENTE, {
             NOME_CLIENTE: itemCatalogo.nome,
             CHAVE_VOLUMBERG: itemCatalogo.chave,
+            TIPO_CLIENTE: tipoClienteCatalogo,
+            GRUPO_CLIENTE: grupoClienteCatalogo,
             URL_MATERIAIS: String(existente.URL_MATERIAIS || '').trim() || (materialPrincipal ? materialPrincipal.url : ''),
             CARTEIRA_VOLUM: operacao.carteira || String(existente.CARTEIRA_VOLUM || ''),
             EXECUTOR_VOLUM: operacao.carteira === 'CAIO' ? 'Caio Cappelazzo' : (operacao.carteira === 'THIAGO' ? 'Thiago Custodio' : String(existente.EXECUTOR_VOLUM || '')),
@@ -2012,6 +2135,8 @@ function sincronizarClientesVolumberg() {
           });
           existente.NOME_CLIENTE = itemCatalogo.nome;
           existente.CHAVE_VOLUMBERG = itemCatalogo.chave;
+          existente.TIPO_CLIENTE = tipoClienteCatalogo;
+          existente.GRUPO_CLIENTE = grupoClienteCatalogo;
           existente.STATUS = 'ATIVO';
           existente.ATUALIZADO_EM = agora;
           vinculados++;
@@ -2034,6 +2159,8 @@ function sincronizarClientesVolumberg() {
         CRIADO_EM: agora,
         ATUALIZADO_EM: agora,
         CHAVE_VOLUMBERG: itemCatalogo.chave,
+        TIPO_CLIENTE: String(itemCatalogo.tipoCliente || 'EMPRESA').toUpperCase(),
+        GRUPO_CLIENTE: String(itemCatalogo.grupoCliente || ''),
         CARTEIRA_VOLUM: (OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira || '',
         EXECUTOR_VOLUM: ((OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira === 'CAIO' ? 'Caio Cappelazzo' : ((OPERACAO_CLIENTES_VOLUMBERG[itemCatalogo.chave] || {}).carteira === 'THIAGO' ? 'Thiago Custodio' : '')),
         URL_MATERIAIS: ((MATERIAIS_CATALOGO_VOLUMBERG[itemCatalogo.chave] || [])
@@ -2044,6 +2171,9 @@ function sincronizarClientesVolumberg() {
       criados++;
     });
 
+    const identificadoresSincronizados = typeof jornadaReconciliarIdentificadoresCatalogo_ === 'function'
+      ? jornadaReconciliarIdentificadoresCatalogo_()
+      : { garantidos: 0, desativados: 0 };
     const materiaisSincronizados = sincronizarMateriaisCatalogoVolumberg_(clientes);
     const operacaoSincronizada = sincronizarOperacaoCatalogoVolumberg_(clientes);
     const comunidadeSincronizada = typeof sincronizarEspacosComunidadeClientes_ === 'function'
@@ -2063,7 +2193,8 @@ function sincronizarClientesVolumberg() {
       materiais: listarMateriaisClientes_(),
       catalogoVolumberg: obterResumoCatalogoVolumberg_(),
       comunidade: comunidadeSincronizada,
-      operacao: operacaoSincronizada
+      operacao: operacaoSincronizada,
+      identificadores: identificadoresSincronizados
     };
   } finally {
     lock.releaseLock();

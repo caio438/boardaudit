@@ -259,6 +259,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # O web app pode levar alguns segundos para propagar a nova versão.
+          # Reutilizamos o endpoint autenticado já validado em produção e
+          # tratamos 404/5xx transitórios como atraso de propagação.
           npx clasp versions > /tmp/clasp-versions-restore.txt
           node <<'NODE'
           const fs = require('fs');
@@ -273,8 +276,17 @@ jobs:
 
           TOKEN="$(cat /tmp/google_access_token_restore)"
           URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1"
-          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/restore-automation-result.txt -w '%{http_code}' "$URL" || true)"
-          echo "RESTORE_AUTOMATION_HTTP_STATUS=$code"
+          code=""
+          for attempt in 1 2 3 4; do
+            code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/restore-automation-result.txt -w '%{http_code}' "$URL" || true)"
+            echo "RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_$attempt=$code"
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              sleep $((attempt * 15))
+            fi
+          done
           test "$code" = "200"
 
           node <<'NODE'

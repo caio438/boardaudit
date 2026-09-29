@@ -389,6 +389,153 @@
       color: var(--danger);
     }
 
+    .formal-collapsible > summary,
+    .formal-editor-section > summary,
+    .formal-card-details > summary,
+    .meeting-classifier > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .formal-collapsible > summary::-webkit-details-marker,
+    .formal-editor-section > summary::-webkit-details-marker,
+    .formal-card-details > summary::-webkit-details-marker,
+    .meeting-classifier > summary::-webkit-details-marker { display: none; }
+
+    .formal-collapsible > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-weight: 800;
+      font-size: 17px;
+    }
+
+    .formal-collapsible > summary::after,
+    .formal-editor-section > summary::after,
+    .formal-card-details > summary::after {
+      content: '⌄';
+      color: var(--muted);
+      font-weight: 800;
+      transition: transform .18s ease;
+    }
+
+    .formal-collapsible[open] > summary::after,
+    .formal-editor-section[open] > summary::after,
+    .formal-card-details[open] > summary::after { transform: rotate(180deg); }
+
+    .formal-editor-section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-top: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .formal-editor-section > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      font-weight: 800;
+      background: rgba(148,163,184,.07);
+    }
+
+    .formal-editor-section > .form-grid { padding: 16px; }
+
+    .formal-editor-actions {
+      position: sticky;
+      bottom: 12px;
+      z-index: 3;
+      padding: 12px;
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(15,23,42,.10);
+    }
+
+    .formal-history-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+
+    .formal-card-details {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .formal-card-details > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .meeting-classifier { position: relative; }
+    .meeting-classifier > summary.btn { display: inline-flex; align-items: center; }
+    .meeting-outcome-panel {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(108px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .meeting-outcome-btn {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-weight: 800;
+      cursor: pointer;
+      background: #eef2f6;
+      color: #475467;
+    }
+    .meeting-outcome-btn.realizada { background:#ecfdf3; color:#027a48; }
+    .meeting-outcome-btn.no-show { background:#fef3f2; color:#b42318; }
+    .meeting-outcome-btn.remarcada { background:#fffaeb; color:#b54708; }
+    .meeting-outcome-btn.cancelada { background:#f2f4f7; color:#475467; }
+    .meeting-outcome-btn.nao-identificada { background:#eff8ff; color:#175cd3; }
+    .meeting-outcome-btn.sem-transcricao { background:#fff7ed; color:#c2410c; }
+    .meeting-outcome-btn.is-active { box-shadow: inset 0 0 0 2px currentColor; }
+
+    .formal-queue-toolbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin:0 0 14px;
+      padding:12px 14px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:var(--surface-2);
+    }
+    .formal-queue-summary { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+    .formal-queue-summary strong { font-size:20px; }
+    .formal-quick-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .formal-history-card.queue-current {
+      outline:2px solid rgba(22,128,58,.35);
+      box-shadow:0 10px 28px rgba(16,24,40,.12);
+    }
+    .meeting-outcome-btn:disabled { opacity:.55; cursor:wait; }
+
+    .status.info { background:#eff8ff; color:#175cd3; }
+
+    @media (max-width: 980px) {
+      .meeting-outcome-panel { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+
     .automation {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -863,6 +1010,47 @@
       margin-bottom: 4px;
       color: var(--muted);
     }
+
+    .audit-executive-moments {
+      display: grid;
+      gap: 10px;
+    }
+
+    .audit-executive-moment {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: var(--surface);
+    }
+
+    .audit-executive-moment + .audit-executive-moment { margin-top: 0; }
+
+    .audit-executive-moment-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .audit-executive-moment-head strong { font-size: 14px; }
+    .audit-executive-moment p { margin: 6px 0; }
+    .audit-executive-moment .line-tip { margin-top: 8px; }
+
+    .audit-temporal-notes {
+      display: grid;
+      gap: 8px;
+      margin: -8px 0 22px;
+    }
+
+    .audit-temporal-note {
+      border-left: 3px solid var(--border);
+      padding: 8px 10px;
+      background: var(--surface-2);
+      border-radius: 6px;
+    }
+
+    .audit-temporal-note strong { display: block; margin-bottom: 3px; }
 
     .audit-detail-panel {
       margin-top: 22px;
@@ -1490,13 +1678,9 @@
           <div id="formalReunioesAgenda" style="margin-top:18px"></div>
         </div>
 
-        <div class="card" style="margin-top:18px">
-          <div class="section-title">
-            <div>
-              <h3>Nova formalização de reunião</h3>
-              <p>Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
-            </div>
-          </div>
+        <details id="formalNovaFormalizacao" class="card formal-collapsible" style="margin-top:18px" open>
+          <summary><span>Nova formalização de reunião</span><span class="small muted">Selecionar transcrição</span></summary>
+          <p class="muted" style="margin-top:10px">Escolha qualquer transcrição disponível. Cliente, função, tipo, pitch e auditoria não limitam esta lista.</p>
 
           <div class="toolbar">
             <div class="filters" style="width:100%">
@@ -1543,7 +1727,7 @@
           <div class="actions">
             <button id="btnGerarFormalizacao" class="btn success" type="button" onclick="gerarFormalizacaoFront()" disabled>Gerar formalização</button>
           </div>
-        </div>
+        </details>
 
         <details id="formalImportacaoManual" class="card" style="margin-top:18px">
           <summary style="cursor:pointer;font-weight:700">+ Adicionar transcrição manual sem classificar</summary>
@@ -1560,15 +1744,28 @@
         <div id="formalEditor" style="display:none;margin-top:18px"></div>
 
         <div class="card" style="margin-top:18px">
-          <div class="section-title"><div><h3>Histórico de formalizações</h3><p>Rascunhos, reuniões aprovadas e conferência de publicação no Circle.</p></div></div>
+          <div class="section-title"><div><h3>Fila de formalizações</h3><p>Revisão, aprovação e classificação rápida sem precisar abrir item por item.</p></div></div>
+          <div class="formal-queue-toolbar">
+            <div id="formalFilaResumo" class="formal-queue-summary"><strong>0</strong><span class="muted">em revisão</span></div>
+            <button id="btnIniciarFilaFormalizacoes" class="btn success" type="button" onclick="iniciarFilaRevisaoFormalizacoes_()">Iniciar fila de revisão</button>
+          </div>
           <div class="toolbar">
             <div class="filters">
               <input id="formalHistoricoMes" type="month" aria-label="Filtrar formalizações por mês" onchange="renderizarHistoricoFormalizacoes()">
               <select id="formalHistoricoStatus" aria-label="Filtrar formalizações por situação" onchange="renderizarHistoricoFormalizacoes()">
                 <option value="">Todas as situações</option>
                 <option value="APROVADA">Aprovadas</option>
-                <option value="EM_REVISAO">Em revisão</option>
+                <option value="EM_REVISAO" selected>Em revisão</option>
                 <option value="ERRO">Com erro</option>
+              </select>
+              <select id="formalHistoricoResultado" aria-label="Filtrar por resultado da reunião" onchange="renderizarHistoricoFormalizacoes()">
+                <option value="">Todos os resultados</option>
+                <option value="REALIZADA">Realizada</option>
+                <option value="NO_SHOW">No-show</option>
+                <option value="REMARCADA">Remarcada</option>
+                <option value="CANCELADA">Cancelada</option>
+                <option value="SEM_TRANSCRICAO">Sem transcrição</option>
+                <option value="NAO_IDENTIFICADA">Não identificada</option>
               </select>
               <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoFormalizacoes_()">Mostrar todas as datas</button>
             </div>
@@ -1628,8 +1825,8 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Nova auditoria</h3>
-              <p>Primeiro selecione o cliente. Depois escolha a Função e a transcrição.</p>
+              <h3 id="audNovaTitulo">Nova auditoria</h3>
+              <p id="audNovaSubtitulo">Primeiro selecione o cliente. Depois escolha a função e a transcrição.</p>
             </div>
           </div>
 
@@ -1643,7 +1840,7 @@
                 </select>
               </div>
             </div>
-            <button class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
+            <button id="audGerenciarPitchesBtn" class="btn secondary" type="button" onclick="abrirModalPitchCliente()">Gerenciar pitches</button>
           </div>
 
           <div id="avisoAuditoria" class="empty" style="padding:18px;margin:14px 0">
@@ -1651,7 +1848,7 @@
           </div>
 
           <div class="form-grid">
-            <div class="field">
+            <div id="audTipoBox" class="field">
               <label for="audTipo">Função auditada</label>
               <select id="audTipo" onchange="alterarTipoAuditoriaFront_()">
                 <option value="">Selecione a função</option>
@@ -1672,7 +1869,7 @@
               <div class="small muted" style="margin-top:6px">A mesma transcrição pode ser usada uma vez para SDR e outra para Closer.</div>
             </div>
 
-            <div class="field">
+            <div id="audFonteBox" class="field">
               <label for="audFonte">Tipo da interação</label>
               <select id="audFonte" onchange="atualizarSeletoresAuditoria()">
                 <option value="">Selecione o tipo da interação</option>
@@ -1683,15 +1880,15 @@
               </select>
             </div>
 
-            <div class="field full">
+            <div id="audModeloBox" class="field full">
               <label for="audModelo">Modelo de auditoria</label>
               <select id="audModelo" onchange="atualizarResumoAuditoria()">
                 <option value="">Selecione o cliente e o tipo</option>
               </select>
             </div>
 
-            <div class="field full">
-              <label>Transcrições <span class="muted">(selecione até 3)</span></label>
+            <div id="audTranscricoesBox" class="field full">
+              <label id="audTranscricoesLabel">Transcrições <span class="muted">(selecione até 3)</span></label>
               <select id="audInteracao" multiple onchange="selecionarTranscricaoAuditoriaFront_()" style="display:none!important" aria-hidden="true">
                 <option value="">Selecione uma ou mais transcrições</option>
               </select>
@@ -1714,7 +1911,7 @@
               </select>
             </div>
 
-            <div class="field full">
+            <div id="audNomeColaboradorBox" class="field full">
               <label id="audNomeColaboradorLabel" for="audNomeSdr">Nome do Responsável</label>
               <input id="audNomeSdr" list="audColaboradoresSugestoes" placeholder="Preenchido pela transcrição; ajuste se necessário">
               <datalist id="audColaboradoresSugestoes"></datalist>
@@ -2735,12 +2932,12 @@
     let boardInicializado = false;
 
     function iniciarProtecaoAcesso_() {
-      const validade = Number(sessionStorage.getItem(BOARD_AUTH_SESSION_KEY) || 0);
+      const validade = Number(localStorage.getItem(BOARD_AUTH_SESSION_KEY) || 0);
       if (validade > Date.now()) {
         liberarBoard_();
         return;
       }
-      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      localStorage.removeItem(BOARD_AUTH_SESSION_KEY);
       document.getElementById('accessGate').hidden = false;
       document.querySelector('.app').hidden = true;
       document.getElementById('accessEmail').focus();
@@ -2769,7 +2966,7 @@
             return;
           }
           const horas = Number(retorno.validadeHoras || 8);
-          sessionStorage.setItem(BOARD_AUTH_SESSION_KEY, String(Date.now() + horas * 60 * 60 * 1000));
+          localStorage.setItem(BOARD_AUTH_SESSION_KEY, String(Date.now() + horas * 60 * 60 * 1000));
           liberarBoard_();
         })
         .withFailureHandler(() => {
@@ -2791,7 +2988,7 @@
     }
 
     function encerrarAcessoBoard_() {
-      sessionStorage.removeItem(BOARD_AUTH_SESSION_KEY);
+      localStorage.removeItem(BOARD_AUTH_SESSION_KEY);
       document.querySelector('.app').hidden = true;
       document.getElementById('accessGate').hidden = false;
       document.getElementById('accessEmail').value = '';
@@ -4943,10 +5140,11 @@
 
   function importarTranscricaoManualFrontV3() {
     const idCliente = valor('audCliente');
-    const titulo = valor('manualTitulo');
+    const closerSimplificado = modoSimplificadoCloserFront_();
+    const titulo = closerSimplificado ? '' : valor('manualTitulo');
     const transcricao = valor('manualTranscricao');
     if (!idCliente) return mostrarToast('Selecione o cliente da transcrição.', 'error');
-    if (!titulo) return mostrarToast('Informe um título para a transcrição.', 'error');
+    if (!closerSimplificado && !titulo) return mostrarToast('Informe um título para a transcrição.', 'error');
     if (transcricao.length < 20) return mostrarToast('Cole a transcrição completa antes de importar.', 'error');
 
     const botao = document.getElementById('btnImportarTranscricaoManual');
@@ -5005,13 +5203,13 @@
         idCliente: idCliente,
         funcao: funcao,
         titulo: titulo,
-        colaborador: valor('manualColaborador'),
-        lead: valor('manualLead'),
-        dataInteracao: valor('manualDataInteracao'),
+        colaborador: closerSimplificado ? '' : valor('manualColaborador'),
+        lead: closerSimplificado ? '' : valor('manualLead'),
+        dataInteracao: closerSimplificado ? '' : valor('manualDataInteracao'),
         duracaoSegundos: '',
         oportunidade: '',
-        rdDealId: valor('manualRdDealId'),
-        nomeArquivoOrigem: valor('manualNomeArquivo'),
+        rdDealId: closerSimplificado ? '' : valor('manualRdDealId'),
+        nomeArquivoOrigem: closerSimplificado ? '' : valor('manualNomeArquivo'),
         transcricao: transcricao
       });
   }
@@ -5212,6 +5410,10 @@
     select.innerHTML = '<option value="">Selecione o modelo</option>' + modelos.map(item =>
       `<option value="${escapeAtributo(item.idModelo)}">${escapeHtml(item.nomeModelo)} — v${escapeHtml(item.versaoModelo || '-')} ${item.global ? '— GLOBAL' : '— CLIENTE'}</option>`
     ).join('');
+    if (modoSimplificadoCloserFront_() && modelos.length) {
+      const especifico = modelos.find(function(item) { return String(item.idCliente || '') === String(idCliente); }) || modelos[0];
+      select.value = especifico.idModelo;
+    }
   }
 
   function idsTranscricoesSelecionadasAuditoria_() {
@@ -5294,10 +5496,17 @@
     if (!select) return;
     const opcao = Array.from(select.options || []).find(item => String(item.value) === String(idInteracao));
     if (!opcao) return;
-    if (marcada && idInteracao !== OPCAO_TRANSCRICAO_MANUAL && idsTranscricoesSelecionadasAuditoria_().length >= 3) {
-      mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
-      renderizarChecklistTranscricoesAuditoria_();
-      return;
+    const limite = modoSimplificadoCloserFront_() ? 1 : 3;
+    if (marcada && idInteracao !== OPCAO_TRANSCRICAO_MANUAL && idsTranscricoesSelecionadasAuditoria_().length >= limite) {
+      if (modoSimplificadoCloserFront_()) {
+        Array.from(select.options || []).forEach(function(item) {
+          if (item.value !== OPCAO_TRANSCRICAO_MANUAL) item.selected = false;
+        });
+      } else {
+        mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
+        renderizarChecklistTranscricoesAuditoria_();
+        return;
+      }
     }
     if (marcada && idInteracao === OPCAO_TRANSCRICAO_MANUAL) {
       Array.from(select.options || []).forEach(item => { item.selected = item === opcao; });
@@ -5335,9 +5544,10 @@
       Array.from(select.options).forEach(opcao => { opcao.selected = opcao.value === OPCAO_TRANSCRICAO_MANUAL; });
       selecionadas = Array.from(select.selectedOptions || []);
       mostrarToast('A transcrição manual deve ser usada sozinha.', 'warning');
-    } else if (!manualSelecionada && selecionadas.length > 3) {
-      selecionadas.slice(3).forEach(opcao => { opcao.selected = false; });
-      mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
+    } else if (!manualSelecionada && selecionadas.length > (modoSimplificadoCloserFront_() ? 1 : 3)) {
+      const limite = modoSimplificadoCloserFront_() ? 1 : 3;
+      selecionadas.slice(limite).forEach(opcao => { opcao.selected = false; });
+      if (!modoSimplificadoCloserFront_()) mostrarToast('Selecione no máximo três transcrições por lote.', 'warning');
     }
     const manual = atualizarPainelManualAuditoria_();
     if (manual) {
@@ -5371,13 +5581,83 @@
   }
 
 
-  function atualizarSeletoresAuditoria() {
+  function modoSimplificadoCloserFront_() {
+      return String(estado.auditoriaEspaco || '').toUpperCase() === 'CLOSER';
+    }
+
+    function sincronizarModoSimplificadoCloserFront_() {
+      const ativo = modoSimplificadoCloserFront_();
+      const tipo = document.getElementById('audTipo');
+      const fonte = document.getElementById('audFonte');
+      if (ativo) {
+        if (tipo) tipo.value = 'CLOSER';
+        if (fonte) fonte.value = 'TODAS';
+      }
+
+      ['audTipoBox','audFonteBox','audModeloBox','audPitchBox','audNomeColaboradorBox'].forEach(function(id) {
+        const elemento = document.getElementById(id);
+        if (elemento) elemento.style.display = ativo ? 'none' : '';
+      });
+      const botaoPitches = document.getElementById('audGerenciarPitchesBtn');
+      if (botaoPitches) botaoPitches.style.display = ativo ? 'none' : '';
+      const reclassificar = document.getElementById('audReclassificarBox');
+      if (ativo && reclassificar) reclassificar.style.display = 'none';
+
+      const titulo = document.getElementById('audNovaTitulo');
+      const subtitulo = document.getElementById('audNovaSubtitulo');
+      const labelTranscricoes = document.getElementById('audTranscricoesLabel');
+      const ajudaTranscricoes = document.querySelector('#audTranscricoesBox .small.muted');
+      const botao = document.getElementById('btnExecutarAuditoria');
+      if (ativo) {
+        if (titulo) titulo.textContent = 'Nova auditoria Closer';
+        if (subtitulo) subtitulo.textContent = 'Selecione o cliente e uma transcrição.';
+        if (labelTranscricoes) labelTranscricoes.textContent = 'Transcrição';
+        if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Selecione uma transcrição por auditoria.';
+        if (botao && !botao.disabled) botao.textContent = 'Auditar';
+      } else {
+        if (titulo) titulo.textContent = 'Nova auditoria';
+        if (subtitulo) subtitulo.textContent = 'Primeiro selecione o cliente. Depois escolha a função e a transcrição.';
+        if (labelTranscricoes) labelTranscricoes.innerHTML = 'Transcrições <span class="muted">(selecione até 3)</span>';
+        if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Marque até três transcrições. As auditorias serão executadas uma por vez.';
+      }
+
+      const manual = document.getElementById('audImportacaoManual');
+      if (manual) {
+        const idsOcultar = [
+          'manualDataInteracao','manualTitulo','manualColaborador','manualLead',
+          'manualNomeArquivo','manualRdDealId','manualUrlAudio'
+        ];
+        idsOcultar.forEach(function(id) {
+          const campo = document.getElementById(id);
+          const box = campo ? campo.closest('.field') : null;
+          if (box) box.style.display = ativo ? 'none' : '';
+        });
+        const audioBox = document.getElementById('manualAudioBox');
+        if (audioBox) audioBox.style.display = ativo ? 'none' : audioBox.style.display;
+        const btnAudio = document.getElementById('btnTranscreverAudioManual');
+        if (btnAudio) btnAudio.style.display = ativo ? 'none' : '';
+        const lote = Array.from(manual.querySelectorAll('.card')).find(function(card) {
+          return /Lote de ligações/i.test(String(card.textContent || ''));
+        });
+        if (lote) lote.style.display = ativo ? 'none' : '';
+        const textoAjuda = manual.querySelector('summary + p');
+        if (textoAjuda) textoAjuda.textContent = ativo
+          ? 'Cole a transcrição. Participantes, data e contexto serão detectados automaticamente.'
+          : 'Use o cliente, a função e o tipo de interação selecionados acima.';
+        const labelTexto = document.querySelector('label[for="manualTranscricao"]');
+        if (labelTexto && ativo) labelTexto.textContent = 'Transcrição';
+      }
+    }
+
+    function atualizarSeletoresAuditoria() {
       const idCliente = valor('audCliente');
       const filtroPitches = document.getElementById('filtroPitchesBase');
       if (filtroPitches && idCliente) filtroPitches.value = idCliente;
       renderizarPitchesBase();
+      sincronizarModoSimplificadoCloserFront_();
       const tipo = valor('audTipo');
       const fonte = valor('audFonte');
+      const closerSimplificado = modoSimplificadoCloserFront_();
       const ehPlano = String(tipo).toUpperCase() === 'PLANO';
       const pitchSelect = document.getElementById('audPitch');
       const pitchBox = document.getElementById('audPitchBox');
@@ -5396,10 +5676,19 @@
 
       pitchSelect.innerHTML = '<option value="">Selecione a versão do pitch/referência</option>' +
         pitches.map(pitch => `<option value="${escapeAtributo(pitch.idPitch)}">${escapeHtml(pitch.nomeVersao)} — v${escapeHtml(pitch.numeroVersao || '-')}${pitch.pitchAtual ? ' — ATUAL / RECOMENDADO' : ''}</option>`).join('');
+      if (closerSimplificado && pitches.length) {
+        const atual = pitches.find(function(pitch) { return pitch.pitchAtual; }) || pitches[0];
+        pitchSelect.value = atual.idPitch;
+      }
 
       const interacoes = !fonte ? [] : estado.interacoesAuditoria.filter(interacao => {
         const fonteInteracao = String(interacao.fonte || '').toUpperCase();
         const tipoInteracao = String(interacao.tipoInteracao || '').toUpperCase();
+        if (closerSimplificado) {
+          return String(interacao.idCliente || '') === String(idCliente || '') &&
+            ['REUNIAO', 'LIGACAO'].includes(tipoInteracao) &&
+            String(interacao.statusTranscricao || 'CONCLUIDA').toUpperCase() !== 'ERRO';
+        }
         
         const manualCompativel = fonteInteracao === 'MANUAL' && (
           (fonte === 'TLDV' && tipoInteracao === 'REUNIAO') ||
@@ -5451,6 +5740,7 @@
 
       const idCliente = valor('audCliente');
       const tipo = valor('audTipo');
+      const closerSimplificado = modoSimplificadoCloserFront_();
       const ehPlano = String(tipo).toUpperCase() === 'PLANO';
       const equipePlano = valor('audEquipePlano');
       const fonte = valor('audFonte');
@@ -5468,11 +5758,58 @@
       const reclassificarBox = document.getElementById('audReclassificarBox');
       const reclassificarCampo = document.getElementById('audReclassificarInteracao');
       const reclassificarAviso = document.getElementById('audReclassificarAviso');
-      if (reclassificarBox) reclassificarBox.style.display = clienteDiferente ? 'block' : 'none';
+      if (reclassificarBox) reclassificarBox.style.display = closerSimplificado ? 'none' : (clienteDiferente ? 'block' : 'none');
       if (reclassificarAviso) reclassificarAviso.textContent = clienteDiferente
         ? interacoesDiferentes.length + ' transcrição(ões) vinculada(s) a outro cliente. A confirmação atualizará somente esses vínculos.'
         : '';
       if (!clienteDiferente && reclassificarCampo) reclassificarCampo.checked = false;
+
+      if (closerSimplificado) {
+        const pronto = Boolean(cliente && pitch && modelo && interacoes.length === 1 && !manualSelecionada && !clienteDiferente);
+        botao.disabled = !pronto;
+        botao.textContent = 'Auditar';
+
+        if (!cliente) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Selecione o cliente.</div>';
+          return;
+        }
+        if (!pitch) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">O cliente não possui um pitch Closer atual configurado.</div>';
+          return;
+        }
+        if (!modelo) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Nenhum modelo Closer ativo está disponível para este cliente.</div>';
+          return;
+        }
+        if (manualSelecionada) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Cole a transcrição abaixo e clique em “Salvar e selecionar transcrição”.</div>';
+          return;
+        }
+        if (!interacoes.length) {
+          alvo.innerHTML = '<div class="empty" style="padding:14px">Selecione uma transcrição.</div>';
+          return;
+        }
+
+        const interacao = interacoes[0] || {};
+        const responsavel = String(interacao.vendedor || '').trim();
+        alvo.innerHTML = `
+          <div class="section-title" style="margin-bottom:10px">
+            <div>
+              <strong>Dados detectados automaticamente</strong>
+              <div class="small muted">O pitch, o modelo e os participantes serão resolvidos pelo sistema.</div>
+            </div>
+            <span class="status success">PRONTO</span>
+          </div>
+          <div class="automation">
+            <div><small>Cliente</small><strong>${escapeHtml(cliente.nomeCliente || '-')}</strong></div>
+            <div><small>Auditoria</small><strong>Closer</strong></div>
+            <div><small>Pitch atual</small><strong>${escapeHtml(pitch.nomeVersao || '-')}</strong></div>
+            <div><small>Transcrição</small><strong>${escapeHtml(tituloInteracaoAuditoria_(interacao))}</strong></div>
+            ${responsavel ? '<div><small>Responsável detectado</small><strong>' + escapeHtml(responsavel) + '</strong></div>' : ''}
+          </div>
+        `;
+        return;
+      }
 
       const reclassificacaoConfirmada = !clienteDiferente || Boolean(reclassificarCampo && reclassificarCampo.checked);
       const pronto = Boolean(cliente && (ehPlano || pitch) && (!ehPlano || equipePlano) && modelo && interacoes.length && interacoes.length <= 3 && reclassificacaoConfirmada && !manualSelecionada);
@@ -5535,6 +5872,7 @@
       `;
     }
 
+    
     function preencherFiltroPitchesBase() {
       const select = document.getElementById('filtroPitchesBase');
       if (!select) return;
@@ -6346,13 +6684,15 @@
     function salvarConfiguracaoAuditoriaFront(){mostrarLoading('Salvando configurações...');google.script.run.withSuccessHandler(r=>{esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarConfiguracaoAuditoria({promptSdr:valor('audPromptSdr'),promptCloser:valor('audPromptCloser'),pastaDriveId:valor('audPastaDrive')});}
   async function executarAuditoriaV3Front() {
     if (!valor('audCliente')) return mostrarToast('Selecione o cliente.', 'error');
+    const closerSimplificado = modoSimplificadoCloserFront_();
     const ehPlano = String(valor('audTipo')).toUpperCase() === 'PLANO';
     if (ehPlano && !valor('audEquipePlano')) return mostrarToast('Selecione a equipe analisada no Plano de Otimização.', 'error');
-    if (!ehPlano && !valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
-    if (!valor('audModelo')) return mostrarToast('Selecione o modelo de auditoria.', 'error');
+    if (!closerSimplificado && !ehPlano && !valor('audPitch')) return mostrarToast('Selecione a versão de referência.', 'error');
+    if (!closerSimplificado && !valor('audModelo')) return mostrarToast('Selecione o modelo de auditoria.', 'error');
     const idsInteracoes = idsTranscricoesSelecionadasAuditoria_();
-    if (!idsInteracoes.length) return mostrarToast('Selecione pelo menos uma transcrição.', 'error');
-    if (idsInteracoes.length > 3) return mostrarToast('Selecione no máximo três transcrições por lote.', 'error');
+    if (!idsInteracoes.length) return mostrarToast('Selecione uma transcrição.', 'error');
+    if (closerSimplificado && idsInteracoes.length !== 1) return mostrarToast('Selecione somente uma transcrição.', 'error');
+    if (!closerSimplificado && idsInteracoes.length > 3) return mostrarToast('Selecione no máximo três transcrições por lote.', 'error');
 
     const botao = document.getElementById('btnExecutarAuditoria');
     const resultado = document.getElementById('resultadoAuditoriaAtual');
@@ -6373,11 +6713,11 @@
           idCliente: valor('audCliente'),
           tipoAuditoria: valor('audTipo'),
           equipePlano: ehPlano ? valor('audEquipePlano') : '',
-          fonte: valor('audFonte'),
-          idPitch: valor('audPitch'),
-          idModelo: valor('audModelo'),
+          fonte: closerSimplificado ? 'AUTO' : valor('audFonte'),
+          idPitch: closerSimplificado ? '' : valor('audPitch'),
+          idModelo: closerSimplificado ? '' : valor('audModelo'),
           idInteracao: idInteracao,
-          nomeSdr: idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr')),
+          nomeSdr: closerSimplificado ? '' : (idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr'))),
           reclassificarInteracao: Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
           evitarDuplicidade: true
         });
@@ -6395,7 +6735,7 @@
     estado.auditoriaAtual = ultimaAuditoria;
     renderizarAuditorias();
     botao.disabled = false;
-    botao.textContent = idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão';
+    botao.textContent = closerSimplificado ? 'Auditar' : (idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão');
     if (ultimaAuditoria) renderizarPreviewAuditoriaV3(ultimaAuditoria);
     else resultado.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível concluir</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagensErro.join(' | ')) + '</div></div>';
     mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
@@ -6988,110 +7328,268 @@
     return [p1, p2, p3];
   }
 
+  function consolidarIntervencoesCloserFront_(r) {
+    r = r || {};
+    const contexto = r.resumo_reuniao || {};
+    const perguntas = r.perguntas_diagnostico || {};
+    const impacto = r.analise_impacto_implicacao || {};
+    const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
+    const objecoes = Array.isArray(r.objecoes_respostas) ? r.objecoes_respostas : [];
+    const momentos = Array.isArray(r.momentos) ? r.momentos : [];
+    const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+    const candidatos = [];
+    let ordem = 0;
+
+    const normalizar = valor => String(valor || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const categoriaSpin = valor => {
+      const chave = normalizar(valor);
+      if (/\b(?:situacao|contexto)\b/.test(chave)) return { chave: 'S', rotulo: 'Situação (SPIN)', peso: 55 };
+      if (/\b(?:problema|dor)\b/.test(chave)) return { chave: 'P', rotulo: 'Problema (SPIN)', peso: 88 };
+      if (/\b(?:implicacao|impacto|consequencia)\b/.test(chave)) return { chave: 'I', rotulo: 'Implicação (SPIN)', peso: 100 };
+      if (/\b(?:necessidade|solucao|need payoff|resultado desejado)\b/.test(chave)) return { chave: 'N', rotulo: 'Necessidade de solução (SPIN)', peso: 96 };
+      return null;
+    };
+    const tokensPergunta = valor => {
+      const ignorar = { a: true, as: true, de: true, do: true, da: true, dos: true, das: true, e: true, em: true, no: true, na: true, nos: true, nas: true, o: true, os: true, para: true, por: true, que: true, qual: true, quais: true, como: true, hoje: true, voces: true, voce: true, poderia: true, consegue: true };
+      return normalizar(valor).split(' ').filter(token => token.length > 2 && !ignorar[token]);
+    };
+    const perguntasEquivalentes = (a, b) => {
+      const chaveA = normalizar(a);
+      const chaveB = normalizar(b);
+      if (!chaveA || !chaveB) return false;
+      if (chaveA === chaveB || (Math.min(chaveA.length, chaveB.length) >= 28 && (chaveA.includes(chaveB) || chaveB.includes(chaveA)))) return true;
+      const tokensA = tokensPergunta(chaveA);
+      const tokensB = tokensPergunta(chaveB);
+      if (!tokensA.length || !tokensB.length) return false;
+      const conjuntoB = new Set(tokensB);
+      const comuns = tokensA.filter(token => conjuntoB.has(token)).length;
+      return comuns / Math.max(tokensA.length, tokensB.length) >= 0.72;
+    };
+    const naoEvidenciado = valor => {
+      const chave = normalizar(valor);
+      return !chave || /^(?:nao evidenciado|nao informado|nao identificado|nao mensuravel)$/.test(chave);
+    };
+    const situacaoEssencialAusente = item => {
+      const texto = normalizar([
+        item && item.pergunta, item && item.pergunta_sugerida, item && item.objetivo,
+        item && item.quando_usar, item && item.motivo_importancia, item && item.impacto_da_ausencia,
+        (impacto.lacunas || []).join(' ')
+      ].join(' '));
+      const lacunaContextual = /\b(?:cenario|contexto|processo atual|ferramenta atual|fluxo atual|operacao atual|volume|responsavel|decisor)\b/.test(texto);
+      return lacunaContextual && (naoEvidenciado(contexto.cenario_atual) || naoEvidenciado(contexto.dor_principal));
+    };
+    const prioridadeTema = valor => {
+      const texto = normalizar(valor);
+      if (/\b(?:implicacao|impacto|consequencia|custo da inacao|risco|financeir)\b/.test(texto)) return 94;
+      if (/\b(?:diagnostico|problema|dor|necessidade)\b/.test(texto)) return 86;
+      if (/\b(?:valor|beneficio|resultado desejado|solucao)\b/.test(texto)) return 80;
+      if (/\b(?:objecao|duvida|bloqueio|impeditivo)\b/.test(texto)) return 74;
+      if (/\b(?:proximo passo|agenda|agendar|decisao|avanco|compromisso|follow up|fechamento)\b/.test(texto)) return 68;
+      return 45;
+    };
+    const adicionar = candidato => {
+      candidato = candidato || {};
+      const texto = String(candidato.texto || '').replace(/^[-•]\s*/, '').trim();
+      if (!texto) return;
+      const pergunta = String(candidato.pergunta || '').trim();
+      const duplicado = candidatos.some(existente =>
+        (pergunta && existente.pergunta && perguntasEquivalentes(pergunta, existente.pergunta)) ||
+        perguntasEquivalentes(texto, existente.texto)
+      );
+      if (duplicado) return;
+      candidatos.push({
+        texto: texto,
+        pergunta: pergunta,
+        prioridade: Number(candidato.prioridade || prioridadeTema(texto)),
+        ordem: ordem++
+      });
+    };
+    const montarPergunta = (item, pergunta, spin, origem) => {
+      const partes = [spin.rotulo + ': pergunte "' + String(pergunta).trim() + '"'];
+      const aplicacao = item.sugestao_aplicacao || item.quando_usar || '';
+      const objetivo = item.objetivo || item.motivo_importancia || '';
+      if (aplicacao) partes.push('Quando usar: ' + String(aplicacao).trim());
+      if (objetivo) partes.push('Objetivo: ' + String(objetivo).trim());
+      return {
+        texto: partes.join(' — '),
+        pergunta: pergunta,
+        prioridade: spin.peso + (origem === 'AUSENTE' ? 5 : 0)
+      };
+    };
+
+    const perguntasFaltantes = Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [];
+    perguntasFaltantes.forEach(item => {
+      if (!item || !String(item.pergunta || '').trim()) return;
+      const spin = categoriaSpin(item.categoria);
+      if (spin && spin.chave === 'S' && !situacaoEssencialAusente(item)) return;
+      if (spin) adicionar(montarPergunta(item, item.pergunta, spin, 'AUSENTE'));
+      else adicionar({
+        texto: (item.categoria ? String(item.categoria).trim() + ': ' : '') + 'pergunte "' + String(item.pergunta).trim() + '"' + (item.sugestao_aplicacao ? ' — Quando usar: ' + String(item.sugestao_aplicacao).trim() : ''),
+        pergunta: item.pergunta,
+        prioridade: prioridadeTema([item.categoria, item.motivo_importancia, item.impacto_da_ausencia].join(' ')) + 3
+      });
+    });
+
+    const perguntasRealizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
+    perguntasRealizadas.forEach(item => {
+      if (!item || !String(item.o_que_melhorar || '').trim()) return;
+      const avaliacao = normalizar(item.avaliacao).replace(/ /g, '_').toUpperCase();
+      if (item.aprofundou !== false && !['DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'PARCIAL'].includes(avaliacao)) return;
+      const spin = categoriaSpin(item.categoria);
+      const prefixo = spin ? spin.rotulo + ': ' : 'Aprofundamento: ';
+      adicionar({
+        texto: prefixo + 'aprofunde a pergunta "' + String(item.pergunta || '').trim() + '" — ' + String(item.o_que_melhorar).trim(),
+        pergunta: item.pergunta,
+        prioridade: (spin ? spin.peso : prioridadeTema(item.categoria)) + 2
+      });
+    });
+
+    repertorio.forEach(item => {
+      if (!item || !String(item.pergunta_sugerida || '').trim()) return;
+      const spin = categoriaSpin(item.categoria);
+      if (!spin || (spin.chave === 'S' && !situacaoEssencialAusente(item))) return;
+      adicionar(montarPergunta(item, item.pergunta_sugerida, spin, 'REPERTORIO'));
+    });
+
+    objecoes.forEach(item => {
+      if (!item || !String(item.melhoria_sugerida || '').trim()) return;
+      adicionar({ texto: 'Objeção: ' + String(item.melhoria_sugerida).trim(), prioridade: 76 });
+    });
+
+    momentos.filter(item =>
+      item && !statusMomentoConformeCloserFront_(item) && !statusMomentoNaoAplicavelCloserFront_(item)
+    ).forEach(item => {
+      const correcao = item.o_que_fazer || item.como_agir || item.texto_script || '';
+      adicionar({ texto: correcao, prioridade: prioridadeTema([item.nome, item.divergencia, correcao].join(' ')) });
+    });
+    adicionar({ texto: impacto.correcao_pratica, prioridade: prioridadeTema([impacto.correcao_pratica, (impacto.lacunas || []).join(' ')].join(' ')) });
+    criterios.filter(item =>
+      item && item.aplicavel !== false &&
+      !statusConformeAuditoriaFront_(item.status) &&
+      !statusNaoAplicavelAuditoriaFront_(item.status)
+    ).forEach(item => adicionar({
+      texto: item.correcao_pratica,
+      prioridade: prioridadeTema([item.nome, item.correcao_pratica].join(' '))
+    }));
+    passos.forEach(item => adicionar({
+      texto: item && item.acao,
+      prioridade: prioridadeTema([item && item.acao, item && item.criterio_conclusao].join(' '))
+    }));
+
+    return candidatos
+      .sort((a, b) => b.prioridade - a.prioridade || a.ordem - b.ordem)
+      .slice(0, 5)
+      .map(item => item.texto);
+  }
+
   function renderizarResumoExecutivoCloserV3_(r) {
     r = r || {};
     const contexto = r.resumo_reuniao || {};
     const momentos = Array.isArray(r.momentos) ? r.momentos : [];
     const criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
-    const passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
-    const perguntas = r.perguntas_diagnostico || {};
-    const impacto = r.analise_impacto_implicacao || {};
-    const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
 
-    const aderentesMomentos = momentos.filter(statusMomentoConformeCloserFront_);
-    const desviosMomentos = momentos.filter(item =>
-      !statusMomentoConformeCloserFront_(item) &&
-      !statusMomentoNaoAplicavelCloserFront_(item)
-    );
+    const normalizarTexto = valor => String(valor || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/\s+/g, ' ').trim();
 
-    const aderentes = aderentesMomentos.length ? aderentesMomentos.map(item => ({
-      titulo: item.nome || item.id || 'Momento',
-      evidencia: item.o_que_foi_dito || '',
-      regra: item.o_que_se_espera || item.texto_script || ''
-    })) : criterios.filter(item => item && item.aplicavel !== false && statusConformeAuditoriaFront_(item.status)).map(item => ({
-      titulo: item.nome || item.id || 'Critério',
-      evidencia: item.o_que_foi_dito || '',
-      regra: item.regra_pitch || ''
-    }));
-
-    const desvios = desviosMomentos.length ? desviosMomentos.map(item => ({
-      titulo: item.nome || item.id || 'Momento',
-      divergencia: item.divergencia || ((item.pontos_melhorar || []).join(' • ')) || 'Desvio registrado.',
-      evidencia: item.o_que_foi_dito || '',
-      correcao: item.o_que_fazer || item.como_agir || item.texto_script || ''
-    })) : criterios.filter(item =>
-      item && item.aplicavel !== false &&
-      !statusConformeAuditoriaFront_(item.status) &&
-      !statusNaoAplicavelAuditoriaFront_(item.status)
-    ).map(item => ({
-      titulo: item.nome || item.id || 'Critério',
-      divergencia: item.divergencia || 'Desvio registrado.',
-      evidencia: item.o_que_foi_dito || '',
-      correcao: item.correcao_pratica || item.regra_pitch || ''
-    }));
-
-    const listaAderentes = aderentes.length
-      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(item =>
-          '<li><strong>' + escapeHtml(item.titulo) + '</strong>' +
-          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.regra ? '<br><span class="muted">Referência do processo:</span> ' + escapeHtml(item.regra) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p class="muted">Nenhuma execução aderente foi registrada com a evidência disponível.</p>';
-
-    const listaDesvios = desvios.length
-      ? '<ul class="audit-executive-list">' + desvios.slice(0, 6).map(item =>
-          '<li><strong>' + escapeHtml(item.titulo) + '</strong>: ' + escapeHtml(item.divergencia) +
-          (item.evidencia ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.evidencia) : '') +
-          (item.correcao ? '<br><span class="muted">Correção prática:</span> ' + escapeHtml(item.correcao) : '') +
-          '</li>'
-        ).join('') + '</ul>'
-      : '<p>Nenhum desvio em relação ao pitch/processo foi registrado.</p>';
-
-    const acoes = [];
-    const vistosAcoes = {};
-    const adicionarAcao = valor => {
-      const texto = String(valor || '').replace(/^[-•]\s*/, '').trim();
-      if (!texto) return;
-      const chave = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-      if (!chave || vistosAcoes[chave]) return;
-      vistosAcoes[chave] = true;
-      acoes.push(texto);
+    const textoNeutro = valor => {
+      const chave = normalizarTexto(valor).replace(/[.!]+$/g, '');
+      return !chave || [
+        'nao houve divergencia',
+        'nenhuma divergencia',
+        'nenhuma divergencia registrada',
+        'sem divergencia',
+        'nao evidenciado',
+        'nao aplicavel',
+        'n/a'
+      ].includes(chave);
     };
 
-    const perguntasRealizadas = Array.isArray(perguntas.perguntas_realizadas) ? perguntas.perguntas_realizadas : [];
-    const perguntasFaltantes = Array.isArray(perguntas.perguntas_esperadas_nao_realizadas) ? perguntas.perguntas_esperadas_nao_realizadas : [];
+    const unicos = itens => {
+      const vistos = {};
+      return (itens || []).map(item => String(item || '').trim()).filter(item => {
+        const chave = normalizarTexto(item);
+        if (!chave || vistos[chave]) return false;
+        vistos[chave] = true;
+        return true;
+      });
+    };
 
-    perguntasRealizadas.forEach(item => {
-      if (!item) return;
-      const avaliacao = normalizarStatusAuditoriaFront_(item.avaliacao || '');
-      if (item.aprofundou === false || ['DESVIO_EXECUCAO', 'NAO_EXECUTADO', 'PARCIAL'].includes(avaliacao)) {
-        adicionarAcao(item.o_que_melhorar);
-      }
-    });
-    perguntasFaltantes.forEach(item => {
-      if (!item) return;
-      if (item.sugestao_aplicacao) adicionarAcao(item.sugestao_aplicacao);
-      else if (item.pergunta) adicionarAcao('Pergunte: "' + item.pergunta + '"');
-    });
-    desvios.forEach(item => adicionarAcao(item && item.correcao));
-    adicionarAcao(impacto.correcao_pratica);
-    criterios.filter(item =>
-      item && item.aplicavel !== false &&
-      !statusConformeAuditoriaFront_(item.status) &&
-      !statusNaoAplicavelAuditoriaFront_(item.status)
-    ).forEach(item => adicionarAcao(item.correcao_pratica));
-    repertorio.filter(item =>
-      item && String(item.origem || '').toUpperCase() === 'SUGESTAO_ENABLEMENT'
-    ).forEach(item => {
-      if (item.pergunta_sugerida) {
-        adicionarAcao('Pergunte: "' + item.pergunta_sugerida + '"' + (item.objetivo ? ' — objetivo: ' + item.objetivo : ''));
-      }
-    });
-    passos.forEach(item => adicionarAcao(item && item.acao));
+    const criterioRelacionado = momento => {
+      const nome = normalizarTexto([momento && momento.nome, momento && momento.id].join(' '));
+      const tokens = nome.split(' ').filter(token => token.length > 4);
+      return criterios.find(item => {
+        if (!item || item.aplicavel === false || statusConformeAuditoriaFront_(item.status) || statusNaoAplicavelAuditoriaFront_(item.status)) return false;
+        const alvo = normalizarTexto([item.nome, item.id].join(' '));
+        return tokens.some(token => alvo.includes(token));
+      }) || null;
+    };
 
+    const leituraMomento = item => {
+      const relacionado = criterioRelacionado(item);
+      const divergencia = !textoNeutro(item && item.divergencia) ? String(item.divergencia).trim() : '';
+      const gaps = unicos([
+        divergencia,
+        ...((item && Array.isArray(item.pontos_melhorar)) ? item.pontos_melhorar : []),
+        relacionado && !textoNeutro(relacionado.divergencia) ? relacionado.divergencia : ''
+      ]).slice(0, 3);
+      const fortes = unicos((item && Array.isArray(item.pontos_fortes)) ? item.pontos_fortes : []).slice(0, 3);
+      const acao = String(
+        (item && (item.o_que_fazer || item.como_agir)) ||
+        (relacionado && (relacionado.correcao_pratica || relacionado.regra_pitch)) ||
+        ''
+      ).trim();
+      const pitch = String((item && item.texto_script) || (relacionado && relacionado.regra_pitch) || '').trim();
+      return {
+        item: item || {},
+        gaps: gaps,
+        fortes: fortes,
+        acao: acao,
+        pitch: pitch,
+        conforme: statusMomentoConformeCloserFront_(item),
+        naoAplicavel: statusMomentoNaoAplicavelCloserFront_(item)
+      };
+    };
+
+    const leituras = momentos.map(leituraMomento).filter(leitura => !leitura.naoAplicavel);
+    const aderentes = leituras.filter(leitura => leitura.conforme);
+    const melhorias = leituras.filter(leitura => !leitura.conforme && (leitura.gaps.length || leitura.acao || leitura.pitch));
+
+    const listaAderentes = aderentes.length
+      ? '<ul class="audit-executive-list">' + aderentes.slice(0, 6).map(leitura => {
+          const item = leitura.item;
+          return '<li><strong>' + escapeHtml(item.nome || item.id || 'Momento') + '</strong>' +
+            (item.o_que_foi_dito ? '<br><span class="muted">Evidência:</span> ' + escapeHtml(item.o_que_foi_dito) : '') +
+            (leitura.fortes.length ? '<br><span class="muted">Acertos:</span> ' + escapeHtml(leitura.fortes.join(' • ')) : '') +
+            '</li>';
+        }).join('') + '</ul>'
+      : '<p class="muted">Nenhum momento foi classificado como plenamente conforme.</p>';
+
+    const listaMelhorias = melhorias.length
+      ? '<div class="audit-executive-moments">' + melhorias.slice(0, 6).map(leitura => {
+          const item = leitura.item;
+          const cor = String(item.cor || item.status || '').toUpperCase();
+          const classe = cor === 'VERMELHO' ? 'danger' : 'warning';
+          const nota = item.nota === null || item.nota === undefined ? '' : ' · ' + item.nota + '/5';
+          return '<article class="audit-executive-moment">' +
+            '<div class="audit-executive-moment-head"><strong>' + escapeHtml(item.nome || item.id || 'Momento') + '</strong>' +
+            '<span class="status ' + classe + '">' + escapeHtml((cor || 'ATENÇÃO') + nota) + '</span></div>' +
+            (item.o_que_foi_dito ? '<p><span class="muted">Evidência:</span> ' + escapeHtml(item.o_que_foi_dito) + '</p>' : '') +
+            (leitura.fortes.length ? '<p class="line-success">✅ <strong>Acertos:</strong> ' + escapeHtml(leitura.fortes.join(' • ')) + '</p>' : '') +
+            (leitura.gaps.length ? '<p class="line-danger">❌ <strong>O que faltou:</strong> ' + escapeHtml(leitura.gaps.join(' • ')) + '</p>' : '') +
+            (leitura.acao ? '<p><strong>Ação concreta:</strong> ' + escapeHtml(leitura.acao) + '</p>' : '') +
+            (leitura.pitch ? '<p class="line-tip">💡 <strong>Referência / texto do pitch:</strong> ' + escapeHtml(leitura.pitch) + '</p>' : '') +
+            (item.como_agir && item.como_agir !== leitura.acao ? '<p><strong>Como aplicar:</strong> ' + escapeHtml(item.como_agir) + '</p>' : '') +
+            '</article>';
+        }).join('') + '</div>'
+      : '<p>Nenhuma prioridade de melhoria foi identificada com evidência suficiente.</p>';
+
+    const acoes = consolidarIntervencoesCloserFront_(r);
     const listaAcoes = acoes.length
-      ? '<ol class="audit-executive-list">' + acoes.slice(0, 7).map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
+      ? '<ol class="audit-executive-list">' + acoes.map(item => '<li>' + escapeHtml(item) + '</li>').join('') + '</ol>'
       : '<p class="muted">Manter a execução aderente e repetir os comportamentos que funcionaram nesta reunião.</p>';
 
     const criteriosAplicaveis = criterios.filter(item =>
@@ -7135,8 +7633,8 @@
         </section>
 
         <section class="audit-executive-block audit-executive-gap">
-          <h3>Desvios em relação ao pitch/processo</h3>
-          ${listaDesvios}
+          <h3>Prioridades de melhoria por momento</h3>
+          ${listaMelhorias}
         </section>
 
         <section class="audit-executive-block audit-executive-action">
@@ -7252,17 +7750,22 @@
       <p><strong>Mensurabilidade:</strong> ${escapeHtml(temporal.rotulo_mensurabilidade)} · <strong>Duração total da gravação:</strong> ${escapeHtml(temporal.duracao_total)}</p>
       ${temporal.mensurabilidade === 'NAO_MENSURAVEL'
         ? `<p class="muted">A duração total está disponível, mas a transcrição não possui timestamps suficientes para cronometrar cada etapa. Abaixo está a cadência recomendada e a leitura qualitativa.</p>${tabelaAuditoriaV3(
-            ['Etapa','Janela de referência','Leitura da execução'],
-            temporal.etapas.map(item => [item.nome, item.janela_esperada, item.observacao])
+            ['Etapa','Janela de referência','Aderência'],
+            temporal.etapas.map(item => [item.nome, item.janela_esperada, item.aderencia || 'Leitura qualitativa'])
           )}`
         : tabelaAuditoriaV3(
-            ['Etapa','Janela esperada','Início','Fim','Duração','Aderência','Observação'],
+            ['Etapa','Janela esperada','Início','Fim','Duração','Aderência'],
             temporal.etapas.map(item => [
               item.nome, item.janela_esperada, item.inicio || 'Não localizado', item.fim || 'Não localizado',
               item.duracao_minutos === null || item.duracao_minutos === undefined ? 'Não mensurável' : item.duracao_minutos + ' min',
-              item.aderencia || 'Leitura qualitativa', item.observacao
+              item.aderencia || 'Leitura qualitativa'
             ])
           )}
+      <div class="audit-temporal-notes">
+        ${temporal.etapas.filter(item => item && item.observacao).map(item =>
+          `<div class="audit-temporal-note"><strong>${escapeHtml(item.nome || 'Etapa')}</strong>${escapeHtml(item.observacao)}</div>`
+        ).join('')}
+      </div>
       ${(temporal.limitacoes || []).length ? `<p><strong>Limitações:</strong> ${escapeHtml(temporal.limitacoes.join(' • '))}</p>` : ''}
       <h3>Perguntas de diagnóstico</h3>
       <p><strong>Total realizado:</strong> ${escapeHtml(perguntas.total_realizadas === null || perguntas.total_realizadas === undefined ? 'Não mensurável' : perguntas.total_realizadas)}</p>
@@ -7819,6 +8322,53 @@
     });
     const titulo = document.getElementById('audHistoricoTitulo');
     if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
+    sincronizarModoSimplificadoCloserFront_();
+  }
+
+  function auditoriasOperacionaisFront_() {
+    const lista = Array.isArray(estado.auditorias) ? estado.auditorias.slice() : [];
+    const atual = estado.auditoriaAtual || null;
+    if (atual && atual.idAuditoria) {
+      const indice = lista.findIndex(item => String((item || {}).idAuditoria || '') === String(atual.idAuditoria));
+      if (indice >= 0) lista[indice] = Object.assign({}, lista[indice] || {}, atual);
+      else lista.unshift(atual);
+    }
+    return lista.filter(Boolean);
+  }
+
+  function resumoAuditoriasCrmFront_(auditorias, espaco) {
+    const tipo = String(espaco || 'SDR').toUpperCase();
+    const auditoriasDoEspaco = (Array.isArray(auditorias) ? auditorias : []).filter(item =>
+      item &&
+      !item.auditoriaLegada &&
+      !item.auditoriaSubstituida &&
+      Boolean(item.resultado || item.resultadoCompleto) &&
+      String(item.tipoAuditoria || 'SDR').toUpperCase() === tipo
+    );
+    const realizadas = auditoriasDoEspaco.filter(item =>
+      ['EM_REVISAO', 'APROVADA'].includes(String(item.status || '').toUpperCase())
+    );
+    const aprovadas = realizadas.filter(item => String(item.status || '').toUpperCase() === 'APROVADA');
+    const vinculadas = aprovadas.filter(item => Boolean(item.linkCrm));
+    const aguardandoVinculo = aprovadas.filter(item =>
+      !item.linkCrm && String(item.rdStatus || '').toUpperCase() !== 'PUBLICADA'
+    );
+    const enviadas = aprovadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
+    const erros = vinculadas.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
+    const pendentes = vinculadas.filter(item =>
+      !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase())
+    );
+    return {
+      tipo,
+      realizadas: realizadas.length,
+      aprovadas: aprovadas.length,
+      emRevisao: realizadas.length - aprovadas.length,
+      vinculadas: vinculadas.length,
+      aguardandoVinculo: aguardandoVinculo.length,
+      enviadas: enviadas.length,
+      pendentes: pendentes.length,
+      erros: erros.length
+    };
   }
 
   function selecionarEspacoAuditoriaFront_(tipo, silencioso) {
@@ -7850,7 +8400,8 @@
     const mes = String((document.getElementById('audHistoricoMes') || {}).value || '');
     const statusFiltro = String((document.getElementById('audHistoricoStatus') || {}).value || '').toUpperCase();
     const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
-    const auditorias = (estado.auditorias || []).filter(item => {
+    const auditoriasFonte = auditoriasOperacionaisFront_();
+    const auditorias = auditoriasFonte.filter(item => {
       if (item.auditoriaLegada || item.auditoriaSubstituida) return false;
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
       return String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco &&
@@ -7860,7 +8411,7 @@
     });
     if (!auditorias.length) {
       const rotulo = rotuloEspacoAuditoria_(espaco);
-      alvo.innerHTML = `<div class="empty">${(estado.auditorias || []).length ? 'Nenhum registro de ' + escapeHtml(rotulo) + ' encontrado para os filtros selecionados.' : 'Nenhum registro executado.'}</div>`;
+      alvo.innerHTML = `<div class="empty">${auditoriasFonte.length ? 'Nenhum registro de ' + escapeHtml(rotulo) + ' encontrado para os filtros selecionados.' : 'Nenhum registro executado.'}</div>`;
       return;
     }
 
@@ -8175,23 +8726,27 @@
   function renderizarResumoEnviosRdAuditorias_() {
     const alvo = document.getElementById('resumoEnviosRdAuditorias');
     if (!alvo) return;
-    const auditorias = (estado.auditorias || []).filter(item =>
-      !item.auditoriaLegada &&
-      !item.auditoriaSubstituida &&
-      Boolean(item.resultado) &&
-      Boolean(item.linkCrm)
-    );
-    const enviadas = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'PUBLICADA');
-    const erros = auditorias.filter(item => String(item.rdStatus || '').toUpperCase() === 'ERRO');
-    const pendentes = auditorias.filter(item => !['PUBLICADA', 'ERRO'].includes(String(item.rdStatus || '').toUpperCase()));
-    const porFuncao = funcao => auditorias.filter(item => String(item.tipoAuditoria || '').toUpperCase() === funcao);
+
+    const espaco = String(estado.auditoriaEspaco || 'SDR').toUpperCase();
+    const resumo = resumoAuditoriasCrmFront_(auditoriasOperacionaisFront_(), espaco);
+
+    if (espaco === 'PLANO') {
+      const metricasPlano = [
+        ['Planos realizados', resumo.realizadas, 'Planos com resultado registrado no Board.'],
+        ['Aprovados', resumo.aprovadas, 'Planos já aprovados.'],
+        ['Em revisão', resumo.emRevisao, 'Planos aguardando revisão humana.']
+      ];
+      alvo.innerHTML = metricasPlano.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
+      return;
+    }
+
     const metricas = [
-      ['Elegíveis para CRM', auditorias.length, 'Auditorias com resultado e negociação vinculada.'],
-      ['Enviadas ao CRM', enviadas.length, 'Anotação e tarefas registradas no RD.'],
-      ['Pendentes de envio', pendentes.length, 'Aguardando vínculo ou pré-requisito para envio automático.'],
-      ['Erros de envio', erros.length, 'Precisam de conferência antes de tentar novamente.'],
-      ['SDR vinculadas', porFuncao('SDR').length, 'Auditorias SDR elegíveis ao CRM.'],
-      ['Closer vinculadas', porFuncao('CLOSER').length, 'Auditorias Closer processadas pelo fluxo automático.']
+      ['Auditorias realizadas', resumo.realizadas, 'Com resultado no Board, independentemente de vínculo com CRM.'],
+      ['Com vínculo CRM', resumo.vinculadas, 'Auditorias aprovadas com negociação vinculada.'],
+      ['Aguardando vínculo', resumo.aguardandoVinculo, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
+      ['Enviadas ao CRM', resumo.enviadas, 'Anotação e tarefas já registradas no CRM.'],
+      ['Pendentes de envio', resumo.pendentes, 'Já vinculadas e aguardando publicação automática.'],
+      ['Erros de envio', resumo.erros, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
   }
@@ -8806,6 +9361,123 @@
       }).withFailureHandler(tratarErro).salvarPreferenciasFontesReuniao({ formalizacaoAutomatica: document.getElementById('formalFormalizacaoAutomatica').checked });
     }
 
+    function formalNormalizarResultadoFront_(valor) {
+      const resultado = String(valor || '').trim().toUpperCase();
+      return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'].includes(resultado)
+        ? resultado
+        : 'NAO_IDENTIFICADA';
+    }
+
+    function formalRotuloResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      return {
+        REALIZADA: 'REALIZADA',
+        NO_SHOW: 'NO-SHOW',
+        REMARCADA: 'REMARCADA',
+        CANCELADA: 'CANCELADA',
+        SEM_TRANSCRICAO: 'SEM TRANSCRIÇÃO',
+        NAO_IDENTIFICADA: 'NÃO IDENTIFICADA'
+      }[resultado] || 'NÃO IDENTIFICADA';
+    }
+
+    function formalClasseResultadoReuniao_(valor) {
+      const resultado = formalNormalizarResultadoFront_(valor);
+      if (resultado === 'REALIZADA') return 'success';
+      if (resultado === 'NO_SHOW') return 'danger';
+      if (resultado === 'REMARCADA') return 'warning';
+      if (resultado === 'SEM_TRANSCRICAO') return 'warning';
+      if (resultado === 'NAO_IDENTIFICADA') return 'info';
+      return '';
+    }
+
+    function formalTituloLimpo_(titulo) {
+      return String(titulo || 'Formalização')
+        .replace(/\s*GMT[+-]\d{2}:\d{2}\s*/gi, ' ')
+        .replace(/\s*-\s*Anota(?:ções|coes) do Gemini\s*$/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+-\s*$/g, '')
+        .trim() || 'Formalização';
+    }
+
+    function formalBadgeResultadoReuniao_(valor) {
+      return '<span class="status ' + formalClasseResultadoReuniao_(valor) + '">' +
+        escapeHtml(formalRotuloResultadoReuniao_(valor)) + '</span>';
+    }
+
+    function formalClassificadorReuniaoHtml_(idReuniao, resultadoAtual) {
+      if (!idReuniao) return '';
+      const atual = formalNormalizarResultadoFront_(resultadoAtual);
+      const opcoes = [
+        ['REALIZADA', 'Realizada', 'realizada'],
+        ['NO_SHOW', 'No-show', 'no-show'],
+        ['REMARCADA', 'Remarcada', 'remarcada'],
+        ['CANCELADA', 'Cancelada', 'cancelada'],
+        ['SEM_TRANSCRICAO', 'Sem transcrição', 'sem-transcricao'],
+        ['NAO_IDENTIFICADA', 'Não identificada', 'nao-identificada']
+      ];
+      const botoes = opcoes.map(item =>
+        '<button class="meeting-outcome-btn ' + item[2] + (atual === item[0] ? ' is-active' : '') +
+        '" type="button" onclick="salvarResultadoReuniaoFront(\'' + escapeAtributo(idReuniao) + '\',\'' + item[0] + '\',this)">' +
+        escapeHtml(item[1]) + '</button>'
+      ).join('');
+      return '<details class="meeting-classifier"><summary class="btn secondary">Classificar reunião</summary>' +
+        '<div class="meeting-outcome-panel">' + botoes + '</div></details>';
+    }
+
+    function formalClassificadorRapidoHtml_(idReuniao, resultadoAtual) {
+      if (!idReuniao) return '';
+      const atual = formalNormalizarResultadoFront_(resultadoAtual);
+      const opcoes = [
+        ['REALIZADA', 'Realizada', 'realizada'],
+        ['NO_SHOW', 'No-show', 'no-show'],
+        ['SEM_TRANSCRICAO', 'Sem transcrição', 'sem-transcricao']
+      ];
+      return '<div class="formal-quick-actions" aria-label="Classificação rápida da reunião">' + opcoes.map(item =>
+        '<button class="meeting-outcome-btn ' + item[2] + (atual === item[0] ? ' is-active' : '') +
+        '" type="button" onclick="salvarResultadoReuniaoFront(\'' + escapeAtributo(idReuniao) + '\',\'' + item[0] + '\',this)">' +
+        escapeHtml(item[1]) + '</button>'
+      ).join('') + '</div>';
+    }
+
+    function formalReuniaoAssociadaFront_(formalizacao) {
+      formalizacao = formalizacao || {};
+      return (estado.reunioesFormalizacao || []).find(reuniao =>
+        (formalizacao.idTranscricao && String(reuniao.idTranscricao || '') === String(formalizacao.idTranscricao)) ||
+        (formalizacao.idInteracao && String(reuniao.idInteracao || '') === String(formalizacao.idInteracao))
+      ) || null;
+    }
+
+    function salvarResultadoReuniaoFront(idReuniao, resultadoReuniao, botao) {
+      if (!idReuniao) return mostrarToast('Reunião não localizada para classificação.', 'error');
+      const formalizacaoFila = (estado.formalizacoes || []).find(item => {
+        const reuniao = formalReuniaoAssociadaFront_(item);
+        return reuniao && String(reuniao.idReuniao || '') === String(idReuniao || '');
+      });
+      const idFormalizacaoFila = formalizacaoFila ? formalizacaoFila.idFormalizacao : '';
+      const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel, .formal-quick-actions') : null;
+      if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = true; });
+      google.script.run
+        .withSuccessHandler(resposta => {
+          const dados = resposta.dados || {};
+          estado.clientes = dados.clientes || estado.clientes;
+          estado.transcricoesFormalizacao = dados.transcricoes || estado.transcricoesFormalizacao || [];
+          estado.reunioesFormalizacao = dados.reunioes || estado.reunioesFormalizacao || [];
+          estado.formalizacoes = dados.formalizacoes || estado.formalizacoes || [];
+          estado.formalizacoesResumoClientes = estado.formalizacoes;
+          renderizarReunioesAgendaFormal_();
+          renderizarHistoricoFormalizacoes();
+          if (estado.formalizacaoAtual) renderizarEditorFormalizacao(estado.formalizacaoAtual);
+          salvarCacheFormalizacoesFront_();
+          formalAvancarFilaRevisao_(idFormalizacaoFila);
+          mostrarToast(resposta.mensagem || 'Resultado da reunião atualizado.', 'success');
+        })
+        .withFailureHandler(erro => {
+          if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = false; });
+          tratarErro(erro);
+        })
+        .salvarResultadoReuniaoFormalizacao({ idReuniao: idReuniao, resultadoReuniao: resultadoReuniao });
+    }
+
     function renderizarReunioesAgendaFormal_() {
       const alvo = document.getElementById('formalReunioesAgenda');
       const idCliente = valor('formalCliente');
@@ -8816,7 +9488,7 @@
         return (!idCliente || String(item.idCliente || '') === String(idCliente)) && (!periodo || String(item.inicio || '').slice(0, 7) === periodo) && (!busca || texto.includes(busca));
       });
       const pagina = paginarItens_('agendaFormal', itens);
-      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
+      alvo.innerHTML = itens.length ? `<div class="table-wrap"><table><thead><tr><th>Reunião</th><th>Tipo</th><th>Data</th><th>Agenda</th><th>Gravação</th><th>Transcrição</th><th>Double check</th><th>Resultado</th><th>Ação</th></tr></thead><tbody>${pagina.itens.map(item => {
         const gravacao = Boolean(item.gravacaoUrl);
         const transcricao = Boolean(item.transcricaoUrl || item.idTranscricao);
         const confirmacao = gravacao && transcricao ? 'CONFIRMADA' : (gravacao || transcricao ? 'PARCIAL' : 'SEM EVIDÊNCIA');
@@ -8833,7 +9505,7 @@
         const statusPreFormalizacao = item.idFormalizacao
           ? `<div style="margin-top:7px"><span class="status ${aprovada ? 'success' : 'warning'}">${aprovada ? 'FORMALIZADA' : 'PRÉ-FORMALIZAÇÃO PRONTA'}</span></div>`
           : '';
-        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}</div></td></tr>`;
+        return `<tr><td><strong>${escapeHtml(item.titulo)}</strong><br>${item.cliente ? `<span class="status">${escapeHtml(item.cliente)}</span>` : '<span class="status warning">CLIENTE NÃO IDENTIFICADO</span>'}<br><span class="small muted">${escapeHtml((item.participantes || []).join(', '))}</span></td><td><span class="status ${classeTipo}">${escapeHtml(rotuloTipoReuniaoFormal_(tipo))}</span>${tipo !== 'OUTRA' ? '<div class="small muted" style="margin-top:6px">FORMALIZAR</div>' : ''}</td><td>${escapeHtml(formatarDataHoraArea_(item.inicio))}</td><td><span class="status success">ENCONTRADA</span><div class="small muted" style="margin-top:6px">${escapeHtml(item.agendaOrigem || 'Agenda principal')}</div>${item.meetUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.meetUrl)}" target="_blank" rel="noopener">Abrir Meet</a></div>` : ''}</td><td><span class="status ${gravacao ? 'success' : 'warning'}">${gravacao ? 'ENCONTRADA' : 'PENDENTE'}</span>${gravacao ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.gravacaoUrl)}" target="_blank" rel="noopener">Abrir gravação</a></div>` : ''}</td><td><span class="status ${transcricao ? 'success' : 'warning'}">${transcricao ? 'ENCONTRADA' : 'PENDENTE'}</span>${item.transcricaoUrl ? `<div style="margin-top:8px"><a href="${escapeAtributo(item.transcricaoUrl)}" target="_blank" rel="noopener">Abrir transcrição</a></div>` : ''}</td><td><span class="status ${classe}">${confirmacao}</span>${statusPreFormalizacao}</td><td>${formalBadgeResultadoReuniao_(item.resultadoReuniao)}${!transcricao ? '<div class="small muted" style="margin-top:6px">Sem transcrição disponível</div>' : ''}</td><td><div class="actions">${acaoUsar}${acaoPreFormalizacao}${formalClassificadorReuniaoHtml_(item.idReuniao, item.resultadoReuniao)}</div></td></tr>`;
       }).join('')}</tbody></table></div>${controlesPaginacao_('agendaFormal', pagina, 'renderizarReunioesAgendaFormal_')}` : '<div class="empty">Nenhuma reunião encontrada para o filtro e período selecionados.</div>';
     }
 
@@ -8854,6 +9526,8 @@
     }
 
     function usarReuniaoNaFormalizacao_(idTranscricao, idCliente, periodo) {
+      const nova = document.getElementById('formalNovaFormalizacao');
+      if (nova) nova.open = true;
       document.getElementById('formalCliente').value = idCliente || '';
       if (periodo) document.getElementById('formalFiltroData').value = periodo;
       document.getElementById('formalFiltroFonte').value = 'GOOGLE_MEET';
@@ -9004,6 +9678,8 @@
           resposta.formalizacao.semGravacao = semGravacao;
           estado.formalizacaoAtual = resposta.formalizacao;
           renderizarEditorFormalizacao(resposta.formalizacao);
+          const novaFormalizacao = document.getElementById('formalNovaFormalizacao');
+          if (novaFormalizacao) novaFormalizacao.open = false;
           estado.carregado.formalizacoes = false;
           botao.disabled = false;
           botao.textContent = 'Gerar formalização';
@@ -9074,30 +9750,61 @@
       const alvo = document.getElementById('formalEditor');
       alvo.style.display = 'block';
       const resumoCircleComPontos = formalResumoCircleComPontos_(r);
+      const reuniaoAssociada = formalReuniaoAssociadaFront_(formalizacao);
+      const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+      const tituloExibicao = formalTituloLimpo_(m.titulo || formalizacao.titulo || 'Formalização');
       alvo.innerHTML = `<div class="card">
-        <div class="section-title"><div><h3>Revisar formalização</h3><p>Todos os campos abaixo podem ser corrigidos antes da aprovação.</p></div><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span></div>
+        <div class="section-title"><div><h3>${escapeHtml(tituloExibicao)}</h3><p>${escapeHtml([m.cliente || '', formalizacao.tipoReuniao || r.tipo_reuniao || '', formatarDataDia(formalizacao.dataReuniao)].filter(Boolean).join(' · '))}</p></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}</div></div>
         ${formalizacao.semGravacao ? '<div style="padding:12px 14px;margin-bottom:16px;border-radius:10px;background:#fffaeb;color:#934f00;border:1px solid #fedf89"><strong>Atenção:</strong> a gravação não foi encontrada. Esta formalização foi gerada somente a partir da transcrição disponível.</div>' : ''}
-        <div class="form-grid">
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Dados da reunião</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título</label><input id="formalEditTitulo" value="${escapeAtributo(m.titulo || formalizacao.titulo || '')}"></div>
           <div class="field"><label>Tipo da reunião</label><select id="formalEditTipo"><option value="OPERACIONAL" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OPERACIONAL' ? 'selected' : ''}>Operacional</option><option value="EXECUTIVA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'EXECUTIVA' ? 'selected' : ''}>Executiva</option><option value="OUTRA" ${String(r.tipo_reuniao || formalizacao.tipoReuniao).toUpperCase() === 'OUTRA' ? 'selected' : ''}>Outra</option></select></div>
           <div class="field full"><label>Cliente</label><input id="formalEditCliente" value="${escapeAtributo(m.cliente || '')}"></div>
           <div class="field"><label>Data</label><input id="formalEditData" value="${escapeAtributo(m.data || '')}"></div>
           <div class="field full"><label>Participantes</label><input id="formalEditParticipantes" value="${escapeAtributo((m.participantes || []).join(', '))}"></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section" open>
+          <summary>Resumo e assuntos</summary>
+          <div class="form-grid">
           <div class="field full"><label>Resumo da reunião</label><textarea id="formalEditResumo" style="min-height:140px">${escapeHtml(r.resumo_reuniao || '')}</textarea></div>
           <div class="field full"><label>Assuntos discutidos <span class="muted">(um por linha: assunto | detalhamento)</span></label><textarea id="formalEditAssuntos" style="min-height:140px">${escapeHtml((r.assuntos_discutidos || []).map(x => (x.assunto || '') + ' | ' + (x.detalhamento || '')).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Highlights e necessidades</summary>
+          <div class="form-grid">
           <div class="field full"><label>Highlights <span class="muted">(um por linha)</span></label><textarea id="formalEditHighlights">${escapeHtml((r.highlights || []).join('\n'))}</textarea></div>
           <div class="field full"><label>Necessidades <span class="muted">(necessidade | contexto | prioridade)</span></label><textarea id="formalEditNecessidades" style="min-height:140px">${escapeHtml((r.necessidades_identificadas || []).map(x => [x.necessidade, x.contexto, x.prioridade].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Decisões tomadas <span class="muted">(uma por linha)</span></label><textarea id="formalEditDecisoes">${escapeHtml((r.decisoes_tomadas || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Acompanhamento e ações</summary>
+          <div class="form-grid">
           <div class="field full"><label>Acompanhamento das auditorias <span class="muted">(origem | ponto | status | evidência desta reunião)</span></label><textarea id="formalEditAcompanhamento" style="min-height:150px">${escapeHtml(formalAcompanhamentoAtual_(r.acompanhamento_auditorias).map(x => [x.origem, x.ponto, x.status, x.evidencia_reuniao].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Ajustes operacionais <span class="muted">(comportamento | o que fazer | como executar | frequência | indicador | responsável | prazo)</span></label><textarea id="formalEditAjustes" style="min-height:190px">${escapeHtml((r.ajustes_operacionais || []).map(x => [x.comportamento, x.o_que_fazer, x.como_executar, x.frequencia, x.indicador, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Próximos passos <span class="muted">(ação | responsável | prazo)</span></label><textarea id="formalEditPassos" style="min-height:140px">${escapeHtml((r.proximos_passos || []).map(x => [x.acao, x.responsavel, x.prazo].join(' | ')).join('\n'))}</textarea></div>
           <div class="field full"><label>Pendências <span class="muted">(uma por linha)</span></label><textarea id="formalEditPendencias">${escapeHtml((r.pendencias || []).join('\n'))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Próxima intervenção</summary>
+          <div class="form-grid">
           <div class="field full"><label>Próxima intervenção <span class="muted">(foco | motivo | quando revisar)</span></label><textarea id="formalEditIntervencao">${escapeHtml([((r.proxima_intervencao || {}).foco || ''), ((r.proxima_intervencao || {}).motivo || ''), ((r.proxima_intervencao || {}).quando_revisar || '')].join(' | '))}</textarea></div>
+          </div>
+        </details>
+        <details name="formal-editor-section" class="formal-editor-section">
+          <summary>Conteúdo para o Circle</summary>
+          <div class="form-grid">
           <div class="field full"><label>Título para o Circle</label><input id="formalCircleTitulo" value="${escapeAtributo((r.publicacao_circle || {}).titulo || '')}"></div>
           <div class="field full"><label>Resumo para o Circle</label><textarea id="formalCircleResumo" style="min-height:180px">${escapeHtml(resumoCircleComPontos)}</textarea></div>
           <div class="field full"><label>Conteúdo para o Circle</label><textarea id="formalCircleConteudo" style="min-height:220px">${escapeHtml((r.publicacao_circle || {}).conteudo || '')}</textarea></div>
-        </div>
-        <div class="actions">
+          </div>
+        </details>
+        <div class="actions formal-editor-actions">
           <button id="btnSalvarFormalizacao" class="btn secondary" type="button" onclick="salvarFormalizacaoFront('RASCUNHO')">Salvar rascunho</button>
           <button id="btnAprovarFormalizacao" class="btn success" type="button" onclick="salvarFormalizacaoFront('APROVADA')">Aprovar formalização</button>
           ${formalizacao.status === 'APROVADA'
@@ -9206,46 +9913,102 @@
     function limparFiltrosHistoricoFormalizacoes_() {
       const mes = document.getElementById('formalHistoricoMes');
       const status = document.getElementById('formalHistoricoStatus');
+      const resultado = document.getElementById('formalHistoricoResultado');
       if (mes) mes.value = '';
       if (status) status.value = '';
+      if (resultado) resultado.value = '';
       renderizarHistoricoFormalizacoes();
+    }
+
+    function atualizarResumoFilaFormalizacoes_() {
+      const alvo = document.getElementById('formalFilaResumo');
+      if (!alvo) return;
+      const itens = estado.formalizacoes || [];
+      const revisao = itens.filter(item => String(item.status || '').toUpperCase() === 'EM_REVISAO').length;
+      const aprovadas = itens.filter(item => String(item.status || '').toUpperCase() === 'APROVADA').length;
+      alvo.innerHTML = '<strong>' + revisao + '</strong><span class="muted">em revisão</span><span class="status success">' + aprovadas + ' aprovadas</span>';
+    }
+
+    function iniciarFilaRevisaoFormalizacoes_() {
+      const mes = document.getElementById('formalHistoricoMes');
+      const status = document.getElementById('formalHistoricoStatus');
+      const resultado = document.getElementById('formalHistoricoResultado');
+      if (mes) mes.value = '';
+      if (status) status.value = 'EM_REVISAO';
+      if (resultado) resultado.value = '';
+      renderizarHistoricoFormalizacoes();
+      formalAvancarFilaRevisao_('');
+    }
+
+    function formalAvancarFilaRevisao_(idAtual) {
+      requestAnimationFrame(() => {
+        const cards = Array.from(document.querySelectorAll('#listaFormalizacoes .formal-history-card[data-formalizacao-status="EM_REVISAO"]'));
+        if (!cards.length) return;
+        const atual = String(idAtual || '');
+        const indiceAtual = cards.findIndex(card => String(card.dataset.formalizacaoId || '') === atual);
+        const alvo = indiceAtual >= 0
+          ? (cards[indiceAtual + 1] || cards.find(card => String(card.dataset.formalizacaoId || '') !== atual))
+          : cards[0];
+        if (!alvo) return;
+        alvo.classList.add('queue-current');
+        alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.setTimeout(() => alvo.classList.remove('queue-current'), 1600);
+      });
     }
 
     function renderizarHistoricoFormalizacoes() {
       const alvo = document.getElementById('listaFormalizacoes');
       if (!alvo) return;
+      atualizarResumoFilaFormalizacoes_();
       const mes = String((document.getElementById('formalHistoricoMes') || {}).value || '');
       const statusFiltro = String((document.getElementById('formalHistoricoStatus') || {}).value || '').toUpperCase();
+      const resultadoFiltro = String((document.getElementById('formalHistoricoResultado') || {}).value || '').toUpperCase();
+      const prioridadeStatus = { EM_REVISAO: 0, RASCUNHO: 1, ERRO: 2, PROCESSANDO: 3, APROVADA: 4 };
       const formalizacoes = (estado.formalizacoes || []).filter(item => {
         const chave = chaveDataHistorico_(item.dataReuniao || item.atualizadoEm || item.solicitadoEm);
-        return (!mes || chave.slice(0, 7) === mes) && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+        const reuniao = formalReuniaoAssociadaFront_(item);
+        const resultado = formalNormalizarResultadoFront_(reuniao && reuniao.resultadoReuniao);
+        return (!mes || chave.slice(0, 7) === mes)
+          && (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro)
+          && (!resultadoFiltro || resultado === resultadoFiltro);
+      }).slice().sort((a, b) => {
+        const sa = String(a.status || '').toUpperCase();
+        const sb = String(b.status || '').toUpperCase();
+        const pa = Object.prototype.hasOwnProperty.call(prioridadeStatus, sa) ? prioridadeStatus[sa] : 9;
+        const pb = Object.prototype.hasOwnProperty.call(prioridadeStatus, sb) ? prioridadeStatus[sb] : 9;
+        if (pa !== pb) return pa - pb;
+        return String(b.dataReuniao || b.atualizadoEm || b.solicitadoEm || '').localeCompare(String(a.dataReuniao || a.atualizadoEm || a.solicitadoEm || ''));
       });
       if (!formalizacoes.length) {
-        alvo.innerHTML = `<div class="empty">${(estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.'}</div>`;
+        alvo.innerHTML = '<div class="empty">' + ((estado.formalizacoes || []).length ? 'Nenhuma formalização encontrada para os filtros selecionados.' : 'Nenhuma formalização gerada.') + '</div>';
         salvarCacheFormalizacoesFront_();
         return;
       }
       alvo.innerHTML = historicoAgrupadoPorData_(formalizacoes, item => item.dataReuniao || item.atualizadoEm || item.solicitadoEm, item => {
-        const classe = item.status === 'APROVADA' ? 'success' : item.status === 'ERRO' ? 'danger' : 'warning';
-        const podeDescartar = ['EM_REVISAO', 'RASCUNHO', 'ERRO', 'PROCESSANDO'].includes(String(item.status || '').toUpperCase());
+        const statusAtual = String(item.status || '').toUpperCase();
+        const classe = statusAtual === 'APROVADA' ? 'success' : statusAtual === 'ERRO' ? 'danger' : 'warning';
+        const podeDescartar = ['EM_REVISAO', 'RASCUNHO', 'ERRO', 'PROCESSANDO'].includes(statusAtual);
         const circlePublicado = Boolean(item.circlePostUrl) || String(item.circleStatus || '').toUpperCase() === 'PUBLICADA';
         const classeCircle = circlePublicado ? 'success' : 'warning';
         const textoCircle = circlePublicado ? 'Circle: publicado' : 'Circle: não publicado';
         const indicadorCircle = item.circlePostUrl
-          ? `<a class="status ${classeCircle}" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener" title="Abrir post no Circle">${escapeHtml(textoCircle)}</a>`
-          : `<span class="status ${classeCircle}">${escapeHtml(textoCircle)}</span>`;
+          ? '<a class="status ' + classeCircle + '" href="' + escapeAtributo(item.circlePostUrl) + '" target="_blank" rel="noopener" title="Abrir post no Circle">' + escapeHtml(textoCircle) + '</a>'
+          : '<span class="status ' + classeCircle + '">' + escapeHtml(textoCircle) + '</span>';
         const comunidadePublicada = Boolean(item.comunidadePostUrl) || String(item.comunidadeStatus || '').toUpperCase() === 'PUBLICADA';
         const comunidadeComErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
         const classeComunidade = comunidadePublicada ? 'success' : comunidadeComErro ? 'danger' : 'warning';
         const textoComunidade = comunidadePublicada ? 'Comunidade: publicada' : comunidadeComErro ? 'Comunidade: erro' : 'Comunidade: não publicada';
         const indicadorComunidade = item.comunidadePostUrl
-          ? `<a class="status ${classeComunidade}" href="${escapeAtributo(item.comunidadePostUrl)}" target="_blank" rel="noopener" title="Abrir publicação na Comunidade">${escapeHtml(textoComunidade)}</a>`
-          : `<span class="status ${classeComunidade}">${escapeHtml(textoComunidade)}</span>`;
+          ? '<a class="status ' + classeComunidade + '" href="' + escapeAtributo(item.comunidadePostUrl) + '" target="_blank" rel="noopener" title="Abrir publicação na Comunidade">' + escapeHtml(textoComunidade) + '</a>'
+          : '<span class="status ' + classeComunidade + '">' + escapeHtml(textoComunidade) + '</span>';
         const avisoPreAprovada = item.preAprovada
-          ? `<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ${escapeHtml(item.proximoPasso || 'Formalizar no Circle')}.</div></div>`
+          ? '<div style="margin-top:10px"><span class="status success">FORMALIZAÇÃO PRÉ-APROVADA</span><div class="small" style="margin-top:5px"><strong>Próximo passo:</strong> ' + escapeHtml(item.proximoPasso || 'Formalizar no Circle') + '.</div></div>'
           : '';
-        const podeAprovar = item.status !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
-        return `<div class="card" style="box-shadow:none;margin-bottom:10px"><div class="section-title"><div><strong>${escapeHtml(item.titulo || 'Formalização')}</strong><div class="small muted">${escapeHtml(formatarDataDia(item.dataReuniao))}</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${classe}">${escapeHtml(item.status || '')}</span>${indicadorCircle}${indicadorComunidade}</div></div>${avisoPreAprovada}${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}${item.comunidadeErro ? `<div class="status danger">${escapeHtml(item.comunidadeErro)}</div>` : ''}<div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_${escapeAtributo(item.idFormalizacao)}">Link do post no Circle</label><input id="circleLink_${escapeAtributo(item.idFormalizacao)}" type="url" value="${escapeAtributo(item.circlePostUrl || '')}" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_${escapeAtributo(item.idFormalizacao)}" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">${item.circlePostUrl ? 'Atualizar link' : 'Registrar link'}</button></div><div class="actions">${item.resultado && Object.keys(item.resultado).length ? `<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>` : ''}${podeAprovar ? `<button id="btnAprovarHistorico_${escapeAtributo(item.idFormalizacao)}" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront('${escapeAtributo(item.idFormalizacao)}')">Aprovar</button>` : ''}${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarFormalizacaoFront('${escapeAtributo(item.idFormalizacao)}')">Descartar</button>` : ''}</div></div>`;
+        const podeAprovar = statusAtual !== 'APROVADA' && item.resultado && Object.keys(item.resultado).length;
+        const reuniaoAssociada = formalReuniaoAssociadaFront_(item);
+        const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
+        const id = escapeAtributo(item.idFormalizacao);
+        return '<div class="formal-history-card" data-formalizacao-id="' + id + '" data-formalizacao-status="' + escapeAtributo(statusAtual) + '"><div class="section-title"><div><strong>' + escapeHtml(formalTituloLimpo_(item.titulo || 'Formalização')) + '</strong><div class="small muted">' + escapeHtml(formatarDataDia(item.dataReuniao)) + '</div></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ' + classe + '">' + escapeHtml(item.status || '') + '</span>' + formalBadgeResultadoReuniao_(resultadoReuniao) + indicadorCircle + indicadorComunidade + '</div></div>' + avisoPreAprovada + (item.erro ? '<div class="status danger">' + escapeHtml(item.erro) + '</div>' : '') + (item.comunidadeErro ? '<div class="status danger">' + escapeHtml(item.comunidadeErro) + '</div>' : '') + '<div class="actions">' + (reuniaoAssociada ? formalClassificadorRapidoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : '') + (podeAprovar ? '<button id="btnAprovarHistorico_' + id + '" class="btn success" type="button" onclick="aprovarFormalizacaoHistoricoFront(\'' + id + '\')">Aprovar agora</button>' : '') + (item.resultado && Object.keys(item.resultado).length ? '<button class="btn secondary" type="button" onclick="abrirFormalizacaoHistorico(\'' + id + '\')">Revisar/editar</button>' : '') + (reuniaoAssociada ? formalClassificadorReuniaoHtml_(reuniaoAssociada.idReuniao, resultadoReuniao) : '') + (podeDescartar ? '<button class="btn danger" type="button" onclick="descartarFormalizacaoFront(\'' + id + '\')">Descartar</button>' : '') + '</div><details class="formal-card-details"><summary>Detalhes e publicação</summary><div class="toolbar" style="align-items:end;margin-top:12px"><div class="field" style="flex:1;min-width:260px"><label for="circleLink_' + id + '">Link do post no Circle</label><input id="circleLink_' + id + '" type="url" value="' + escapeAtributo(item.circlePostUrl || '') + '" placeholder="https:\u002f\u002f..." autocomplete="off"></div><button id="btnCircleLink_' + id + '" class="btn secondary" type="button" onclick="salvarLinkCircleFormalizacaoFront(\'' + id + '\')">' + (item.circlePostUrl ? 'Atualizar link' : 'Registrar link') + '</button></div></details></div>';
       });
       salvarCacheFormalizacoesFront_();
     }
@@ -9268,10 +10031,11 @@
             renderizarEditorFormalizacao(resposta.formalizacao);
           }
           renderizarHistoricoFormalizacoes();
+          formalAvancarFilaRevisao_(idFormalizacao);
           mostrarToast(resposta.mensagem || 'Formalização aprovada.', 'success');
         })
         .withFailureHandler(erro => {
-          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar'; }
+          if (botao) { botao.disabled = false; botao.textContent = 'Aprovar agora'; }
           tratarErro(erro);
         })
         .salvarFormalizacaoReuniao({

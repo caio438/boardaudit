@@ -13,6 +13,12 @@ assert.ok(audit.includes('function audV3FinalizarAutomaticamente_'), 'A auditori
 assert.ok(audit.includes('const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);'), 'A geração não chama a finalização automática.');
 assert.ok(audit.includes('aprovarAuditoriaV3(id);'), 'A finalização automática não cria/aprova o documento.');
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'PROCESSANDO'"), 'O pipeline automático não registra início.');
+assert.match(audit, /processamentoExpiraMinutos:\s*8/, 'O motor precisa ter um limite explícito para PROCESSANDO expirado.');
+assert.ok(audit.includes('function audV3EncerrarProcessamentosExpirados_'), 'PROCESSANDO expirado precisa de autorrecuperação.');
+assert.match(audit, /TEMPO_PROCESSAMENTO_EXPIRADO/, 'O erro de processamento expirado precisa ficar rastreável.');
+assert.match(audit, /function audV3ListarAuditoriasFront_\(\)[\s\S]*?audV3EncerrarProcessamentosExpirados_\(\)/, 'A listagem deve encerrar processamentos expirados.');
+assert.match(audit, /function executarAuditoriaV3\(dados\)[\s\S]*?audV3EncerrarProcessamentosExpirados_\(\)/, 'Uma nova execução deve limpar processamentos expirados antes de começar.');
+
 assert.ok(rd.includes('function audRdPublicarAutomaticamente_'), 'A publicação automática no RD não foi implementada.');
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
@@ -24,7 +30,114 @@ assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não tr
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
-assert.match(audit, /versao:\s*'6\.1\.0'/, 'O engine não foi versionado para o autorreparo seletivo de coaching genérico.');
+assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
+assert.ok(front.includes("fonte.value = 'TODAS'"), 'Closer simplificado ainda exige seleção manual da origem.');
+assert.ok(front.includes("botao.textContent = 'Auditar'"), 'Closer simplificado não usa ação única de auditoria.');
+assert.ok(front.includes("idPitch: closerSimplificado ? '' : valor('audPitch')"), 'Closer ainda envia pitch selecionado manualmente em vez de resolver o atual no backend.');
+assert.ok(front.includes("idModelo: closerSimplificado ? '' : valor('audModelo')"), 'Closer ainda exige modelo selecionado manualmente.');
+assert.ok(front.includes("subtitulo.textContent = 'Selecione o cliente e uma transcrição.'"), 'Interface Closer ainda expõe configuração além de cliente e transcrição.');
+assert.ok(audit.includes("audV3PitchAtualAutomatico_(cliente.ID_CLIENTE, tipo)"), 'Backend não resolve automaticamente o pitch atual do Closer.');
+assert.ok(audit.includes('function audV3MetadadosMinimosTranscricao_'), 'Importação Closer ainda não infere metadados diretamente da transcrição.');
+assert.ok(audit.includes('function audV3RotuloEhMembroInternoCloser_'), 'Normalização Closer não consulta equipe interna para separar os lados.');
+assert.ok(audit.includes("fonte: 'NOME_EXTERNO_EXPLICITO'"), 'Participantes externos nomeados não são reconhecidos automaticamente como lado lead.');
+
+assert.ok(front.includes('function auditoriasOperacionaisFront_'), 'Histórico não possui fonte resiliente para incluir a auditoria atual recém-aprovada.');
+assert.match(
+  front,
+  /function renderizarAuditorias\(\)[\s\S]*?const auditoriasFonte = auditoriasOperacionaisFront_\(\)/,
+  'A lista de auditorias ainda depende diretamente do estado bruto e pode omitir a auditoria recém-aprovada.'
+);
+assert.ok(front.includes('Auditorias realizadas'), 'Resumo não separa mais auditorias realizadas de vínculo com CRM.');
+assert.ok(front.includes('Com vínculo CRM'), 'Resumo não possui contador separado de vínculo com CRM.');
+assert.ok(front.includes('Aguardando vínculo'), 'Resumo não destaca auditorias aprovadas sem vínculo CRM.');
+assert.ok(!front.includes("['SDR vinculadas'"), 'Resumo ainda mistura função auditada com estado de vínculo ao CRM.');
+assert.ok(!front.includes("['Closer vinculadas'"), 'Resumo ainda mistura função auditada com estado de vínculo ao CRM.');
+
+const inicioResumoCrmFront = front.indexOf('function resumoAuditoriasCrmFront_');
+const fimResumoCrmFront = front.indexOf('function selecionarEspacoAuditoriaFront_', inicioResumoCrmFront);
+assert.ok(inicioResumoCrmFront >= 0 && fimResumoCrmFront > inicioResumoCrmFront, 'Não foi possível isolar o resumo de auditorias/CRM do front.');
+const resumoAuditoriasCrmFront = new Function(
+  front.slice(inicioResumoCrmFront, fimResumoCrmFront) +
+  '\nreturn resumoAuditoriasCrmFront_;'
+)();
+
+const closerSemCrm = {
+  idAuditoria: 'AUD-CLOSER-1',
+  tipoAuditoria: 'CLOSER',
+  status: 'APROVADA',
+  resultado: { ok: true },
+  linkCrm: '',
+  rdStatus: 'AGUARDANDO_VINCULO'
+};
+const closerEmRevisao = {
+  idAuditoria: 'AUD-CLOSER-2',
+  tipoAuditoria: 'CLOSER',
+  status: 'EM_REVISAO',
+  resultado: { ok: true },
+  linkCrm: '',
+  rdStatus: ''
+};
+const sdrPublicado = {
+  idAuditoria: 'AUD-SDR-1',
+  tipoAuditoria: 'SDR',
+  status: 'APROVADA',
+  resultado: { ok: true },
+  linkCrm: 'https://crm.rdstation.com/app/deals/aaaaaaaaaaaaaaaaaaaaaaaa',
+  rdStatus: 'PUBLICADA'
+};
+const resumoCloser = resumoAuditoriasCrmFront([closerSemCrm, closerEmRevisao, sdrPublicado], 'CLOSER');
+assert.deepEqual(
+  resumoCloser,
+  {
+    tipo: 'CLOSER',
+    realizadas: 2,
+    aprovadas: 1,
+    emRevisao: 1,
+    vinculadas: 0,
+    aguardandoVinculo: 1,
+    enviadas: 0,
+    pendentes: 0,
+    erros: 0
+  },
+  'Closer aprovada sem CRM deve continuar aparecendo como realizada e aguardando vínculo.'
+);
+const resumoSdr = resumoAuditoriasCrmFront([closerSemCrm, closerEmRevisao, sdrPublicado], 'SDR');
+assert.deepEqual(
+  resumoSdr,
+  {
+    tipo: 'SDR',
+    realizadas: 1,
+    aprovadas: 1,
+    emRevisao: 0,
+    vinculadas: 1,
+    aguardandoVinculo: 0,
+    enviadas: 1,
+    pendentes: 0,
+    erros: 0
+  },
+  'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
+);
+
+assert.match(audit, /versao:\s*'6\.2\.13'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.13.');
+const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
+const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
+assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
+const helpersCelula = new Function(
+  audit.slice(inicioFragmentacaoCelula, fimFragmentacaoCelula) +
+    '\nreturn { fragmentar: audV3FragmentarTextoCelula_, remontar: audV3RemontarFragmentosCelula_, expandir: audV3ExpandirObjetoParaCelulas_ };'
+)();
+const textoGrandeCelula = 'A'.repeat(100123);
+const fragmentadoCelula = helpersCelula.fragmentar('RESULTADO_JSON', textoGrandeCelula);
+assert.ok(Object.keys(fragmentadoCelula).length >= 3, 'Texto acima de 50 mil caracteres precisa ser dividido em múltiplas células.');
+for (const valorParte of Object.values(fragmentadoCelula)) {
+  assert.ok(String(valorParte).length <= 45000, 'Nenhum fragmento pode ultrapassar o limite seguro de 45 mil caracteres.');
+}
+const cabecalhosFragmentados = Object.keys(fragmentadoCelula);
+const remontadoCelula = helpersCelula.remontar({ ...fragmentadoCelula }, cabecalhosFragmentados);
+assert.equal(remontadoCelula.RESULTADO_JSON, textoGrandeCelula, 'A leitura precisa remontar integralmente o conteúdo fragmentado.');
+assert.match(audit, /audV3Adicionar_\([\s\S]*?audV3ExpandirObjetoParaCelulas_/, 'Inserções no Sheets não usam a fragmentação segura.');
+assert.match(audit, /audV3Atualizar_\([\s\S]*?audV3ExpandirObjetoParaCelulas_/, 'Atualizações no Sheets não usam a fragmentação segura.');
+
 assert.ok(audit.includes('function audV3MotivoAutorreparoGate_'), 'O gate não possui classificador seguro para autorreparo de coaching.');
 assert.ok(audit.includes('audV3MotivoAutorreparoGate_(normalizado.validacao_board)'), 'A geração não consulta o gate após validar a primeira resposta.');
 assert.ok(audit.includes('audV3AutorrepararCoachingGenerico_('), 'A geração não usa reparo seletivo.');
@@ -90,9 +203,26 @@ assert.ok(inicioFiltroOperacional >= 0 && fimFiltroOperacional > inicioFiltroOpe
 const criarFiltroOperacional = new Function(
   'AUDITORIA_V3',
   audit.slice(inicioFiltroOperacional, fimFiltroOperacional) +
-    '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_ };'
+    '\nreturn { filtrar: audV3FiltrarAuditoriasVisiveisOperacao_, normalizarVersao: audV3NormalizarVersao_, versaoPersistida: audV3VersaoPersistida_ };'
 );
 const filtroOperacional = criarFiltroOperacional({ versao: '6.0.2' }).filtrar;
+const helpersVersao = criarFiltroOperacional({ versao: '6.2.0' });
+assert.equal(
+  helpersVersao.normalizarVersao(new Date(2000, 0, 6)),
+  '6.1.0',
+  'Versão 6.1.0 convertida pelo Google Sheets em data precisa voltar ao formato semântico correto.'
+);
+assert.equal(
+  helpersVersao.normalizarVersao('6.1.2000'),
+  '6.1.0',
+  'Versão formatada pelo Sheets como 6.1.2000 precisa ser reconhecida como 6.1.0.'
+);
+assert.equal(
+  helpersVersao.versaoPersistida(),
+  'v6.2.0',
+  'Novas versões precisam ser persistidas como texto inequívoco para não virar data no Sheets.'
+);
+
 const atualValida = (id, interacao, status = 'APROVADA') => ({
   ID_AUDITORIA: id,
   ID_INTERACAO: interacao,
@@ -118,6 +248,8 @@ const idsVisiveis = filtroOperacional([
   erro('STEC-91', 'STEC', '4.0.0'),
   atualValida('STEC-92', 'STEC', 'EM_REVISAO'),
   atualValida('HITEC-APROVADA-ANTIGA', 'HITEC-POSTERIOR', 'APROVADA'),
+  { ...atualValida('BUFFET-CLOSER-DATA', 'BUFFET-CLOSER', 'APROVADA'), ENGINE_VERSAO: new Date(2000, 0, 6) },
+
   erro('HITEC-ERRO-POSTERIOR', 'HITEC-POSTERIOR'),
   erro('BUFFET-ERRO-ATUAL', 'BUFFET'),
   { ...atualValida('LEGADA-SEM-HASH', 'LEGADA'), HASH_FONTE: '', ENGINE_VERSAO: '5.0.0' }
@@ -126,9 +258,16 @@ assert.deepEqual(idsVisiveis, [
   'WISETEC-OK',
   'STEC-92',
   'HITEC-APROVADA-ANTIGA',
+  'BUFFET-CLOSER-DATA',
   'HITEC-ERRO-POSTERIOR',
   'BUFFET-ERRO-ATUAL'
 ], 'Filtro operacional não preserva corretamente auditorias atuais e erros ainda não substituídos.');
+assert.ok(audit.includes("function audV3NormalizarVersao_"), 'Motor não normaliza versões convertidas em data pelo Google Sheets.');
+assert.ok(audit.includes("return 'v' + AUDITORIA_V3.versao"), 'Novas versões do motor ainda podem ser persistidas como data pelo Sheets.');
+assert.ok(!audit.includes("ENGINE_VERSAO: AUDITORIA_V3.versao"), 'Há gravação de ENGINE_VERSAO ainda sujeita à conversão automática para data.');
+assert.match(audit, /audV3NormalizarVersao_\(item\.ENGINE_VERSAO\) === audV3NormalizarVersao_\(AUDITORIA_V3\.versao\)/, 'Deduplicação não restringe reutilização à versão exata do engine atual.');
+assert.ok(audit.includes("audV3NormalizarVersao_(mapaConfiguracoes.AUDITORIA_ENGINE_VERSAO)"), 'Configuração do motor ainda compara uma data do Sheets diretamente com a versão semântica.');
+
 assert.ok(front.includes("if (item.auditoriaLegada || item.auditoriaSubstituida) return false;"), 'Frontend não possui defesa contra cache antigo de auditorias legadas.');
 assert.match(front, /!item\.auditoriaLegada\s*&&\s*!item\.auditoriaSubstituida/, 'Resumo do RD ainda pode contabilizar auditorias legadas.');
 
@@ -160,10 +299,17 @@ const fimResumoCloserFront = front.indexOf('function renderizarPontuacaoQualidad
 assert.ok(inicioResumoCloserFront >= 0 && fimResumoCloserFront > inicioResumoCloserFront, 'Resumo executivo Closer não pôde ser isolado.');
 const resumoCloserFront = front.slice(inicioResumoCloserFront, fimResumoCloserFront);
 assert.ok(resumoCloserFront.includes('audit-executive-good'), 'Closer não usa destaque verde para execuções corretas.');
-assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa destaque vermelho para desvios.');
+assert.ok(resumoCloserFront.includes('audit-executive-gap'), 'Closer não usa destaque vermelho para prioridades de melhoria.');
 assert.ok(resumoCloserFront.includes('audit-executive-action'), 'Closer não usa destaque amarelo para coaching prático.');
+assert.ok(resumoCloserFront.includes('audit-executive-moment'), 'Closer não traz os detalhes dos momentos para o resumo executivo.');
+assert.ok(resumoCloserFront.includes('Prioridades de melhoria por momento'), 'Resumo Closer não prioriza os gaps detalhados por momento.');
+assert.ok(resumoCloserFront.includes('Referência / texto do pitch'), 'Resumo Closer não sobe a referência prática do pitch para o topo.');
+assert.ok(resumoCloserFront.includes('textoNeutro'), 'Resumo Closer não filtra divergências neutras como "Não houve divergência".');
 assert.ok(resumoCloserFront.includes('O que foi executado corretamente'), 'Closer não replica o bloco de acertos do SDR.');
 assert.ok(resumoCloserFront.includes('Se eu fosse o Closer, faria assim'), 'Closer não possui o bloco prático equivalente ao SDR.');
+assert.ok(front.includes('function consolidarIntervencoesCloserFront_'), 'Closer não possui consolidação executiva de intervenções e perguntas SPIN.');
+assert.ok(resumoCloserFront.includes('consolidarIntervencoesCloserFront_(r)'), 'Bloco prático do Closer não usa a consolidação priorizada.');
+assert.ok(!resumoCloserFront.includes('acoes.slice(0, 7)'), 'Resumo executivo Closer ainda aceita sete intervenções.');
 assert.ok(resumoCloserFront.includes('Pontuação por critério'), 'Resumo Closer não mostra a tabela compacta de notas.');
 assert.ok(resumoCloserFront.includes('Média dos critérios aplicáveis'), 'Resumo Closer não mostra a média contextual dos critérios.');
 assert.ok(resumoCloserFront.includes('audit-executive-conclusion'), 'Conclusão do Closer não usa o destaque visual do resumo executivo.');
@@ -171,6 +317,8 @@ assert.ok(!resumoCloserFront.includes('Próximos passos conforme o pitch/process
 assert.ok(front.includes('function renderizarConclusaoObjetivaCloserFront_'), 'Conclusão objetiva Closer não foi implementada.');
 assert.ok(front.includes('Cenário da reunião'), 'Cenário executivo do Closer está ausente.');
 assert.ok(front.includes('Análise detalhada da auditoria Closer'), 'Detalhamento Closer não foi preservado em seção própria.');
+assert.ok(front.includes('audit-temporal-notes'), 'Observações longas da análise temporal ainda ficam espremidas dentro da tabela.');
+assert.ok(front.includes("['Etapa','Janela esperada','Início','Fim','Duração','Aderência']"), 'Tabela temporal Closer ainda mantém a coluna larga de observação.');
 assert.ok(front.includes('function renderizarPontuacaoQualidadeCloserFront_'), 'Pontuação de Qualidade Closer não possui visualização legível própria.');
 assert.ok(front.includes("['Fala do Closer', item.o_que_foi_dito"), 'Detalhamento da Pontuação Closer perdeu a fala do Closer.');
 assert.ok(!front.includes("['Critério','Status','Nota','Fala do Closer','Regra do pitch','Divergência','Justificativa da nota']"), 'Tabela Closer antiga de sete colunas ainda está presente.');
@@ -192,7 +340,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.1\.0'/, 'Engine de auditoria não foi versionado para o autorreparo v6.1.0.');
+assert.match(audit, /versao:\s*'6\.2\.13'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.13.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -242,9 +390,13 @@ const sdrContexto = rd.indexOf("'CONTEXTO E RESULTADO'", rd.indexOf('function au
 assert.ok(sdrNota >= 0 && sdrTabela > sdrNota && sdrContexto > sdrTabela, 'Tabela de notas SDR precisa ficar logo abaixo da nota geral.');
 
 const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoCloser_'));
-const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
 const closerCenario = rd.indexOf("'CENÁRIO DA REUNIÃO'", rd.indexOf('function audRdTextoCloser_'));
-assert.ok(closerNota >= 0 && closerTabela > closerNota && closerCenario > closerTabela, 'Tabela de notas Closer precisa ficar logo abaixo da nota geral.');
+const closerLeitura = rd.indexOf("'LEITURA EXECUTIVA DOS MOMENTOS'", rd.indexOf('function audRdTextoCloser_'));
+const closerTabela = rd.indexOf("'PONTUAÇÃO DE QUALIDADE'", rd.indexOf('function audRdTextoCloser_'));
+assert.ok(
+  closerNota >= 0 && closerCenario > closerNota && closerLeitura > closerCenario && closerTabela > closerLeitura,
+  'RD Closer precisa priorizar cenário e leitura executiva antes da tabela de notas.'
+);
 const closerFormatter = rd.slice(rd.indexOf('function audRdTextoCloser_'), rd.indexOf('function audRdTextoSdr_'));
 assert.ok(!/\bcurto\(/.test(closerFormatter), 'Formatter Closer chama helper curto inexistente; deve usar somente curtoCloser.');
 
@@ -260,7 +412,32 @@ assert.ok(audit.includes("resultadoParseado.__modelo_ia = modeloApi"), 'Modelo d
 assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado não recebe status de validação.');
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
-assert.ok(audit.includes("const normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});"), 'A aprovação precisa normalizar a transcrição antes de recalcular o hash da fonte.');
+assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
+assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.4';"), 'A normalização de transcrição não foi versionada para v2.4.');
+assert.ok(audit.includes("audV3ChamarReparoLocutoresGemini_"), 'O fallback conservador de autoria não foi implementado.');
+assert.ok(audit.includes('coberturaMapaPct < coberturaMinimaPct'), 'Reparo de locutores ainda aceita mapa praticamente vazio como sucesso.');
+assert.ok(audit.includes('continue;'), 'Reparo de locutores não tenta modelo alternativo quando o mapa é insuficiente.');
+assert.ok(audit.includes('temProfissional') && audit.includes('temLead'), 'Reparo de locutores não exige representação dos dois lados em transcrições longas.');
+assert.ok(audit.includes('function audV3ChamarReparoLocutoresRobusto_'), 'Transcrições longas não possuem reparo de autoria em lotes.');
+assert.ok(audit.includes('tamanhoMaxTurnos = 110'), 'Lotes de autoria não usam o tamanho ampliado para reduzir chamadas ao Gemini.');
+assert.ok(audit.includes('tamanhoMaxChars = 25000'), 'Lotes de autoria não usam o limite ampliado de caracteres.');
+assert.ok(audit.includes('audV3ChamarReparoLocutoresRobusto_(normalizacao'), 'Preparação da transcrição ainda chama somente o reparo global.');
+assert.ok(audit.includes('esperasTransientesMs = [0, 2500]'), 'Reparo de locutores não possui retentativa curta para 503/429.');
+assert.ok(audit.includes('[429, 500, 502, 503, 504].includes(status)'), 'Reparo de locutores não reconhece falhas HTTP transitórias.');
+assert.ok(audit.includes("slice(0, Number(opcoes.maxModelos || 3))"), 'Reparo de locutores não limita o número de fallbacks por lote.');
+assert.ok(audit.includes("'gemini-3.5-flash-lite'") && audit.includes("'gemini-3.1-flash-lite'"), 'Reparo de locutores não prioriza modelos Lite para alta vazão.');
+const consumo = fs.readFileSync(new URL('./ConsumoIA.gs', import.meta.url), 'utf8');
+assert.ok(consumo.includes("const indiceSucesso = CONSUMO_IA.colunas.indexOf('SUCESSO');"), 'Controle de IA não distingue chamadas concluídas de falhas transitórias.');
+assert.ok(consumo.includes("String(linha[indiceSucesso] || '').toUpperCase() === 'SIM'"), 'Falhas 503 ainda consomem o teto diário interno e escondem modelos fallback gratuitos.');
+assert.ok(audit.includes('const statusTrocaModeloImediata = [503];'), '429 ainda pula imediatamente para todos os modelos e congestiona a mesma janela de cota.');
+assert.ok(audit.includes('const esperaCurtaQuotaMs_ = function(corpoErro)'), 'Auditoria não interpreta o retry recomendado pelo Gemini em 429.');
+assert.ok(audit.includes('segundos > 65'), 'Retry de 429 precisa respeitar a janela de TPM informada pelo Gemini sem ultrapassar 65s.');
+assert.ok(audit.includes("Utilities.sleep(esperaQuota);"), 'Auditoria não aguarda a janela curta de 429 antes de repetir o mesmo modelo.');
+
+
+assert.ok(audit.includes("apta_para_auditoria"), 'O gate pré-auditoria de qualidade da transcrição não foi implementado.');
+assert.ok(audit.includes("audV3ReconciliarContextoCloserComFonte_"), 'A classificação Closer não possui reconciliação determinística com a fonte.');
+assert.ok(audit.includes("audV3ValidarAfirmacoesFatuaisCloser_"), 'A auditoria Closer não valida afirmações factuais críticas.');
 
 assert.ok(audit.includes('function audV3TabelaResultadoInicial_'), 'Documento não possui tabela de resultado no início.');
 assert.ok(audit.includes('function audV3ChecklistInicial_'), 'Documento não possui checklist no início.');
@@ -282,7 +459,7 @@ assert.ok(!audit.includes("['Critério', 'Status', 'Nota', 'Evidências e compar
 assert.match(rd, /String\(a\.STATUS \|\| ''\)\.toUpperCase\(\) !== 'APROVADA'/, 'RD ainda aceita auditoria em revisão.');
 assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VALIDADA'/, 'RD não exige auditoria validada.');
 assert.ok(rd.includes('audV3HashFonte_'), 'RD não reconfirma a integridade da fonte.');
-assert.ok(rd.includes("var normalizacaoFonte = audV3NormalizarTranscricaoTexto_(conteudoOriginal, i || {});"), 'RD precisa normalizar a transcrição antes de recalcular o hash da auditoria.');
+assert.ok(rd.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, i, a.ENGINE_VERSAO)"), 'RD precisa reutilizar a normalização persistida antes de recalcular o hash da auditoria.');
 assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0"), 'Plano de Otimização ainda pode ser enviado ao RD CRM.');
 assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloser_(c);"), 'Closer não usa o modelo objetivo de anotação.');
 assert.ok(rd.includes("if(tipo==='SDR')return audRdTextoSdr_(c);"), 'SDR não usa exclusivamente o modelo objetivo de anotação.');
@@ -302,6 +479,7 @@ assert.ok(inicioCloserRd >= 0 && fimCloserRd > inicioCloserRd, 'Formatter do Clo
 assert.ok(!closerRd.includes('DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'), 'Closer ainda publica o bloco antigo de desvios no RD.');
 for (const titulo of [
   'CENÁRIO DA REUNIÃO',
+  'LEITURA EXECUTIVA DOS MOMENTOS',
   'EXECUÇÕES ADERENTES AO PROCESSO',
   'PERGUNTAS REALIZADAS PELO CLOSER',
   'PERGUNTAS DO PITCH QUE DEVERIAM TER SIDO FEITAS',
