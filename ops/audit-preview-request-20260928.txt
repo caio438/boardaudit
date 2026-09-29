@@ -3,3 +3,5 @@ Purpose: regenerate the correct INGEE/ERB Closer audit after transcript normaliz
 Requested-at: 2026-09-28T17:44-03:00
 
 Retry after persisted normalization 2.4 gate reuse fix.
+
+Fresh Board flow test after PR #139: INT-20260924150944-A689EB77
