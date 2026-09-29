@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.11
+ * Versão: 6.2.12
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.11',
+  versao: '6.2.12',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -4797,16 +4797,146 @@ function audV3ReconciliarContextoCloserComFonte_(resultado, transcricao, context
 
 function audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) {
   const pitch = audV3NormalizarTrechoRastreavel_(conteudoPitch || '');
-  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,40}10|quanto.{0,80}solucao.{0,80}problema/.test(pitch);
+  return /(?:de|do)\s+zero\s+a\s+(?:dez|10)|0\s+a\s+10|nota.{0,40}10|quanto.{0,80}solucao.{0,80}problema/.test(pitch);
 }
 
 function audV3ScoreInteresseRealizado_(transcricao) {
   const fonte = audV3NormalizarTrechoRastreavel_(transcricao || '');
-  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,50}(?:0|1|2|3|4|5|6|7|8|9|10)|quanto.{0,80}(?:solucao|estamos).{0,80}(?:problema|necessitam)/.test(fonte);
+  return /(?:de|do)\s+zero\s+a\s+(?:dez|10)|0\s+a\s+10|nota.{0,50}(?:0|1|2|3|4|5|6|7|8|9|10)|quanto.{0,80}(?:solucao|estamos).{0,80}(?:problema|necessitam)/.test(fonte);
+}
+
+function audV3ProximoPassoConcretoCloser_(transcricao) {
+  const bruto = String(transcricao || '');
+  const texto = audV3NormalizarTrechoRastreavel_(bruto);
+  const temCompromisso = /\b(?:segunda reuniao|marcar|agendar|agendamento|follow up|proximo passo)\b/.test(texto);
+  const temData = /\bdia\s+\d{1,2}\b/.test(texto);
+  const temHora = /(?<![:\d])(?:[01]?\d|2[0-3]):[0-5]\d(?![:\d])/.test(bruto);
+  return Boolean(temCompromisso && temData && temHora);
+}
+
+function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
+  resultado = resultado || {};
+  const criterios = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const momentos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+  const perguntas = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
+  const ausentes = ((resultado.perguntas_diagnostico || {}).perguntas_esperadas_nao_realizadas || []);
+  const scoreRealizado = audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) && audV3ScoreInteresseRealizado_(transcricao);
+  const proximoPassoConcreto = audV3ProximoPassoConcretoCloser_(transcricao);
+
+  const eraBloqueioAutoria = function(item) {
+    const texto = audV3NormalizarTrechoRastreavel_(
+      String((item || {}).divergencia || '') + ' ' + String((item || {}).justificativa_nota || '')
+    );
+    return /autoria|locutor|evidencia literal|fala do profissional/.test(texto);
+  };
+  const temEvidenciaCloser = function(item) {
+    const fala = String((item || {}).o_que_foi_dito || '').trim();
+    return String((item || {}).locutor_evidencia || '').toUpperCase() === 'CLOSER' &&
+      fala && !/^n[aã]o evidenciado/i.test(fala);
+  };
+  const aplicarStatus = function(item, status, pontuacao, justificativa) {
+    item.aplicavel = true;
+    item.status = status;
+    item.pontuacao = pontuacao;
+    item.divergencia_identificada = status !== 'CONFORME';
+    item.divergencia = status === 'CONFORME' ? 'Não houve divergência.' : String(item.divergencia || justificativa || '');
+    item.justificativa_nota = justificativa;
+  };
+
+  criterios.forEach(function(item) {
+    if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
+    const id = String(item.id || '');
+    if (id === 'validacao_interesse' && scoreRealizado) {
+      aplicarStatus(
+        item,
+        'CONFORME',
+        5,
+        'A validação objetiva de interesse foi realizada e respondida pelo lead na própria reunião.'
+      );
+      item.correcao_pratica = 'Manter a validação objetiva de interesse após a apresentação e tratar qualquer nota abaixo de 10.';
+      return;
+    }
+    if (id === 'tratamento_objecoes' && proximoPassoConcreto) {
+      aplicarStatus(
+        item,
+        'CONFORME',
+        5,
+        'A reunião terminou com próximo passo concreto, data e horário confirmados; não houve objeção explícita que exigisse tratamento adicional.'
+      );
+      item.correcao_pratica = 'Manter o fechamento com próximo passo datado e responsável definido.';
+      return;
+    }
+    if (id === 'aderencia_diagnostico' && perguntas.length >= 3) {
+      const completo = !ausentes.length;
+      aplicarStatus(
+        item,
+        completo ? 'CONFORME' : 'DESVIO_EXECUCAO',
+        completo ? 5 : 2.5,
+        completo
+          ? 'O diagnóstico foi sustentado por múltiplas perguntas rastreáveis do Closer.'
+          : 'O diagnóstico foi executado e sustentado por múltiplas perguntas rastreáveis, mas ainda restaram perguntas previstas no pitch sem evidência.'
+      );
+      item.correcao_pratica = completo
+        ? 'Manter a sequência de diagnóstico antes da apresentação.'
+        : 'Na próxima reunião, cubra as perguntas ausentes do pitch que ainda forem aplicáveis ao contexto.';
+    }
+  });
+
+  const momentoPorId = {};
+  momentos.forEach(function(item) { if (item) momentoPorId[String(item.id || '')] = item; });
+  const recuperarMomento = function(id, status, nota, justificativa) {
+    const item = momentoPorId[id];
+    if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
+    item.gatilho_alcancado = true;
+    item.status = status;
+    item.cor = status;
+    item.nota = nota;
+    item.divergencia_identificada = status !== 'VERDE';
+    item.divergencia = status === 'VERDE' ? 'Não houve divergência.' : String(item.divergencia || justificativa || '');
+    item.justificativa_nota = justificativa;
+  };
+
+  if (perguntas.length >= 3) {
+    recuperarMomento(
+      'momento_1',
+      ausentes.length ? 'AMARELO' : 'VERDE',
+      ausentes.length ? 2.5 : 5,
+      ausentes.length
+        ? 'O diagnóstico foi comprovado por autoria Closer, com lacunas pontuais ainda abertas no pitch.'
+        : 'O diagnóstico foi comprovado por autoria Closer e cobriu os pontos esperados.'
+    );
+  }
+  if (proximoPassoConcreto) {
+    recuperarMomento(
+      'momento_3',
+      'VERDE',
+      5,
+      'O fechamento da reunião estabeleceu próximo passo concreto com data e horário confirmados.'
+    );
+  }
+  if (scoreRealizado) {
+    const item = momentoPorId.momento_2;
+    if (item && String(item.locutor_evidencia || '').toUpperCase() === 'CLOSER' && String(item.status || '').toUpperCase() === 'AMARELO') {
+      const pontosMelhorar = (Array.isArray(item.pontos_melhorar) ? item.pontos_melhorar : []).filter(function(ponto) {
+        return !/score|zero a dez|0 a 10/i.test(String(ponto || ''));
+      });
+      item.pontos_melhorar = pontosMelhorar;
+      if (!pontosMelhorar.length) {
+        item.status = 'VERDE';
+        item.cor = 'VERDE';
+        item.nota = 5;
+        item.divergencia_identificada = false;
+        item.divergencia = 'Não houve divergência.';
+        item.justificativa_nota = 'A solução foi apresentada e a validação objetiva de interesse foi realizada com resposta do lead.';
+      }
+    }
+  }
+  return resultado;
 }
 
 function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcricao, conteudoPitch) {
   resultado = resultado || {};
+  audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch);
   const contexto = resultado.contexto_interacao || {};
   const classificacao = String(contexto.classificacao || '').toUpperCase();
   const primeiraOuDiagnostico = !classificacao || ['PRIMEIRA_REUNIAO', 'FOLLOW_UP_DIAGNOSTICO'].includes(classificacao);

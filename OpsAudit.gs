@@ -188,20 +188,31 @@ function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
         evitarDuplicidade: false
       });
     } catch (erroExecucao) {
-      const transcricaoAtual = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', transcricao.ID_TRANSCRICAO) || transcricao;
-      let qualidadeTranscricao = {};
-      try { qualidadeTranscricao = JSON.parse(String(transcricaoAtual.QUALIDADE_JSON || '{}')); } catch (erroJson) {}
-      return {
-        sucesso: false,
-        modo: 'PREVIEW_SEM_PUBLICACAO',
-        idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
-        idInteracao: String(interacao.ID_INTERACAO || ''),
-        tipoAuditoria: tipo,
-        erro: String(erroExecucao && erroExecucao.message ? erroExecucao.message : erroExecucao),
-        qualidadeTranscricao: qualidadeTranscricao,
-        rdPublicada: false,
-        aprovada: false
-      };
+      const codigoErro = typeof audV3CodigoErroTecnico_ === 'function' ? audV3CodigoErroTecnico_(erroExecucao) : '';
+      if (codigoErro === 'MODELO_INDISPONIVEL') {
+        const anterior = opsAuditoriaValidadaAnteriorInteracao_(interacao.ID_INTERACAO, tipo);
+        if (anterior) {
+          const reparo = opsCriarReparoDeterministico_(anterior, interacao);
+          auditoria = reparo.auditoria;
+          gerada = { auditoria: audV3AuditoriaFront_(auditoria), reparoDeterministico: true, baseId: reparo.baseId };
+        }
+      }
+      if (!gerada) {
+        const transcricaoAtual = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', transcricao.ID_TRANSCRICAO) || transcricao;
+        let qualidadeTranscricao = {};
+        try { qualidadeTranscricao = JSON.parse(String(transcricaoAtual.QUALIDADE_JSON || '{}')); } catch (erroJson) {}
+        return {
+          sucesso: false,
+          modo: 'PREVIEW_SEM_PUBLICACAO',
+          idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
+          idInteracao: String(interacao.ID_INTERACAO || ''),
+          tipoAuditoria: tipo,
+          erro: String(erroExecucao && erroExecucao.message ? erroExecucao.message : erroExecucao),
+          qualidadeTranscricao: qualidadeTranscricao,
+          rdPublicada: false,
+          aprovada: false
+        };
+      }
     }
     if (!gerada || !gerada.auditoria || !String(gerada.auditoria.idAuditoria || '').trim()) {
       throw new Error('A auditoria de preview nao foi criada corretamente.');
@@ -319,6 +330,114 @@ function opsAuditoriaAtualInteracao_(idInteracao) {
     ? audV3FiltrarAuditoriasVisiveisOperacao_(todas)
     : todas;
   return visiveis.length ? visiveis[visiveis.length - 1] : null;
+}
+
+function opsAuditoriaValidadaAnteriorInteracao_(idInteracao, tipo) {
+  const todas = audV3Ler_('AUDITORIAS').filter(function(item) {
+    return String(item.ID_INTERACAO || '') === String(idInteracao || '') &&
+      String(item.TIPO_AUDITORIA || '').toUpperCase() === String(tipo || '').toUpperCase() &&
+      ['EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase()) &&
+      String(item.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
+      String(item.RESULTADO_JSON || '').trim();
+  });
+  return todas.length ? todas[todas.length - 1] : null;
+}
+
+function opsCriarReparoDeterministico_(base, interacao) {
+  if (!base) throw new Error('Nenhuma auditoria validada anterior disponível para reparo determinístico.');
+  const tipo = String(base.TIPO_AUDITORIA || '').toUpperCase();
+  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', base.ID_INTERACAO);
+  const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', base.ID_CLIENTE);
+  if (!transcricao || !cliente) throw new Error('Fonte da auditoria anterior não encontrada.');
+
+  const pitchAtual = audV3PitchAtualAutomatico_(base.ID_CLIENTE, tipo);
+  if (!pitchAtual) throw new Error('Pitch atual não encontrado para o reparo determinístico.');
+  const pitch = audV3AtualizarPitchDocumentoAutomatico_(pitchAtual).pitch;
+  const modelo = audV3SelecionarModelo_(base.ID_MODELO || '', base.ID_CLIENTE, tipo);
+  const criterios = audV3ParseJson_(modelo.CRITERIOS_JSON, 'Critérios atuais inválidos.');
+  const preparada = audV3PrepararTranscricaoPersistida_(transcricao, interacao);
+  if (!preparada.qualidade || preparada.qualidade.apta_para_auditoria !== true) {
+    throw new Error('A transcrição atual não está apta para reparo determinístico.');
+  }
+
+  let resultado = JSON.parse(JSON.stringify(audV3ParseJson_(base.RESULTADO_JSON, 'Resultado anterior inválido.')));
+  audV3RepararEvidenciasRastreaveis_(resultado, tipo, criterios, preparada.conteudo, pitch.CONTEUDO_PITCH, interacao);
+
+  const identidade = audV3Identidade_({
+    nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
+    nomeLead: interacao.LEAD || ''
+  }, cliente, interacao);
+  resultado = audV3NormalizarResultado_(resultado, criterios, identidade, interacao, pitch, tipo);
+
+  if (tipo === 'CLOSER') {
+    audV3ReconciliarContextoCloserComFonte_(resultado, preparada.conteudo, audV3ContextoHistoricoOportunidade_(interacao, tipo) || {});
+    audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, preparada.conteudo, pitch.CONTEUDO_PITCH);
+    audV3ReconciliarChecklistCloser_(resultado, criterios);
+    audV3DerivarSuperficiesExecutivasCloser_(resultado);
+  }
+
+  audV3ValidarResultadoOficial_(resultado, tipo, criterios, preparada.conteudo, pitch.CONTEUDO_PITCH);
+  resultado.validacao_board = audV3ValidarQualidadeBoard_(resultado, tipo);
+  const gate = audV3ExigirGatePublicavel_(resultado, tipo);
+
+  const hashFonte = audV3HashFonte_(
+    cliente,
+    pitch,
+    modelo,
+    Object.assign({}, transcricao, {
+      CONTEUDO: preparada.conteudo,
+      NORMALIZACAO_VERSAO: preparada.normalizacaoVersao
+    }),
+    tipo
+  );
+  const idAuditoria = audV3Id_('AUD');
+  const agora = new Date();
+  const pc = resultado.pontuacao_calculada || {};
+  const semaforo = String(((resultado || {}).semaforo_geral || {}).cor || resultado.semaforo || '');
+
+  audV3Adicionar_('AUDITORIAS', {
+    ID_AUDITORIA: idAuditoria,
+    ID_INTERACAO: base.ID_INTERACAO,
+    ID_TRANSCRICAO: transcricao.ID_TRANSCRICAO,
+    ID_CLIENTE: base.ID_CLIENTE,
+    ID_PITCH: pitch.ID_PITCH,
+    TIPO_AUDITORIA: tipo,
+    NOME_PITCH_SNAPSHOT: pitch.NOME_VERSAO,
+    VERSAO_PITCH_SNAPSHOT: pitch.NUMERO_VERSAO,
+    CONTEUDO_PITCH_SNAPSHOT: pitch.CONTEUDO_PITCH,
+    PROMPT_SNAPSHOT: audV3PromptOficial_(modelo, tipo),
+    STATUS: 'EM_REVISAO',
+    RESULTADO_COMPLETO: audV3ResultadoTexto_(resultado, tipo),
+    SCORE: pc.score_5 === null || pc.score_5 === undefined ? '' : pc.score_5,
+    SCORE_PERCENTUAL: pc.score_percentual === null || pc.score_percentual === undefined ? '' : pc.score_percentual,
+    SEMAFORO: semaforo,
+    ERRO: '',
+    SOLICITADO_EM: agora,
+    CONCLUIDO_EM: agora,
+    ID_MODELO: modelo.ID_MODELO,
+    NOME_MODELO_SNAPSHOT: modelo.NOME_MODELO,
+    VERSAO_MODELO_SNAPSHOT: modelo.VERSAO_MODELO,
+    CRITERIOS_SNAPSHOT_JSON: modelo.CRITERIOS_JSON,
+    RESULTADO_JSON: JSON.stringify(resultado),
+    ITENS_AVALIADOS: Number(pc.itens_avaliados || 0),
+    ITENS_NA: Number(pc.itens_na || 0),
+    DURACAO_PROCESSAMENTO_MS: 0,
+    HASH_FONTE: hashFonte,
+    MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA',
+    ENGINE_VERSAO: audV3VersaoPersistida_(),
+    VALIDACAO_STATUS: 'VALIDADA',
+    VALIDADA_EM: agora,
+    AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: agora,
+    RD_STATUS: ''
+  });
+  return {
+    auditoria: audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria),
+    resultado: resultado,
+    gate: gate,
+    baseId: String(base.ID_AUDITORIA || '')
+  };
 }
 
 function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
