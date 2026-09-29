@@ -416,6 +416,9 @@ function doGet(e) {
   }
 
   if (String(parametros.ops_sdr_publish_one || '') === '1') {
+    if (String(parametros.single || '') !== '1') {
+      throw new Error('Publicacao SDR bloqueada: use o comando unitario /sdr-publish-next.');
+    }
     const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
     if (!ativo || !efetivo || ativo !== efetivo) {
