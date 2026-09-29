@@ -4923,8 +4923,10 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
     );
     if (/evidencia literal|rastreavel|nao comprovado|sem fonte/.test(motivoMomento0)) {
       const linhaRapport = String(transcricao || '').split(/\n+/).find(function(linha) {
-        return /\bCLOSER(?:\s+\([^)]+\))?:/i.test(String(linha || '')) &&
-          /\b(?:agradec\w*[^.]{0,50}tempo|prazer[^.]{0,40}conhec|me apresentando|eu sou|voce ta falando de onde)\b/i.test(String(linha || ''));
+        const brutoLinha = String(linha || '');
+        const linhaNormalizada = audV3NormalizarTrechoRastreavel_(brutoLinha);
+        return /\bCLOSER(?:\s+\([^)]+\))?:/i.test(brutoLinha) &&
+          /\b(?:agradec\w*.{0,50}tempo|prazer.{0,40}conhec|me apresentando|eu sou|voce ta falando de onde)\b/.test(linhaNormalizada);
       });
       if (linhaRapport) {
         momento0.o_que_foi_dito = String(linhaRapport).trim();
