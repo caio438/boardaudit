@@ -2651,6 +2651,32 @@
     </div>
   </div>
 
+  <div id="modalRdAuditoria" class="modal-simples" aria-hidden="true">
+    <div class="modal-conteudo" style="max-width:900px">
+      <div class="section-title">
+        <div>
+          <h3>Prévia para o RD CRM</h3>
+          <p>Edite exatamente o texto que será registrado no histórico da negociação.</p>
+        </div>
+        <button class="btn secondary" type="button" onclick="fecharPreviewRdAuditoria()">Fechar</button>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Oportunidade</label><input id="rdPreviewOportunidade" readonly></div>
+        <div class="field"><label>Status do destino</label><input id="rdPreviewDestino" readonly></div>
+        <div class="field full">
+          <label for="rdPreviewTexto">Texto que será enviado ao RD</label>
+          <textarea id="rdPreviewTexto" style="min-height:480px;white-space:pre-wrap"></textarea>
+          <div class="small muted" style="margin-top:6px">Você pode corrigir, cortar ou reescrever qualquer trecho antes de aprovar.</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" type="button" onclick="copiarPreviewRdAuditoria()">Copiar texto</button>
+        <button id="btnAprovarEnviarRd" class="btn success" type="button" onclick="aprovarEnviarRdAuditoriaFront()">Aprovar e enviar ao RD</button>
+      </div>
+      <div id="rdPreviewAviso" class="small muted" style="margin-top:10px"></div>
+    </div>
+  </div>
+
   <div id="modalCircleManual" class="modal-simples" aria-hidden="true">
     <div class="modal-conteudo" style="max-width:900px">
       <div class="section-title">
@@ -6827,6 +6853,9 @@
         ${auditoria.status === 'APROVADA'
           ? `<span class="status success" style="align-self:center">APROVADA</span>
              ${auditoria.linkDocumento ? `<a class="btn" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
+             ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.rdStatus || '').toUpperCase() !== 'PUBLICADA'
+               ? `<button class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Prévia / enviar ao RD</button>`
+               : ''}
              ${['SDR', 'CLOSER'].includes(tipoAudit) && String(auditoria.rdStatus || '').toUpperCase() === 'ERRO'
                ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(auditoria.idAuditoria)}')">Reprocessar RD</button>`
                : ''}
@@ -6840,7 +6869,9 @@
                : ''}`
           : auditoria.status === 'EM_REVISAO'
             ? `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
-               <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar e publicar</button>
+               ${['SDR', 'CLOSER'].includes(tipoAudit)
+                 ? `<button id="btnPreviewRdAuditoria" class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Prévia para o RD</button>`
+                 : `<button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar</button>`}
                <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
             : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
                <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
@@ -7719,7 +7750,7 @@
         <h3>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Momento')} <span class="status ${classe}">${escapeHtml(cor || 'NÃO EVIDENCIADO')}</span></h3>
         <p><strong>O que se espera:</strong> ${escapeHtml(item.o_que_se_espera || 'Não evidenciado')}</p>
         <p class="line-evidence">📌 <strong>Evidência da fala do Closer:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
-        <p class="line-danger">❌ <strong>Divergência:</strong> ${escapeHtml(item.divergencia || 'Não houve divergência.')}</p>
+        ${(() => { const d = String(item.divergencia || '').trim(); return d && !/^(não houve divergência|nenhuma divergência(?: registrada)?|sem divergência|n\/a|não aplicável|não evidenciado)[.!]?$/i.test(d) ? `<p class="line-danger">❌ <strong>Divergência:</strong> ${escapeHtml(d)}</p>` : ''; })()}
         <p><strong>Nota do momento:</strong> ${escapeHtml(item.nota === null || item.nota === undefined ? 'N/A' : item.nota + '/5')} · <strong>Justificativa:</strong> ${escapeHtml(item.justificativa_nota || '-')}</p>
         <p class="line-success">✅ <strong>Pontos fortes:</strong> ${escapeHtml((item.pontos_fortes || []).join(' • ') || 'Nenhum ponto registrado.')}</p>
         <p class="line-danger">❌ <strong>Pontos a melhorar:</strong> ${escapeHtml((item.pontos_melhorar || []).join(' • ') || 'Nenhum desvio relevante.')}</p>
@@ -7996,7 +8027,7 @@
     const botao = document.getElementById('btnAprovarAuditoria');
     if (botao) {
       botao.disabled = true;
-      botao.textContent = 'Validando e publicando...';
+      botao.textContent = 'Aprovando...';
     }
 
     google.script.run
@@ -8010,7 +8041,7 @@
       .withFailureHandler(erro => {
         if (botao) {
           botao.disabled = false;
-          botao.textContent = 'Aprovar e publicar';
+          botao.textContent = 'Aprovar';
         }
         tratarErro(erro);
       })
@@ -8803,22 +8834,62 @@
   }
 
   function prepararEnvioAuditoriaRdFront(idAuditoria, botao) {
-    if (botao) { botao.disabled = true; botao.textContent = 'Preparando...'; }
+    if (botao) { botao.disabled = true; botao.dataset.textoOriginal = botao.textContent; botao.textContent = 'Preparando...'; }
     google.script.run
       .withSuccessHandler(preview => {
-        if (botao) { botao.disabled = false; botao.textContent = 'Enviar resultado ao RD'; }
-        const confirmado = window.confirm(
-          'Registrar esta anotação no histórico da negociação ' + (preview.oportunidade || preview.dealId) + '?\n\n' +
-          preview.texto + '\n\nATENÇÃO: ' + preview.aviso
-        );
-        if (!confirmado) return;
-        enviarAuditoriaParaRdFront(idAuditoria, preview.texto, botao);
+        if (botao) { botao.disabled = false; botao.textContent = botao.dataset.textoOriginal || 'Prévia para o RD'; }
+        estado.rdPreviewAtual = preview;
+        document.getElementById('rdPreviewOportunidade').value = preview.oportunidade || preview.dealId || 'Sem vínculo identificado';
+        document.getElementById('rdPreviewDestino').value =
+          (preview.temVinculo ? 'Negociação vinculada' : 'Sem negociação vinculada') + ' · ' +
+          (preview.temToken ? 'Token RD disponível' : 'Token RD indisponível');
+        document.getElementById('rdPreviewTexto').value = preview.texto || '';
+        document.getElementById('rdPreviewAviso').textContent = preview.aviso || '';
+        const acao = document.getElementById('btnAprovarEnviarRd');
+        if (acao) acao.textContent = preview.temToken && preview.temVinculo ? 'Aprovar e enviar ao RD' : 'Aprovar e salvar prévia';
+        document.getElementById('modalRdAuditoria').classList.add('aberto');
+        document.getElementById('modalRdAuditoria').setAttribute('aria-hidden', 'false');
       })
       .withFailureHandler(erro => {
-        if (botao) { botao.disabled = false; botao.textContent = 'Enviar resultado ao RD'; }
+        if (botao) { botao.disabled = false; botao.textContent = botao.dataset.textoOriginal || 'Prévia para o RD'; }
         tratarErro(erro);
       })
       .prepararEnvioAuditoriaRd(idAuditoria);
+  }
+
+  function fecharPreviewRdAuditoria() {
+    document.getElementById('modalRdAuditoria').classList.remove('aberto');
+    document.getElementById('modalRdAuditoria').setAttribute('aria-hidden', 'true');
+  }
+
+  async function copiarPreviewRdAuditoria() {
+    const texto = valor('rdPreviewTexto');
+    if (!texto) return mostrarToast('A prévia está vazia.', 'warning');
+    await copiarTextoCompatibilidade_(texto);
+    mostrarToast('Prévia do RD copiada.', 'success');
+  }
+
+  function aprovarEnviarRdAuditoriaFront() {
+    const atual = estado.rdPreviewAtual || {};
+    const texto = valor('rdPreviewTexto');
+    if (!atual.idAuditoria) return mostrarToast('Auditoria não identificada.', 'error');
+    if (!texto.trim()) return mostrarToast('Revise o texto antes de aprovar.', 'error');
+    const botao = document.getElementById('btnAprovarEnviarRd');
+    if (botao) { botao.disabled = true; botao.textContent = 'Aprovando...'; }
+    google.script.run
+      .withSuccessHandler(resposta => {
+        estado.auditorias = resposta.auditorias || estado.auditorias;
+        estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
+        fecharPreviewRdAuditoria();
+        renderizarAuditorias();
+        if (estado.auditoriaAtual) renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
+        mostrarToast(resposta.mensagem, resposta.publicada === false ? 'warning' : 'success');
+      })
+      .withFailureHandler(erro => {
+        if (botao) { botao.disabled = false; botao.textContent = 'Aprovar e enviar ao RD'; }
+        tratarErro(erro);
+      })
+      .aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAuditoria, texto: texto });
   }
 
   function enviarAuditoriaParaRdFront(idAuditoria, texto, botao) {
@@ -8826,7 +8897,9 @@
     google.script.run
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
+        estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
         renderizarAuditorias();
+        if (estado.auditoriaAtual) renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
         mostrarToast(resposta.mensagem, 'success');
       })
       .withFailureHandler(erro => {
