@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
+const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url), 'utf8');
 const previewWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url), 'utf8');
 const deploy = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
@@ -35,11 +36,9 @@ assert.ok(ops.includes('falhaModeloRecente && anteriorValidada'), 'Preview nao p
 assert.ok(ops.includes("codigoErro === 'MODELO_INDISPONIVEL'"), 'Preview nao aciona fallback apenas para indisponibilidade de modelo.');
 assert.ok(ops.includes("MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA'"), 'Auditoria reparada sem IA nao fica rastreavel.');
 assert.ok(ops.includes('function opsPrepararTranscricaoPersistidaValidadaParaReparo_'), 'Reparo deterministico precisa reutilizar gate persistido validado.');
-assert.ok(ops.includes("versaoLinha === '2.4' && versaoGate === '2.4'"), 'Reparo deterministico precisa exigir normalizacao 2.4 persistida.');
-assert.ok(ops.includes("assinaturaGate === String(assinaturaAtual || '')"), 'Reparo deterministico precisa exigir assinatura identica.');
-assert.ok(ops.includes("['BOA', 'ATENCAO'].includes(statusGate) && qualidade.apta_para_auditoria === true"), 'Reparo deterministico precisa exigir qualidade BOA/ATENCAO e apta=true.');
-assert.ok(ops.includes('Object.keys(mapa).length > 0'), 'Reparo deterministico precisa exigir mapa de locutores persistido.');
-assert.ok(ops.includes("CONTEUDO_NORMALIZADO"), 'Reparo deterministico precisa reutilizar conteudo normalizado persistido.');
+assert.ok(ops.includes('return audV3PrepararTranscricaoPersistidaValidada_(transcricao, interacao);'), 'Reparo deterministico precisa delegar para a fonte persistida canonica compartilhada.');
+assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Helper canonico de fonte persistida nao existe no motor de auditoria.');
+assert.ok(audit.includes('CONTEUDO_NORMALIZADO'), 'Helper canonico nao consome o conteudo persistido.');
 assert.ok(ops.includes('const preparada = opsPrepararTranscricaoPersistidaValidadaParaReparo_(transcricao, interacao);'), 'Reparo deterministico ainda recalcula o gate em vez de reutiliza-lo.');
 const inicioReparoDet = ops.indexOf('function opsCriarReparoDeterministico_');
 const fimReparoDet = ops.indexOf('function opsValidarAuditoriaNoEngineAtual_', inicioReparoDet);
