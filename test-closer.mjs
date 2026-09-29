@@ -381,6 +381,7 @@ const resultadoAutoriaRecuperada = {
     }
   ],
   momentos: [
+    { id:'momento_0', status:'VERDE', cor:'VERDE', nota:5, gatilho_alcancado:true, locutor_evidencia:'CLOSER', o_que_foi_dito:'CLOSER (Juliana e Jessica): Boa tarde, obrigado pelo tempo de vocês.', divergencia:'Não houve divergência.', justificativa_nota:'Rapport comprovado.', pontos_fortes:['Abertura cordial'], pontos_melhorar:[] },
     { id:'momento_1', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários?', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' },
     { id:'momento_2', status:'AMARELO', cor:'AMARELO', nota:2.5, gatilho_alcancado:true, locutor_evidencia:'CLOSER', o_que_foi_dito:'CLOSER: apresentação', pontos_melhorar:['Aplicar rigorosamente a pergunta de score de zero a dez prevista no pitch'], divergencia:'Não houve divergência.', justificativa_nota:'Parcial.' },
     { id:'momento_3', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[1:06:59] CLOSER (Juliana e Jessica): dia 18 ou dia 21 às 14:30', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' }
@@ -404,8 +405,8 @@ assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].aplicavel, true, 
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].status, 'DESVIO_EXECUCAO', 'Diagnóstico recuperado com lacunas deve voltar como desvio, não N/A.');
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'DESVIO_EXECUCAO', 'Próximo passo datado deve recolocar Fechamento na régua sem promover execução parcial a 5/5.');
-assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
-assert.equal(resultadoAutoriaRecuperada.momentos[2].status, 'AMARELO', 'Fechamento com data e hora confirmadas deve sair do falso vermelho, mas permanecer conservador quando há outros gaps.');
+assert.equal(resultadoAutoriaRecuperada.momentos[1].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
+assert.equal(resultadoAutoriaRecuperada.momentos[3].status, 'AMARELO', 'Fechamento com data e hora confirmadas deve sair do falso vermelho, mas permanecer conservador quando há outros gaps.');
 assert.equal(resultadoAutoriaRecuperada.semaforo_geral.cor, 'AMARELO', 'Semáforo geral precisa ser recalculado depois de recuperar falsos vermelhos por autoria.');
 
 
