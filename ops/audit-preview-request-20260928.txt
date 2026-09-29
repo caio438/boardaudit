@@ -9,3 +9,5 @@ Fresh Board flow test after PR #139: INT-20260924150944-A689EB77
 Current diagnostic test: INT-20260925175419-2A39E974
 
 Unimed Sinergia fresh Closer audit preview: INT-20260925135700-1D7E9A4C
+
+Preview Unimed/Sinergia Closer: INT-20260925135700-1D7E9A4C
