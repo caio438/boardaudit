@@ -4797,12 +4797,12 @@ function audV3ReconciliarContextoCloserComFonte_(resultado, transcricao, context
 
 function audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) {
   const pitch = audV3NormalizarTrechoRastreavel_(conteudoPitch || '');
-  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,40}10|quanto.{0,80}solucao.{0,80}problema/.test(pitch);
+  return /(?:de|do)\s+zero\s+a\s+(?:dez|10)|0\s+a\s+10|nota.{0,40}10|quanto.{0,80}solucao.{0,80}problema/.test(pitch);
 }
 
 function audV3ScoreInteresseRealizado_(transcricao) {
   const fonte = audV3NormalizarTrechoRastreavel_(transcricao || '');
-  return /(?:de|do)\s+zero\s+a\s+dez|0\s+a\s+10|nota.{0,50}(?:0|1|2|3|4|5|6|7|8|9|10)|quanto.{0,80}(?:solucao|estamos).{0,80}(?:problema|necessitam)/.test(fonte);
+  return /(?:de|do)\s+zero\s+a\s+(?:dez|10)|0\s+a\s+10|nota.{0,50}(?:0|1|2|3|4|5|6|7|8|9|10)|quanto.{0,80}(?:solucao|estamos).{0,80}(?:problema|necessitam)/.test(fonte);
 }
 
 function audV3ProximoPassoConcretoCloser_(transcricao) {
