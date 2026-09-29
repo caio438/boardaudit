@@ -23,7 +23,7 @@ assert.match(trechoFila, /jornadaConteudoPareceTranscricao_\(conteudo\)/);
 // Resultado operacional separado do STATUS técnico.
 assert.match(code, /'RESULTADO_REUNIAO', 'RESULTADO_REUNIAO_ATUALIZADO_EM'/);
 assert.match(jornada, /function jornadaNormalizarResultadoReuniao_/);
-assert.match(jornada, /\['NO_SHOW', 'REMARCADA', 'CANCELADA'\]\.includes/);
+assert.match(jornada, /\['NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO'\]\.includes/);
 assert.match(jornada, /jornadaResultadoReuniaoEncerraAutomacao_\(reuniao\.RESULTADO_REUNIAO\)/);
 assert.match(jornada, /RESULTADO_REUNIAO: existente \? existente\.RESULTADO_REUNIAO \|\| '' : ''/);
 assert.match(jornada, /versao: '1\.9\.7'/);
