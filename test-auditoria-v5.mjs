@@ -413,6 +413,12 @@ assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado n�
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
 assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
+assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Integridade nao possui fonte canonica persistida compartilhada.');
+assert.ok(audit.includes("const conteudoNormalizado = String((transcricao || {}).CONTEUDO_NORMALIZADO || '').trim();"), 'Integridade nao reutiliza exatamente o conteudo normalizado persistido.');
+assert.ok(audit.includes('assinaturaGate === String(assinaturaAtual || \'\')'), 'Fonte persistida nao exige assinatura original identica.');
+assert.ok(audit.includes("['BOA', 'ATENCAO'].includes(statusGate) && qualidade.apta_para_auditoria === true"), 'Fonte persistida nao exige gate apto BOA/ATENCAO.');
+assert.ok(audit.includes('Object.keys(mapa).length > 0'), 'Fonte persistida nao exige mapa de locutores.');
+assert.ok(audit.includes('return audV3PrepararTranscricaoPersistidaValidada_(transcricao, interacao);'), 'Revalidacao de integridade nao prioriza o texto persistido antes de recompor a normalizacao.');
 assert.ok(audit.includes("const AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO = '2.4';"), 'A normalização de transcrição não foi versionada para v2.4.');
 assert.ok(audit.includes("audV3ChamarReparoLocutoresGemini_"), 'O fallback conservador de autoria não foi implementado.');
 assert.ok(audit.includes('coberturaMapaPct < coberturaMinimaPct'), 'Reparo de locutores ainda aceita mapa praticamente vazio como sucesso.');
