@@ -23,19 +23,23 @@ assert.match(trechoFila, /jornadaConteudoPareceTranscricao_\(conteudo\)/);
 // Resultado operacional separado do STATUS técnico.
 assert.match(code, /'RESULTADO_REUNIAO', 'RESULTADO_REUNIAO_ATUALIZADO_EM'/);
 assert.match(jornada, /function jornadaNormalizarResultadoReuniao_/);
-assert.match(jornada, /\['NO_SHOW', 'REMARCADA', 'CANCELADA'\]\.includes/);
+assert.match(jornada, /\['NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO'\]\.includes/);
 assert.match(jornada, /jornadaResultadoReuniaoEncerraAutomacao_\(reuniao\.RESULTADO_REUNIAO\)/);
 assert.match(jornada, /RESULTADO_REUNIAO: existente \? existente\.RESULTADO_REUNIAO \|\| '' : ''/);
 assert.match(jornada, /versao: '1\.9\.7'/);
 
 // Endpoint manual valida o enum e não precisa alterar o STATUS técnico.
 assert.match(auditoria, /function salvarResultadoReuniaoFormalizacao\(dados\)/);
-assert.match(auditoria, /permitidos = \['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'\]/);
+assert.match(auditoria, /permitidos = \['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'\]/);
 assert.match(auditoria, /RESULTADO_REUNIAO: resultado/);
 assert.match(auditoria, /resultadoReuniao: formalNormalizarResultadoReuniao_\(item\.RESULTADO_REUNIAO\)/);
 
 // UX: aprovação rápida, classificação visual, filtro e cards recolhíveis.
 assert.match(front, />Aprovar agora<\/button>/);
+assert.match(front, /Iniciar fila de revisão/);
+assert.match(front, /formalAvancarFilaRevisao_/);
+assert.match(front, /SEM_TRANSCRICAO/);
+assert.match(front, /Revisar\/editar/);
 assert.match(front, />Classificar reunião<\/summary>/);
 assert.match(front, /id="formalHistoricoResultado"/);
 assert.match(front, /class="formal-history-card"/);

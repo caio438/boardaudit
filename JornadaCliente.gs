@@ -34,13 +34,13 @@ const JORNADA_CLIENTE_CONFIG = Object.freeze({
 
 function jornadaNormalizarResultadoReuniao_(valor) {
   const resultado = String(valor || '').trim().toUpperCase();
-  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'].includes(resultado)
     ? resultado
     : 'NAO_IDENTIFICADA';
 }
 
 function jornadaResultadoReuniaoEncerraAutomacao_(valor) {
-  return ['NO_SHOW', 'REMARCADA', 'CANCELADA'].includes(jornadaNormalizarResultadoReuniao_(valor));
+  return ['NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO'].includes(jornadaNormalizarResultadoReuniao_(valor));
 }
 
 const JORNADA_PASTAS_CONFIG = Object.freeze({
