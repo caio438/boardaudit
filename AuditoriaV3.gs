@@ -4806,10 +4806,11 @@ function audV3ScoreInteresseRealizado_(transcricao) {
 }
 
 function audV3ProximoPassoConcretoCloser_(transcricao) {
-  const texto = audV3NormalizarTrechoRastreavel_(transcricao || '');
+  const bruto = String(transcricao || '');
+  const texto = audV3NormalizarTrechoRastreavel_(bruto);
   const temCompromisso = /\b(?:segunda reuniao|marcar|agendar|agendamento|follow up|proximo passo)\b/.test(texto);
   const temData = /\bdia\s+\d{1,2}\b/.test(texto);
-  const temHora = /\b\d{1,2}(?:[:h]\s*\d{2}|\s+horas?)\b/.test(texto);
+  const temHora = /(?<![:\d])(?:[01]?\d|2[0-3]):[0-5]\d(?![:\d])/.test(bruto);
   return Boolean(temCompromisso && temData && temHora);
 }
 
