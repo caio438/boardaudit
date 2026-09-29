@@ -507,9 +507,8 @@ function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
   const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', auditoria.ID_CLIENTE);
   if (!cliente) throw new Error('Cliente original da auditoria existente não encontrado.');
 
-  const conteudoOriginal = audV3ConteudoCompletoTranscricao_(transcricao, interacao);
-  const normalizacao = audV3NormalizarTranscricaoTexto_(conteudoOriginal, interacao || {});
-  const conteudo = String(normalizacao.texto || conteudoOriginal || '').trim();
+  const fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO);
+  const conteudo = String(fontePreparada.conteudo || '').trim();
 
   const pitch = {
     ID_PITCH: auditoria.ID_PITCH,
@@ -534,7 +533,10 @@ function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
     cliente,
     pitch,
     modelo,
-    Object.assign({}, transcricao, { CONTEUDO: conteudo }),
+    Object.assign({}, transcricao, {
+      CONTEUDO: conteudo,
+      NORMALIZACAO_VERSAO: fontePreparada.normalizacaoVersao
+    }),
     tipo
   );
   if (!String(auditoria.HASH_FONTE || '').trim() || String(auditoria.HASH_FONTE) !== String(hashAtual)) {
