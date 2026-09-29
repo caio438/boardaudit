@@ -2319,33 +2319,21 @@ function aprovarAuditoriaV3(idAuditoria) {
     ATUALIZADO_EM: new Date()
   });
 
-  let publicacaoRd = null;
   const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
-  if (['SDR', 'CLOSER'].includes(tipoAuditoria) && typeof audRdPublicarAutomaticamente_ === 'function') {
-    publicacaoRd = audRdPublicarAutomaticamente_(id);
-    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-      AUTOMACAO_STATUS: publicacaoRd && publicacaoRd.publicada
-        ? 'CONCLUIDA'
-        : (publicacaoRd && String(publicacaoRd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD'),
-      AUTOMACAO_ERRO: publicacaoRd && publicacaoRd.erro ? String(publicacaoRd.erro) : '',
-      AUTOMACAO_ATUALIZADO_EM: new Date()
-    });
-  } else {
-    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-      AUTOMACAO_STATUS: 'CONCLUIDA',
-      AUTOMACAO_ERRO: '',
-      AUTOMACAO_ATUALIZADO_EM: new Date()
-    });
-  }
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    AUTOMACAO_STATUS: ['SDR', 'CLOSER'].includes(tipoAuditoria) ? 'CONCLUIDA_AGUARDANDO_RD' : 'CONCLUIDA',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: new Date()
+  });
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   return {
     sucesso: true,
-    mensagem: publicacaoRd && publicacaoRd.publicada
-      ? 'Auditoria aprovada, Google Docs criado e resultado publicado no RD CRM.'
-      : 'Auditoria aprovada e Google Docs criado. ' + (publicacaoRd && publicacaoRd.mensagem ? publicacaoRd.mensagem : ''),
-    publicacaoRd: publicacaoRd,
+    mensagem: ['SDR', 'CLOSER'].includes(tipoAuditoria)
+      ? 'Auditoria aprovada e Google Docs criado. Revise a prévia e envie ao RD quando estiver pronta.'
+      : 'Auditoria aprovada e Google Docs criado.',
+    publicacaoRd: null,
     auditoria: audV3AuditoriaFront_(atualizada),
     auditorias: audV3ListarAuditoriasFront_()
   };

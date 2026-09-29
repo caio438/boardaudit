@@ -101,10 +101,72 @@ function salvarIdRdAuditoriaV3(d) {
     auditorias: audV3ListarAuditoriasFront_()
   };
 }
-function prepararEnvioAuditoriaRd(id){var c=audRdCtx_(id);return{idAuditoria:c.a.ID_AUDITORIA,dealId:c.dealId,oportunidade:c.i.OPORTUNIDADE||c.i.TITULO||'',responsavel:c.sdr.nome||'',usuarioPublicacao:c.volum.email,texto:audRdTexto_(c),aviso:'A anotação ficará no histórico da negociação e não poderá ser editada nem excluída pelo RD CRM.'};}
-function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),texto=String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
+function audRdPreviewCtx_(id){
+  audRdEstr_();
+  var a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',String(id||'').trim());
+  if(!a)throw new Error('Auditoria não encontrada.');
+  var tipo=String(a.TIPO_AUDITORIA||'').toUpperCase();
+  if(['SDR','CLOSER'].indexOf(tipo)<0)throw new Error('Somente auditorias de SDR ou Closer possuem prévia para o RD CRM.');
+  if(!String(a.RESULTADO_JSON||'').trim())throw new Error('A auditoria ainda não possui resultado para prévia.');
+  var i=audV3Localizar_('INTERACOES','ID_INTERACAO',a.ID_INTERACAO)||{};
+  var r=audV3ParseJson_(a.RESULTADO_JSON,'Resultado JSON inválido.');
+  var it=typeof obterIntegracaoCliente_==='function'?obterIntegracaoCliente_(a.ID_CLIENTE,'RD_STATION'):null;
+  var temToken=false;
+  if(it&&String(it.ATIVO||'').toUpperCase()==='SIM'){
+    try{temToken=Boolean(obterSegredo_('INTEGRACAO_TOKEN_'+it.ID_INTEGRACAO));}catch(e){}
+  }
+  return{
+    a:a,i:i,r:r,
+    dealId:audRdDeal_(i),
+    token:'',
+    sdr:{id:'',nome:String(i.COLABORADOR||i.VENDEDOR||((r.metadados||{}).closer)||((r.metadados||{}).sdr)||'Não identificado'),email:''},
+    volum:{id:'',nome:'VOLUM',email:RD_AUDITORIA_EMAIL_VOLUM},
+    temToken:temToken
+  };
+}
+function prepararEnvioAuditoriaRd(id){
+  var c=audRdPreviewCtx_(id);
+  var salvo=String(c.a.RD_TEXTO_APROVADO||'').trim();
+  return{
+    idAuditoria:c.a.ID_AUDITORIA,
+    dealId:c.dealId,
+    oportunidade:c.i.OPORTUNIDADE||c.i.TITULO||'',
+    responsavel:c.sdr.nome||'',
+    usuarioPublicacao:c.volum.email,
+    texto:salvo||audRdTexto_(c),
+    temToken:c.temToken,
+    temVinculo:Boolean(c.dealId),
+    statusAuditoria:String(c.a.STATUS||''),
+    aviso:'Revise e edite o texto antes de aprovar. O RD registra a anotação no histórico da negociação.'
+  };
+}
+function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
 if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}
-var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
+var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,publicada:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
+function aprovarEEnviarAuditoriaRd(d){
+  d=d||{};
+  var id=String(d.idAuditoria||'').trim();
+  var texto=String(d.texto||'').trim();
+  if(!id)throw new Error('Auditoria não informada.');
+  if(!texto)throw new Error('Revise o texto antes de aprovar.');
+  audRdEstr_();
+  audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',id,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});
+  var a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id);
+  if(!a)throw new Error('Auditoria não encontrada.');
+  if(String(a.STATUS||'').toUpperCase()!=='APROVADA')aprovarAuditoriaV3(id);
+  try{
+    return enviarAuditoriaParaRd({idAuditoria:id,texto:texto});
+  }catch(erro){
+    var atual=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id);
+    return{
+      sucesso:true,
+      publicada:false,
+      mensagem:'Auditoria aprovada e texto do RD salvo. Envio pendente: '+String(erro&&erro.message?erro.message:erro),
+      auditoria:audV3AuditoriaFront_(atual),
+      auditorias:audV3ListarAuditoriasFront_()
+    };
+  }
+}
 function audRdCtx_(id) {
   audRdEstr_();
   var a = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', String(id || '').trim());
@@ -175,7 +237,7 @@ function audRdCtx_(id) {
     volum: audRdUsuarioVolum_(token, it)
   };
 }
-function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO']);}
+function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO','RD_TEXTO_APROVADO','RD_TEXTO_APROVADO_EM']);}
 function audRdDeal_(i){var item=i||{},tipoInteracao=String(item.TIPO_INTERACAO||'').toUpperCase(),l=String(item.LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];if(tipoInteracao==='REUNIAO')return'';m=String(item.DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}

@@ -20,6 +20,14 @@ assert.match(audit, /function audV3ListarAuditoriasFront_\(\)[\s\S]*?audV3Encerr
 assert.match(audit, /function executarAuditoriaV3\(dados\)[\s\S]*?audV3EncerrarProcessamentosExpirados_\(\)/, 'Uma nova execução deve limpar processamentos expirados antes de começar.');
 
 assert.ok(rd.includes('function audRdPublicarAutomaticamente_'), 'A publicação automática no RD não foi implementada.');
+assert.ok(rd.includes('function audRdPreviewCtx_'), 'RD não possui contexto leve para prévia antes da aprovação.');
+assert.ok(rd.includes('function aprovarEEnviarAuditoriaRd'), 'RD não possui fluxo único de aprovar e enviar texto revisado.');
+assert.ok(rd.includes("String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim()"), 'RD ignora o texto editado/aprovado pelo usuário.');
+assert.ok(rd.includes("'RD_TEXTO_APROVADO'"), 'Texto aprovado do RD não é persistido para reenvio posterior.');
+assert.ok(front.includes('id="modalRdAuditoria"'), 'Board não possui modal editável de prévia do RD.');
+assert.ok(front.includes('id="rdPreviewTexto"'), 'Prévia do RD não possui campo editável.');
+assert.ok(front.includes('aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAuditoria, texto: texto })'), 'Front não envia exatamente o texto revisado ao backend.');
+
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
 assert.ok(rd.includes('rdAuditoriaUsuarioVolumId'), 'RD não permite mapear o usuário VOLUM por ID na integração do cliente.');
@@ -33,6 +41,8 @@ assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A inte
 assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
 assert.ok(front.includes("fonte.value = 'TODAS'"), 'Closer simplificado ainda exige seleção manual da origem.');
 assert.ok(front.includes("botao.textContent = 'Auditar'"), 'Closer simplificado não usa ação única de auditoria.');
+assert.ok(front.includes("!/^(não houve divergência|nenhuma divergência"), 'Detalhe do Closer ainda exibe divergência neutra como erro visual.');
+
 const inicioGeracaoManual = front.indexOf('async function executarAuditoriaV3Front()');
 const fimGeracaoManual = front.indexOf('function renderizarContextoAuditoriaFront_', inicioGeracaoManual);
 const trechoGeracaoManual = front.slice(inicioGeracaoManual, fimGeracaoManual);
@@ -355,7 +365,7 @@ assert.ok(front.includes('JSON estruturado da auditoria'), 'Board não permite i
 assert.ok(!front.includes('BLOQUEADA PELO GATE'), 'Board ainda exibe estado visual bloqueado pelo gate.');
 assert.ok(front.includes('Validação de qualidade'), 'Board não exibe o gate como validação informativa.');
 assert.ok(front.includes('Pontos para revisão'), 'Board não preserva os apontamentos do gate para revisão.');
-assert.ok(front.includes('Aprovar e publicar'), 'Board não apresenta aprovação explícita antes da publicação.');
+assert.ok(front.includes('Prévia para o RD'), 'Board não apresenta prévia explícita do RD antes da publicação.');
 assert.ok(front.includes('O que foi executado corretamente'), 'Resumo SDR não destaca execuções corretas.');
 assert.ok(front.includes('Perguntas de qualificação'), 'Resumo SDR não mostra as perguntas de qualificação.');
 assert.ok(front.includes('Se eu fosse o SDR, faria assim'), 'Resumo SDR não mostra execução prática recomendada.');
@@ -509,6 +519,7 @@ for (const titulo of ['CONTEXTO E RESULTADO', 'PONTOS FORTES', 'QUALIFICAÇÃO',
 const sdrCompacto = rd.slice(rd.indexOf('function audRdTextoSdr_'));
 assert.ok(!sdrCompacto.includes("'SE EU FOSSE O SDR, FARIA ASSIM'"), 'Formatter SDR voltou a repetir o coaching em um bloco separado.');
 assert.ok(!sdrCompacto.includes("'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'"), 'Formatter SDR voltou ao bloco extenso com pitch literal.');
-assert.match(rd, /texto=String\(audRdTexto_\(c\)\)\.trim\(\)/, 'Envio ao RD deve regenerar o texto canônico no servidor.');
+assert.ok(rd.includes("textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim()"), 'Envio ao RD deve aceitar exatamente o texto revisado pelo usuário.');
+assert.ok(rd.includes("texto=textoEditado||String(audRdTexto_(c)).trim()"), 'Envio ao RD deve manter o formatter canônico apenas como fallback.');
 
 console.log('Auditoria v5 validada: integridade, documento e gate do RD CRM.');
