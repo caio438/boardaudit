@@ -329,7 +329,7 @@ function carregarDadosFormalizacoes() {
 
 function formalNormalizarResultadoReuniao_(valor) {
   const resultado = String(valor || '').trim().toUpperCase();
-  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'].includes(resultado)
+  return ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'].includes(resultado)
     ? resultado
     : 'NAO_IDENTIFICADA';
 }
@@ -338,7 +338,7 @@ function salvarResultadoReuniaoFormalizacao(dados) {
   dados = dados || {};
   const idReuniao = String(dados.idReuniao || '').trim();
   const resultadoInformado = String(dados.resultadoReuniao || '').trim().toUpperCase();
-  const permitidos = ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'NAO_IDENTIFICADA'];
+  const permitidos = ['REALIZADA', 'NO_SHOW', 'REMARCADA', 'CANCELADA', 'SEM_TRANSCRICAO', 'NAO_IDENTIFICADA'];
   if (!idReuniao) throw new Error('Reunião não informada.');
   if (!permitidos.includes(resultadoInformado)) throw new Error('Selecione um resultado de reunião válido.');
   if (typeof jornadaGarantirEstrutura_ === 'function') jornadaGarantirEstrutura_();
@@ -358,6 +358,7 @@ function salvarResultadoReuniaoFormalizacao(dados) {
       : resultado === 'REALIZADA' ? 'Reunião marcada como realizada.'
       : resultado === 'REMARCADA' ? 'Reunião marcada como remarcada.'
       : resultado === 'CANCELADA' ? 'Reunião marcada como cancelada.'
+      : resultado === 'SEM_TRANSCRICAO' ? 'Reunião marcada como sem transcrição.'
       : 'Resultado da reunião definido como não identificado.',
     idReuniao: idReuniao,
     resultadoReuniao: resultado,
