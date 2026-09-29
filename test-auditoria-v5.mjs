@@ -355,9 +355,9 @@ assert.ok(front.includes('Perguntas de qualificação'), 'Resumo SDR não mostra
 assert.ok(front.includes('Se eu fosse o SDR, faria assim'), 'Resumo SDR não mostra execução prática recomendada.');
 assert.ok(front.includes('Pontuação por critério'), 'Resumo SDR não mostra tabela de notas.');
 assert.ok(front.includes('Média dos critérios aplicáveis'), 'Resumo SDR não mostra média contextual dos critérios aplicáveis.');
-assert.ok(rd.includes('CONTEXTO DA INTERAÇÃO'), 'RD SDR não publica o contexto da interação.');
-assert.ok(rd.includes('PERGUNTAS DE QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
-assert.ok(rd.includes('SE EU FOSSE O SDR, FARIA ASSIM'), 'RD SDR não publica orientação executável para a próxima ligação.');
+assert.ok(rd.includes('CONTEXTO E RESULTADO'), 'RD SDR não publica o contexto e o resultado da interação.');
+assert.ok(rd.includes('QUALIFICAÇÃO'), 'RD SDR não publica a análise objetiva das perguntas.');
+assert.ok(rd.includes('AJUSTES PRIORITÁRIOS'), 'RD SDR não publica orientação executável para a próxima ligação.');
 assert.ok(rd.includes('PONTUAÇÃO POR CRITÉRIO'), 'RD SDR não publica a tabela de notas por critério.');
 assert.ok(rd.includes('Média dos critérios aplicáveis'), 'RD SDR não apresenta a média dos critérios aplicáveis.');
 assert.ok(audit.includes("audV3Titulo_(body, 'Panorama de evolução'"), 'Google Docs não abre com panorama de evolução.');
@@ -386,7 +386,7 @@ assert.ok(sdrRd.includes('var mediaCalculada = mediaCriterios.length'), 'Formatt
 
 const sdrNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoSdr_'));
 const sdrTabela = rd.indexOf("'PONTUAÇÃO POR CRITÉRIO'", rd.indexOf('function audRdTextoSdr_'));
-const sdrContexto = rd.indexOf("'CONTEXTO DA INTERAÇÃO'", rd.indexOf('function audRdTextoSdr_'));
+const sdrContexto = rd.indexOf("'CONTEXTO E RESULTADO'", rd.indexOf('function audRdTextoSdr_'));
 assert.ok(sdrNota >= 0 && sdrTabela > sdrNota && sdrContexto > sdrTabela, 'Tabela de notas SDR precisa ficar logo abaixo da nota geral.');
 
 const closerNota = rd.indexOf("'Nota geral: '", rd.indexOf('function audRdTextoCloser_'));
@@ -491,8 +491,12 @@ for (const titulo of [
 ]) {
   assert.ok(closerRd.includes(titulo), 'Bloco da anotação Closer no CRM ausente: ' + titulo);
 }
-for (const titulo of ['CENÁRIO DA LIGAÇÃO', 'O QUE FOI EXECUTADO CORRETAMENTE', 'PERGUNTAS DE QUALIFICAÇÃO', 'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO', 'SE EU FOSSE O SDR, FARIA ASSIM', 'CONCLUSÃO']) {
+for (const titulo of ['CONTEXTO E RESULTADO', 'PONTOS FORTES', 'QUALIFICAÇÃO', 'AJUSTES PRIORITÁRIOS', 'RESUMO EXECUTIVO']) {
   assert.ok(rd.includes(titulo), 'Bloco da anotação SDR no CRM ausente: ' + titulo);
 }
+const sdrCompacto = rd.slice(rd.indexOf('function audRdTextoSdr_'));
+assert.ok(!sdrCompacto.includes("'SE EU FOSSE O SDR, FARIA ASSIM'"), 'Formatter SDR voltou a repetir o coaching em um bloco separado.');
+assert.ok(!sdrCompacto.includes("'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'"), 'Formatter SDR voltou ao bloco extenso com pitch literal.');
+assert.match(rd, /texto=String\(audRdTexto_\(c\)\)\.trim\(\)/, 'Envio ao RD deve regenerar o texto canônico no servidor.');
 
 console.log('Auditoria v5 validada: integridade, documento e gate do RD CRM.');
