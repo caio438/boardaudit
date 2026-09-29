@@ -366,6 +366,13 @@ const resultadoAutoriaRecuperada = {
       justificativa_nota: 'Critério excluído da pontuação por autoria não confirmada.'
     },
     {
+      id: 'exploracao_dor_impacto', nome: 'Exploração de Dor e Impacto Financeiro', aplicavel: true,
+      status: 'CONFORME', pontuacao: 5, locutor_evidencia: 'CLOSER',
+      o_que_foi_dito: 'CLOSER (Juliana e Jessica): Você já pensou no tempo que vai gastar para fazer esse inventário?',
+      divergencia: 'Não houve divergência.',
+      justificativa_nota: 'Exploração adequada da dor.'
+    },
+    {
       id: 'validacao_interesse', nome: 'Validação do Interesse do Lead', aplicavel: false,
       status: 'NAO_APLICAVEL', pontuacao: null, locutor_evidencia: 'CLOSER',
       o_que_foi_dito: '[53:29] CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
@@ -381,19 +388,21 @@ const resultadoAutoriaRecuperada = {
     }
   ],
   momentos: [
+    { id:'momento_0', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'NAO_IDENTIFICADO', o_que_foi_dito:'Não evidenciado na fala do profissional.', divergencia:'Não foi possível sustentar este momento com evidência literal rastreável.', justificativa_nota:'Momento mantido como não comprovado para evitar inferência sem fonte literal.', pontos_fortes:[], pontos_melhorar:['Revisar este momento com base em uma fala literal identificável da gravação.'] },
     { id:'momento_1', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[0:58] CLOSER (Juliana e Jessica): Vocês já fazem os inventários?', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' },
     { id:'momento_2', status:'AMARELO', cor:'AMARELO', nota:2.5, gatilho_alcancado:true, locutor_evidencia:'CLOSER', o_que_foi_dito:'CLOSER: apresentação', pontos_melhorar:['Aplicar rigorosamente a pergunta de score de zero a dez prevista no pitch'], divergencia:'Não houve divergência.', justificativa_nota:'Parcial.' },
     { id:'momento_3', status:'VERMELHO', cor:'VERMELHO', nota:0, gatilho_alcancado:false, locutor_evidencia:'CLOSER', o_que_foi_dito:'[1:06:59] CLOSER (Juliana e Jessica): dia 18 ou dia 21 às 14:30', divergencia:'A autoria da evidência literal não pôde ser confirmada com segurança.', justificativa_nota:'Momento não comprovado por falta de autoria profissional inequívoca.' }
   ],
   perguntas_diagnostico: {
     perguntas_realizadas: [{pergunta:'Q1'},{pergunta:'Q2'},{pergunta:'Q3'},{pergunta:'Q4'}],
-    perguntas_esperadas_nao_realizadas: [{pergunta:'impacto financeiro'}]
+    perguntas_esperadas_nao_realizadas: [{categoria:'Impacto Financeiro', pergunta:'Chegaram a calcular quanto dinheiro a empresa perde quando esse problema ocorre?'}]
   }
 };
 context.api.applyCloserRules(
   resultadoAutoriaRecuperada,
   criterios,
   [
+    'CLOSER (Juliana e Jessica): Agradeço aí o tempo de vocês.',
     'CLOSER (Juliana e Jessica): de zero a 10 o quanto que a gente conseguiria resolver teus problemas?',
     'LEAD (Evandro): 10.',
     'CLOSER (Juliana e Jessica): vamos marcar uma segunda reunião para dia 21 às 14:30.'
@@ -402,10 +411,13 @@ context.api.applyCloserRules(
 );
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].aplicavel, true, 'Diagnóstico com autoria recuperada precisa voltar para a régua.');
 assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[0].status, 'DESVIO_EXECUCAO', 'Diagnóstico recuperado com lacunas deve voltar como desvio, não N/A.');
-assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
-assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'CONFORME', 'Próximo passo datado deve recuperar Fechamento quando o N/A era apenas de autoria.');
-assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
-assert.equal(resultadoAutoriaRecuperada.momentos[2].status, 'VERDE', 'Fechamento com data e hora confirmadas deve sair do falso vermelho.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[1].status, 'DESVIO_EXECUCAO', 'Impacto financeiro ausente no próprio inventário de perguntas não pode permanecer CONFORME/5.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[2].status, 'CONFORME', 'Score 0-10 comprovado deve recuperar Validação de Interesse.');
+assert.equal(resultadoAutoriaRecuperada.criterios_avaliados[3].status, 'DESVIO_EXECUCAO', 'Próximo passo datado deve recolocar Fechamento na régua sem promover execução parcial a 5/5.');
+assert.equal(resultadoAutoriaRecuperada.momentos[0].status, 'AMARELO', 'Rapport literal deve recuperar Momento 0 do falso vermelho sem promover execução parcial a verde.');
+assert.equal(resultadoAutoriaRecuperada.momentos[1].status, 'AMARELO', 'Diagnóstico recuperado com lacunas não pode continuar vermelho por autoria.');
+assert.equal(resultadoAutoriaRecuperada.momentos[3].status, 'AMARELO', 'Fechamento com data e hora confirmadas deve sair do falso vermelho, mas permanecer conservador quando há outros gaps.');
+assert.equal(resultadoAutoriaRecuperada.semaforo_geral.cor, 'AMARELO', 'Semáforo geral precisa ser recalculado depois de recuperar falsos vermelhos por autoria.');
 
 
 

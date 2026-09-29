@@ -172,6 +172,16 @@ function OPS_AUDITAR_PREVIEW_TRANSCRICAO(idTranscricao) {
   }
 
   if (!auditoria) {
+    const falhaModeloRecente = opsUltimaFalhaModeloInteracao_(interacao.ID_INTERACAO, tipo);
+    const anteriorValidada = falhaModeloRecente ? opsAuditoriaValidadaAnteriorInteracao_(interacao.ID_INTERACAO, tipo) : null;
+    if (falhaModeloRecente && anteriorValidada) {
+      const reparoImediato = opsCriarReparoDeterministico_(anteriorValidada, interacao);
+      auditoria = reparoImediato.auditoria;
+      reutilizada = false;
+    }
+  }
+
+  if (!auditoria) {
     const pitchAtual = audV3PitchAtualAutomatico_(interacao.ID_CLIENTE, tipo);
     if (!pitchAtual) throw new Error('Nenhum pitch atual ' + tipo + ' foi definido para o cliente.');
     const pitchConferido = audV3AtualizarPitchDocumentoAutomatico_(pitchAtual).pitch;
@@ -330,6 +340,16 @@ function opsAuditoriaAtualInteracao_(idInteracao) {
     ? audV3FiltrarAuditoriasVisiveisOperacao_(todas)
     : todas;
   return visiveis.length ? visiveis[visiveis.length - 1] : null;
+}
+
+function opsUltimaFalhaModeloInteracao_(idInteracao, tipo) {
+  const falhas = audV3Ler_('AUDITORIAS').filter(function(item) {
+    return String(item.ID_INTERACAO || '') === String(idInteracao || '') &&
+      String(item.TIPO_AUDITORIA || '').toUpperCase() === String(tipo || '').toUpperCase() &&
+      String(item.STATUS || '').toUpperCase() === 'ERRO' &&
+      /MODELO_INDISPONIVEL|temporariamente ocupad|high demand|quota/i.test(String(item.ERRO || item.AUTOMACAO_ERRO || ''));
+  });
+  return falhas.length ? falhas[falhas.length - 1] : null;
 }
 
 function opsAuditoriaValidadaAnteriorInteracao_(idInteracao, tipo) {

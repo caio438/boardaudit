@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.12
+ * Versão: 6.2.13
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.12',
+  versao: '6.2.13',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -4843,6 +4843,36 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
     item.justificativa_nota = justificativa;
   };
 
+  const faltaImpactoFinanceiro = ausentes.some(function(item) {
+    const texto = audV3NormalizarTrechoRastreavel_(
+      String((item || {}).categoria || '') + ' ' +
+      String((item || {}).pergunta || '') + ' ' +
+      String((item || {}).base_pitch || '')
+    );
+    return /impacto financeiro|quanto dinheiro|empresa perde|perda financeira|custo financeiro/.test(texto);
+  });
+
+  if (faltaImpactoFinanceiro) {
+    const criterioImpacto = criterios.find(function(item) {
+      return String((item || {}).id || '') === 'exploracao_dor_impacto';
+    });
+    if (criterioImpacto && criterioImpacto.aplicavel !== false &&
+        String(criterioImpacto.status || '').toUpperCase() === 'CONFORME') {
+      aplicarStatus(
+        criterioImpacto,
+        'DESVIO_EXECUCAO',
+        2.5,
+        'A dor e o esforço operacional foram explorados, mas a própria auditoria registra que a pergunta de impacto financeiro prevista no pitch não foi realizada.'
+      );
+      criterioImpacto.divergencia = 'Faltou quantificar o impacto financeiro conforme a pergunta explícita do pitch.';
+      criterioImpacto.correcao_pratica = 'Após dimensionar tempo e esforço, pergunte quanto dinheiro a empresa perde ou estima perder com o problema, quando essa pergunta for aplicável ao contexto.';
+    }
+    resultado.analise_impacto_implicacao = resultado.analise_impacto_implicacao || {};
+    if (String(resultado.analise_impacto_implicacao.status || '').toUpperCase() === 'CONFORME') {
+      resultado.analise_impacto_implicacao.status = 'AMARELO';
+    }
+  }
+
   criterios.forEach(function(item) {
     if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
     const id = String(item.id || '');
@@ -4859,11 +4889,12 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
     if (id === 'tratamento_objecoes' && proximoPassoConcreto) {
       aplicarStatus(
         item,
-        'CONFORME',
-        5,
-        'A reunião terminou com próximo passo concreto, data e horário confirmados; não houve objeção explícita que exigisse tratamento adicional.'
+        'DESVIO_EXECUCAO',
+        2.5,
+        'O próximo passo foi concretamente agendado com data e horário, mas isso não comprova sozinho a execução completa de todos os comportamentos de fechamento previstos no pitch.'
       );
-      item.correcao_pratica = 'Manter o fechamento com próximo passo datado e responsável definido.';
+      item.divergencia = 'Houve próximo passo concreto e datado, porém o fechamento não deve ser considerado integralmente conforme apenas por esse compromisso.';
+      item.correcao_pratica = 'Manter o próximo passo datado e, quando aplicável ao contexto, confirmar autoridade, percepção de valor e condição de avanço previstas no pitch.';
       return;
     }
     if (id === 'aderencia_diagnostico' && perguntas.length >= 3) {
@@ -4884,6 +4915,35 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
 
   const momentoPorId = {};
   momentos.forEach(function(item) { if (item) momentoPorId[String(item.id || '')] = item; });
+
+  const momento0 = momentoPorId.momento_0;
+  if (momento0 && momento0.gatilho_alcancado === false) {
+    const motivoMomento0 = audV3NormalizarTrechoRastreavel_(
+      String(momento0.divergencia || '') + ' ' + String(momento0.justificativa_nota || '')
+    );
+    if (/evidencia literal|rastreavel|nao comprovado|sem fonte/.test(motivoMomento0)) {
+      const linhaRapport = String(transcricao || '').split(/\n+/).find(function(linha) {
+        const brutoLinha = String(linha || '');
+        const linhaNormalizada = audV3NormalizarTrechoRastreavel_(brutoLinha);
+        return /\bCLOSER(?:\s+\([^)]+\))?:/i.test(brutoLinha) &&
+          /\b(?:agradec\w*.{0,50}tempo|prazer.{0,40}conhec|me apresentando|eu sou|voce ta falando de onde)\b/.test(linhaNormalizada);
+      });
+      if (linhaRapport) {
+        momento0.o_que_foi_dito = String(linhaRapport).trim();
+        momento0.locutor_evidencia = 'CLOSER';
+        momento0.gatilho_alcancado = true;
+        momento0.status = 'AMARELO';
+        momento0.cor = 'AMARELO';
+        momento0.nota = 2.5;
+        momento0.divergencia_identificada = true;
+        momento0.divergencia = 'Há rapport e abertura rastreáveis, mas a agenda/dinâmica completa prevista no pitch não ficou comprovada na abertura.';
+        momento0.justificativa_nota = 'A abertura e o rapport foram comprovados por fala do Closer; a execução permanece parcial por falta de evidência completa da agenda/dinâmica do pitch.';
+        momento0.pontos_fortes = ['Abertura cordial e conexão inicial comprovadas na transcrição.'];
+        momento0.pontos_melhorar = ['Explicar de forma explícita a dinâmica/agenda da reunião antes de avançar para o diagnóstico.'];
+        momento0.o_que_fazer = 'Após o rapport, explique como a conversa será conduzida: confirmar o contexto, entender a necessidade e então apresentar a solução.';
+      }
+    }
+  }
   const recuperarMomento = function(id, status, nota, justificativa) {
     const item = momentoPorId[id];
     if (!item || !temEvidenciaCloser(item) || !eraBloqueioAutoria(item)) return;
@@ -4909,9 +4969,9 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
   if (proximoPassoConcreto) {
     recuperarMomento(
       'momento_3',
-      'VERDE',
-      5,
-      'O fechamento da reunião estabeleceu próximo passo concreto com data e horário confirmados.'
+      'AMARELO',
+      2.5,
+      'O fechamento estabeleceu próximo passo concreto com data e horário confirmados, mas ainda deve ser avaliado junto aos demais comportamentos de fechamento previstos no pitch.'
     );
   }
   if (scoreRealizado) {
@@ -4937,6 +4997,7 @@ function audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch) {
 function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcricao, conteudoPitch) {
   resultado = resultado || {};
   audV3ReabilitarAutoriaCloser_(resultado, transcricao, conteudoPitch);
+  audV3NormalizarMomentosCloser_(resultado, criterios);
   const contexto = resultado.contexto_interacao || {};
   const classificacao = String(contexto.classificacao || '').toUpperCase();
   const primeiraOuDiagnostico = !classificacao || ['PRIMEIRA_REUNIAO', 'FOLLOW_UP_DIAGNOSTICO'].includes(classificacao);
