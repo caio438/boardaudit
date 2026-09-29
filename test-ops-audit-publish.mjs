@@ -28,6 +28,9 @@ assert.ok(ops.includes('será preservada no histórico e uma nova análise será
 assert.ok(ops.includes('aprovarAuditoriaV3'), 'Runner nao usa o fluxo oficial de aprovacao.');
 assert.ok(ops.includes('reprocessarAutomacaoAuditoriaV3'), 'Runner nao possui contingencia idempotente para RD.');
 assert.ok(!ops.includes('publicarPlanoCircle'), 'Runner de RD nao pode publicar automaticamente no Circle.');
+assert.ok(ops.includes('function opsCriarReparoDeterministico_'), 'Preview nao possui fallback deterministico para indisponibilidade de modelo.');
+assert.ok(ops.includes("codigoErro === 'MODELO_INDISPONIVEL'"), 'Preview nao aciona fallback apenas para indisponibilidade de modelo.');
+assert.ok(ops.includes("MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA'"), 'Auditoria reparada sem IA nao fica rastreavel.');
 assert.ok(ops.includes('function OPS_AUDITAR_PREVIEW_TRANSCRICAO'), 'Runner seguro de preview real nao existe.');
 const inicioPreview = ops.indexOf('function OPS_AUDITAR_PREVIEW_TRANSCRICAO');
 const fimPreview = ops.indexOf('function opsResolverAlvoAuditoria_', inicioPreview);
