@@ -2,10 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 
 const issueNumber = 142;
-const rawCommand = process.env.SDR_BATCH_COMMAND || '/sdr-publish-latest 20';
-const m = rawCommand.match(/^\/sdr-publish-latest\s+(\d+)\s*$/);
-if (!m) throw new Error('Comando SDR invalido.');
-const limit = Math.min(20, Math.max(1, Number(m[1] || 20)));
+const rawCommand = process.env.SDR_BATCH_COMMAND || '/sdr-publish-next';
+if (rawCommand.trim() !== '/sdr-publish-next') throw new Error('Comando SDR invalido.');
+const limit = 1;
 
 const clasp = JSON.parse(fs.readFileSync(os.homedir() + '/.clasprc.json', 'utf8'));
 const token =

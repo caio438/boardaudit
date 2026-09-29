@@ -13,8 +13,10 @@ assert.ok(gs.includes("classificacao = 'REVISAO_HUMANA'"));
 assert.ok(code.includes('ops_sdr_batch_targets'));
 assert.ok(code.includes('ops_sdr_publish_one'));
 assert.ok(runner.includes('ops_sdr_publish_one'));
+assert.ok(runner.includes('const limit = 1;'));
+assert.ok(runner.includes("'/sdr-publish-next'"));
 assert.ok(runner.includes('sdr-batch-report.md'));
-assert.ok(workflow.includes("startsWith(github.event.comment.body, '/sdr-publish-latest ')"));
+assert.ok(workflow.includes("github.event.comment.body == '/sdr-publish-next'"));
 assert.ok(workflow.includes('Comment final result on Ops Control'));
 
 console.log('Controlled SDR latest batch publication validated.');
