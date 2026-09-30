@@ -52,3 +52,89 @@ jobs:
                 'A esteira de implementação será conectada a este comando.'
               ].join('\n')
             });
+
+
+      - name: Cleanup merged and obsolete branches
+        if: ${{ github.event.comment.body == '/board cleanup-branches' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="$GITHUB_REPOSITORY"
+          : > /tmp/removed-branches.txt
+          : > /tmp/preserved-branches.txt
+
+          mapfile -t OPEN_HEADS < <(
+            gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.ref'
+          )
+
+          is_open_head() {
+            local candidate="$1"
+            local item
+            for item in "${OPEN_HEADS[@]}"; do
+              if [ "$item" = "$candidate" ]; then return 0; fi
+            done
+            return 1
+          }
+
+          while IFS= read -r branch_name; do
+            [ -n "$branch_name" ] || continue
+
+            if [ "$branch_name" = "main" ] || [ "$branch_name" = "backup/audit-stable-20260923" ]; then
+              echo "$branch_name | preservada por regra" >> /tmp/preserved-branches.txt
+              continue
+            fi
+
+            if is_open_head "$branch_name"; then
+              echo "$branch_name | PR aberto" >> /tmp/preserved-branches.txt
+              continue
+            fi
+
+            prs_json="$(gh api "repos/$REPO/pulls?state=closed&head=$OWNER:$branch_name&per_page=100")"
+            merged_count="$(printf '%s' "$prs_json" | jq '[.[] | select(.merged_at != null)] | length')"
+            closed_count="$(printf '%s' "$prs_json" | jq 'length')"
+
+            safe_delete=0
+            reason=""
+            if [ "$merged_count" -gt 0 ]; then
+              safe_delete=1
+              reason="PR mergeado"
+            elif [ "$closed_count" -gt 0 ]; then
+              case "$branch_name" in
+                qa/*|test/*|ops/*|chore/github-patch-runner)
+                  safe_delete=1
+                  reason="PR fechado temporario/obsoleto"
+                  ;;
+              esac
+            fi
+
+            if [ "$safe_delete" -eq 1 ]; then
+              gh api --method DELETE "repos/$REPO/git/refs/heads/$branch_name"
+              echo "$branch_name | $reason" >> /tmp/removed-branches.txt
+            else
+              echo "$branch_name | sem prova segura de descarte" >> /tmp/preserved-branches.txt
+            fi
+          done < <(gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name')
+
+          removed="$(wc -l < /tmp/removed-branches.txt | tr -d ' ')"
+          preserved="$(wc -l < /tmp/preserved-branches.txt | tr -d ' ')"
+          {
+            echo "## Limpeza de branches"
+            echo
+            echo "- Removidas: $removed"
+            echo "- Preservadas: $preserved"
+            echo
+            echo "### Removidas"
+            if [ "$removed" -gt 0 ]; then sed 's/^/- /' /tmp/removed-branches.txt; else echo "- nenhuma"; fi
+            echo
+            echo "### Preservadas"
+            sed 's/^/- /' /tmp/preserved-branches.txt | head -100
+          } > /tmp/branch-cleanup-report.md
+
+      - name: Comment branch cleanup result
+        if: ${{ github.event.comment.body == '/board cleanup-branches' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/branch-cleanup-report.md
