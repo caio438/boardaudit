@@ -4,7 +4,7 @@ import fs from 'node:fs';
 const gs = fs.readFileSync(new URL('./OpsSdrBatch.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const runner = fs.readFileSync(new URL('./ops/sdr-publish-latest-runner.mjs', import.meta.url), 'utf8');
-const workflow = fs.readFileSync(new URL('./.github/workflows/sdr-publish-latest.yml', import.meta.url), 'utf8');
+const workflow = fs.readFileSync(new URL('./.github/workflows-archive/sdr-publish-latest.yml', import.meta.url), 'utf8');
 
 assert.ok(gs.includes('function OPS_SDR_LISTAR_RECENTES_PARA_PUBLICAR'));
 assert.ok(gs.includes('function OPS_SDR_PUBLICAR_INTERACAO_SEGURO'));

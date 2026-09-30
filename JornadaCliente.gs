@@ -452,6 +452,15 @@ function salvarConfiguracaoJornadaCliente(dados) {
 
 function instalarAutomacaoJornadaCliente() {
   const handlers = ['SINCRONIZAR_JORNADA_CALENDARIO', JORNADA_PASTAS_CONFIG.handlerLotes];
+  if (boardModoManual_()) {
+    ScriptApp.getProjectTriggers()
+      .filter(trigger => handlers.indexOf(trigger.getHandlerFunction()) >= 0)
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
+    salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'NAO');
+    CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'NAO', 21600);
+    return boardRespostaManual_('instalarAutomacaoJornadaCliente');
+  }
   ScriptApp.getProjectTriggers()
     .filter(trigger => handlers.indexOf(trigger.getHandlerFunction()) >= 0)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
@@ -473,6 +482,11 @@ function instalarAutomacaoJornadaCliente() {
 }
 
 function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
+  if (boardModoManual_()) {
+    jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
+    salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'NAO');
+    return boardRespostaManual_('INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA');
+  }
   const hoje = new Date();
   const amanha = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
   salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'SIM');
@@ -489,6 +503,11 @@ function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
 }
 
 function instalarAutomacaoFormalizacoesAgenda_() {
+  if (boardModoManual_()) {
+    jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
+    salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'NAO');
+    return false;
+  }
   if (!obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave)) {
     const hoje = new Date();
     const amanha = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
@@ -532,6 +551,10 @@ function jornadaRemoverAcionadoresFormalizacaoNoturna_(incluirDiario) {
 }
 
 function jornadaAgendarProximaFormalizacaoNoturna_() {
+  if (boardModoManual_()) {
+    jornadaRemoverAcionadoresFormalizacaoNoturna_(false);
+    return false;
+  }
   jornadaRemoverAcionadoresFormalizacaoNoturna_(false);
   ScriptApp.newTrigger(FORMALIZACAO_NOTURNA_CONFIG.handlerContinuacao)
     .timeBased()
@@ -591,14 +614,17 @@ function iniciarRecuperacaoFormalizacoesAtrasadas() {
 }
 
 function EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA() {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA');
   return jornadaExecutarFormalizacaoNoturna_(true);
 }
 
 function EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO() {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO');
   return jornadaExecutarFormalizacaoNoturna_(false);
 }
 
 function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA');
   opcoes = opcoes || {};
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return { sucesso: false, mensagem: 'Outra rotina de formalização já está em andamento.' };
@@ -768,6 +794,7 @@ function jornadaAutomacaoInstaladaCache_() {
 }
 
 function jornadaGarantirAutomacao_() {
+  if (boardModoManual_()) return false;
   if (!jornadaAutomacaoInstalada_()) instalarAutomacaoJornadaCliente();
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM' && !jornadaAutomacaoFormalizacoesInstalada_()) {
     instalarAutomacaoFormalizacoesAgenda_();

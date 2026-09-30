@@ -38,6 +38,45 @@ const APP = {
   }
 };
 
+const BOARD_MODE = 'MANUAL';
+
+function boardModoManual_() {
+  return String(BOARD_MODE || '').toUpperCase() === 'MANUAL';
+}
+
+function boardRespostaManual_(origem) {
+  return {
+    sucesso: true,
+    ignorada: true,
+    modo: 'MANUAL',
+    origem: String(origem || ''),
+    mensagem: 'BOARD_MODE=MANUAL: automacao operacional desativada.'
+  };
+}
+
+function DESLIGAR_TODAS_AUTOMACOES_BOARD() {
+  const removidos = [];
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    removidos.push(trigger.getHandlerFunction());
+    ScriptApp.deleteTrigger(trigger);
+  });
+  salvarConfiguracao_('BOARD_MODE', 'MANUAL');
+  salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
+  salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
+  salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
+  salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'NAO');
+  salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO');
+  salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO');
+  CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'NAO', 21600);
+  registrarLog_('AUTOMACAO', 'BOARD_MODE_MANUAL', 'Todos os acionadores do projeto foram removidos.');
+  return {
+    sucesso: true,
+    modo: 'MANUAL',
+    removidos: removidos.length,
+    handlersRemovidos: removidos
+  };
+}
+
 const ACESSO_BOARD = Object.freeze({
   email: 'crm@govolum.com',
   credencialHash: '34b72f1ea3893291fb2f5a7a521f34cefc53dbfb235f725caa7a4fd554abd443'
@@ -285,7 +324,23 @@ function audBuildAtual_() {
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
+  if (String(parametros.ops_disable_all_automation || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Desativacao de automacoes permitida somente para a conta proprietaria autenticada.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(DESLIGAR_TODAS_AUTOMACOES_BOARD(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_restore_automation || '') === '1') {
+    if (boardModoManual_()) {
+      return ContentService
+        .createTextOutput(JSON.stringify(boardRespostaManual_('ops_restore_automation'), null, 2))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
     if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
@@ -2991,6 +3046,15 @@ function atualizarIntegracaoCliente_(idIntegracao, alteracoes) {
 
 function reconciliarAcionadorRd_() {
   const nomeFuncao = 'SINCRONIZAR_RD_DIARIO';
+  if (boardModoManual_()) {
+    ScriptApp.getProjectTriggers()
+      .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    removerAcionadoresProcessamentoRd_();
+    salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
+    salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
+    return false;
+  }
 
   const clientesAtivos = listarClientes().filter(cliente =>
     cliente.status === 'ATIVO' &&
@@ -3038,6 +3102,7 @@ function reconciliarAcionadorRd_() {
  * O processamento restante continua em acionadores curtos e independentes.
  */
 function SINCRONIZAR_RD_DIARIO(evento) {
+  if (boardModoManual_()) return boardRespostaManual_('SINCRONIZAR_RD_DIARIO');
   if (!evento || !evento.triggerUid) {
     registrarLog_(
       'RD',
@@ -3405,6 +3470,7 @@ function REPARAR_FILA_RD_E_SINCRONIZAR_MES_ATUAL() {
 }
 
 function agendarProcessamentoRd_() {
+  if (boardModoManual_()) return false;
   const fila = obterFilaRd_();
   if (!fila || !['PENDENTE', 'PROCESSANDO'].includes(fila.status)) return false;
 
@@ -4178,6 +4244,13 @@ function testarConexaoTldv() {
 function instalarAutomacaoTldv() {
   const nomeFuncao = 'SINCRONIZAR_TLDV_AGENDADO';
   const horas = APP.tldvSyncHours.slice();
+  if (boardModoManual_()) {
+    ScriptApp.getProjectTriggers()
+      .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
+    return boardRespostaManual_('instalarAutomacaoTldv');
+  }
 
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
@@ -4241,6 +4314,7 @@ function obterStatusAutomacaoTldv_() {
  * de até 10 transcrições pendentes diretamente do tl;dv.
  */
 function SINCRONIZAR_TLDV_AGENDADO() {
+  if (boardModoManual_()) return boardRespostaManual_('SINCRONIZAR_TLDV_AGENDADO');
   const trava = LockService.getScriptLock();
   if (!trava.tryLock(1000)) {
     registrarLog_('TLDV', 'SINCRONIZACAO_AGENDADA_IGNORADA', 'Outra sincronização já está em andamento.');

@@ -122,3 +122,90 @@ jobs:
       - name: Cleanup authentication
         if: always()
         run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
+
+
+  manual-mode:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/board-manual-mode' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Disable all Board automations
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_disable_all_automation=1"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/manual-mode-result.txt -w '%{http_code}' "$URL" || true)"
+          echo "BOARD_MANUAL_MODE_HTTP_STATUS=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/manual-mode-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,500))) throw new Error('Resposta invalida do endpoint de modo manual.');
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('JSON de modo manual ausente.');
+          const r = JSON.parse(raw.slice(first,last+1));
+          if (r.sucesso !== true || String(r.modo || '').toUpperCase() !== 'MANUAL') {
+            throw new Error('Board nao confirmou BOARD_MODE=MANUAL.');
+          }
+          const lines = [
+            '## Board em modo manual',
+            '',
+            '- BOARD_MODE: **MANUAL**',
+            '- Triggers removidos: ' + String(r.removidos || 0),
+            '- Handlers removidos: ' + ((r.handlersRemovidos || []).join(', ') || 'nenhum'),
+            '',
+            'Nenhuma auditoria foi executada ou publicada no RD.'
+          ];
+          fs.writeFileSync('/tmp/manual-mode.md', lines.join('\n'));
+          console.log(lines.join('\n'));
+          NODE
+
+      - name: Comment manual mode result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/manual-mode.md
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt /tmp/manual-mode-result.txt

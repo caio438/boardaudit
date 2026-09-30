@@ -5,11 +5,11 @@ const ops = fs.readFileSync(new URL('./OpsAudit.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const workflow = fs.readFileSync(
-  new URL('./.github/workflows/ops-audit-publish.yml', import.meta.url),
+  new URL('./.github/workflows-archive/ops-audit-publish.yml', import.meta.url),
   'utf8'
 );
 const previewWorkflow = fs.readFileSync(
-  new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url),
+  new URL('./.github/workflows-archive/ops-audit-preview.yml', import.meta.url),
   'utf8'
 );
 const deploy = fs.readFileSync(
