@@ -10,7 +10,11 @@ for (const coluna of ['AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZAD
   assert.ok(audit.includes("'" + coluna + "'"), 'Coluna de automação ausente: ' + coluna);
 }
 assert.ok(audit.includes('function audV3FinalizarAutomaticamente_'), 'A auditoria não possui finalização automática.');
-assert.ok(audit.includes('const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);'), 'A geração não chama a finalização automática.');
+assert.ok(!audit.includes('const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);'), 'Plano manual não pode aprovar/criar documento automaticamente durante a geração.');
+assert.ok(audit.includes('function audV3PrepararPlanoManualRapido_'), 'Plano manual precisa pular normalização de locutores e reparos de IA desnecessários.');
+assert.ok(audit.includes("tipo === 'PLANO' ? [0, 2000] : AUDITORIA_V3.esperasRetentativaMs.slice()"), 'Plano manual precisa usar uma política de retry curta.');
+assert.ok(audit.includes("maxOutputTokens: tipo === 'PLANO' ? 6000 : 12000"), 'Plano manual precisa limitar a resposta para reduzir latência.');
+assert.ok(audit.includes("mensagem: 'Plano estruturado e validado. Revise antes de aprovar, criar o Google Docs ou publicar.'"), 'Plano manual precisa terminar em revisão humana.');
 assert.ok(audit.includes('aprovarAuditoriaV3(id);'), 'A finalização automática não cria/aprova o documento.');
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'PROCESSANDO'"), 'O pipeline automático não registra início.');
 assert.match(audit, /processamentoExpiraMinutos:\s*8/, 'O motor precisa ter um limite explícito para PROCESSANDO expirado.');
@@ -36,6 +40,8 @@ assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não
 assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
+assert.ok(front.includes('id="circleManualPreview"'), 'Modal do Circle precisa manter a prévia do conteúdo.');
+assert.ok(front.includes('background:#fff;color:#111827'), 'Prévia clara do Circle precisa usar texto escuro explícito, inclusive no modo dark.');
 assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
 assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
@@ -140,7 +146,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.13'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.13.');
+assert.match(audit, /versao:\s*'6\.2\.14'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.14.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -362,7 +368,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.13'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.13.');
+assert.match(audit, /versao:\s*'6\.2\.14'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.14.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
