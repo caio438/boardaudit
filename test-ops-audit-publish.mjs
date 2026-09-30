@@ -340,6 +340,21 @@ assert.ok(
 );
 
 assert.ok(
+  previewWorkflow.includes('workflow_dispatch:'),
+  'Preview operacional nao aceita despacho manual explicito.'
+);
+
+assert.ok(
+  previewWorkflow.includes('INPUT_TARGET: ${{ inputs.target }}'),
+  'Preview manual nao fixa o alvo informado pelo operador.'
+);
+
+assert.ok(
+  previewWorkflow.includes('Deploy BoardAudit approved revision'),
+  'Preview nao acompanha o workflow de deploy atual.'
+);
+
+assert.ok(
   previewWorkflow.includes("Ops audit preview: "),
   'Preview exige commit operacional explicito.'
 );
