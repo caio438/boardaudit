@@ -2,9 +2,15 @@ name: Ops preview audit after deploy
 # Runs only after a successful production deploy whose commit explicitly requests a preview.
 
 on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: ID exato da transcrição, interação ou deal do RD
+        required: true
+        type: string
   workflow_run:
     workflows:
-      - Deploy Apps Script automatically
+      - Deploy BoardAudit approved revision
     types:
       - completed
 
@@ -15,8 +21,9 @@ permissions:
 jobs:
   preview:
     if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' }}
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
@@ -30,8 +37,18 @@ jobs:
       - name: Resolve requested transcript
         id: target
         shell: bash
+        env:
+          INPUT_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            target="$(printf '%s' "$INPUT_TARGET" | xargs)"
+            test -n "$target"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "transcript=$target" >> "$GITHUB_OUTPUT"
+            echo "OPS_PREVIEW_TARGET=$target"
+            exit 0
+          fi
           subject="$(git log -1 --pretty=%s)"
           prefix="Ops audit preview: "
           if [[ "$subject" == "$prefix"* ]]; then
