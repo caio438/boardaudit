@@ -1,0 +1,143 @@
+name: Ops sync client groups after deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Deploy Apps Script automatically
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sync-client-groups:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout deployed revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve operational request
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          prefix="Ops sync client groups:"
+          if [[ "$subject" == "$prefix"* ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "OPS_CLIENT_GROUPS_REQUESTED=1"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "OPS_CLIENT_GROUPS_SKIPPED=commit_not_operational"
+          fi
+
+      - name: Setup Node.js
+        if: steps.target.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.target.outputs.run == 'true'
+        run: npm ci
+
+      - name: Configure clasp authentication
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Refresh Google OAuth token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp versions > /tmp/clasp-versions-client-groups.txt
+
+      - name: Extract Google access token
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) process.exit(2);
+          fs.writeFileSync('/tmp/google_access_token_client_groups', token, {mode: 0o600});
+          NODE
+
+      - name: Sync catalog and run dry-run diagnostic
+        if: steps.target.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token_client_groups)"
+          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sync_client_groups=1"
+
+          code="$(curl -sS --max-time 330 --location-trusted             --oauth2-bearer "$TOKEN"             -o /tmp/client-groups-result.txt             -w '%{http_code}'             "$URL" || true)"
+          echo "CLIENT_GROUPS_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/client-groups-result.txt', 'utf8').trim();
+          if (!raw) throw new Error('Web app retornou resposta vazia.');
+          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
+            throw new Error('Web app retornou HTML em vez de JSON.');
+          }
+          const first = raw.indexOf('{');
+          const last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta não contém JSON.');
+          const result = JSON.parse(raw.slice(first, last + 1));
+          if (result.sucesso !== true) throw new Error('Operação não retornou sucesso=true.');
+          if (!result.sincronizacao || result.sincronizacao.sucesso !== true) {
+            throw new Error('Sincronização de clientes não concluiu com sucesso.');
+          }
+          if (!result.diagnostico || result.diagnostico.sucesso !== true || result.diagnostico.modo !== 'DRY_RUN') {
+            throw new Error('Diagnóstico dry-run não foi retornado.');
+          }
+
+          const totais = result.diagnostico.totais || {};
+          console.log('CLIENT_GROUPS_SYNC_OK=1');
+          console.log('CLIENT_GROUPS_DRY_RUN=1');
+          console.log('CONFLITOS_REUNIOES=' + Number(totais.reunioes || 0));
+          console.log('CONFLITOS_INTERACOES=' + Number(totais.interacoes || 0));
+          console.log('CONFLITOS_FORMALIZACOES=' + Number(totais.formalizacoes || 0));
+          console.log('VINCULOS_CRUZADOS=' + Number(totais.vinculosCruzados || 0));
+          fs.writeFileSync('/tmp/client-groups-summary.json', JSON.stringify(result, null, 2));
+          NODE
+
+      - name: Save client-group diagnostic
+        if: always() && steps.target.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-groups-dry-run-${{ github.run_id }}
+          path: |
+            /tmp/client-groups-summary.json
+            /tmp/client-groups-result.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup authentication
+        if: always() && steps.target.outputs.run == 'true'
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token_client_groups /tmp/clasp-versions-client-groups.txt
