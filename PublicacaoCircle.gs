@@ -189,6 +189,49 @@ function salvarDestinoCircleManualCliente(idCliente, spaceUrl) {
   };
 }
 
+function salvarLinkCircleAuditoria(dados) {
+  dados = dados || {};
+  const id = String(dados.idAuditoria || '').trim();
+  if (!id) throw new Error('Informe a auditoria.');
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+
+  const urlInformada = String(dados.urlCircle || '').trim();
+  const statusAtual = String(auditoria.CIRCLE_STATUS || '').toUpperCase();
+  const publicadoAutomaticamente = statusAtual === 'PUBLICADA';
+
+  if (!urlInformada) {
+    if (publicadoAutomaticamente) {
+      throw new Error('Esta publicação foi criada automaticamente no Circle e o link não pode ser removido por este campo.');
+    }
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      CIRCLE_STATUS: '',
+      CIRCLE_POST_ID: '',
+      CIRCLE_POST_URL: '',
+      CIRCLE_PUBLICADO_EM: '',
+      CIRCLE_ERRO: ''
+    });
+  } else {
+    const url = circleValidarUrl_(urlInformada, 'Informe o link completo do post no Circle.');
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      CIRCLE_STATUS: publicadoAutomaticamente ? 'PUBLICADA' : 'PUBLICADA_MANUALMENTE',
+      CIRCLE_POST_ID: String(auditoria.CIRCLE_POST_ID || '').trim() || ('MANUAL_' + id),
+      CIRCLE_POST_URL: url,
+      CIRCLE_PUBLICADO_EM: auditoria.CIRCLE_PUBLICADO_EM || new Date(),
+      CIRCLE_ERRO: ''
+    });
+  }
+
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  return {
+    sucesso: true,
+    mensagem: urlInformada ? 'Link do Circle registrado na auditoria.' : 'Link manual do Circle removido.',
+    auditoria: audV3AuditoriaFront_(atualizada),
+    auditorias: audV3ListarAuditoriasFront_()
+  };
+}
+
 function registrarPublicacaoCircleManualV3(idAuditoria, spaceUrl, postUrl) {
   const id = String(idAuditoria || '').trim();
   if (!id) throw new Error('Informe a auditoria publicada.');
