@@ -1,45 +1,173 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const yaml = fs.readFileSync(new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url), 'utf8');
-
-assert.ok(yaml.includes('workflow_run:'), 'Deploy automático não depende da validação.');
-assert.ok(yaml.includes('Validate Apps Script'), 'Deploy automático não observa o workflow de validação.');
-assert.ok(yaml.includes("github.event.workflow_run.conclusion == 'success'"), 'Deploy não exige validação com sucesso.');
-assert.ok(yaml.includes("github.event.workflow_run.head_branch == 'main'"), 'Deploy automático não está restrito à main.');
-assert.ok(yaml.includes('environment: apps-script-production'), 'Deploy não usa o Environment que contém a credencial do clasp.');
-assert.ok(yaml.includes('Check Apps Script version capacity'), 'Deploy não verifica o limite de versões antes de publicar.');
-assert.ok(yaml.includes('APPS_SCRIPT_VERSION_COUNT='), 'Deploy não registra a contagem de versões.');
-assert.ok(yaml.includes('limite de 200 versões'), 'Deploy não explica como corrigir o limite de versões.');
-assert.ok(yaml.includes('head_only=true'), 'Deploy não prevê sincronização HEAD-only no limite de versões.');
-assert.ok(yaml.includes("if: steps.capacity.outputs.head_only != 'true'"), 'Deploy HEAD-only ainda tentaria atualizar o deployment versionado.');
-
-assert.ok(yaml.indexOf('Check Apps Script version capacity') < yaml.indexOf('Push exact validated source'), 'Limite de versões só é verificado depois do push.');
-assert.ok(!yaml.includes('Probe authenticated web app debug'), 'Deploy ainda depende do probe antigo com access_token direto.');
-assert.ok(yaml.includes('Restore independent automation triggers'), 'Deploy não reinstala os acionadores operacionais após publicar.');
-assert.ok(yaml.includes('ops_restore_automation=1'), 'Deploy não chama o restaurador autenticado de automações.');
-assert.ok(
-  yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1'),
-  'Restaurador de automações não usa o deployment de produção.'
+const yaml = fs.readFileSync(
+  new URL('./.github/workflows/deploy-apps-script-auto.yml', import.meta.url),
+  'utf8'
 );
-assert.ok(yaml.includes('for attempt in 1 2 3 4'), 'Restaurador não tolera propagação transitória do web app.');
-assert.ok(yaml.includes('RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_'), 'Deploy não registra cada tentativa de restauração.');
-assert.ok(
-  !yaml.includes('/dev?ops_restore_automation=1'),
-  'Restaurador de automações não pode depender do endpoint /dev.'
+
+assert.match(
+  yaml,
+  /workflow_dispatch:/,
+  'Deploy aprovado precisa ser acionado explicitamente pelo release.'
 );
-assert.ok(yaml.includes('AUTOMATION_TRIGGERS_RESTORED=1'), 'Deploy não confirma a restauração dos acionadores.');
 
-assert.ok(yaml.includes('Pull current production for preservation'), 'Deploy não preserva a produção atual antes da publicação.');
-assert.ok(yaml.includes('Save rollback snapshot'), 'Deploy não cria snapshot de rollback.');
-assert.ok(yaml.includes('preserving remote-only files'), 'Deploy pode apagar arquivos existentes apenas na produção.');
-assert.ok(yaml.includes('prepare-dark-mode-deploy.mjs'), 'Build ID/refresh do frontend não é atualizado no deploy.');
-assert.ok(yaml.includes('clasp" push --force'), 'Deploy não envia o projeto para Apps Script.');
-assert.ok(yaml.includes('AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA'), 'Deployment ID de produção não está fixado no workflow.');
-assert.ok(yaml.includes('Verify live Apps Script after deployment'), 'Deploy não reconfirma a fonte ao vivo após publicar.');
-assert.ok(yaml.includes('POST_DEPLOY_SOURCE_MATCH=1'), 'Deploy não valida correspondência pós-publicação.');
-assert.ok(yaml.includes('function audV3FinalizarAutomaticamente_'), 'Deploy não verifica o pipeline automático no Apps Script ao vivo.');
-assert.ok(yaml.includes('function audRdPublicarAutomaticamente_'), 'Deploy não verifica a publicação automática no RD ao vivo.');
-assert.ok(yaml.includes('Probe web app response'), 'Deploy não testa a resposta do web app após publicar.');
+assert.match(
+  yaml,
+  /expected_sha:[\s\S]*?required: true/,
+  'Deploy não exige o SHA exato aprovado.'
+);
 
-console.log('Deploy automático validado: main verde -> snapshot -> preservação -> push -> deployment -> verificação ao vivo.');
+assert.doesNotMatch(
+  yaml,
+  /workflow_run:/,
+  'Deploy não deve mais acontecer automaticamente após qualquer validação da main.'
+);
+
+assert.match(
+  yaml,
+  /github\.sha == inputs\.expected_sha/,
+  'Deploy não confirma que está executando o SHA aprovado.'
+);
+
+assert.match(
+  yaml,
+  /concurrency:[\s\S]*?group: apps-script-production[\s\S]*?cancel-in-progress: false/,
+  'Deploy não está serializado com as demais operações de produção.'
+);
+
+assert.match(
+  yaml,
+  /environment: apps-script-production/,
+  'Deploy não usa o environment de produção.'
+);
+
+assert.match(
+  yaml,
+  /Check Apps Script version capacity/,
+  'Deploy não verifica o limite de versões do Apps Script.'
+);
+
+assert.match(
+  yaml,
+  /APPS_SCRIPT_VERSION_COUNT=/,
+  'Deploy não registra a quantidade de versões.'
+);
+
+assert.match(
+  yaml,
+  /limite de 200 versões/,
+  'Deploy não bloqueia quando o limite de versões é atingido.'
+);
+
+assert.match(
+  yaml,
+  /Pull current production for rollback/,
+  'Deploy não captura a produção atual antes da publicação.'
+);
+
+assert.match(
+  yaml,
+  /Save rollback snapshot/,
+  'Deploy não salva snapshot para rollback.'
+);
+
+assert.match(
+  yaml,
+  /Build exact deployment source/,
+  'Deploy não monta uma fonte de publicação controlada.'
+);
+
+assert.match(
+  yaml,
+  /prepare-dark-mode-deploy\.mjs/,
+  'Build ID/frontend não é preparado antes do deploy.'
+);
+
+assert.match(
+  yaml,
+  /clasp" push --force/,
+  'Deploy não envia a revisão aprovada ao Apps Script.'
+);
+
+assert.match(
+  yaml,
+  /AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/,
+  'Deployment de produção não está explicitamente definido.'
+);
+
+assert.match(
+  yaml,
+  /BoardAudit approved deploy \$\{\{ inputs\.expected_sha \}\}/,
+  'Descrição do deployment não registra o SHA aprovado.'
+);
+
+assert.match(
+  yaml,
+  /Verify live Apps Script after deployment/,
+  'Deploy não reconfirma a fonte ao vivo.'
+);
+
+assert.match(
+  yaml,
+  /POST_DEPLOY_SOURCE_MATCH=1/,
+  'Deploy não confirma correspondência entre GitHub e Apps Script.'
+);
+
+assert.match(
+  yaml,
+  /DEPLOYED_SHA=\$\{\{ inputs\.expected_sha \}\}/,
+  'Deploy não registra o SHA efetivamente publicado.'
+);
+
+assert.match(
+  yaml,
+  /Probe web app response/,
+  'Deploy não verifica se o web app continua respondendo.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /Restore independent automation triggers/,
+  'Deploy não pode reinstalar automações.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /ops_restore_automation/,
+  'Deploy não pode chamar o restaurador de automações.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /Run one-time journey sync/,
+  'Deploy não pode executar sincronização operacional da jornada.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /ops_sync_jornada/,
+  'Deploy não pode disparar sincronização de jornada.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /Run one-time Drive folder batches/,
+  'Deploy não pode processar lotes operacionais do Drive.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /ops_sync_jornada_pastas/,
+  'Deploy não pode disparar lotes da jornada.'
+);
+
+assert.doesNotMatch(
+  yaml,
+  /Ops audit publish:/,
+  'Deploy não pode possuir exceções para publicar auditorias.'
+);
+
+console.log(
+  'Deploy seguro validado: SHA aprovado -> snapshot -> push -> deployment -> verificacao ao vivo, sem efeitos operacionais.'
+);
