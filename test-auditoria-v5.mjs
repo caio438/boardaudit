@@ -69,6 +69,19 @@ assert.ok(audit.includes('function audV3MetadadosMinimosTranscricao_'), 'Importa
 assert.ok(audit.includes('function audV3RotuloEhMembroInternoCloser_'), 'Normalização Closer não consulta equipe interna para separar os lados.');
 assert.ok(audit.includes("fonte: 'NOME_EXTERNO_EXPLICITO'"), 'Participantes externos nomeados não são reconhecidos automaticamente como lado lead.');
 
+const inicioRenderCloser = front.indexOf('function renderizarConteudoCloserV3');
+const fimRenderCloser = front.indexOf('function renderizarProximosPassosEquipesV3_', inicioRenderCloser);
+assert.ok(inicioRenderCloser >= 0 && fimRenderCloser > inicioRenderCloser, 'Não foi possível isolar o render detalhado do Closer.');
+const trechoRenderCloser = front.slice(inicioRenderCloser, fimRenderCloser);
+assert.ok(
+  trechoRenderCloser.includes('const mapaOportunidade = r.mapa_oportunidade || {};'),
+  'Render do Closer usa mapaOportunidade sem declarar a fonte do mapa da oportunidade.'
+);
+assert.ok(
+  trechoRenderCloser.includes('const subcriterios = Array.isArray(r.subcriterios) ? r.subcriterios : [];'),
+  'Render do Closer usa subcriterios sem normalizar a lista antes de montar a tabela.'
+);
+
 assert.ok(front.includes('function auditoriasOperacionaisFront_'), 'Histórico não possui fonte resiliente para incluir a auditoria atual recém-aprovada.');
 assert.match(
   front,
