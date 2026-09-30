@@ -89,12 +89,15 @@ function salvarIdRdAuditoriaV3(d) {
   }
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  var statusAuditoria = String(a.STATUS || '').toUpperCase();
   return {
     sucesso: true,
     mensagem: deal
       ? (publicacao && publicacao.publicada
           ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
-          : 'Negociação do RD vinculada. O envio automático foi processado.')
+          : statusAuditoria === 'APROVADA'
+            ? 'Negociação do RD vinculada. O envio automático foi processado.'
+            : 'Negociação do RD vinculada. O envio ficará bloqueado até a aprovação da auditoria.')
       : 'Vínculo com o RD removido.',
     publicacaoRd: publicacao,
     auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id)),
