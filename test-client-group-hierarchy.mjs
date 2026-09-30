@@ -55,6 +55,13 @@ assert.match(code, /iaConsumida: false/);
 assert.match(code, /rdPublicado: false/);
 assert.match(code, /auditoriasExecutadas: 0/);
 assert.match(jornada, /function jornadaExtrairTextoDocx_\(blob\)/);
+assert.match(jornada, /function jornadaExtrairTextoDocxDetalhe_\(blob\)/);
+assert.match(jornada, /setContentType\('application\/zip'\)/);
+assert.match(jornada, /function jornadaLerDocumentoUrlDetalhe_\(url\)/);
+assert.match(jornada, /fase: 'ACESSO_DRIVE'/);
+assert.match(audit, /CONTEUDO_CADASTRADO_FALLBACK/);
+assert.match(audit, /O Board manteve o conteúdo oficial já cadastrado/);
+assert.doesNotMatch(audit, /Revise o compartilhamento do link nas configurações do cliente/);
 assert.match(jornada, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
 assert.doesNotMatch(code, /nome: 'INGEE'.*aliases: \[[^\]]*Sinergia[^\]]*\]/);
 
