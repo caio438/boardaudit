@@ -7400,6 +7400,8 @@
   function consolidarIntervencoesCloserFront_(r) {
     r = r || {};
     const contexto = r.resumo_reuniao || {};
+    const mapaOportunidade = r.mapa_oportunidade || {};
+    const subcriterios = Array.isArray(r.subcriterios) ? r.subcriterios : [];
     const perguntas = r.perguntas_diagnostico || {};
     const impacto = r.analise_impacto_implicacao || {};
     const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
@@ -7645,7 +7647,7 @@
           const nota = item.nota === null || item.nota === undefined ? '' : ' · ' + item.nota + '/5';
           return '<article class="audit-executive-moment">' +
             '<div class="audit-executive-moment-head"><strong>' + escapeHtml(item.nome || item.id || 'Momento') + '</strong>' +
-            '<span class="status ' + classe + '">' + escapeHtml((cor || 'ATENÇÃO') + nota) + '</span></div>' +
+            '<span class="status ' + classe + '">' + escapeHtml(formatarStatusAuditoriaV3(cor || 'ATENÇÃO') + nota) + '</span></div>' +
             (item.o_que_foi_dito ? '<p><span class="muted">Evidência:</span> ' + escapeHtml(item.o_que_foi_dito) + '</p>' : '') +
             (leitura.fortes.length ? '<p class="line-success">✅ <strong>Acertos:</strong> ' + escapeHtml(leitura.fortes.join(' • ')) + '</p>' : '') +
             (leitura.gaps.length ? '<p class="line-danger">❌ <strong>O que faltou:</strong> ' + escapeHtml(leitura.gaps.join(' • ')) + '</p>' : '') +
@@ -7783,7 +7785,7 @@
       const cor = String(item.cor || item.status || '').toUpperCase();
       const classe = cor === 'VERDE' ? 'success' : cor === 'VERMELHO' ? 'danger' : 'warning';
       return `
-        <h3>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Momento')} <span class="status ${classe}">${escapeHtml(cor || 'NÃO EVIDENCIADO')}</span></h3>
+        <h3>${indice + 1}. ${escapeHtml(item.nome || item.id || 'Momento')} <span class="status ${classe}">${escapeHtml(formatarStatusAuditoriaV3(cor || 'NÃO EVIDENCIADO'))}</span></h3>
         <p><strong>O que se espera:</strong> ${escapeHtml(item.o_que_se_espera || 'Não evidenciado')}</p>
         <p class="line-evidence">📌 <strong>Evidência da fala do Closer:</strong> ${escapeHtml(item.o_que_foi_dito || 'Não evidenciado')}</p>
         ${(() => { const d = String(item.divergencia || '').trim(); return d && !/^(não houve divergência|nenhuma divergência(?: registrada)?|sem divergência|n\/a|não aplicável|não evidenciado)[.!]?$/i.test(d) ? `<p class="line-danger">❌ <strong>Divergência:</strong> ${escapeHtml(d)}</p>` : ''; })()}
@@ -7807,10 +7809,23 @@
       <p><strong>Motivação do contato:</strong> ${escapeHtml(contexto.motivacao_contato || 'Não evidenciado')}</p>
       <p class="line-evidence"><strong>Evidência:</strong> ${escapeHtml(contexto.evidencia_motivacao || 'Não evidenciado')}</p>
       ${tabelaAuditoriaV3(['Cenário atual','Dor principal','Impacto principal','Objetivo do lead','Resultado da reunião'], [[contexto.cenario_atual, contexto.dor_principal, contexto.impacto_principal, contexto.objetivo_lead, contexto.resultado_reuniao]])}
+      <h3>Mapa da oportunidade</h3>
+      ${tabelaAuditoriaV3(['Campo','Leitura factual'], [
+        ['Dor principal', mapaOportunidade.dor_principal], ['Impacto operacional', mapaOportunidade.impacto_operacional],
+        ['Impacto financeiro', mapaOportunidade.impacto_financeiro], ['Motivação', mapaOportunidade.motivacao],
+        ['Ganhos esperados', mapaOportunidade.ganhos_esperados], ['Impacto de não avançar', mapaOportunidade.impacto_nao_avancar],
+        ['Urgência', mapaOportunidade.urgencia], ['Decisor', mapaOportunidade.decisor], ['Ponto focal', mapaOportunidade.ponto_focal],
+        ['Fit percebido', mapaOportunidade.fit_percebido], ['Próximo passo', mapaOportunidade.proximo_passo], ['Riscos', mapaOportunidade.riscos]
+      ])}
+      <h3>Subcritérios canônicos</h3>
+      ${tabelaAuditoriaV3(['Dimensão','Comportamento','Status','Evidência','Análise'], subcriterios.map(item => [
+        ({aderencia_diagnostico:'Diagnóstico', exploracao_dor_impacto:'Dor e impacto', demonstracao_solucao:'Demonstração da solução', validacao_interesse:'Validação de interesse', tratamento_objecoes:'Fechamento'})[item.dimensao_id] || item.dimensao_id,
+        item.nome || item.id, item.status, item.evidencia, item.analise
+      ]))}
       <h3>Resumo executivo</h3>
       <p>${escapeHtml(resumo.visao_geral || 'Não evidenciado')}</p>
       <p><strong>Recomendação central:</strong> ${escapeHtml(resumo.recomendacao_central || '-')}</p>
-      <h3>Semáforo da reunião <span class="status ${classeGeral}">${escapeHtml(semaforo.cor || 'NÃO CALCULÁVEL')}</span></h3>
+      <h3>Semáforo da reunião <span class="status ${classeGeral}">${escapeHtml(formatarStatusAuditoriaV3(semaforo.cor || 'Não calculável'))}</span></h3>
       ${tabelaAuditoriaV3(['Momento','Status','Gatilho'], linhasSemaforo)}
       <p><strong>Orientação:</strong> ${escapeHtml(semaforo.orientacao || '-')}</p>
       ${semaforo.justificativa ? `<p><strong>Justificativa:</strong> ${escapeHtml(semaforo.justificativa)}</p>` : ''}
@@ -7846,7 +7861,7 @@
         item.categoria, item.pergunta, item.base_pitch, item.motivo_importancia, item.impacto_da_ausencia, item.sugestao_aplicacao
       ]))}
       <h3>Análise de impacto e implicação</h3>
-      <p><strong>Status:</strong> ${escapeHtml(impacto.status || 'Não evidenciado')}</p>
+      <p><strong>Status:</strong> ${escapeHtml(formatarStatusAuditoriaV3(impacto.status || 'Não evidenciado'))}</p>
       <h4>Evidências</h4>${listaCloser(impacto.evidencias)}
       <h4>Impactos identificados</h4>${listaCloser(impacto.impactos_identificados)}
       <h4>Lacunas</h4>${listaCloser(impacto.lacunas)}
@@ -8036,8 +8051,12 @@
 
   function formatarStatusAuditoriaV3(status) {
     const valor = String(status || '').trim();
-    if (valor.toUpperCase() === 'DESVIO_EXECUCAO') return 'Desvio na execução';
-    return valor;
+    const chave = valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[ -]+/g, '_');
+    return ({
+      CONFORME:'Atingido', ATINGIDO:'Atingido', DESVIO_EXECUCAO:'Parcial', PARCIAL:'Parcial',
+      NAO_EXECUTADO:'Não executado', NAO_APLICAVEL:'Não aplicável', NAO_EVIDENCIADO:'Não evidenciado',
+      LACUNA_PROCESSO:'Lacuna de processo'
+    })[chave] || valor;
   }
 
   function tabelaAuditoriaV3(cabecalhos, linhas, classeExtra) {
@@ -8717,10 +8736,13 @@
     if (tipo === 'CLOSER') metricas.push(['Cobertura de tempo', (resumo.coberturaTemporal || 0)+'%']);
     document.getElementById('audPerformanceResumo').innerHTML = metricas.map(item => '<div class="card metric"><strong>'+escapeHtml(item[1])+'</strong><span>'+escapeHtml(item[0])+'</span></div>').join('');
 
-    document.getElementById('audPerformanceScore').innerHTML = graficoLinhaPerformanceFront_(dados.linhaTempo || []);
+    const serieScore = tipo === 'CLOSER' && (dados.historicoPeriodos || []).length ? dados.historicoPeriodos : (dados.linhaTempo || []);
+    document.getElementById('audPerformanceScore').innerHTML = graficoLinhaPerformanceFront_(serieScore);
 
-    const erros = (dados.erros || []).slice(0,8);
-    document.getElementById('audPerformanceErros').innerHTML = barrasPerformanceFront_(erros, item => item.taxaDesvio, '%', 'Nenhum desvio mensurável no período.');
+    const erros = (tipo === 'CLOSER' && (dados.comportamentos || []).length
+      ? dados.comportamentos.map(item => Object.assign({}, item, { nome:item.nome+' · n='+item.avaliacoes, taxaDesvio:Math.round((100-Number(item.taxaAtingimento||0))*10)/10 }))
+      : (dados.erros || [])).slice(0,8);
+    document.getElementById('audPerformanceErros').innerHTML = barrasPerformanceFront_(erros, item => item.taxaDesvio, '%', tipo === 'CLOSER' ? 'Os subcritérios aparecerão nas auditorias com schema 6.0.' : 'Nenhum desvio mensurável no período.');
 
     if (tipo === 'CLOSER') {
       const tempos = (dados.tempos || []).filter(item => item.mediaMinutos !== null && item.mediaMinutos !== undefined);

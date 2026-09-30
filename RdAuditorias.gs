@@ -140,7 +140,7 @@ function prepararEnvioAuditoriaRd(id){
     aviso:'Revise e edite o texto antes de aprovar. O RD registra a anotação no histórico da negociação.'
   };
 }
-function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
+function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
 if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}
 var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,publicada:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
 function aprovarEEnviarAuditoriaRd(d){
@@ -180,6 +180,9 @@ function audRdCtx_(id) {
   }
   if (String(a.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' || !String(a.HASH_FONTE || '').trim()) {
     throw new Error('A auditoria ainda não possui validação de integridade para envio ao RD CRM.');
+  }
+  if (tipoAuditoria === 'CLOSER' && !String(a.LINK_DOCUMENTO || '').trim()) {
+    throw new Error('A auditoria Closer só pode ser publicada no RD após a criação do Google Doc completo.');
   }
 
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
@@ -329,7 +332,7 @@ function audRdConcluir_(c,id){return requisicaoJson_(APP.rdBaseUrl+'/tasks/'+enc
 function audRdTexto_(c){
   var tipo=String(((c||{}).a||{}).TIPO_AUDITORIA||'').toUpperCase();
   if(tipo==='SDR')return audRdTextoSdr_(c);
-  if(tipo==='CLOSER')return audRdTextoCloser_(c);
+  if(tipo==='CLOSER')return audRdTextoCloserCanonico_(c);
   throw new Error('Tipo de auditoria não suportado para publicação no RD: '+(tipo||'NAO_INFORMADO'));
 }
 function audRdTextoCloser_(c) {
@@ -666,6 +669,73 @@ function audRdTextoCloser_(c) {
   return linhas.filter(function(x, i, a) {
     return x !== '' || (i > 0 && a[i - 1] !== '');
   }).join(n).trim();
+}
+
+function audRdRotuloPublico_(valor) {
+  var chave = String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[ -]+/g, '_');
+  return ({
+    CONFORME:'Atingido', ATINGIDO:'Atingido', VERDE:'Atingido',
+    DESVIO_EXECUCAO:'Parcial', PARCIAL:'Parcial', AMARELO:'Parcial',
+    NAO_EXECUTADO:'Não executado', VERMELHO:'Não executado',
+    NAO_APLICAVEL:'Não aplicável', NAO_EVIDENCIADO:'Não evidenciado', LACUNA_PROCESSO:'Lacuna de processo'
+  })[chave] || String(valor || 'Não evidenciado');
+}
+
+function audRdSanitizarTextoPublico_(texto) {
+  var substituicoes = {
+    DESVIO_EXECUCAO:'Parcial', NAO_EXECUTADO:'Não executado', NAO_APLICAVEL:'Não aplicável',
+    NAO_EVIDENCIADO:'Não evidenciado', LACUNA_PROCESSO:'Lacuna de processo', SUGESTAO_ENABLEMENT:'Sugestão de desenvolvimento'
+  };
+  var publico = String(texto || '');
+  Object.keys(substituicoes).forEach(function(codigo) {
+    publico = publico.replace(new RegExp('\\b' + codigo + '\\b', 'g'), substituicoes[codigo]);
+  });
+  return publico;
+}
+
+function audRdTextoCloserCanonico_(c) {
+  var r = c.r || {};
+  var n = String.fromCharCode(10);
+  var mapa = r.mapa_oportunidade || {};
+  var criterios = Array.isArray(r.criterios_avaliados) ? r.criterios_avaliados : [];
+  var passos = Array.isArray(r.proximos_passos) ? r.proximos_passos : [];
+  var pc = r.pontuacao_calculada || {};
+  var score = pc.score_5 != null ? pc.score_5 : c.a.SCORE;
+  var pct = pc.score_percentual != null ? pc.score_percentual : c.a.SCORE_PERCENTUAL;
+  var curtoCanonico = function(valor, limite) {
+    var texto = String(valor || 'Não evidenciado').replace(/\s+/g, ' ').trim() || 'Não evidenciado';
+    return texto.length > limite ? texto.slice(0, limite - 1).trim() + '…' : texto;
+  };
+  var dimensoes = criterios.slice(0, 5).map(function(item) {
+    return '- ' + String((item || {}).nome || (item || {}).id || 'Dimensão') + ': ' + audRdRotuloPublico_((item || {}).status);
+  });
+  var mapaLinhas = [
+    ['Dor', mapa.dor_principal], ['Impacto operacional', mapa.impacto_operacional],
+    ['Impacto financeiro', mapa.impacto_financeiro], ['Motivação', mapa.motivacao],
+    ['Ganhos esperados', mapa.ganhos_esperados], ['Impacto de não avançar', mapa.impacto_nao_avancar],
+    ['Urgência', mapa.urgencia], ['Decisor', mapa.decisor], ['Ponto focal', mapa.ponto_focal],
+    ['Fit percebido', mapa.fit_percebido], ['Próximo passo', mapa.proximo_passo], ['Riscos', mapa.riscos]
+  ].map(function(item) { return '- ' + item[0] + ': ' + curtoCanonico(item[1], 220); });
+  var acoes = passos.slice(0, 3).map(function(item, indice) {
+    return String(indice + 1) + '. ' + curtoCanonico((item || {}).acao, 240);
+  });
+  return audRdSanitizarTextoPublico_([
+    'AUDITORIA CLOSER — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
+    'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
+    'Resultado: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
+    '',
+    'DIMENSÕES OFICIAIS',
+    dimensoes.length ? dimensoes.join(n) : '- Não evidenciado',
+    '',
+    'MAPA DA OPORTUNIDADE',
+    mapaLinhas.join(n),
+    '',
+    'PRÓXIMAS AÇÕES DO CLOSER',
+    acoes.length ? acoes.join(n) : '1. Nenhuma ação adicional registrada.',
+    '',
+    c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : '',
+    c.i.URL_GRAVACAO ? 'Gravação: ' + c.i.URL_GRAVACAO : ''
+  ].filter(function(linha, indice, lista) { return linha !== '' || (indice > 0 && lista[indice - 1] !== ''); }).join(n).trim());
 }
 
 function audRdTextoSdr_(c) {
