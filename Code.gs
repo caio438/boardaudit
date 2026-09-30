@@ -221,6 +221,7 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   bluertec: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1NYJcZLRhNN6jNbe98ZfzwDH2W0PuK8LV' },
+    { nome: 'Pitch SDR Inbound V1', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1Q5zSR77IVf1VXJ-tsRY4XJHpRCsLfYrD5XS-0cJE_nw/edit' },
     { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/17xhz1fFSRY1PLHfFw20GBQ3F8d3NvLbY' }
   ],
   hello_sales: [
@@ -229,7 +230,9 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   gopliance: [
     { nome: 'Documentos de pré-vendas', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1NT7pWz-Lpn8L6uIFQfeuc8eCQ3Jeogx9' },
-    { nome: 'Documentos Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1ulWn_UrW-GyAAOfPzD-8vVsKoiu6yA54' }
+    { nome: 'Pitch SDR Inbound V5', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1VqoLPqzFcP-8TauuWtTEj1IoIpvUj1sHguPAzkoGLww/edit' },
+    { nome: 'Documentos Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1ulWn_UrW-GyAAOfPzD-8vVsKoiu6yA54' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1AKTVNgv-DasG8Gok9UJJQCgrE6zxN21qJFwwufnCNIY/edit' }
   ],
   space_sistemas: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1bInwNbo1toe1m8c_hROMGqguYQ5mZEwg' },
@@ -241,7 +244,9 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   gestqual: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1nSAN2e8J5r8KkZPWjSNyTkkJAX6jIUnm' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1hsKug5syGkbJABmk528Xthp7N06rXqm5' }
+    { nome: 'Pitch SDR Inbound V1', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1waz51xIeGQLob7sgMzGiKh8avqKOPoHyy2XgU7rgdt4/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1hsKug5syGkbJABmk528Xthp7N06rXqm5' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/10XIX5j12IL4QfiE_qdBXdNJBHIQIHkHjKe6Q_gX0O1w/edit' }
   ],
   date_a_home: [{ nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1tFSTqmYgUPFm1h-z_7ggdwIbBdjkk2WB' }],
   delta_si: [{ nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1_33UehA-Hp1EbyQ7WjUaY7mKXjqG9clX' }],
@@ -251,7 +256,9 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   hitecnet: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/13DC5DD6QN3y2WZ0u7O7rowrJrmlxtiA_' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1tLroXDIkfWIWid_Acsa7p03fOq-MQuOZ' }
+    { nome: 'Pitch SDR Inbound V2', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1TWtC357PYmOJzfcNQxw4IuRWmizg0ZCglHDpnfbWyAk/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1tLroXDIkfWIWid_Acsa7p03fOq-MQuOZ' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1dKiRYZSvo1OjEchm599Kn7koF7p2hDQ5rBZ8fN-82jM/edit' }
   ],
   melius: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1kMCHrzJMJKVnzBe3MPM95-jf7VlEsuc3' },
@@ -334,6 +341,50 @@ const PITCHES_COMPLIANCE_VOLUMBERG = Object.freeze({
       nomeVersao: '[SEMEIO] Pitch de Qualificação SDR Inbound - V1',
       numeroVersao: '1',
       urlDocumento: 'https://docs.google.com/document/d/1mo4Qq2o7VIiZrdPZJOwMFJKfkr18rtukkp51tW4q9yU/edit'
+    }),
+    CLOSER: null
+  }),
+  hitecnet: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[HITECNET] Pitch de Qualificação SDR Inbound - V2',
+      numeroVersao: '2',
+      urlDocumento: 'https://docs.google.com/document/d/1TWtC357PYmOJzfcNQxw4IuRWmizg0ZCglHDpnfbWyAk/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: '[Hitecnet] Pitch Estruturado de Reunião CLOSER Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1dKiRYZSvo1OjEchm599Kn7koF7p2hDQ5rBZ8fN-82jM/edit'
+    })
+  }),
+  gopliance: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[Gopliance] Pitch de Qualificação SDR Inbound - V5',
+      numeroVersao: '5',
+      urlDocumento: 'https://docs.google.com/document/d/1VqoLPqzFcP-8TauuWtTEj1IoIpvUj1sHguPAzkoGLww/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: '[Gopliance] Pitch Estruturado de Reunião CLOSER Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1AKTVNgv-DasG8Gok9UJJQCgrE6zxN21qJFwwufnCNIY/edit'
+    })
+  }),
+  gestqual: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[GestQual] Pitch de Qualificação SDR Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1waz51xIeGQLob7sgMzGiKh8avqKOPoHyy2XgU7rgdt4/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'GestQual - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/10XIX5j12IL4QfiE_qdBXdNJBHIQIHkHjKe6Q_gX0O1w/edit'
+    })
+  }),
+  bluertec: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[BLUERTEC] Pitch de Qualificação SDR Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1Q5zSR77IVf1VXJ-tsRY4XJHpRCsLfYrD5XS-0cJE_nw/edit'
     }),
     CLOSER: null
   })
@@ -468,7 +519,7 @@ function SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG(chave) {
     throw new Error('O compliance de materiais só pode ser executado com BOARD_MODE=MANUAL.');
   }
   const chaveNormalizada = String(chave || '').trim().toLowerCase();
-  if (!['ingee', 'sinergia', 'semeio_cbi'].includes(chaveNormalizada)) {
+  if (!['ingee', 'sinergia', 'semeio_cbi', 'hitecnet', 'gopliance', 'gestqual', 'bluertec'].includes(chaveNormalizada)) {
     throw new Error('Cliente não liberado para esta rotina de compliance.');
   }
 
