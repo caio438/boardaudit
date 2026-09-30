@@ -1,0 +1,71 @@
+name: SDR publish next one
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  publish-latest:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/sdr-publish-next' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+
+      - name: Publish next SDR only
+        env:
+          SDR_BATCH_COMMAND: ${{ github.event.comment.body }}
+        run: node ops/sdr-publish-latest-runner.mjs
+
+      - name: Comment final result on Ops Control
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/sdr-batch-report.md
+
+      - name: Save batch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdr-publish-latest-${{ github.run_id }}
+          path: |
+            /tmp/sdr-batch-summary.json
+            /tmp/sdr-batch-report.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/clasp-versions.txt
