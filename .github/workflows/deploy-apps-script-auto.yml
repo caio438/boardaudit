@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: boardaudit-apps-script-production
+  group: apps-script-production
   cancel-in-progress: false
 
 jobs:
@@ -63,7 +63,6 @@ jobs:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         run: |
           set -euo pipefail
-
           test -n "$CLASPRC_JSON"
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
@@ -137,8 +136,6 @@ jobs:
           cp -- *.gs /tmp/boardaudit-deploy/
           cp Index.html appsscript.json /tmp/boardaudit-deploy/
 
-          # Preserva arquivos existentes no Apps Script que ainda não possuem
-          # equivalente versionado no GitHub.
           for src in /tmp/boardaudit-production/*.js; do
             [ -e "$src" ] || continue
 
@@ -204,7 +201,6 @@ jobs:
           JSON
 
           cd /tmp/boardaudit-deploy
-
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force
 
       - name: Update production deployment
@@ -231,9 +227,7 @@ jobs:
           JSON
 
           cd /tmp/boardaudit-live-after
-
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
-
           rm -f .clasp.json
 
           compare_pair() {
@@ -247,9 +241,7 @@ jobs:
               echo "Post-deploy mismatch:"
               echo "$expected"
               echo "$live"
-
               diff -u "$live" "$expected" | head -160 || true
-
               exit 1
             }
           }
