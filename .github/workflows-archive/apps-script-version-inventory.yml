@@ -1,0 +1,51 @@
+name: Apps Script version inventory
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: "${{ startsWith(github.event.head_commit.message, 'Ops Apps Script: inventariar versoes') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Inventory versions and deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== DEPLOYMENTS ==="
+          npx clasp deployments
+          echo "=== VERSIONS ==="
+          npx clasp versions
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
