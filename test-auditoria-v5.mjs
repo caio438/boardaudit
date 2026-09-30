@@ -75,6 +75,18 @@ assert.match(
   /function renderizarAuditorias\(\)[\s\S]*?const auditoriasFonte = auditoriasOperacionaisFront_\(\)/,
   'A lista de auditorias ainda depende diretamente do estado bruto e pode omitir a auditoria recém-aprovada.'
 );
+const inicioAbrirHistorico = front.indexOf('function abrirAuditoriaHistoricoV3');
+const fimAbrirHistorico = front.indexOf('function chaveDataHistorico_', inicioAbrirHistorico);
+assert.ok(inicioAbrirHistorico >= 0 && fimAbrirHistorico > inicioAbrirHistorico, 'Não foi possível isolar a abertura da auditoria pelo histórico.');
+const trechoAbrirHistorico = front.slice(inicioAbrirHistorico, fimAbrirHistorico);
+assert.ok(
+  trechoAbrirHistorico.includes('auditoriasOperacionaisFront_().find'),
+  'O botão Ver auditoria precisa localizar também a auditoria atual mesclada à fonte operacional.'
+);
+assert.ok(
+  !trechoAbrirHistorico.includes('(estado.auditorias || []).find'),
+  'O botão Ver auditoria ainda depende apenas do estado bruto e pode falhar silenciosamente para a auditoria atual.'
+);
 assert.ok(front.includes('Auditorias realizadas'), 'Resumo não separa mais auditorias realizadas de vínculo com CRM.');
 assert.ok(front.includes('Com vínculo CRM'), 'Resumo não possui contador separado de vínculo com CRM.');
 assert.ok(front.includes('Aguardando vínculo'), 'Resumo não destaca auditorias aprovadas sem vínculo CRM.');

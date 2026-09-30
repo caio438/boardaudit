@@ -8348,12 +8348,16 @@
   }
 
   function abrirAuditoriaHistoricoV3(idAuditoria) {
-    const auditoria = (estado.auditorias || []).find(item => String(item.idAuditoria) === String(idAuditoria));
-    if (!auditoria) return;
+    const auditoria = auditoriasOperacionaisFront_().find(item => String(item.idAuditoria) === String(idAuditoria));
+    if (!auditoria) {
+      mostrarToast('Não foi possível localizar esta auditoria no histórico atual. Atualize a página e tente novamente.', 'error');
+      return;
+    }
     estado.auditoriaAtual = auditoria;
-    expandirCardDoElemento_(document.getElementById('resultadoAuditoriaAtual'));
+    const alvo = document.getElementById('resultadoAuditoriaAtual');
+    expandirCardDoElemento_(alvo);
     renderizarPreviewAuditoriaV3(auditoria);
-    document.getElementById('resultadoAuditoriaAtual').scrollIntoView({ behavior: 'smooth' });
+    if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function chaveDataHistorico_(valor) {
