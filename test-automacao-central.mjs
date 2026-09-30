@@ -9,6 +9,12 @@ const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url),
 assert.match(central, /function desinstalarAutomacaoCentral19h_\(\)/);
 assert.match(central, /function INSTALAR_AUTOMACOES_OPERACIONAIS\(\)/);
 assert.match(central, /REMOVER_CENTRAL_19H/);
+assert.match(code, /const BOARD_MODE = 'MANUAL';/, 'Board precisa iniciar em modo manual.');
+assert.match(code, /function DESLIGAR_TODAS_AUTOMACOES_BOARD\(\)/, 'Rotina de desligamento global ausente.');
+assert.match(code, /ops_disable_all_automation/, 'Endpoint autenticado para desligar automacoes ausente.');
+assert.match(central, /boardModoManual_\(\)/, 'Automacao central nao respeita BOARD_MODE.');
+assert.match(auditoria, /BOARD_MODE=MANUAL: automação pausada|boardModoManual_\(\)/, 'Automacao de ligacoes nao respeita BOARD_MODE.');
+assert.match(jornada, /boardModoManual_\(\)/, 'Jornada nao respeita BOARD_MODE.');
 assert.match(code, /tldvSyncHours:\s*\[6, 10, 12, 14, 16, 18, 20\]/);
 assert.match(code, /rdTriggerHour:\s*6/);
 assert.match(code, /configurada em 7 horários diários/);
