@@ -7738,7 +7738,7 @@ function audV3FilaAutomacaoLigacoes_(config) {
     const id = String(item.ID_INTERACAO || '');
     const status = String(item.STATUS_AUDITORIA || '').toUpperCase();
     return String(item.ID_EXTERNO || '').indexOf('RD_TASK_') === 0 &&
-      String(item.URL_GRAVACAO || '').trim() &&
+      /^https:\/\/(?:[^/\s]+\.)?api4com\.com\/.*\.mp3(?:[?#]|$)/i.test(String(item.URL_GRAVACAO || '').trim()) &&
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       String(item.ID_CLIENTE || '').trim() &&
       !auditoriasValidas[id] &&
@@ -7970,12 +7970,17 @@ function DIAGNOSTICAR_AUTOMACAO_LIGACOES_V3() {
   return retorno;
 }
 
-function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
-  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_AUTOMACAO_LIGACOES_V3');
+function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
+  const origemInternaApi4com = Boolean(evento && evento.origemInternaApi4com === true);
+  const excecaoApi4comAutorizada = origemInternaApi4com &&
+    typeof rdApi4comPipelineAtivo_ === 'function' && rdApi4comPipelineAtivo_();
+  if (boardModoManual_() && !excecaoApi4comAutorizada) {
+    return boardRespostaManual_('EXECUTAR_AUTOMACAO_LIGACOES_V3');
+  }
   const config = audV3ConfigAutomacaoLigacoes_();
   const hoje = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
-  if (!config.ativa) return { sucesso: true, ignorada: true, mensagem: 'Automação pausada.' };
-  if (config.inicio && hoje < config.inicio) return { sucesso: true, ignorada: true, mensagem: 'Automação programada para iniciar em ' + config.inicio + '.' };
+  if (!config.ativa && !excecaoApi4comAutorizada) return { sucesso: true, ignorada: true, mensagem: 'Automação pausada.' };
+  if (!excecaoApi4comAutorizada && config.inicio && hoje < config.inicio) return { sucesso: true, ignorada: true, mensagem: 'Automação programada para iniciar em ' + config.inicio + '.' };
 
   const props = PropertiesService.getScriptProperties();
   const rodandoEm = Number(props.getProperty('AUDITORIA_AUTO_LIGACOES_RODANDO_EM') || 0);
