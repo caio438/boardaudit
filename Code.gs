@@ -912,8 +912,8 @@ function doGet(e) {
       throw new Error('Preview operacional de auditoria permitido somente para a conta proprietaria autenticada.');
     }
     const idTranscricaoPreview = String(parametros.transcript || '').trim();
-    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+)$/.test(idTranscricaoPreview)) {
-      throw new Error('ID de transcricao/interacao operacional invalido.');
+    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+|[0-9a-f]{24})$/i.test(idTranscricaoPreview)) {
+      throw new Error('ID de transcricao/interacao/deal operacional invalido.');
     }
     if (typeof OPS_AUDITAR_PREVIEW_TRANSCRICAO !== 'function') {
       throw new Error('Runner de preview de auditoria nao esta disponivel no HEAD do Apps Script.');
@@ -943,8 +943,8 @@ function doGet(e) {
       throw new Error('Operacao de auditoria permitida somente para a conta proprietaria autenticada.');
     }
     const idTranscricaoOps = String(parametros.transcript || '').trim();
-    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+)$/.test(idTranscricaoOps)) {
-      throw new Error('ID de transcricao/interacao operacional invalido.');
+    if (!/^(?:TLDV_[A-Za-z0-9_-]+|TRA-[A-Za-z0-9-]+|INT-[A-Za-z0-9-]+|[0-9a-f]{24})$/i.test(idTranscricaoOps)) {
+      throw new Error('ID de transcricao/interacao/deal operacional invalido.');
     }
     if (typeof OPS_AUDITAR_PUBLICAR_TRANSCRICAO !== 'function') {
       throw new Error('Runner operacional de auditoria nao esta disponivel no HEAD do Apps Script.');

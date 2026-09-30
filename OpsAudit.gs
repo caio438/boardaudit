@@ -275,6 +275,35 @@ function opsResolverAlvoAuditoria_(alvo) {
     if (candidataExterna) interacao = candidataExterna;
   }
 
+  if (!interacao && /^[0-9a-f]{24}$/i.test(chave)) {
+    const candidatas = audV3Ler_('INTERACOES').filter(function(item) {
+      const linkCrm = String(item.LINK_CRM || '');
+      const match = linkCrm.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);
+      return match && String(match[1]).toLowerCase() === chave.toLowerCase();
+    }).map(function(item) {
+      return {
+        interacao: item,
+        transcricao: audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', item.ID_INTERACAO)
+      };
+    }).filter(function(item) {
+      return item.transcricao && String(item.transcricao.STATUS || '').toUpperCase() === 'CONCLUIDA';
+    });
+
+    if (candidatas.length > 1) {
+      const ids = candidatas.map(function(item) {
+        return String(item.interacao.ID_INTERACAO || '');
+      }).filter(Boolean);
+      throw new Error(
+        'Mais de uma transcricao concluida esta vinculada ao deal ' + chave +
+        '. Informe o ID exato da interacao: ' + ids.join(', ')
+      );
+    }
+    if (candidatas.length === 1) {
+      interacao = candidatas[0].interacao;
+      transcricao = candidatas[0].transcricao;
+    }
+  }
+
   if (!transcricao && interacao) {
     transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacao.ID_INTERACAO);
   }

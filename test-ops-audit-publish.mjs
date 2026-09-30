@@ -9,7 +9,7 @@ const workflow = fs.readFileSync(
   'utf8'
 );
 const previewWorkflow = fs.readFileSync(
-  new URL('./.github/workflows-archive/ops-audit-preview.yml', import.meta.url),
+  new URL('./.github/workflows/ops-audit-preview.yml', import.meta.url),
   'utf8'
 );
 const deploy = fs.readFileSync(
@@ -45,6 +45,26 @@ assert.ok(
 assert.ok(
   ops.includes("audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', interacao.ID_INTERACAO)"),
   'Runner nao encontra a transcricao interna pela interacao.'
+);
+
+assert.ok(
+  ops.includes("/^[0-9a-f]{24}$/i.test(chave)"),
+  'Runner nao aceita o ID exato de um deal do RD como alvo.'
+);
+
+assert.ok(
+  ops.includes("audV3Ler_('INTERACOES').filter"),
+  'Runner nao procura a interacao vinculada ao deal.'
+);
+
+assert.ok(
+  ops.includes('Mais de uma transcricao concluida esta vinculada ao deal'),
+  'Runner nao bloqueia deal ambiguo com mais de uma transcricao concluida.'
+);
+
+assert.ok(
+  code.includes('|[0-9a-f]{24})$/i'),
+  'Rota autenticada nao aceita um ID de deal validado.'
 );
 
 assert.ok(
