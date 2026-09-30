@@ -1,0 +1,52 @@
+name: Diagnose Apps Script run function
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: "${{ startsWith(github.event.head_commit.message, 'Diagnose run function:') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Diagnose short response
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp run-function QA_HITECNET_STEC_FORCAR_AUDITORIA --params '[]' > /tmp/run.txt 2>&1 || true
+          bytes="$(wc -c < /tmp/run.txt)"
+          echo "OUTPUT_BYTES=$bytes"
+          if [ "$bytes" -le 200 ]; then
+            cat /tmp/run.txt
+          else
+            echo "OUTPUT_REDACTED_TOO_LARGE=1"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/run.txt
