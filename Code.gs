@@ -162,6 +162,8 @@ const OPERACAO_CLIENTES_VOLUMBERG = Object.freeze({
   impostograma: { carteira: 'CAIO', gestores: 'Bruno', sdrs: 'Geovana/Hedivânia', closers: 'Adriana/Silvia' },
   informaction: { carteira: 'THIAGO', gestores: 'Álvaro', sdrs: 'Denise', closers: '' },
   ingee: { carteira: 'CAIO', gestores: 'Juliana/Maíra/Jéssica', sdrs: 'Juliana/Maíra/Jéssica', closers: 'Juliana/Maíra/Jéssica' },
+  sinergia: { carteira: 'CAIO', gestores: 'Juliana/Maíra/Jéssica', sdrs: 'Juliana/Maíra/Jéssica', closers: 'Juliana/Maíra/Jéssica' },
+  semeio_cbi: { carteira: 'CAIO', gestores: 'Juliana/Maíra/Jéssica', sdrs: 'Juliana/Maíra/Jéssica', closers: 'Juliana/Maíra/Jéssica' },
   koreos: { carteira: 'CAIO', gestores: 'Lucas', sdrs: 'Gabriel', closers: 'Lucas' },
   liberado_app: { carteira: 'CAIO', gestores: 'Jonas/Milton', sdrs: 'Karen/Nathalia', closers: 'Bruno/Max/Nathalia/Fernando' },
   manytalks: { carteira: 'THIAGO', gestores: '', sdrs: '', closers: '' },
@@ -257,7 +259,22 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   ingee: [
     { nome: 'Procedimentos SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1GTgkpQEE6P3DAHaMn1M3HCWv-FWAK311' },
-    { nome: 'Procedimentos Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/11kzEOpsgHxSPcVBBtir_QGaDhm410ZIJ' }
+    { nome: 'Pitch SDR Inbound V3', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1KofStHTZtsmxqpODc56l5H7VcxvKR8ifSFP609VYGT8/edit' },
+    { nome: 'Procedimentos Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/11kzEOpsgHxSPcVBBtir_QGaDhm410ZIJ' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1emfSRU0xAQaASMkTfNDvtMEdW6o39jgV/edit' }
+  ],
+  sinergia: [
+    { nome: 'Procedimentos SDR - Grupo Sinergia', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1GTgkpQEE6P3DAHaMn1M3HCWv-FWAK311' },
+    { nome: 'Pitch SDR Inbound V2', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1j1BgPz9jRoK81sei3KD6cSrXZ1WrswvJzRoMoLxsVqg/edit' },
+    { nome: 'Procedimentos Closer - Grupo Sinergia', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/11kzEOpsgHxSPcVBBtir_QGaDhm410ZIJ' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1TYS__xxn_pP6RJ6gpiQUXUGZPqAzky-B/edit' },
+    { nome: 'Repertório SPIN Closer', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1MXJLWa8cu2o29lj6HEKbxUvpzJWJwxND2iBHbGTfogQ/edit' }
+  ],
+  semeio_cbi: [
+    { nome: 'Procedimentos SDR - Grupo Sinergia', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1GTgkpQEE6P3DAHaMn1M3HCWv-FWAK311' },
+    { nome: 'Pitch SDR Inbound V1', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1mo4Qq2o7VIiZrdPZJOwMFJKfkr18rtukkp51tW4q9yU/edit' },
+    { nome: 'Script de venda Semeio', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/16WCw-AFk0cVEblPIl37yOBE8l_ldIjxO/edit' },
+    { nome: 'Procedimentos Closer - Grupo Sinergia', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/11kzEOpsgHxSPcVBBtir_QGaDhm410ZIJ' }
   ],
   tecnosoft: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1JezzkU9Htms4icYRvw7ic86f4DsU0j0p' },
@@ -286,6 +303,215 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
     { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1ZO0eVyLIzcPWuTxPkHz0Xa8vs0P6QoHL' }
   ]
 });
+
+const PITCHES_COMPLIANCE_VOLUMBERG = Object.freeze({
+  ingee: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[INGEE SOFTWARE] Pitch de Qualificação SDR Inbound - V3',
+      numeroVersao: '3',
+      urlDocumento: 'https://docs.google.com/document/d/1KofStHTZtsmxqpODc56l5H7VcxvKR8ifSFP609VYGT8/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'INGEE INOVAÇÃO SUSTENTÁVEL - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1emfSRU0xAQaASMkTfNDvtMEdW6o39jgV/edit'
+    })
+  }),
+  sinergia: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[SINERGIA] Pitch de Qualificação SDR Inbound - V2',
+      numeroVersao: '2',
+      urlDocumento: 'https://docs.google.com/document/d/1j1BgPz9jRoK81sei3KD6cSrXZ1WrswvJzRoMoLxsVqg/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'Sinergia - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1TYS__xxn_pP6RJ6gpiQUXUGZPqAzky-B/edit'
+    })
+  }),
+  semeio_cbi: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[SEMEIO] Pitch de Qualificação SDR Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1mo4Qq2o7VIiZrdPZJOwMFJKfkr18rtukkp51tW4q9yU/edit'
+    }),
+    CLOSER: null
+  })
+});
+
+function complianceNormalizarUrl_(valor) {
+  return String(valor || '').trim().replace(/[?#].*$/, '').replace(/\/$/, '');
+}
+
+function complianceClientePorChave_(chave) {
+  const normalizada = String(chave || '').trim().toLowerCase();
+  const catalogo = CATALOGO_CLIENTES_AUDIT.find(item => String(item.chave) === normalizada);
+  if (!catalogo) throw new Error('Cliente fora do catálogo compliance: ' + normalizada + '.');
+  const clientes = lerObjetos_(APP.sheets.clientes).filter(item => item.ID_CLIENTE);
+  let cliente = clientes.find(item => String(item.CHAVE_VOLUMBERG || '') === normalizada);
+  if (!cliente) {
+    const nomesAceitos = [catalogo.nome].concat(catalogo.aliases || []).map(normalizarTextoComparacao_);
+    cliente = clientes.find(item => nomesAceitos.includes(normalizarTextoComparacao_(item.NOME_CLIENTE)));
+  }
+  if (!cliente) throw new Error('Cliente ' + catalogo.nome + ' não encontrado na base. Rode a sincronização de clientes antes do compliance.');
+  return { cliente: cliente, catalogo: catalogo };
+}
+
+function complianceAtualizarCadastroCliente_(cliente, catalogo) {
+  const operacao = OPERACAO_CLIENTES_VOLUMBERG[catalogo.chave] || {};
+  const materialPrincipal = (MATERIAIS_CATALOGO_VOLUMBERG[catalogo.chave] || [])
+    .find(material => material.funcao === 'SDR' && material.status !== 'SEM_ACESSO');
+  const atualizacao = {
+    NOME_CLIENTE: catalogo.nome,
+    CHAVE_VOLUMBERG: catalogo.chave,
+    TIPO_CLIENTE: String(catalogo.tipoCliente || 'EMPRESA').toUpperCase(),
+    GRUPO_CLIENTE: String(catalogo.grupoCliente || ''),
+    CARTEIRA_VOLUM: operacao.carteira || String(cliente.CARTEIRA_VOLUM || ''),
+    EXECUTOR_VOLUM: operacao.carteira === 'CAIO' ? 'Caio Cappelazzo' : (operacao.carteira === 'THIAGO' ? 'Thiago Custodio' : String(cliente.EXECUTOR_VOLUM || '')),
+    URL_MATERIAIS: materialPrincipal ? materialPrincipal.url : String(cliente.URL_MATERIAIS || ''),
+    STATUS: 'ATIVO',
+    ATUALIZADO_EM: new Date()
+  };
+  atualizarPorCampo_(APP.sheets.clientes, 'ID_CLIENTE', cliente.ID_CLIENTE, atualizacao);
+  Object.keys(atualizacao).forEach(chave => { cliente[chave] = atualizacao[chave]; });
+  return atualizacao;
+}
+
+function complianceSincronizarPitchAtual_(cliente, tipo, definicao) {
+  const agora = new Date();
+  const dataHoje = Utilities.formatDate(agora, APP.timezone, 'yyyy-MM-dd');
+  const fimVersaoAnterior = Utilities.formatDate(
+    new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - 1),
+    APP.timezone,
+    'yyyy-MM-dd'
+  );
+  const pitches = lerObjetos_(APP.sheets.pitches).filter(item => item.ID_PITCH);
+  const doTipo = pitches.filter(item =>
+    String(item.ID_CLIENTE || '') === String(cliente.ID_CLIENTE) &&
+    String(item.TIPO_PITCH || '').toUpperCase() === String(tipo || '').toUpperCase()
+  );
+
+  if (!definicao) {
+    let desativados = 0;
+    doTipo.forEach(item => {
+      if (!normalizarBooleano_(item.PITCH_ATUAL)) return;
+      atualizarPorCampo_(APP.sheets.pitches, 'ID_PITCH', item.ID_PITCH, {
+        PITCH_ATUAL: 'NAO',
+        DATA_VIGENCIA_FIM: item.DATA_VIGENCIA_FIM || fimVersaoAnterior,
+        ATUALIZADO_EM: agora
+      });
+      desativados++;
+    });
+    return {
+      tipo: tipo,
+      status: 'BLOQUEADO_SEM_FONTE_OFICIAL',
+      desativados: desativados,
+      mensagem: 'Nenhum pitch oficial específico foi localizado nos materiais informados.'
+    };
+  }
+
+  const conteudo = String(jornadaLerDocumentoUrl_(definicao.urlDocumento) || '').trim();
+  if (conteudo.length < 20) {
+    throw new Error('Não foi possível ler o documento oficial do pitch ' + tipo + ' de ' + cliente.NOME_CLIENTE + '.');
+  }
+
+  const urlAlvo = complianceNormalizarUrl_(definicao.urlDocumento);
+  let existente = doTipo.find(item => complianceNormalizarUrl_(item.URL_DOCUMENTO) === urlAlvo) || null;
+  if (!existente) {
+    existente = doTipo.find(item =>
+      normalizarTextoComparacao_(item.NOME_VERSAO) === normalizarTextoComparacao_(definicao.nomeVersao)
+    ) || null;
+  }
+
+  doTipo.forEach(item => {
+    if (existente && String(item.ID_PITCH) === String(existente.ID_PITCH)) return;
+    if (!normalizarBooleano_(item.PITCH_ATUAL)) return;
+    atualizarPorCampo_(APP.sheets.pitches, 'ID_PITCH', item.ID_PITCH, {
+      PITCH_ATUAL: 'NAO',
+      DATA_VIGENCIA_FIM: item.DATA_VIGENCIA_FIM || fimVersaoAnterior,
+      ATUALIZADO_EM: agora
+    });
+  });
+
+  const objeto = {
+    ID_PITCH: existente ? existente.ID_PITCH : gerarId_('PIT'),
+    ID_CLIENTE: cliente.ID_CLIENTE,
+    TIPO_PITCH: String(tipo || '').toUpperCase(),
+    NOME_VERSAO: definicao.nomeVersao,
+    NUMERO_VERSAO: String(definicao.numeroVersao || ''),
+    CONTEUDO_PITCH: conteudo,
+    DATA_VIGENCIA_INICIO: existente ? (existente.DATA_VIGENCIA_INICIO || dataHoje) : dataHoje,
+    DATA_VIGENCIA_FIM: '',
+    PITCH_ATUAL: 'SIM',
+    STATUS: 'ATIVO',
+    URL_DOCUMENTO: definicao.urlDocumento,
+    CRIADO_EM: existente ? existente.CRIADO_EM : agora,
+    ATUALIZADO_EM: agora
+  };
+  if (existente) atualizarPorCampo_(APP.sheets.pitches, 'ID_PITCH', objeto.ID_PITCH, objeto);
+  else adicionarObjeto_(APP.sheets.pitches, objeto);
+
+  return {
+    tipo: tipo,
+    status: 'COMPLIANT',
+    idPitch: objeto.ID_PITCH,
+    nomeVersao: objeto.NOME_VERSAO,
+    numeroVersao: objeto.NUMERO_VERSAO,
+    urlDocumento: objeto.URL_DOCUMENTO,
+    caracteres: conteudo.length,
+    criado: !existente
+  };
+}
+
+function SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG(chave) {
+  if (!boardModoManual_()) {
+    throw new Error('O compliance de materiais só pode ser executado com BOARD_MODE=MANUAL.');
+  }
+  const chaveNormalizada = String(chave || '').trim().toLowerCase();
+  if (!['ingee', 'sinergia', 'semeio_cbi'].includes(chaveNormalizada)) {
+    throw new Error('Cliente não liberado para esta rotina de compliance.');
+  }
+
+  criarEstruturaBanco_();
+  const resolvido = complianceClientePorChave_(chaveNormalizada);
+  const cliente = resolvido.cliente;
+  const catalogo = resolvido.catalogo;
+  complianceAtualizarCadastroCliente_(cliente, catalogo);
+
+  const materiais = sincronizarMateriaisCatalogoVolumberg_([cliente]);
+  const operacao = sincronizarOperacaoCatalogoVolumberg_([cliente]);
+  const definicoesPitch = PITCHES_COMPLIANCE_VOLUMBERG[chaveNormalizada] || {};
+  const pitches = [
+    complianceSincronizarPitchAtual_(cliente, 'SDR', definicoesPitch.SDR || null),
+    complianceSincronizarPitchAtual_(cliente, 'CLOSER', definicoesPitch.CLOSER || null)
+  ];
+
+  SpreadsheetApp.flush();
+  limparCachesDados_();
+  registrarLog_(
+    'COMPLIANCE',
+    'SINCRONIZAR_CLIENTE',
+    catalogo.nome + ' | materiais=' + materiais.criados + ' | equipe=' + operacao.membrosCriados + ' | pitches=' + pitches.map(item => item.status).join('/')
+  );
+
+  return {
+    sucesso: true,
+    boardMode: BOARD_MODE,
+    chave: chaveNormalizada,
+    cliente: { idCliente: cliente.ID_CLIENTE, nome: catalogo.nome, grupo: catalogo.grupoCliente || '' },
+    equipe: {
+      gestores: (OPERACAO_CLIENTES_VOLUMBERG[chaveNormalizada] || {}).gestores || '',
+      sdrs: (OPERACAO_CLIENTES_VOLUMBERG[chaveNormalizada] || {}).sdrs || '',
+      closers: (OPERACAO_CLIENTES_VOLUMBERG[chaveNormalizada] || {}).closers || '',
+      membrosCriados: operacao.membrosCriados
+    },
+    materiais: materiais,
+    pitches: pitches,
+    iaConsumida: false,
+    rdPublicado: false,
+    auditoriasExecutadas: 0
+  };
+}
 
 /**
  * FUNÇÃO GLOBAL PRINCIPAL.
@@ -332,6 +558,19 @@ function doGet(e) {
     }
     return ContentService
       .createTextOutput(JSON.stringify(DESLIGAR_TODAS_AUTOMACOES_BOARD(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_sync_sales_compliance || '') === '1') {
+    const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOps || !efetivoOps || ativoOps !== efetivoOps) {
+      throw new Error('Compliance de vendas permitido somente para a conta proprietaria autenticada.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG(
+        String(parametros.client || '')
+      ), null, 2))
       .setMimeType(ContentService.MimeType.JSON);
   }
 

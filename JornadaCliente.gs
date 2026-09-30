@@ -1312,9 +1312,42 @@ function jornadaLerArquivoTranscricao_(arquivo) {
   return jornadaLerArquivoTranscricaoDetalhe_(arquivo).conteudo;
 }
 
+function jornadaExtrairTextoDocx_(blob) {
+  try {
+    const partes = Utilities.unzip(blob);
+    const documentoXml = partes.find(function(parte) {
+      return String(parte.getName() || '') === 'word/document.xml';
+    });
+    if (!documentoXml) return '';
+    const documento = XmlService.parse(documentoXml.getDataAsString('UTF-8'));
+    const saida = [];
+    const visitar = function(elemento) {
+      const nome = String(elemento.getName ? elemento.getName() : '');
+      if (nome === 't') saida.push(String(elemento.getText() || ''));
+      else if (nome === 'tab') saida.push('\t');
+      else if (nome === 'br' || nome === 'cr') saida.push('\n');
+      (elemento.getChildren ? elemento.getChildren() : []).forEach(visitar);
+      if (nome === 'p') saida.push('\n');
+      else if (nome === 'tr') saida.push('\n');
+      else if (nome === 'tc') saida.push('\t');
+    };
+    visitar(documento.getRootElement());
+    return saida.join('')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } catch (erro) {
+    return '';
+  }
+}
+
 function jornadaLerArquivoTranscricaoDetalhe_(arquivo) {
   try {
-    if (String(arquivo.getMimeType()) !== String(MimeType.GOOGLE_DOCS)) {
+    const mime = String(arquivo.getMimeType() || '');
+    if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return { conteudo: jornadaExtrairTextoDocx_(arquivo.getBlob()), aba: '', usouAbaTranscricao: false };
+    }
+    if (mime !== String(MimeType.GOOGLE_DOCS)) {
       return { conteudo: String(arquivo.getBlob().getDataAsString('UTF-8') || '').trim(), aba: '', usouAbaTranscricao: false };
     }
     const documento = DocumentApp.openById(arquivo.getId());

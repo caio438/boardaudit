@@ -18,6 +18,19 @@ assert.match(code, /\{ chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoClie
 assert.match(code, /\{ chave: 'ingee', nome: 'INGEE', aliases: \['Ingee'\], grupoCliente: 'Grupo Sinergia' \}/);
 assert.match(code, /\{ chave: 'sinergia', nome: 'Sinergia', grupoCliente: 'Grupo Sinergia' \}/);
 assert.match(code, /\{ chave: 'semeio_cbi', nome: 'Semeio\/CBI', aliases: \['Semeio', 'Semeio CBI', 'Grupo Semeio', 'CBI'\], grupoCliente: 'Grupo Sinergia' \}/);
+assert.match(code, /sinergia: \{ carteira: 'CAIO', gestores: 'Juliana\/Maíra\/Jéssica', sdrs: 'Juliana\/Maíra\/Jéssica', closers: 'Juliana\/Maíra\/Jéssica' \}/);
+assert.match(code, /semeio_cbi: \{ carteira: 'CAIO', gestores: 'Juliana\/Maíra\/Jéssica', sdrs: 'Juliana\/Maíra\/Jéssica', closers: 'Juliana\/Maíra\/Jéssica' \}/);
+assert.match(code, /const PITCHES_COMPLIANCE_VOLUMBERG = Object\.freeze/);
+assert.match(code, /\[INGEE SOFTWARE\] Pitch de Qualificação SDR Inbound - V3/);
+assert.match(code, /\[SINERGIA\] Pitch de Qualificação SDR Inbound - V2/);
+assert.match(code, /\[SEMEIO\] Pitch de Qualificação SDR Inbound - V1/);
+assert.match(code, /semeio_cbi:[\s\S]*CLOSER: null/);
+assert.match(code, /function SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG\(chave\)/);
+assert.match(code, /iaConsumida: false/);
+assert.match(code, /rdPublicado: false/);
+assert.match(code, /auditoriasExecutadas: 0/);
+assert.match(jornada, /function jornadaExtrairTextoDocx_\(blob\)/);
+assert.match(jornada, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
 assert.doesNotMatch(code, /nome: 'INGEE'.*aliases: \[[^\]]*Sinergia[^\]]*\]/);
 
 assert.match(code, /'TIPO_CLIENTE', 'GRUPO_CLIENTE'/);
