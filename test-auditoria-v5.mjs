@@ -44,8 +44,8 @@ assert.ok(front.includes("Você pode vincular a negociação do RD agora. O vín
 assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Campos manuais do histórico não protegem o foco contra eventos do card.');
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
-assert.ok(circle.includes('function salvarLinkCircleAuditoria(dados)'), 'Backend não possui a ação chamada pelo campo manual de link do Circle no histórico.');
-assert.match(circle, /function salvarLinkCircleAuditoria\(dados\)[\s\S]*?CIRCLE_POST_URL:\s*url/, 'Salvar link do Circle não persiste a URL informada.');
+assert.ok(audit.includes('function salvarLinkCircleAuditoria(dados)'), 'Backend não possui a ação chamada pelo campo manual de link do Circle no histórico.');
+assert.match(audit, /function salvarLinkCircleAuditoria\(dados\)[\s\S]*?CIRCLE_POST_URL:\s*url/, 'Salvar link do Circle não persiste a URL informada.');
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('id="circleManualPreview"'), 'Modal do Circle precisa manter a prévia do conteúdo.');
 assert.ok(front.includes('background:#fff;color:#111827'), 'Prévia clara do Circle precisa usar texto escuro explícito, inclusive no modo dark.');
