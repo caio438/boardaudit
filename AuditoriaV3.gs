@@ -7861,6 +7861,11 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
 }
 
 function instalarGatilhosAutomacaoLigacoesV3_() {
+  if (boardModoManual_()) {
+    removerGatilhosAutomacaoLigacoesV3_();
+    salvarConfiguracao_(AUTOMACAO_LIGACOES_V3.chaveAtiva, 'NAO');
+    return false;
+  }
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === AUTOMACAO_LIGACOES_V3.handler) ScriptApp.deleteTrigger(trigger);
   });
@@ -7882,7 +7887,8 @@ function removerGatilhosAutomacaoLigacoesV3_() {
 
 function salvarAutomacaoLigacoesV3(dados) {
   dados = dados || {};
-  const ativa = Boolean(dados.ativa);
+  const solicitada = Boolean(dados.ativa);
+  const ativa = boardModoManual_() ? false : solicitada;
   const duracao = Math.max(30, Number(dados.duracaoSegundos || AUTOMACAO_LIGACOES_V3.duracaoPadrao));
   const maxDia = Math.min(15, Math.max(1, Number(dados.maxDia || AUTOMACAO_LIGACOES_V3.maxDiaPadrao)));
   salvarConfiguracao_(AUTOMACAO_LIGACOES_V3.chaveAtiva, ativa ? 'SIM' : 'NAO');
@@ -7899,10 +7905,17 @@ function salvarAutomacaoLigacoesV3(dados) {
   } else {
     removerGatilhosAutomacaoLigacoesV3_();
   }
-  return { sucesso: true, mensagem: ativa ? 'Automação salva e programada.' : 'Automação pausada.', automacao: obterStatusAutomacaoLigacoesV3() };
+  return {
+    sucesso: true,
+    ignorada: boardModoManual_() && solicitada,
+    modo: boardModoManual_() ? 'MANUAL' : 'AUTOMATICO',
+    mensagem: ativa ? 'Automação salva e programada.' : (boardModoManual_() ? 'BOARD_MODE=MANUAL: automação pausada.' : 'Automação pausada.'),
+    automacao: obterStatusAutomacaoLigacoesV3()
+  };
 }
 
 function INSTALAR_AUTOMACAO_LIGACOES_V3() {
+  if (boardModoManual_()) return boardRespostaManual_('INSTALAR_AUTOMACAO_LIGACOES_V3');
   return salvarAutomacaoLigacoesV3({
     ativa: true,
     duracaoSegundos: AUTOMACAO_LIGACOES_V3.duracaoPadrao,
@@ -7935,6 +7948,7 @@ function DIAGNOSTICAR_AUTOMACAO_LIGACOES_V3() {
 }
 
 function EXECUTAR_AUTOMACAO_LIGACOES_V3() {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_AUTOMACAO_LIGACOES_V3');
   const config = audV3ConfigAutomacaoLigacoes_();
   const hoje = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
   if (!config.ativa) return { sucesso: true, ignorada: true, mensagem: 'Automação pausada.' };
