@@ -146,7 +146,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.2\.14'/, 'O engine não foi versionado para a correção de rastreabilidade Closer v6.2.14.');
+assert.match(audit, /versao:\s*'6\.3\.0'/, 'O engine não foi versionado para o schema canônico Closer v6.3.0.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -368,7 +368,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.2\.14'/, 'Engine de auditoria não foi versionado para a correção de rastreabilidade Closer v6.2.14.');
+assert.match(audit, /versao:\s*'6\.3\.0'/, 'Engine de auditoria não foi versionado para o schema canônico Closer v6.3.0.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
@@ -495,7 +495,7 @@ assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VA
 assert.ok(rd.includes('audV3HashFonte_'), 'RD não reconfirma a integridade da fonte.');
 assert.ok(rd.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, i, a.ENGINE_VERSAO)"), 'RD precisa reutilizar a normalização persistida antes de recalcular o hash da auditoria.');
 assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0"), 'Plano de Otimização ainda pode ser enviado ao RD CRM.');
-assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloser_(c);"), 'Closer não usa o modelo objetivo de anotação.');
+assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloserCanonico_(c);"), 'Closer não usa o modelo canônico compacto de anotação.');
 assert.ok(rd.includes("if(tipo==='SDR')return audRdTextoSdr_(c);"), 'SDR não usa exclusivamente o modelo objetivo de anotação.');
 assert.ok(rd.includes("Tipo de auditoria não suportado para publicação no RD"), 'Dispatcher do RD não bloqueia tipos fora de SDR/Closer.');
 assert.ok(!rd.includes('TESTAR_PREVIA_RD_STEC'), 'Função temporária de prévia STEC ainda está em produção.');
