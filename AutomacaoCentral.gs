@@ -45,6 +45,10 @@ function automacaoCentralInstalada_() {
 }
 
 function instalarAutomacaoCentral19h_() {
+  if (boardModoManual_()) {
+    desinstalarAutomacaoCentral19h_();
+    return obterStatusAutomacaoCentral19h();
+  }
   automacaoCentralRemoverAcionadores_(automacaoCentralHandlersLegados_());
   automacaoCentralRemoverAcionadores_([
     AUTOMACAO_CENTRAL_19H.handlerDiario,
@@ -65,6 +69,7 @@ function instalarAutomacaoCentral19h_() {
 }
 
 function INSTALAR_AUTOMACAO_CENTRAL_19H() {
+  if (boardModoManual_()) return boardRespostaManual_('INSTALAR_AUTOMACAO_CENTRAL_19H');
   return { sucesso: true, automacao: instalarAutomacaoCentral19h_() };
 }
 
@@ -86,6 +91,7 @@ function desinstalarAutomacaoCentral19h_() {
 }
 
 function INSTALAR_AUTOMACOES_OPERACIONAIS() {
+  if (boardModoManual_()) return boardRespostaManual_('INSTALAR_AUTOMACOES_OPERACIONAIS');
   desinstalarAutomacaoCentral19h_();
 
   const resultado = {
@@ -134,6 +140,7 @@ function obterStatusAutomacaoCentral19h() {
 }
 
 function automacaoCentralAgendarContinuacao_(fase, atrasoMs) {
+  if (boardModoManual_()) return false;
   const props = PropertiesService.getScriptProperties();
   props.setProperty(AUTOMACAO_CENTRAL_19H.chaveFase, String(fase || 'AGENDA'));
   automacaoCentralRemoverAcionadores_([AUTOMACAO_CENTRAL_19H.handlerContinuacao]);
@@ -144,6 +151,7 @@ function automacaoCentralAgendarContinuacao_(fase, atrasoMs) {
 }
 
 function automacaoCentralPrepararRd_() {
+  if (boardModoManual_()) return boardRespostaManual_('automacaoCentralPrepararRd_');
   if (String(obterConfiguracao_('RD_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() !== 'SIM') {
     return { sucesso: true, ignorada: true, mensagem: 'RD automático desativado.' };
   }
@@ -167,6 +175,7 @@ function automacaoCentralConcluir_(resumo) {
 }
 
 function automacaoCentralExecutarFase_() {
+  if (boardModoManual_()) return boardRespostaManual_('automacaoCentralExecutarFase_');
   const props = PropertiesService.getScriptProperties();
   const rodandoEm = Number(props.getProperty(AUTOMACAO_CENTRAL_19H.chaveRodandoEm) || 0);
   if (rodandoEm && Date.now() - rodandoEm < 20 * 60 * 1000) {
@@ -224,6 +233,7 @@ function automacaoCentralExecutarFase_() {
 }
 
 function EXECUTAR_AUTOMACAO_CENTRAL_19H() {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_AUTOMACAO_CENTRAL_19H');
   const props = PropertiesService.getScriptProperties();
   props.setProperty(AUTOMACAO_CENTRAL_19H.chaveDia, Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
   props.setProperty(AUTOMACAO_CENTRAL_19H.chaveFase, 'AGENDA');
@@ -233,5 +243,6 @@ function EXECUTAR_AUTOMACAO_CENTRAL_19H() {
 }
 
 function EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO() {
+  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO');
   return automacaoCentralExecutarFase_();
 }
