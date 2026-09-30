@@ -80,12 +80,25 @@ const fimAbrirHistorico = front.indexOf('function chaveDataHistorico_', inicioAb
 assert.ok(inicioAbrirHistorico >= 0 && fimAbrirHistorico > inicioAbrirHistorico, 'Não foi possível isolar a abertura da auditoria pelo histórico.');
 const trechoAbrirHistorico = front.slice(inicioAbrirHistorico, fimAbrirHistorico);
 assert.ok(
-  trechoAbrirHistorico.includes('auditoriasOperacionaisFront_().find'),
-  'O botão Ver auditoria precisa localizar também a auditoria atual mesclada à fonte operacional.'
+  trechoAbrirHistorico.includes('.obterAuditoriaHistoricoV3(id)'),
+  'O botão Ver auditoria precisa buscar o registro exato no backend em vez de depender do cache da tela.'
 );
 assert.ok(
-  !trechoAbrirHistorico.includes('(estado.auditorias || []).find'),
-  'O botão Ver auditoria ainda depende apenas do estado bruto e pode falhar silenciosamente para a auditoria atual.'
+  trechoAbrirHistorico.includes('Carregando auditoria...'),
+  'O clique em Ver auditoria precisa dar retorno visual imediato enquanto carrega o registro.'
+);
+assert.ok(
+  trechoAbrirHistorico.includes('withFailureHandler'),
+  'O botão Ver auditoria precisa exibir uma falha concreta quando a leitura do backend não funcionar.'
+);
+assert.ok(
+  audit.includes('function obterAuditoriaHistoricoV3(idAuditoria)'),
+  'Backend não expõe leitura pontual da auditoria para o histórico.'
+);
+assert.match(
+  audit,
+  /function obterAuditoriaHistoricoV3\(idAuditoria\)[\s\S]*?audV3Localizar_\('AUDITORIAS', 'ID_AUDITORIA', id\)[\s\S]*?return audV3AuditoriaFront_\(auditoria\)/,
+  'Leitura pontual da auditoria não resolve o ID persistido e não devolve o mesmo DTO usado pelo Board.'
 );
 assert.ok(front.includes('Auditorias realizadas'), 'Resumo não separa mais auditorias realizadas de vínculo com CRM.');
 assert.ok(front.includes('Com vínculo CRM'), 'Resumo não possui contador separado de vínculo com CRM.');
