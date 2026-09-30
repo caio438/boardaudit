@@ -2687,6 +2687,21 @@
     </div>
   </div>
 
+  <div id="modalAuditoriaHistorico" class="modal-simples" aria-hidden="true">
+    <div class="modal-conteudo" style="max-width:1180px;max-height:92vh;overflow:auto">
+      <div class="section-title">
+        <div>
+          <h3>Auditoria</h3>
+          <p id="auditoriaHistoricoModalResumo">Carregando auditoria...</p>
+        </div>
+        <button class="btn secondary" type="button" onclick="fecharAuditoriaHistoricoModal_()">Fechar</button>
+      </div>
+      <div id="auditoriaHistoricoModalConteudo">
+        <div class="empty">Carregando auditoria...</div>
+      </div>
+    </div>
+  </div>
+
   <div id="modalRdAuditoria" class="modal-simples" aria-hidden="true">
     <div class="modal-conteudo" style="max-width:900px">
       <div class="section-title">
@@ -8347,21 +8362,72 @@
     if (cabecalho) cabecalho.setAttribute('aria-expanded', 'true');
   }
 
+  function fecharAuditoriaHistoricoModal_() {
+    const modal = document.getElementById('modalAuditoriaHistorico');
+    if (!modal) return;
+    modal.classList.remove('aberto');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function abrirAuditoriaHistoricoModalCarregando_() {
+    const modal = document.getElementById('modalAuditoriaHistorico');
+    const resumo = document.getElementById('auditoriaHistoricoModalResumo');
+    const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
+    if (resumo) resumo.textContent = 'Carregando auditoria...';
+    if (conteudo) conteudo.innerHTML = '<div class="empty">Carregando auditoria...</div>';
+    if (modal) {
+      modal.classList.add('aberto');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function renderizarAuditoriaHistoricoModal_(auditoria) {
+    const resumo = document.getElementById('auditoriaHistoricoModalResumo');
+    const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
+    if (!conteudo) return;
+
+    const r = auditoria.resultado || {};
+    const metadados = r.metadados || {};
+    const tipo = String(auditoria.tipoAuditoria || 'SDR').toUpperCase();
+    const responsavel = metadados.closer || metadados.sdr || auditoria.vendedor || 'Não identificado';
+    if (resumo) {
+      resumo.textContent = [
+        auditoria.cliente || 'Cliente não identificado',
+        tipo === 'CLOSER' ? 'Closer' : (tipo === 'PLANO' ? 'Plano de Otimização' : 'SDR'),
+        responsavel
+      ].join(' • ');
+    }
+
+    conteudo.innerHTML = `
+      <div class="audit-sheet">
+        <h2>Auditoria - ${escapeHtml(tipo)}</h2>
+        <hr>
+        <div class="audit-meta">
+          <div><small>Cliente</small><strong>${escapeHtml(auditoria.cliente || '-')}</strong></div>
+          <div><small>Empresa / interação</small><strong>${escapeHtml(empresaAuditoriaExibicao_(auditoria))}</strong></div>
+          <div><small>Responsável</small><strong>${escapeHtml(responsavel)}</strong></div>
+          <div><small>Data</small><strong>${escapeHtml(formatarDataDia(auditoria.dataInteracao))}</strong></div>
+          <div><small>Base utilizada</small><strong>${escapeHtml(auditoria.pitchNome || '-')}${auditoria.pitchVersao ? ' - v' + escapeHtml(auditoria.pitchVersao) : ''}</strong></div>
+          <div><small>Status</small><span class="status ${auditoria.status === 'APROVADA' ? 'success' : 'warning'}">${escapeHtml(auditoria.status || 'EM_REVISAO')}</span></div>
+          <div style="grid-column:span 2"><small>Score global</small><strong>${auditoria.score === null || auditoria.score === undefined || auditoria.score === '' ? 'N/A' : escapeHtml(auditoria.score) + ' / 5 (' + escapeHtml(auditoria.scorePercentual) + '%)'}</strong></div>
+        </div>
+        <div class="audit-report">${renderizarConteudoAuditoriaV3(r, tipo, auditoria)}</div>
+        ${renderizarJsonFormatadoAuditoria_(r)}
+      </div>
+    `;
+  }
+
   function abrirAuditoriaHistoricoV3(idAuditoria) {
     const id = String(idAuditoria || '').trim();
     if (!id) return mostrarToast('Auditoria inválida.', 'error');
 
-    const alvo = document.getElementById('resultadoAuditoriaAtual');
-    if (alvo) {
-      alvo.style.display = 'block';
-      alvo.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Carregando auditoria...</div></div>';
-      alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    abrirAuditoriaHistoricoModalCarregando_();
 
     google.script.run
       .withSuccessHandler(auditoria => {
         if (!auditoria || !auditoria.idAuditoria) {
-          if (alvo) alvo.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">A auditoria não foi encontrada.</div></div>';
+          const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
+          if (conteudo) conteudo.innerHTML = '<div class="empty">A auditoria não foi encontrada.</div>';
           return mostrarToast('Não foi possível localizar esta auditoria.', 'error');
         }
 
@@ -8372,21 +8438,21 @@
         else estado.auditorias.unshift(auditoria);
 
         try {
-          renderizarPreviewAuditoriaV3(auditoria);
+          renderizarAuditoriaHistoricoModal_(auditoria);
         } catch (erro) {
           const mensagem = erro && erro.message ? erro.message : String(erro);
-          if (alvo) {
-            alvo.style.display = 'block';
-            alvo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Falha ao renderizar a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
+          const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
+          if (conteudo) {
+            conteudo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Falha ao renderizar a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
           }
           mostrarToast('A auditoria foi carregada, mas houve erro ao exibir o relatório.', 'error');
         }
       })
       .withFailureHandler(erro => {
         const mensagem = erro && erro.message ? erro.message : String(erro);
-        if (alvo) {
-          alvo.style.display = 'block';
-          alvo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível abrir a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
+        const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
+        if (conteudo) {
+          conteudo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível abrir a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
         }
         tratarErro(erro);
       })
