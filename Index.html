@@ -7783,6 +7783,8 @@
     const perguntas = r.perguntas_diagnostico || {};
     const mercado = r.inteligencia_mercado || {};
     const contexto = r.resumo_reuniao || {};
+    const mapaOportunidade = r.mapa_oportunidade || {};
+    const subcriterios = Array.isArray(r.subcriterios) ? r.subcriterios : [];
     const impacto = r.analise_impacto_implicacao || {};
     const repertorio = Array.isArray(r.repertorio_perguntas_sugeridas) ? r.repertorio_perguntas_sugeridas : [];
     const impactos = Array.isArray(r.impactos_nao_conformidades) ? r.impactos_nao_conformidades : [];
