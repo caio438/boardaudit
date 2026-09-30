@@ -39,6 +39,28 @@ npm ci
 npm test
 ```
 
+## Comando de alteração a partir do chat
+
+O repositório aceita um patch preparado pelo chat sem depender de uma sessão Codex ou de escrita direta na `main`:
+
+1. O chat transforma a solicitação em um patch unificado e cria uma Issue, em nome de `caio438`, contendo exatamente um bloco entre `<!-- PATCH_START -->` e `<!-- PATCH_END -->`.
+2. Após revisar a Issue, o proprietário comenta exatamente `/apply-patch`.
+3. O workflow cria uma branch `chatgpt/issue-...`, valida e aplica o patch, executa `npm ci` e `npm test` e abre uma PR em modo draft.
+4. Depois da revisão e dos checks da PR, o comando `/release-boardaudit` na própria PR executa a cadeia já protegida de merge, validação exata da `main` e release.
+
+Formato da Issue:
+
+````markdown
+<!-- PATCH_START -->
+```diff
+diff --git a/arquivo b/arquivo
+...
+```
+<!-- PATCH_END -->
+````
+
+O patch runner bloqueia alterações em workflows/actions, no próprio runner, em arquivos de credenciais/segredos e em caminhos fora do repositório. Ele nunca faz merge, deploy, auditoria real, publicação no RD nem restaura automações operacionais. A etapa de release continua separada e explícita.
+
 ## Integração segura com o Apps Script
 
 - `.clasp.json` aponta para o projeto correto do Apps Script.
