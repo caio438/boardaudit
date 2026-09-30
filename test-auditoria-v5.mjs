@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 
 const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
-const circle = fs.readFileSync(new URL('./PublicacaoCircle.gs', import.meta.url), 'utf8');
-
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
 
 for (const coluna of ['AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM']) {
