@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
+const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const opsWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-sync.yml', import.meta.url), 'utf8');
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
@@ -55,6 +56,13 @@ assert.match(code, /iaConsumida: false/);
 assert.match(code, /rdPublicado: false/);
 assert.match(code, /auditoriasExecutadas: 0/);
 assert.match(jornada, /function jornadaExtrairTextoDocx_\(blob\)/);
+assert.match(jornada, /function jornadaExtrairTextoDocxDetalhe_\(blob\)/);
+assert.match(jornada, /setContentType\('application\/zip'\)/);
+assert.match(jornada, /function jornadaLerDocumentoUrlDetalhe_\(url\)/);
+assert.match(jornada, /fase: 'ACESSO_DRIVE'/);
+assert.match(audit, /CONTEUDO_CADASTRADO_FALLBACK/);
+assert.match(audit, /O Board manteve o conteúdo oficial já cadastrado/);
+assert.doesNotMatch(audit, /Revise o compartilhamento do link nas configurações do cliente/);
 assert.match(jornada, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
 assert.doesNotMatch(code, /nome: 'INGEE'.*aliases: \[[^\]]*Sinergia[^\]]*\]/);
 

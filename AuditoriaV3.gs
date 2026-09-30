@@ -7761,23 +7761,35 @@ function audV3PitchAtualAutomatico_(idCliente, tipo, pitchesInformados) {
 
 function audV3AtualizarPitchDocumentoAutomatico_(pitch) {
   const url = String((pitch || {}).URL_DOCUMENTO || '').trim();
-  if (!url) return { pitch: pitch, origem: 'CONTEUDO_CADASTRADO', atualizado: false };
-  if (typeof jornadaLerDocumentoUrl_ !== 'function') {
-    throw new Error('O leitor do documento do pitch não está disponível.');
-  }
-  const conteudo = String(jornadaLerDocumentoUrl_(url) || '').trim();
+  if (!url) return { pitch: pitch, origem: 'CONTEUDO_CADASTRADO', atualizado: false, alerta: '' };
+  if (typeof jornadaLerDocumentoUrl_ !== 'function') throw new Error('O leitor do documento do pitch não está disponível.');
+
+  const leitura = typeof jornadaLerDocumentoUrlDetalhe_ === 'function'
+    ? jornadaLerDocumentoUrlDetalhe_(url)
+    : { conteudo: jornadaLerDocumentoUrl_(url), erro: '', fase: 'LEITURA_DOCUMENTO' };
+  const conteudo = String((leitura || {}).conteudo || '').trim();
+  const cadastrado = String((pitch || {}).CONTEUDO_PITCH || '').trim();
+
   if (conteudo.length < 20) {
-    throw new Error('O Board não conseguiu acessar o documento do pitch atual. Revise o compartilhamento do link nas configurações do cliente.');
+    const fase = String((leitura || {}).fase || 'LEITURA_DOCUMENTO');
+    const detalhe = String((leitura || {}).erro || 'conteúdo textual insuficiente');
+    if (cadastrado.length >= 20) {
+      const alerta = 'Não foi possível reler o documento atual do pitch (' + fase + '). O Board manteve o conteúdo oficial já cadastrado. Detalhe: ' + detalhe;
+      console.warn(alerta);
+      return { pitch: pitch, origem: 'CONTEUDO_CADASTRADO_FALLBACK', atualizado: false, alerta: alerta, leituraDocumento: leitura };
+    }
+    if (fase === 'ACESSO_DRIVE') {
+      throw new Error('O pitch atual não pôde ser acessado no Drive e não existe conteúdo oficial cadastrado para fallback. Detalhe: ' + detalhe);
+    }
+    throw new Error('O arquivo do pitch atual foi localizado, mas o conteúdo não pôde ser lido e não existe conteúdo oficial cadastrado para fallback. Detalhe: ' + detalhe);
   }
-  const mudou = conteudo !== String(pitch.CONTEUDO_PITCH || '').trim();
+
+  const mudou = conteudo !== cadastrado;
   if (mudou) {
-    audV3Atualizar_('PITCHES', 'ID_PITCH', pitch.ID_PITCH, {
-      CONTEUDO_PITCH: conteudo,
-      ATUALIZADO_EM: new Date()
-    });
+    audV3Atualizar_('PITCHES', 'ID_PITCH', pitch.ID_PITCH, { CONTEUDO_PITCH: conteudo, ATUALIZADO_EM: new Date() });
     pitch.CONTEUDO_PITCH = conteudo;
   }
-  return { pitch: pitch, origem: 'DOCUMENTO_ATUAL', atualizado: mudou };
+  return { pitch: pitch, origem: 'DOCUMENTO_ATUAL', atualizado: mudou, alerta: '', leituraDocumento: leitura };
 }
 
 function audV3FilaAutomacaoLigacoes_(config) {
