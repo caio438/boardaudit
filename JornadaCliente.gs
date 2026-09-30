@@ -1312,43 +1312,68 @@ function jornadaLerArquivoTranscricao_(arquivo) {
   return jornadaLerArquivoTranscricaoDetalhe_(arquivo).conteudo;
 }
 
-function jornadaExtrairTextoDocx_(blob) {
+function jornadaDecodificarXmlTexto_(texto) {
+  return String(texto || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function jornadaExtrairTextoDocxDetalhe_(blob) {
   try {
-    const partes = Utilities.unzip(blob);
+    const zipBlob = blob && typeof blob.copyBlob === 'function' ? blob.copyBlob() : blob;
+    if (zipBlob && typeof zipBlob.setContentType === 'function') zipBlob.setContentType('application/zip');
+    const partes = Utilities.unzip(zipBlob);
     const documentoXml = partes.find(function(parte) {
-      return String(parte.getName() || '') === 'word/document.xml';
+      return String(parte.getName() || '').replace(/^\/+/, '') === 'word/document.xml';
     });
-    if (!documentoXml) return '';
-    const documento = XmlService.parse(documentoXml.getDataAsString('UTF-8'));
-    const saida = [];
-    const visitar = function(elemento) {
-      const nome = String(elemento.getName ? elemento.getName() : '');
-      if (nome === 't') saida.push(String(elemento.getText() || ''));
-      else if (nome === 'tab') saida.push('\t');
-      else if (nome === 'br' || nome === 'cr') saida.push('\n');
-      (elemento.getChildren ? elemento.getChildren() : []).forEach(visitar);
-      if (nome === 'p') saida.push('\n');
-      else if (nome === 'tr') saida.push('\n');
-      else if (nome === 'tc') saida.push('\t');
-    };
-    visitar(documento.getRootElement());
-    return saida.join('')
+    if (!documentoXml) {
+      return { conteudo: '', erro: 'DOCX inválido: word/document.xml não encontrado.', fase: 'LEITURA_DOCX' };
+    }
+    const xml = String(documentoXml.getDataAsString('UTF-8') || '');
+    if (!xml.trim()) {
+      return { conteudo: '', erro: 'DOCX sem XML textual legível.', fase: 'LEITURA_DOCX' };
+    }
+    const marcado = xml
+      .replace(/<w:tab\b[^>]*\/>/gi, '\t')
+      .replace(/<w:(?:br|cr)\b[^>]*\/>/gi, '\n')
+      .replace(/<\/w:p>/gi, '\n')
+      .replace(/<\/w:tr>/gi, '\n')
+      .replace(/<\/w:tc>/gi, '\t')
+      .replace(/<[^>]+>/g, '');
+    const conteudo = jornadaDecodificarXmlTexto_(marcado)
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+    return {
+      conteudo: conteudo,
+      erro: conteudo.length >= 20 ? '' : 'DOCX acessível, porém sem conteúdo textual suficiente.',
+      fase: conteudo.length >= 20 ? 'OK' : 'LEITURA_DOCX'
+    };
   } catch (erro) {
-    return '';
+    return {
+      conteudo: '',
+      erro: 'Falha ao extrair DOCX: ' + String(erro && erro.message ? erro.message : erro),
+      fase: 'LEITURA_DOCX'
+    };
   }
+}
+
+function jornadaExtrairTextoDocx_(blob) {
+  return jornadaExtrairTextoDocxDetalhe_(blob).conteudo;
 }
 
 function jornadaLerArquivoTranscricaoDetalhe_(arquivo) {
   try {
     const mime = String(arquivo.getMimeType() || '');
     if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      return { conteudo: jornadaExtrairTextoDocx_(arquivo.getBlob()), aba: '', usouAbaTranscricao: false };
+      const leituraDocx = jornadaExtrairTextoDocxDetalhe_(arquivo.getBlob());
+      return { conteudo: String(leituraDocx.conteudo || ''), aba: '', usouAbaTranscricao: false, mime: mime, erro: String(leituraDocx.erro || ''), fase: String(leituraDocx.fase || '') };
     }
     if (mime !== String(MimeType.GOOGLE_DOCS)) {
-      return { conteudo: String(arquivo.getBlob().getDataAsString('UTF-8') || '').trim(), aba: '', usouAbaTranscricao: false };
+      return { conteudo: String(arquivo.getBlob().getDataAsString('UTF-8') || '').trim(), aba: '', usouAbaTranscricao: false, mime: mime, erro: '', fase: 'OK' };
     }
     const documento = DocumentApp.openById(arquivo.getId());
     const abas = jornadaListarAbasDocumento_(documento);
@@ -1358,11 +1383,11 @@ function jornadaLerArquivoTranscricaoDetalhe_(arquivo) {
     });
     if (abaTranscricao) {
       const conteudoTranscricao = String(abaTranscricao.asDocumentTab().getBody().getText() || '').trim();
-      return { conteudo: conteudoTranscricao, aba: String(abaTranscricao.getTitle() || 'Transcrição'), usouAbaTranscricao: true };
+      return { conteudo: conteudoTranscricao, aba: String(abaTranscricao.getTitle() || 'Transcrição'), usouAbaTranscricao: true, mime: mime, erro: '', fase: 'OK' };
     }
-    return { conteudo: String(documento.getBody().getText() || '').trim(), aba: 'Primeira aba', usouAbaTranscricao: false };
+    return { conteudo: String(documento.getBody().getText() || '').trim(), aba: 'Primeira aba', usouAbaTranscricao: false, mime: mime, erro: '', fase: 'OK' };
   } catch (erro) {
-    return { conteudo: '', aba: '', usouAbaTranscricao: false, erro: String(erro && erro.message || erro) };
+    return { conteudo: '', aba: '', usouAbaTranscricao: false, mime: '', erro: String(erro && erro.message ? erro.message : erro), fase: 'LEITURA_ARQUIVO' };
   }
 }
 
@@ -3696,13 +3721,34 @@ function jornadaArtefatoUrl_(destino) {
   return 'https://drive.google.com/open?id=' + encodeURIComponent(id);
 }
 
-function jornadaLerDocumentoUrl_(url) {
+function jornadaLerDocumentoUrlDetalhe_(url) {
   const achou = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(url || '').match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (!achou) return '';
+  if (!achou) return { conteudo: '', erro: 'URL do documento não contém um ID de arquivo válido.', fase: 'URL_INVALIDA', idArquivo: '', nome: '', mime: '' };
+  const idArquivo = String(achou[1] || '');
+  let arquivo;
   try {
-    const arquivo = DriveApp.getFileById(achou[1]);
-    return jornadaLerArquivoTranscricaoDetalhe_(arquivo).conteudo;
-  } catch (e) { return ''; }
+    arquivo = DriveApp.getFileById(idArquivo);
+  } catch (erroAcesso) {
+    return { conteudo: '', erro: 'Falha de acesso ao Drive: ' + String(erroAcesso && erroAcesso.message ? erroAcesso.message : erroAcesso), fase: 'ACESSO_DRIVE', idArquivo: idArquivo, nome: '', mime: '' };
+  }
+  const leitura = jornadaLerArquivoTranscricaoDetalhe_(arquivo);
+  const conteudo = String((leitura || {}).conteudo || '').trim();
+  let nome = '';
+  let mime = String((leitura || {}).mime || '');
+  try { nome = String(arquivo.getName() || ''); } catch (eNome) {}
+  try { if (!mime) mime = String(arquivo.getMimeType() || ''); } catch (eMime) {}
+  return {
+    conteudo: conteudo,
+    erro: String((leitura || {}).erro || (conteudo.length >= 20 ? '' : 'Arquivo acessível, mas sem conteúdo textual suficiente.')),
+    fase: String((leitura || {}).fase || (conteudo.length >= 20 ? 'OK' : 'LEITURA_CONTEUDO')),
+    idArquivo: idArquivo,
+    nome: nome,
+    mime: mime
+  };
+}
+
+function jornadaLerDocumentoUrl_(url) {
+  return jornadaLerDocumentoUrlDetalhe_(url).conteudo;
 }
 
 function DIAGNOSTICAR_FONTES_FORMALIZACOES() {
