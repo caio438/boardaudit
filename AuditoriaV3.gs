@@ -8485,6 +8485,16 @@ function audV3AuditoriaFront_(a, contexto) {
   };
 }
 
+function obterAuditoriaHistoricoV3(idAuditoria) {
+  const id = String(idAuditoria || '').trim();
+  if (!id) throw new Error('Informe a auditoria que deseja abrir.');
+
+  const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
+  if (!auditoria) throw new Error('Auditoria não encontrada.');
+
+  return audV3AuditoriaFront_(auditoria);
+}
+
 function audV3MensagemErroOperador_(erro) {
   const texto = String(erro || '').trim();
   if (!texto) return '';

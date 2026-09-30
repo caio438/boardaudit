@@ -8348,16 +8348,49 @@
   }
 
   function abrirAuditoriaHistoricoV3(idAuditoria) {
-    const auditoria = auditoriasOperacionaisFront_().find(item => String(item.idAuditoria) === String(idAuditoria));
-    if (!auditoria) {
-      mostrarToast('Não foi possível localizar esta auditoria no histórico atual. Atualize a página e tente novamente.', 'error');
-      return;
-    }
-    estado.auditoriaAtual = auditoria;
+    const id = String(idAuditoria || '').trim();
+    if (!id) return mostrarToast('Auditoria inválida.', 'error');
+
     const alvo = document.getElementById('resultadoAuditoriaAtual');
-    expandirCardDoElemento_(alvo);
-    renderizarPreviewAuditoriaV3(auditoria);
-    if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (alvo) {
+      alvo.style.display = 'block';
+      alvo.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Carregando auditoria...</div></div>';
+      alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    google.script.run
+      .withSuccessHandler(auditoria => {
+        if (!auditoria || !auditoria.idAuditoria) {
+          if (alvo) alvo.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">A auditoria não foi encontrada.</div></div>';
+          return mostrarToast('Não foi possível localizar esta auditoria.', 'error');
+        }
+
+        estado.auditoriaAtual = auditoria;
+        estado.auditorias = Array.isArray(estado.auditorias) ? estado.auditorias : [];
+        const indice = estado.auditorias.findIndex(item => String((item || {}).idAuditoria || '') === String(auditoria.idAuditoria));
+        if (indice >= 0) estado.auditorias[indice] = Object.assign({}, estado.auditorias[indice] || {}, auditoria);
+        else estado.auditorias.unshift(auditoria);
+
+        try {
+          renderizarPreviewAuditoriaV3(auditoria);
+        } catch (erro) {
+          const mensagem = erro && erro.message ? erro.message : String(erro);
+          if (alvo) {
+            alvo.style.display = 'block';
+            alvo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Falha ao renderizar a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
+          }
+          mostrarToast('A auditoria foi carregada, mas houve erro ao exibir o relatório.', 'error');
+        }
+      })
+      .withFailureHandler(erro => {
+        const mensagem = erro && erro.message ? erro.message : String(erro);
+        if (alvo) {
+          alvo.style.display = 'block';
+          alvo.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível abrir a auditoria</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagem) + '</div></div>';
+        }
+        tratarErro(erro);
+      })
+      .obterAuditoriaHistoricoV3(id);
   }
 
   function chaveDataHistorico_(valor) {
