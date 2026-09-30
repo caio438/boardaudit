@@ -5593,6 +5593,7 @@ function audV3NormalizarResultado_(resultado, criterios, identidade, interacao, 
   if (tipo === 'CLOSER') {
     audV3NormalizarSubcriteriosCloser_(resultado);
     audV3NormalizarMapaOportunidadeCloser_(resultado);
+    audV3CompletarInteligenciaMercadoCloser_(resultado);
     audV3NormalizarMomentosCloser_(resultado, criterios);
     audV3NormalizarAnaliseTemporalCloser_(resultado, interacao);
     const perguntas = resultado.perguntas_diagnostico || {};
@@ -8429,6 +8430,9 @@ function audV3AuditoriaFront_(a, contexto) {
   } catch (erro) {
     resultado = null;
   }
+  if (resultado && String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER') {
+    audV3CompletarInteligenciaMercadoCloser_(resultado);
+  }
   const crmGrupoSinergiaStatus = audV3EstadoCrmGrupoSinergia_(a, interacao);
   const integridadeStatus = audV3EstadoIntegridadeAuditoria_(a);
   return {
@@ -9102,6 +9106,119 @@ function audV3NormalizarMapaOportunidadeCloser_(resultado) {
   });
   resultado.mapa_oportunidade = normalizado;
   return normalizado;
+}
+
+function audV3CompletarInteligenciaMercadoCloser_(resultado) {
+  resultado = resultado || {};
+  const mercado = resultado.inteligencia_mercado || {};
+  const contexto = resultado.resumo_reuniao || {};
+  const mapa = resultado.mapa_oportunidade || {};
+  const impacto = resultado.analise_impacto_implicacao || {};
+  const perguntas = (resultado.perguntas_diagnostico || {}).perguntas_realizadas || [];
+  const objecoes = Array.isArray(resultado.objecoes_respostas) ? resultado.objecoes_respostas : [];
+
+  const textoUtil = function(valor) {
+    const texto = String(valor || '').trim();
+    if (!texto) return '';
+    const chave = audV3NormalizarTrechoRastreavel_(texto);
+    if (!chave || /^(?:nao evidenciado|nao informado|nao identificado|nao mensuravel|n a|nenhum item evidenciado|nenhum)$/.test(chave)) return '';
+    return texto;
+  };
+  const listaUnica = function(valores, limite) {
+    const vistos = {};
+    const saida = [];
+    (Array.isArray(valores) ? valores : []).forEach(function(valor) {
+      const texto = textoUtil(valor);
+      if (!texto) return;
+      const chave = audV3NormalizarTrechoRastreavel_(texto);
+      if (!chave || vistos[chave]) return;
+      vistos[chave] = true;
+      saida.push(texto);
+    });
+    return saida.slice(0, limite || 8);
+  };
+  const completarSeVazio = function(atual, candidatos, limite) {
+    const base = listaUnica(atual, limite);
+    return base.length ? base : listaUnica(candidatos, limite);
+  };
+
+  const falasLead = listaUnica(
+    perguntas.map(function(item) { return (item || {}).resposta_lead; })
+      .concat(objecoes.map(function(item) { return (item || {}).objecao_ou_pergunta_lead; })),
+    8
+  );
+
+  const desafios = completarSeVazio(mercado.desafios, [
+    contexto.dor_principal,
+    mapa.dor_principal
+  ], 8);
+
+  const impactosConsequencias = completarSeVazio(mercado.impactos_consequencias, [
+    contexto.impacto_principal,
+    mapa.impacto_operacional,
+    mapa.impacto_financeiro,
+    mapa.impacto_nao_avancar
+  ].concat(Array.isArray(impacto.impactos_identificados) ? impacto.impactos_identificados : []), 8);
+
+  const ferramentasProcessos = completarSeVazio(mercado.ferramentas_processos_atuais, [
+    contexto.cenario_atual
+  ], 8);
+
+  const resultadosDesejados = completarSeVazio(mercado.resultados_desejados, [
+    contexto.objetivo_lead,
+    mapa.ganhos_esperados
+  ], 8);
+
+  const linguagemLead = completarSeVazio(mercado.linguagem_do_lead, falasLead, 8);
+
+  let dores = Array.isArray(mercado.dores) ? mercado.dores.filter(function(item) {
+    return item && textoUtil(item.tema) && textoUtil(item.evidencia_lead);
+  }) : [];
+
+  if (!dores.length && desafios.length && falasLead.length) {
+    desafios.slice(0, 4).forEach(function(tema) {
+      const tokensTema = audV3TokensSignificativos_(tema);
+      if (!tokensTema.length) return;
+      let melhor = null;
+      falasLead.forEach(function(fala) {
+        const tokensFala = audV3TokensSignificativos_(fala);
+        if (!tokensFala.length) return;
+        const setFala = {};
+        tokensFala.forEach(function(token) { setFala[token] = true; });
+        const comuns = tokensTema.filter(function(token) { return setFala[token]; }).length;
+        const cobertura = comuns / Math.max(1, Math.min(tokensTema.length, 5));
+        if (!melhor || cobertura > melhor.cobertura) melhor = { fala: fala, cobertura: cobertura, comuns: comuns };
+      });
+      if (!melhor || melhor.comuns < 1 || melhor.cobertura < 0.2) return;
+      dores.push({
+        tema: tema,
+        evidencia_lead: melhor.fala,
+        frequencia: 'Identificada nesta reunião'
+      });
+    });
+  }
+  dores = dores.slice(0, 8);
+
+  let insightsMidia = listaUnica(mercado.insights_para_midia, 8);
+  if (!insightsMidia.length) {
+    if (desafios.length) {
+      insightsMidia.push('Hipótese de comunicação: abordar "' + desafios[0] + '" usando a linguagem observada nesta reunião, sem generalizar o tema para todo o mercado.');
+    }
+    if (resultadosDesejados.length) {
+      insightsMidia.push('Hipótese de comunicação: conectar a mensagem ao resultado desejado "' + resultadosDesejados[0] + '", validando recorrência em outras conversas antes de tratá-lo como padrão de mercado.');
+    }
+  }
+
+  resultado.inteligencia_mercado = {
+    dores: dores,
+    desafios: desafios,
+    impactos_consequencias: impactosConsequencias,
+    ferramentas_processos_atuais: ferramentasProcessos,
+    resultados_desejados: resultadosDesejados,
+    linguagem_do_lead: linguagemLead,
+    insights_para_midia: insightsMidia.slice(0, 8)
+  };
+  return resultado.inteligencia_mercado;
 }
 
 function audV3ValidarSubcriteriosCloser_(resultado) {
