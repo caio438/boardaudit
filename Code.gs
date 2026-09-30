@@ -205,7 +205,9 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   rtm: [{ nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1U-1uFJ_pggE3G_twKqYgAp49MyVDIh1r' }],
   wisetec: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1L1tFpmO7apl6E90GJblKG5gjh4Hx2deS' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1fNMa4roO-_54pOQvhomWOeIwG7eumNfg' }
+    { nome: 'Pitch SDR Inbound V2', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1jE_row3oEnNBis-tN3kcU1TM8iQp6v0REfyPiTT06OA/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1fNMa4roO-_54pOQvhomWOeIwG7eumNfg' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1hsqOXOeX_wsuFjY-DrKpL5U4gxkKizDvkND4HHFVGdE/edit' }
   ],
   devyx: [
     { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1UVwDMsWRmT2Xt0ohRbHwsCYnZavrthoFNY-SemBU9K8/edit' },
@@ -236,11 +238,15 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   space_sistemas: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1bInwNbo1toe1m8c_hROMGqguYQ5mZEwg' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1UNVDbbAox98XWxIEC7NJQBceQNiwcvcP' }
+    { nome: 'Pitch SDR Inbound V1', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1ua3zRf58yLsnU2JAWfnDclxPC1RXODA_dvOUCUF0_-A/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1UNVDbbAox98XWxIEC7NJQBceQNiwcvcP' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1lywaCvlYaMxyYsBsVKHHPXD6bO2bd0HLH-hsOFmxHg8/edit' }
   ],
   pro_franchising: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1AzMHCaVHtlb67JEsufCaLzD34eX2TWxu' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1Q9pzlF9VvvC7B4GBKfSEAk9SAfnvYIUV' }
+    { nome: 'Pitch SDR Inbound V3', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1NRd3sJTZ2A_9AElm65F_65vHu2aldjOColv19gDIyWo/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1Q9pzlF9VvvC7B4GBKfSEAk9SAfnvYIUV' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1oPt9bqppR_ri9jrJutqleolFtOfFwWa4A3xNcrHIh8g/edit' }
   ],
   gestqual: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1nSAN2e8J5r8KkZPWjSNyTkkJAX6jIUnm' },
@@ -297,7 +303,9 @@ const MATERIAIS_CATALOGO_VOLUMBERG = Object.freeze({
   ],
   ausland: [
     { nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1744aiGurCH25fOL4W93X7QRuX-hypmYk' },
-    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1EyobbUQDZ5PRU6OyGZaZrDicGaqkwH6d' }
+    { nome: 'Pitch SDR Inbound V1', funcao: 'SDR', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1knK02fLQP4jtzQABiP83WOeneRp49N0vDWUHsZVOlQQ/edit' },
+    { nome: 'Jornada do Closer', funcao: 'CLOSER', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1EyobbUQDZ5PRU6OyGZaZrDicGaqkwH6d' },
+    { nome: 'Pitch Closer Inbound V1', funcao: 'CLOSER', categoria: 'PITCH', url: 'https://docs.google.com/document/d/1sY0fr2cOeBok1vPxA-SVfnhNi9MRlJsf74dXOydxWSI/edit' }
   ],
   manytalks: [{ nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1Vmb9VfsEXvBpJmseu8OaBGpDf5oxAMDX' }],
   conac_flow: [{ nome: 'Jornada do SDR', funcao: 'SDR', categoria: 'JORNADA', url: 'https://drive.google.com/drive/folders/1eAATpjynRb848R1vYFCvzZbv8Fzr_p0M' }],
@@ -387,6 +395,54 @@ const PITCHES_COMPLIANCE_VOLUMBERG = Object.freeze({
       urlDocumento: 'https://docs.google.com/document/d/1Q5zSR77IVf1VXJ-tsRY4XJHpRCsLfYrD5XS-0cJE_nw/edit'
     }),
     CLOSER: null
+  }),
+  ausland: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: 'Ausland - Pitch SDR Inbound V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1knK02fLQP4jtzQABiP83WOeneRp49N0vDWUHsZVOlQQ/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'Ausland - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1sY0fr2cOeBok1vPxA-SVfnhNi9MRlJsf74dXOydxWSI/edit'
+    })
+  }),
+  pro_franchising: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[PRO FRANCHISING] Pitch de Qualificação SDR Inbound - V3',
+      numeroVersao: '3',
+      urlDocumento: 'https://docs.google.com/document/d/1NRd3sJTZ2A_9AElm65F_65vHu2aldjOColv19gDIyWo/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'PRO Franchising - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1oPt9bqppR_ri9jrJutqleolFtOfFwWa4A3xNcrHIh8g/edit'
+    })
+  }),
+  wisetec: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: 'WISETEC Pitch de Qualificação SDR Inbound - V2',
+      numeroVersao: '2',
+      urlDocumento: 'https://docs.google.com/document/d/1jE_row3oEnNBis-tN3kcU1TM8iQp6v0REfyPiTT06OA/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'Wisetec - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1hsqOXOeX_wsuFjY-DrKpL5U4gxkKizDvkND4HHFVGdE/edit'
+    })
+  }),
+  space_sistemas: Object.freeze({
+    SDR: Object.freeze({
+      nomeVersao: '[SPACE SISTMAS] Pitch de Qualificação SDR Inbound - V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1ua3zRf58yLsnU2JAWfnDclxPC1RXODA_dvOUCUF0_-A/edit'
+    }),
+    CLOSER: Object.freeze({
+      nomeVersao: 'Space Sistemas - Pitch Closer V1',
+      numeroVersao: '1',
+      urlDocumento: 'https://docs.google.com/document/d/1lywaCvlYaMxyYsBsVKHHPXD6bO2bd0HLH-hsOFmxHg8/edit'
+    })
   })
 });
 
@@ -519,7 +575,7 @@ function SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG(chave) {
     throw new Error('O compliance de materiais só pode ser executado com BOARD_MODE=MANUAL.');
   }
   const chaveNormalizada = String(chave || '').trim().toLowerCase();
-  if (!['ingee', 'sinergia', 'semeio_cbi', 'hitecnet', 'gopliance', 'gestqual', 'bluertec'].includes(chaveNormalizada)) {
+  if (!['ingee', 'sinergia', 'semeio_cbi', 'hitecnet', 'gopliance', 'gestqual', 'bluertec', 'ausland', 'pro_franchising', 'wisetec', 'space_sistemas'].includes(chaveNormalizada)) {
     throw new Error('Cliente não liberado para esta rotina de compliance.');
   }
 
