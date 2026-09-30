@@ -2,7 +2,14 @@ name: Validate Apps Script
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact main SHA expected by the release workflow
+        required: false
+        type: string
+
   pull_request:
+
   push:
     branches:
       - main
@@ -15,7 +22,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
+      - name: Verify dispatched revision
+        if: github.event_name == 'workflow_dispatch' && inputs.expected_sha != ''
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
       - name: Checkout
         uses: actions/checkout@v4
 

@@ -1,15 +1,15 @@
-name: Deploy Apps Script automatically
+name: Deploy BoardAudit approved revision
 
 on:
-  workflow_run:
-    workflows:
-      - Validate Apps Script
-    types:
-      - completed
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact main SHA approved by the release workflow
+        required: true
+        type: string
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: apps-script-production
@@ -17,18 +17,33 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ inputs.expected_sha != '' && github.sha == inputs.expected_sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
 
     steps:
-      - name: Checkout exact validated revision
+      - name: Verify approved revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::SHA do workflow diferente do SHA aprovado."
+            echo "Esperado: $EXPECTED_SHA"
+            echo "Atual:    $ACTUAL_SHA"
+            exit 1
+          fi
+
+          echo "APPROVED_SHA=$EXPECTED_SHA"
+
+      - name: Checkout exact approved revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.expected_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,47 +68,52 @@ jobs:
           chmod 600 "$HOME/.clasprc.json"
 
       - name: Check Apps Script version capacity
-        id: capacity
         shell: bash
         run: |
           set -euo pipefail
+
           versions_output="$(npx clasp versions)"
           printf '%s\n' "$versions_output" | tee /tmp/boardaudit-versions.txt
-          version_count="$(printf '%s\n' "$versions_output" | sed -n 's/^Found \([0-9][0-9]*\) versions\.$/\1/p' | head -1)"
+
+          version_count="$(printf '%s\n' "$versions_output" \
+            | sed -n 's/^Found \([0-9][0-9]*\) versions\.$/\1/p' \
+            | head -1)"
+
           test -n "$version_count"
-          subject="$(git log -1 --pretty=%s)"
+
           echo "APPS_SCRIPT_VERSION_COUNT=$version_count"
-          echo "head_only=false" >> "$GITHUB_OUTPUT"
 
           if [ "$version_count" -ge 200 ]; then
-            if [[ "$subject" == "Ops audit publish: "* ]]; then
-              echo "head_only=true" >> "$GITHUB_OUTPUT"
-              echo "::warning::Apps Script atingiu o limite de 200 versões. Operação explícita autorizada somente no HEAD /dev, sem criar nova versão."
-            else
-              echo "::error::Apps Script atingiu o limite de 200 versões. Novos deploys estão bloqueados; somente uma operação explícita 'Ops audit publish:' pode sincronizar o HEAD sem versionar."
-              exit 1
-            fi
-          elif [ "$version_count" -eq 199 ]; then
-            if [[ "$subject" == "Ops audit publish: "* ]]; then
-              echo "::warning::Usando a ultima vaga reservada do Apps Script para a operacao explicita: $subject"
-            else
-              echo "::error::Apps Script está com 199 versões, próximo do limite de 200 versões. A última vaga só pode ser usada por uma operação explícita 'Ops audit publish:'."
-              exit 1
-            fi
+            echo "::error::Apps Script atingiu o limite de 200 versões. Exclua versões antigas antes do próximo deploy."
+            exit 1
           fi
 
-      - name: Pull current production for preservation
+          if [ "$version_count" -eq 199 ]; then
+            echo "::warning::Este deploy utilizará a última versão disponível do Apps Script."
+          fi
+
+      - name: Pull current production for rollback
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/boardaudit-production /tmp/boardaudit-deploy
-          mkdir -p /tmp/boardaudit-production /tmp/boardaudit-deploy
+
+          rm -rf \
+            /tmp/boardaudit-production \
+            /tmp/boardaudit-deploy \
+            /tmp/boardaudit-live-after
+
+          mkdir -p \
+            /tmp/boardaudit-production \
+            /tmp/boardaudit-deploy \
+            /tmp/boardaudit-live-after
+
           cat > /tmp/boardaudit-production/.clasp.json <<'JSON'
           {
             "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
             "rootDir": "."
           }
           JSON
+
           cd /tmp/boardaudit-production
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
           rm -f .clasp.json
@@ -101,15 +121,16 @@ jobs:
       - name: Save rollback snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: apps-script-production-before-auto-deploy-${{ github.run_id }}
+          name: boardaudit-production-before-deploy-${{ github.run_id }}
           path: /tmp/boardaudit-production
           if-no-files-found: error
           retention-days: 7
 
-      - name: Build deployment source preserving remote-only files
+      - name: Build exact deployment source
         shell: bash
         run: |
           set -euo pipefail
+
           cd "$GITHUB_WORKSPACE"
 
           cp -- *.gs /tmp/boardaudit-deploy/
@@ -117,76 +138,94 @@ jobs:
 
           for src in /tmp/boardaudit-production/*.js; do
             [ -e "$src" ] || continue
+
             base="$(basename "$src" .js)"
+
             if [ "$base" = "Código" ]; then
               local_name="Code.gs"
             else
               local_name="$base.gs"
             fi
+
             if [ ! -f "/tmp/boardaudit-deploy/$local_name" ]; then
               cp "$src" "/tmp/boardaudit-deploy/$local_name"
-              echo "Preservado arquivo remoto sem equivalente no GitHub: $local_name"
+              echo "Preservado arquivo remoto: $local_name"
             fi
           done
 
           for src in /tmp/boardaudit-production/*.html; do
             [ -e "$src" ] || continue
+
             name="$(basename "$src")"
+
             if [ ! -f "/tmp/boardaudit-deploy/$name" ]; then
               cp "$src" "/tmp/boardaudit-deploy/$name"
-              echo "Preservado HTML remoto sem equivalente no GitHub: $name"
+              echo "Preservado HTML remoto: $name"
             fi
           done
 
       - name: Stamp build and validate deploy source
         shell: bash
         env:
-          BUILD_ID: "${{ github.event.workflow_run.head_sha }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          BUILD_ID: "${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}"
         run: |
           set -euo pipefail
+
           node prepare-dark-mode-deploy.mjs /tmp/boardaudit-deploy
 
           for file in /tmp/boardaudit-deploy/*.gs; do
-            node -e "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
+            node -e \
+              "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" \
+              "$file"
           done
 
-          node -e "const fs=require('fs'); const h=fs.readFileSync('/tmp/boardaudit-deploy/Index.html','utf8'); for(const m of h.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)) new Function(m[1]);"
+          node -e "
+            const fs = require('fs');
+            const h = fs.readFileSync('/tmp/boardaudit-deploy/Index.html', 'utf8');
 
-      - name: Push exact validated source
+            for (const m of h.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)) {
+              new Function(m[1]);
+            }
+          "
+
+      - name: Push exact approved source
         shell: bash
         run: |
           set -euo pipefail
+
           cat > /tmp/boardaudit-deploy/.clasp.json <<'JSON'
           {
             "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
             "rootDir": "."
           }
           JSON
+
           cd /tmp/boardaudit-deploy
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force
 
       - name: Update production deployment
-        if: steps.capacity.outputs.head_only != 'true'
         shell: bash
         run: |
           set -euo pipefail
+
           cd /tmp/boardaudit-deploy
+
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deploy \
-            --deploymentId AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA \
-            --description "Board Audit auto deploy ${{ github.event.workflow_run.head_sha }}"
+            --deploymentId "AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA" \
+            --description "BoardAudit approved deploy ${{ inputs.expected_sha }}"
 
       - name: Verify live Apps Script after deployment
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/boardaudit-live-after
-          mkdir -p /tmp/boardaudit-live-after
+
           cat > /tmp/boardaudit-live-after/.clasp.json <<'JSON'
           {
             "scriptId": "1-eZr8B0D-PdnQVFh9Qnv2GV23WvQVxa42tlQ-lVknfWbYaz8QpBM4rJ9",
             "rootDir": "."
           }
           JSON
+
           cd /tmp/boardaudit-live-after
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull
           rm -f .clasp.json
@@ -194,36 +233,57 @@ jobs:
           compare_pair() {
             local expected="$1"
             local live="$2"
+
             test -f "$expected"
             test -f "$live"
+
             cmp -s "$expected" "$live" || {
-              echo "Post-deploy mismatch: $expected <-> $live"
+              echo "Post-deploy mismatch:"
+              echo "$expected"
+              echo "$live"
               diff -u "$live" "$expected" | head -160 || true
               exit 1
             }
           }
 
-          compare_pair "/tmp/boardaudit-deploy/AuditoriaV3.gs" "/tmp/boardaudit-live-after/AuditoriaV3.js"
-          compare_pair "/tmp/boardaudit-deploy/RdAuditorias.gs" "/tmp/boardaudit-live-after/RdAuditorias.js"
-          compare_pair "/tmp/boardaudit-deploy/PublicacaoCircle.gs" "/tmp/boardaudit-live-after/PublicacaoCircle.js"
-          compare_pair "/tmp/boardaudit-deploy/AutomacaoCentral.gs" "/tmp/boardaudit-live-after/AutomacaoCentral.js"
-          compare_pair "/tmp/boardaudit-deploy/OpsAudit.gs" "/tmp/boardaudit-live-after/OpsAudit.js"
+          compare_pair \
+            "/tmp/boardaudit-deploy/AuditoriaV3.gs" \
+            "/tmp/boardaudit-live-after/AuditoriaV3.js"
+
+          compare_pair \
+            "/tmp/boardaudit-deploy/RdAuditorias.gs" \
+            "/tmp/boardaudit-live-after/RdAuditorias.js"
+
+          compare_pair \
+            "/tmp/boardaudit-deploy/PublicacaoCircle.gs" \
+            "/tmp/boardaudit-live-after/PublicacaoCircle.js"
+
+          compare_pair \
+            "/tmp/boardaudit-deploy/AutomacaoCentral.gs" \
+            "/tmp/boardaudit-live-after/AutomacaoCentral.js"
+
+          compare_pair \
+            "/tmp/boardaudit-deploy/OpsAudit.gs" \
+            "/tmp/boardaudit-live-after/OpsAudit.js"
 
           LIVE_CODE="/tmp/boardaudit-live-after/Code.js"
-          if [ ! -f "$LIVE_CODE" ] && [ -f "/tmp/boardaudit-live-after/Código.js" ]; then
+
+          if [ ! -f "$LIVE_CODE" ] && \
+             [ -f "/tmp/boardaudit-live-after/Código.js" ]; then
             LIVE_CODE="/tmp/boardaudit-live-after/Código.js"
           fi
-          compare_pair "/tmp/boardaudit-deploy/Code.gs" "$LIVE_CODE"
 
-          compare_pair "/tmp/boardaudit-deploy/Index.html" "/tmp/boardaudit-live-after/Index.html"
-          compare_pair "/tmp/boardaudit-deploy/appsscript.json" "/tmp/boardaudit-live-after/appsscript.json"
+          compare_pair \
+            "/tmp/boardaudit-deploy/Code.gs" \
+            "$LIVE_CODE"
 
-          grep -q "MODO NOTURNO FIXO - PRODUCAO" /tmp/boardaudit-live-after/Index.html
-          grep -q "AUDIT_BUILD_ATUAL" /tmp/boardaudit-live-after/Index.html
-          grep -q "function audV3FinalizarAutomaticamente_" /tmp/boardaudit-live-after/AuditoriaV3.js
-          grep -q "function audRdPublicarAutomaticamente_" /tmp/boardaudit-live-after/RdAuditorias.js
-          grep -q "AGUARDANDO_VINCULO" /tmp/boardaudit-live-after/RdAuditorias.js
-          grep -q "function OPS_AUDITAR_PUBLICAR_TRANSCRICAO" /tmp/boardaudit-live-after/OpsAudit.js
+          compare_pair \
+            "/tmp/boardaudit-deploy/Index.html" \
+            "/tmp/boardaudit-live-after/Index.html"
+
+          compare_pair \
+            "/tmp/boardaudit-deploy/appsscript.json" \
+            "/tmp/boardaudit-live-after/appsscript.json"
 
           cat > /tmp/boardaudit-live-after/.clasp.json <<'JSON'
           {
@@ -231,191 +291,46 @@ jobs:
             "rootDir": "."
           }
           JSON
-          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deployments | tee /tmp/boardaudit-deployments.txt
-          grep -q "AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA" /tmp/boardaudit-deployments.txt
+
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deployments \
+            | tee /tmp/boardaudit-deployments.txt
+
+          grep -q \
+            "AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA" \
+            /tmp/boardaudit-deployments.txt
 
           echo "POST_DEPLOY_SOURCE_MATCH=1"
-          echo "POST_DEPLOY_AUTOMATION_MARKERS=1"
           echo "POST_DEPLOY_DEPLOYMENT_ID=1"
+          echo "DEPLOYED_SHA=${{ inputs.expected_sha }}"
 
       - name: Probe web app response
         shell: bash
         run: |
           set -euo pipefail
+
           URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
-          code="$(curl -L -sS -o /tmp/boardaudit-webapp.html -w '%{http_code}' "$URL" || true)"
+
+          code="$(
+            curl \
+              -L \
+              -sS \
+              -o /tmp/boardaudit-webapp.html \
+              -w '%{http_code}' \
+              "$URL" || true
+          )"
+
           echo "WEBAPP_HTTP_STATUS=$code"
+
           test "$code" = "200"
+
           if grep -q "audit-build" /tmp/boardaudit-webapp.html 2>/dev/null; then
             echo "WEBAPP_RENDERED_CURRENT_HTML=1"
           else
             echo "WEBAPP_RENDERED_CURRENT_HTML=0"
-            echo "Web app may require an authenticated Google session; source/deployment verification already passed."
+            echo "Web app pode exigir sessão Google autenticada; a comparação do código publicado já passou."
           fi
-
-      - name: Restore independent automation triggers
-        if: steps.capacity.outputs.head_only != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # O web app pode levar alguns segundos para propagar a nova versão.
-          # Reutilizamos o endpoint autenticado já validado em produção e
-          # tratamos 404/5xx transitórios como atraso de propagação.
-          npx clasp versions > /tmp/clasp-versions-restore.txt
-          node <<'NODE'
-          const fs = require('fs');
-          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
-          const token =
-            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
-            (j.token && j.token.access_token) ||
-            j.access_token || '';
-          if (!token) throw new Error('Access token do clasp ausente.');
-          fs.writeFileSync('/tmp/google_access_token_restore', token, {mode: 0o600});
-          NODE
-
-          TOKEN="$(cat /tmp/google_access_token_restore)"
-          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_restore_automation=1"
-          code=""
-          for attempt in 1 2 3 4; do
-            code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/restore-automation-result.txt -w '%{http_code}' "$URL" || true)"
-            echo "RESTORE_AUTOMATION_HTTP_STATUS_ATTEMPT_$attempt=$code"
-            if [ "$code" = "200" ]; then
-              break
-            fi
-            if [ "$attempt" -lt 4 ]; then
-              sleep $((attempt * 15))
-            fi
-          done
-          test "$code" = "200"
-
-          node <<'NODE'
-          const fs = require('fs');
-          const raw = fs.readFileSync('/tmp/restore-automation-result.txt', 'utf8').trim();
-          if (!raw) throw new Error('Restaurador de automacoes retornou resposta vazia.');
-          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
-            throw new Error('Restaurador de automacoes retornou HTML em vez de JSON.');
-          }
-          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-          if (result.sucesso !== true) throw new Error('Restaurador nao retornou sucesso=true.');
-          const data = result.resultado || {};
-          if (data.centralRemovida !== true) throw new Error('Acionador central nao foi removido.');
-          if (data.tldv && Number((data.tldv.automacao || {}).totalAcionadores || 0) !== 7) {
-            throw new Error('tl;dv nao ficou com 7 acionadores.');
-          }
-          if (data.ligacoes && Number(data.ligacoes.gatilhosInstalados || 0) !== 5) {
-            throw new Error('Ligacoes nao ficaram com 5 acionadores.');
-          }
-          if (!data.agenda || data.agenda.sucesso !== true) throw new Error('Agenda nao foi reinstalada.');
-          console.log('AUTOMATION_TRIGGERS_RESTORED=1');
-          NODE
-
-          rm -f /tmp/google_access_token_restore /tmp/clasp-versions-restore.txt
-
-      - name: Run one-time journey sync
-        if: steps.capacity.outputs.head_only != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          subject="$(git log -1 --pretty=%s)"
-          if [[ "$subject" != "Ops sync jornada once:"* ]]; then
-            echo "JORNADA_SYNC_SKIPPED=1"
-            echo "Commit sem marcador de sincronizacao unica: $subject"
-            exit 0
-          fi
-
-          node <<'NODE'
-          const fs = require('fs');
-          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
-          const token =
-            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
-            (j.token && j.token.access_token) ||
-            j.access_token || '';
-          if (!token) throw new Error('Access token do clasp ausente.');
-          fs.writeFileSync('/tmp/google_access_token_jornada', token, {mode: 0o600});
-          NODE
-
-          TOKEN="$(cat /tmp/google_access_token_jornada)"
-          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sync_jornada=1"
-          code="$(curl -sS --max-time 330 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/jornada-sync-result.txt -w '%{http_code}' "$URL" || true)"
-          echo "JORNADA_SYNC_HTTP_STATUS=$code"
-          test "$code" = "200"
-
-          node <<'NODE'
-          const fs = require('fs');
-          const raw = fs.readFileSync('/tmp/jornada-sync-result.txt', 'utf8').trim();
-          if (!raw) throw new Error('Sincronizador da Jornada retornou resposta vazia.');
-          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
-            throw new Error('Sincronizador da Jornada retornou HTML em vez de JSON.');
-          }
-          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-          if (result.sucesso !== true) throw new Error('Sincronizacao da Jornada nao retornou sucesso=true.');
-          console.log('JORNADA_SYNC_ENCONTRADOS=' + Number(result.encontrados || 0));
-          console.log('JORNADA_SYNC_ARTEFATOS=' + Number(result.artefatos || 0));
-          console.log('JORNADA_SYNC_TRANSCRICOES_PASTAS=' + Number(result.transcricoesPastas || 0));
-          console.log('JORNADA_SYNC_CLIENTES_ATUALIZADOS=' + Number(result.clientesAtualizados || 0));
-          if (Array.isArray(result.erros) && result.erros.length) {
-            console.log('JORNADA_SYNC_ERROS=' + JSON.stringify(result.erros));
-          }
-          console.log('JORNADA_SYNC_OK=1');
-          NODE
-
-          rm -f /tmp/google_access_token_jornada
-
-      - name: Run one-time Drive folder batches
-        if: steps.capacity.outputs.head_only != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          subject="$(git log -1 --pretty=%s)"
-          if [[ "$subject" != "Ops sync pastas once:"* ]]; then
-            echo "JORNADA_PASTAS_SYNC_SKIPPED=1"
-            echo "Commit sem marcador de sincronizacao unica das pastas: $subject"
-            exit 0
-          fi
-
-          node <<'NODE'
-          const fs = require('fs');
-          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
-          const token =
-            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
-            (j.token && j.token.access_token) ||
-            j.access_token || '';
-          if (!token) throw new Error('Access token do clasp ausente.');
-          fs.writeFileSync('/tmp/google_access_token_jornada_pastas', token, {mode: 0o600});
-          NODE
-
-          TOKEN="$(cat /tmp/google_access_token_jornada_pastas)"
-          URL="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec?ops_sync_jornada_pastas=1"
-
-          for lote in 1 2 3; do
-            body="/tmp/jornada-pastas-sync-$lote.txt"
-            code="$(curl -sS --max-time 240 --location-trusted --oauth2-bearer "$TOKEN" -o "$body" -w '%{http_code}' "$URL" || true)"
-            echo "JORNADA_PASTAS_SYNC_HTTP_STATUS_$lote=$code"
-            test "$code" = "200"
-
-            LOTE="$lote" BODY="$body" node <<'NODE'
-          const fs = require('fs');
-          const lote = process.env.LOTE;
-          const raw = fs.readFileSync(process.env.BODY, 'utf8').trim();
-          if (!raw) throw new Error('Lote ' + lote + ' retornou resposta vazia.');
-          if (/<!doctype html|<html/i.test(raw.slice(0, 500))) {
-            throw new Error('Lote ' + lote + ' retornou HTML em vez de JSON.');
-          }
-          const result = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-          if (result.sucesso !== true) throw new Error('Lote ' + lote + ' nao retornou sucesso=true.');
-          console.log('JORNADA_PASTAS_LOTE_' + lote + '_FONTE=' + String(result.fonteNome || result.fonteId || ''));
-          console.log('JORNADA_PASTAS_LOTE_' + lote + '_IMPORTADAS=' + Number(result.importadas || 0));
-          console.log('JORNADA_PASTAS_LOTE_' + lote + '_ATUALIZADAS=' + Number(result.atualizadas || 0));
-          console.log('JORNADA_PASTAS_LOTE_' + lote + '_ERROS=' + JSON.stringify(result.erros || []));
-          NODE
-          done
-
-          echo "JORNADA_PASTAS_SYNC_OK=1"
-          rm -f /tmp/google_access_token_jornada_pastas /tmp/jornada-pastas-sync-*.txt
 
       - name: Remove local authentication file
         if: always()
-        run: rm -f "$HOME/.clasprc.json"
+        run: |
+          rm -f "$HOME/.clasprc.json"
