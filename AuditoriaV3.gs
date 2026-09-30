@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.2.13
+ * Versão: 6.2.14
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.2.13',
+  versao: '6.2.14',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -1690,6 +1690,28 @@ function transcreverAudioMp3V3(dados) {
   return importada;
 }
 
+function audV3PrepararPlanoManualRapido_(transcricao, interacao) {
+  const conteudo = String(audV3ConteudoCompletoTranscricao_(transcricao || {}, interacao || {}) || '').trim();
+  if (!conteudo) throw new Error('O Plano de Otimização está sem conteúdo para estruturar.');
+  return {
+    conteudo: conteudo,
+    qualidade: {
+      status: 'PLANO_MANUAL',
+      apta_para_auditoria: true,
+      alertas: [],
+      metricas: {},
+      reparo_locutores: {
+        usado: false,
+        modelo: '',
+        atribuicoes: 0,
+        tentativas: 0,
+        erro: ''
+      }
+    },
+    normalizacaoVersao: 'PLANO_MANUAL_V1'
+  };
+}
+
 function executarAuditoriaV3(dados) {
   dados = dados || {};
   audV3EncerrarProcessamentosExpirados_();
@@ -1725,7 +1747,9 @@ function executarAuditoriaV3(dados) {
   if (!cliente || !pitch || !interacao || !transcricao) {
     throw new Error('Cliente, pitch, interação ou transcrição não encontrados.');
   }
-  const transcricaoPreparada = audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao);
+  const transcricaoPreparada = tipo === 'PLANO'
+    ? audV3PrepararPlanoManualRapido_(transcricao, interacao)
+    : audV3PrepararTranscricaoParaAuditoria_(transcricao, interacao);
   transcricao.CONTEUDO = transcricaoPreparada.conteudo;
   transcricao.QUALIDADE_TRANSCRICAO = transcricaoPreparada.qualidade.status;
   transcricao.QUALIDADE_JSON = JSON.stringify(transcricaoPreparada.qualidade);
@@ -1889,7 +1913,7 @@ function executarAuditoriaV3(dados) {
       }
       audV3ValidarResultadoOficial_(normalizado, tipo, criterios, transcricao.CONTEUDO, pitch.CONTEUDO_PITCH);
       normalizado.validacao_board = audV3ValidarQualidadeBoard_(normalizado, tipo);
-      if (audV3MotivoAutorreparoGate_(normalizado.validacao_board)) {
+      if (tipo !== 'PLANO' && audV3MotivoAutorreparoGate_(normalizado.validacao_board)) {
         audV3AutorrepararCoachingGenerico_(
           normalizado,
           tipo,
@@ -1970,24 +1994,23 @@ function executarAuditoriaV3(dados) {
       ATUALIZADO_EM: new Date()
     });
 
-    if (tipo === 'PLANO') {
-      const finalizacao = audV3FinalizarAutomaticamente_(idAuditoria);
-      const atualizadaPlano = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
-      return {
-        sucesso: true,
-        automatica: true,
-        mensagem: finalizacao.mensagem,
-        publicacaoRd: finalizacao.rd || null,
-        auditoria: audV3AuditoriaFront_(atualizadaPlano),
-        auditorias: audV3ListarAuditoriasFront_()
-      };
-    }
-
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO',
       AUTOMACAO_ERRO: '',
       AUTOMACAO_ATUALIZADO_EM: new Date()
     });
+
+    if (tipo === 'PLANO') {
+      const atualizadaPlano = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
+      return {
+        sucesso: true,
+        automatica: false,
+        mensagem: 'Plano estruturado e validado. Revise antes de aprovar, criar o Google Docs ou publicar.',
+        publicacaoRd: null,
+        auditoria: audV3AuditoriaFront_(atualizadaPlano),
+        auditorias: audV3ListarAuditoriasFront_()
+      };
+    }
     const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria);
     return {
       sucesso: true,
@@ -3705,7 +3728,7 @@ function audV3ChamarGemini_(ctx) {
   const generationConfig = {
     temperature: 0,
     responseMimeType: 'application/json',
-    maxOutputTokens: 12000
+    maxOutputTokens: tipo === 'PLANO' ? 6000 : 12000
   };
   // Os contratos de SDR e Closer são extensos e podem ultrapassar a
   // complexidade aceita pelo responseSchema da API antes do consumo de tokens.
@@ -3720,7 +3743,7 @@ function audV3ChamarGemini_(ctx) {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: generationConfig
   };
-  const esperasMs = AUDITORIA_V3.esperasRetentativaMs.slice();
+  const esperasMs = tipo === 'PLANO' ? [0, 2000] : AUDITORIA_V3.esperasRetentativaMs.slice();
   const statusTemporarios = [429, 500, 502, 503, 504];
   const statusTrocaModeloImediata = [503];
   const esperaCurtaQuotaMs_ = function(corpoErro) {
@@ -3974,7 +3997,7 @@ function audV3MontarPrompt_(ctx) {
 
   if (tipo === 'PLANO') {
     return [
-      'Transforme a transcrição manual da análise em um Plano de Otimização pronto para revisão e publicação no Circle. Responda somente no JSON solicitado.',
+      'Transforme a transcrição manual da análise em um Plano de Otimização pronto para revisão. Responda somente no JSON solicitado e mantenha o JSON completo em até 8.000 caracteres.',
       '<METADADOS>\n' + JSON.stringify(meta, null, 2) + '\n</METADADOS>',
       '<TRANSCRICAO_DA_ANALISE>\n' + String(ctx.transcricao.CONTEUDO || '') + '\n</TRANSCRICAO_DA_ANALISE>',
       'A transcrição contém a análise já realizada pelo analista. Organize e aperfeiçoe a redação, sem auditar o analista e sem substituir os achados por critérios genéricos.',
@@ -3986,7 +4009,7 @@ function audV3MontarPrompt_(ctx) {
       'Para CLOSER, cada análise deve apresentar a situação observada, a consistência da execução, os exemplos de leads mencionados e a consequência operacional. Não invente exemplos quando a transcrição não os trouxer.',
       'Quando a equipe for SDR, normalize os parâmetros equivalentes nesta ordem e com estes identificadores: uso_cadencia = Uso da Cadência; uso_voip = Uso do Voip; uso_pitch = Uso do Pitch; cadencia_no_show = Uso da Cadência do No-Show; passagem_bastao = Passagem de bastão; registros_pos_acao = Registros dos passos dados após realização da ação; tarefas_timing = Marcação e execução de tarefas para controle e timing de execução.',
       'Para SDR, cada análise deve apresentar a situação observada, a consistência da execução, os exemplos de leads mencionados e a consequência operacional. Não invente exemplos quando a transcrição não os trouxer.',
-      'Para cada parâmetro, normalize o status somente como ATINGIDO, PARCIAL ou NAO_EXECUTADO e escreva uma análise substantiva, específica e fiel às evidências e exemplos mencionados.',
+      'Para cada parâmetro, normalize o status somente como ATINGIDO, PARCIAL ou NAO_EXECUTADO e escreva uma análise específica, fiel às evidências e sem repetição. Prefira 2 a 4 frases por parâmetro.',
       'Use ATINGIDO quando o parâmetro foi executado corretamente; PARCIAL quando houve execução incompleta ou inconsistente; NAO_EXECUTADO quando não houve execução ou houve descumprimento integral.',
       'Não crie notas. O Board calculará a régua fixa depois da resposta: Atingido = 1,0; Parcial = 0,5; Não executado = 0,0.',
       'Não invente parâmetros, pessoas, empresas, leads, links, métricas, notas, falhas, resultados ou recomendações ausentes na transcrição.',
