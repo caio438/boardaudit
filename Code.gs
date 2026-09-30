@@ -40,6 +40,11 @@ const APP = {
 
 const BOARD_MODE = 'MANUAL';
 
+const RD_API4COM_AUTOMACAO = Object.freeze({
+  chaveIngestao: 'RD_API4COM_INGESTAO_ATIVA',
+  chavePipeline: 'RD_API4COM_PIPELINE_ATIVO'
+});
+
 function boardModoManual_() {
   return String(BOARD_MODE || '').toUpperCase() === 'MANUAL';
 }
@@ -64,6 +69,10 @@ function DESLIGAR_TODAS_AUTOMACOES_BOARD() {
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, 'NAO');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chaveIngestao, 'NAO');
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, 'NAO');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, 'NAO');
   salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'NAO');
   salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO');
   salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO');
@@ -3440,15 +3449,39 @@ function atualizarIntegracaoCliente_(idIntegracao, alteracoes) {
    AUTOMAÇÃO DIÁRIA RD
 ========================================================= */
 
+function rdApi4comFlagAtiva_(chave) {
+  return String(obterConfiguracao_(chave) || obterSegredo_(chave) || 'NAO').toUpperCase() === 'SIM';
+}
+
+function rdApi4comIngestaoAtiva_() {
+  return rdApi4comFlagAtiva_(RD_API4COM_AUTOMACAO.chaveIngestao);
+}
+
+function rdApi4comPipelineAtivo_() {
+  return rdApi4comFlagAtiva_(RD_API4COM_AUTOMACAO.chavePipeline);
+}
+
+function configurarAutomacaoRdApi4com(dados) {
+  dados = dados || {};
+  const ingestaoAtiva = dados.ingestaoAtiva === true;
+  const pipelineAtivo = dados.pipelineAtivo === true;
+  const ingestao = ingestaoAtiva ? 'SIM' : 'NAO';
+  const pipeline = pipelineAtivo ? 'SIM' : 'NAO';
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, ingestao);
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chaveIngestao, ingestao);
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, pipeline);
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, pipeline);
+  reconciliarAcionadorRd_();
+  return { sucesso: true, automacaoRd: obterStatusAutomacaoRd_() };
+}
+
 function reconciliarAcionadorRd_() {
   const nomeFuncao = 'SINCRONIZAR_RD_DIARIO';
-  if (boardModoManual_()) {
+  if (!rdApi4comIngestaoAtiva_()) {
     ScriptApp.getProjectTriggers()
       .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
       .forEach(trigger => ScriptApp.deleteTrigger(trigger));
     removerAcionadoresProcessamentoRd_();
-    salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
-    salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
     return false;
   }
 
@@ -3468,8 +3501,6 @@ function reconciliarAcionadorRd_() {
   if (!clientesAtivos.length) {
     existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
     removerAcionadoresProcessamentoRd_();
-    salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
-    salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
     return false;
   }
 
@@ -3488,8 +3519,6 @@ function reconciliarAcionadorRd_() {
     );
   }
 
-  salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'SIM');
-  salvarSegredo_('RD_AUTOMACAO_ATIVA', 'SIM');
   return true;
 }
 
@@ -3498,7 +3527,9 @@ function reconciliarAcionadorRd_() {
  * O processamento restante continua em acionadores curtos e independentes.
  */
 function SINCRONIZAR_RD_DIARIO(evento) {
-  if (boardModoManual_()) return boardRespostaManual_('SINCRONIZAR_RD_DIARIO');
+  if (!rdApi4comIngestaoAtiva_()) {
+    return { sucesso: true, ignorada: true, mensagem: 'Ingestão RD/API4COM desativada pela flag própria.' };
+  }
   if (!evento || !evento.triggerUid) {
     registrarLog_(
       'RD',
@@ -3689,6 +3720,10 @@ function PROCESSAR_FILA_RD(evento) {
         fila.clientesProcessados++;
         fila.linhasGravadas += resultado.linhasGravadas;
 
+        if (resultado.idsExternos.length && rdApi4comPipelineAtivo_()) {
+          agendarPipelineRdApi4com_();
+        }
+
         const integracaoRd = obterIntegracaoCliente_(cliente.idCliente, 'RD_STATION');
         if (integracaoRd) {
           atualizarIntegracaoCliente_(integracaoRd.ID_INTEGRACAO, {
@@ -3866,9 +3901,10 @@ function REPARAR_FILA_RD_E_SINCRONIZAR_MES_ATUAL() {
 }
 
 function agendarProcessamentoRd_() {
-  if (boardModoManual_()) return false;
   const fila = obterFilaRd_();
   if (!fila || !['PENDENTE', 'PROCESSANDO'].includes(fila.status)) return false;
+  const origemManual = /^(MANUAL|REPROCESSAMENTO)/.test(String(fila.origem || '').toUpperCase());
+  if (!rdApi4comIngestaoAtiva_() && !origemManual) return false;
 
   const existentes = ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === 'PROCESSAR_FILA_RD');
@@ -3883,6 +3919,34 @@ function agendarProcessamentoRd_() {
   return true;
 }
 
+function agendarPipelineRdApi4com_() {
+  if (!rdApi4comPipelineAtivo_()) return false;
+  const handler = 'PROCESSAR_PIPELINE_RD_API4COM';
+  const existente = ScriptApp.getProjectTriggers().some(function(trigger) {
+    return trigger.getHandlerFunction() === handler;
+  });
+  if (existente) return true;
+  ScriptApp.newTrigger(handler).timeBased().after(60 * 1000).create();
+  return true;
+}
+
+function PROCESSAR_PIPELINE_RD_API4COM() {
+  const handler = 'PROCESSAR_PIPELINE_RD_API4COM';
+  ScriptApp.getProjectTriggers()
+    .filter(function(trigger) { return trigger.getHandlerFunction() === handler; })
+    .forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (!rdApi4comPipelineAtivo_()) {
+    return { sucesso: true, ignorada: true, mensagem: 'Pipeline SDR RD/API4COM desativado pela flag própria.' };
+  }
+  const retorno = EXECUTAR_AUTOMACAO_LIGACOES_V3({ origemInternaApi4com: true });
+  const status = obterStatusAutomacaoLigacoesV3();
+  const processadas = Number((((retorno || {}).resultado || {}).processadas) || 0);
+  if (processadas > 0 && Number(status.elegiveis || 0) > 0 && Number(status.saldoHoje || 0) > 0) {
+    agendarPipelineRdApi4com_();
+  }
+  return retorno;
+}
+
 function removerAcionadoresProcessamentoRd_() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === 'PROCESSAR_FILA_RD')
@@ -3894,8 +3958,6 @@ function consolidarTarefasRdCliente_(cliente, dataInicio, dataFim) {
   const token = integracao ? obterSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO) : '';
   if (!token) throw new Error('Token do RD não encontrado.');
 
-  const grupos = {};
-  const ligacoesComGravacao = {};
   const tarefasComGravacao = [];
   let pagina = 1;
   let continuar = true;
@@ -3905,38 +3967,14 @@ function consolidarTarefasRdCliente_(cliente, dataInicio, dataFim) {
       page: pagina,
       limit: APP.rdPageLimit,
       date_start: dataInicio,
-      date_end: dataFim
+      date_end: dataFim,
+      type: 'call',
+      done: true
     });
 
     const tarefas = extrairListaTarefasRd_(resposta);
-
     tarefas.forEach(tarefa => {
       if (tarefaLigacaoRdPossuiGravacao_(tarefa)) tarefasComGravacao.push(tarefa);
-      const dataReferencia = extrairDataTarefaRd_(tarefa) || dataInicio;
-      const responsaveis = extrairResponsaveisRd_(tarefa);
-
-      const listaResponsaveis = responsaveis.length
-        ? responsaveis
-        : [{ id: 'SEM_RESPONSAVEL', nome: 'Sem responsável' }];
-
-      listaResponsaveis.forEach(responsavel => {
-        const chave =
-          dataReferencia +
-          '|' +
-          cliente.idCliente +
-          '|' +
-          responsavel.id;
-
-        if (!grupos[chave]) {
-          grupos[chave] = criarGrupoResumoRd_(
-            dataReferencia,
-            cliente,
-            responsavel
-          );
-        }
-
-        acumularTarefaRd_(grupos[chave], tarefa);
-      });
     });
 
     continuar = existeProximaPaginaRd_(
@@ -3957,33 +3995,12 @@ function consolidarTarefasRdCliente_(cliente, dataInicio, dataFim) {
     );
   }
 
-  const registros = Object.values(grupos);
-  salvarLigacoesRdEmLote_(cliente, tarefasComGravacao).forEach(id => {
-    ligacoesComGravacao[id] = true;
-  });
-
-  if (!registros.length) {
-    const responsavel = {
-      id: 'SEM_MOVIMENTO',
-      nome: 'Sem movimento'
-    };
-
-    registros.push(
-      criarGrupoResumoRd_(dataInicio, cliente, responsavel)
-    );
-  }
-
-  registros.forEach(registro => {
-    registro.STATUS = 'CONCLUIDO';
-    registro.SINCRONIZADO_EM = new Date();
-    registro.ERRO = '';
-
-    salvarResumoRd_(registro);
-  });
+  const ids = salvarLigacoesRdEmLote_(cliente, tarefasComGravacao);
 
   return {
-    linhasGravadas: registros.length,
-    ligacoesComGravacao: Object.keys(ligacoesComGravacao).length
+    linhasGravadas: ids.length,
+    ligacoesComGravacao: ids.length,
+    idsExternos: ids
   };
 }
 
@@ -4256,20 +4273,10 @@ function REPROCESSAR_DURACOES_LIGACOES_RD() {
 }
 
 function extrairUrlGravacaoApi4comTarefa_(tarefa) {
-  const texto = [
-    extrairDescricaoTarefaRd_(tarefa),
-    tarefa.recording_url,
-    tarefa.record_url,
-    tarefa.audio_url,
-    tarefa.url_gravacao
-  ]
-    .filter(Boolean)
-    .map(String)
-    .join('\n')
-    .replace(/&amp;/gi, '&');
+  const texto = extrairDescricaoTarefaRd_(tarefa).replace(/&amp;/gi, '&');
   const urls = texto.match(/https:\/\/[^\s<>"']+/gi) || [];
   const candidata = urls.find(url =>
-    /(?:^|\.)api4com\.com\//i.test(url) && /\.mp3(?:[?#]|$)/i.test(url)
+    /^https:\/\/(?:[^/\s]+\.)?api4com\.com\/.*\.mp3(?:[?#]|$)/i.test(url)
   );
   return candidata ? candidata.replace(/[),.;\]}]+$/g, '') : '';
 }
@@ -4522,11 +4529,15 @@ function listarLigacoesRd_() {
 }
 
 function obterStatusAutomacaoRd_() {
-  const ativa = obterSegredo_('RD_AUTOMACAO_ATIVA') === 'SIM';
+  const ativa = rdApi4comIngestaoAtiva_();
   const fila = obterFilaRd_();
 
   return {
     ativa: ativa,
+    ingestaoApi4comAtiva: ativa,
+    pipelineSdrAtivo: rdApi4comPipelineAtivo_(),
+    isoladaDoBoardMode: true,
+    boardMode: BOARD_MODE,
     horarioAproximado: String(APP.rdTriggerHour).padStart(2, '0') + ':00',
     ultimaExecucao: serializarData_(obterSegredo_('RD_ULTIMA_EXECUCAO')),
     ultimaOrigem: obterSegredo_('RD_ULTIMA_ORIGEM') || '',
