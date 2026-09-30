@@ -1,4 +1,5 @@
 name: Ops preview audit after deploy
+# Runs only after a successful production deploy whose commit explicitly requests a preview.
 
 on:
   workflow_run:
