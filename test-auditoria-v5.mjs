@@ -75,21 +75,31 @@ assert.match(
   /function renderizarAuditorias\(\)[\s\S]*?const auditoriasFonte = auditoriasOperacionaisFront_\(\)/,
   'A lista de auditorias ainda depende diretamente do estado bruto e pode omitir a auditoria recém-aprovada.'
 );
+assert.ok(front.includes('id="modalAuditoriaHistorico"'), 'Histórico não possui modal dedicado para visualizar a auditoria.');
+assert.ok(front.includes('id="auditoriaHistoricoModalConteudo"'), 'Modal do histórico não possui área própria para o relatório.');
 const inicioAbrirHistorico = front.indexOf('function abrirAuditoriaHistoricoV3');
 const fimAbrirHistorico = front.indexOf('function chaveDataHistorico_', inicioAbrirHistorico);
 assert.ok(inicioAbrirHistorico >= 0 && fimAbrirHistorico > inicioAbrirHistorico, 'Não foi possível isolar a abertura da auditoria pelo histórico.');
 const trechoAbrirHistorico = front.slice(inicioAbrirHistorico, fimAbrirHistorico);
 assert.ok(
+  trechoAbrirHistorico.includes('abrirAuditoriaHistoricoModalCarregando_()'),
+  'O botão Ver auditoria precisa abrir o modal imediatamente antes da leitura do backend.'
+);
+assert.ok(
   trechoAbrirHistorico.includes('.obterAuditoriaHistoricoV3(id)'),
   'O botão Ver auditoria precisa buscar o registro exato no backend em vez de depender do cache da tela.'
 );
 assert.ok(
-  trechoAbrirHistorico.includes('Carregando auditoria...'),
-  'O clique em Ver auditoria precisa dar retorno visual imediato enquanto carrega o registro.'
+  trechoAbrirHistorico.includes('renderizarAuditoriaHistoricoModal_(auditoria)'),
+  'A auditoria carregada precisa ser renderizada no modal dedicado do histórico.'
 );
 assert.ok(
   trechoAbrirHistorico.includes('withFailureHandler'),
   'O botão Ver auditoria precisa exibir uma falha concreta quando a leitura do backend não funcionar.'
+);
+assert.ok(
+  front.includes("modal.classList.add('aberto')") && front.includes("Carregando auditoria..."),
+  'O modal do histórico precisa ficar visível imediatamente com estado de carregamento.'
 );
 assert.ok(
   audit.includes('function obterAuditoriaHistoricoV3(idAuditoria)'),
