@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
+const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const opsWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-sync.yml', import.meta.url), 'utf8');
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
