@@ -7,7 +7,7 @@ const opsWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-cli
 const repairWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage1.yml', import.meta.url), 'utf8');
 const repairStage2Workflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage2.yml', import.meta.url), 'utf8');
 const repairStage3Workflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-repair-stage3.yml', import.meta.url), 'utf8');
-const finalRepairWorkflow = fs.readFileSync(new URL('./.github/workflows/ops-client-groups-final-repair.yml', import.meta.url), 'utf8');
+const finalRepairWorkflow = fs.readFileSync(new URL('./.github/workflows-archive/ops-client-groups-final-repair.yml', import.meta.url), 'utf8');
 
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'buffet_mais', nome: 'Buffet Mais', grupoCliente: 'Grupo Eleva' \}/);
