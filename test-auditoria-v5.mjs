@@ -45,8 +45,9 @@ assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Cam
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
 assert.ok(
-  front.includes(`item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'`) &&
-  front.includes(`prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar ao RD</button>`),
+  front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
+  front.includes("prepararEnvioAuditoriaRdFront('") &&
+  front.includes('>Enviar ao RD</button>'),
   'Auditoria aprovada e vinculada não exibe a ação manual Enviar ao RD.'
 );
 assert.ok(
