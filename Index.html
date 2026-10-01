@@ -8689,6 +8689,7 @@
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !auditoriaLegada && !auditoriaSubstituida && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
+          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO' && !auditoriaLegada && !auditoriaSubstituida ? `<button class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar ao RD</button>` : ''}
           ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() === 'ERRO' ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Reprocessar RD</button>` : ''}
           ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>` : ''}
         </div>
@@ -9004,7 +9005,7 @@
     if (botao) { botao.disabled = true; botao.dataset.textoOriginal = botao.textContent; botao.textContent = 'Preparando...'; }
     google.script.run
       .withSuccessHandler(preview => {
-        if (botao) { botao.disabled = false; botao.textContent = botao.dataset.textoOriginal || 'Prévia para o RD'; }
+        if (botao) { botao.disabled = false; botao.textContent = botao.dataset.textoOriginal || 'Enviar ao RD'; }
         estado.rdPreviewAtual = preview;
         document.getElementById('rdPreviewOportunidade').value = preview.oportunidade || preview.dealId || 'Sem vínculo identificado';
         document.getElementById('rdPreviewDestino').value =
@@ -9013,7 +9014,12 @@
         document.getElementById('rdPreviewTexto').value = preview.texto || '';
         document.getElementById('rdPreviewAviso').textContent = preview.aviso || '';
         const acao = document.getElementById('btnAprovarEnviarRd');
-        if (acao) acao.textContent = preview.temToken && preview.temVinculo ? 'Aprovar e enviar ao RD' : 'Aprovar e salvar prévia';
+        if (acao) {
+          const jaAprovada = String(preview.statusAuditoria || '').toUpperCase() === 'APROVADA';
+          acao.textContent = preview.temToken && preview.temVinculo
+            ? (jaAprovada ? 'Enviar ao RD' : 'Aprovar e enviar ao RD')
+            : (jaAprovada ? 'Salvar prévia' : 'Aprovar e salvar prévia');
+        }
         document.getElementById('modalRdAuditoria').classList.add('aberto');
         document.getElementById('modalRdAuditoria').setAttribute('aria-hidden', 'false');
       })
