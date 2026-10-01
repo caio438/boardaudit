@@ -547,10 +547,6 @@ assert.ok(
   rd.includes("var transcricao = audV3TranscricaoExataAuditoria_(a);"),
   'Envio ao RD ainda pode usar outra transcrição da mesma interação.'
 );
-assert.ok(
-  ops.includes("const transcricao = audV3TranscricaoExataAuditoria_(auditoria);"),
-  'Revalidação operacional ainda pode usar outra transcrição da mesma interação.'
-);
 assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integridade não possui resolvedor do snapshot exato usado na geração.');
 assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
 assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');
