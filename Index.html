@@ -6922,9 +6922,10 @@
                : ''}`
           : auditoria.status === 'EM_REVISAO'
             ? `<span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
+               <button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}', this)">Aprovar auditoria</button>
                ${['SDR', 'CLOSER'].includes(tipoAudit)
-                 ? `<button id="btnPreviewRdAuditoria" class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Prévia para o RD</button>`
-                 : `<button id="btnAprovarAuditoria" class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}')">Aprovar</button>`}
+                 ? `<button id="btnPreviewRdAuditoria" class="btn secondary" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Prévia do RD</button>`
+                 : ''}
                <button class="btn secondary" type="button" onclick="executarAuditoriaV3Front()">Gerar novamente</button>`
             : `<span class="status danger" style="align-self:center">AUTOMAÇÃO INTERROMPIDA</span>
                <button class="btn secondary" type="button" onclick="voltarParaDadosAuditoriaV3()">Corrigir dados</button>
