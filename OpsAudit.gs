@@ -449,7 +449,7 @@ function opsValidarAuditoriaNoEngineAtual_(auditoria, interacao) {
   if (!['SDR', 'CLOSER'].includes(tipo)) throw new Error('Tipo de auditoria existente inválido.');
 
   const resultado = audV3ParseJson_(auditoria.RESULTADO_JSON, 'Resultado estruturado inválido.');
-  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
+  const transcricao = audV3TranscricaoExataAuditoria_(auditoria);
   if (!transcricao) throw new Error('Transcrição original da auditoria existente não encontrada.');
 
   const cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', auditoria.ID_CLIENTE);
