@@ -45,6 +45,28 @@ assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Cam
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
 assert.ok(
+  front.includes("item.status === 'EM_REVISAO'") &&
+  front.includes("aprovarAuditoriaV3Front('") &&
+  front.includes('>Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>'),
+  'Card de auditoria em revisão não exibe a ação Aprovar auditoria.'
+);
+assert.ok(
+  front.includes("const acoesRevisao = status === 'EM_REVISAO'") &&
+  front.includes("aprovarAuditoriaV3Front('") &&
+  front.includes('>Aprovar auditoria</button>'),
+  'Modal Ver auditoria não permite aprovar auditoria em revisão.'
+);
+assert.ok(
+  front.includes("function aprovarAuditoriaV3Front(idAuditoria, botaoAcao)") &&
+  front.includes("renderizarAuditoriaHistoricoModal_(estado.auditoriaAtual)"),
+  'A aprovação pelo histórico não atualiza o modal após concluir.'
+);
+assert.ok(
+  front.includes("id=\"btnAprovarAuditoria\"") &&
+  front.includes('>Prévia do RD</button>'),
+  'Preview detalhado de SDR/Closer precisa separar Aprovar auditoria de Prévia do RD.'
+);
+assert.ok(
   front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
   front.includes("prepararEnvioAuditoriaRdFront('") &&
   front.includes('>Enviar ao RD</button>'),
