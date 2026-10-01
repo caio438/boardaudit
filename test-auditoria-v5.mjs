@@ -44,6 +44,22 @@ assert.ok(front.includes("Você pode vincular a negociação do RD agora. O vín
 assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Campos manuais do histórico não protegem o foco contra eventos do card.');
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
+assert.ok(
+  front.includes(`item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'`) &&
+  front.includes(`prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar ao RD</button>`),
+  'Auditoria aprovada e vinculada não exibe a ação manual Enviar ao RD.'
+);
+assert.ok(
+  front.includes("jaAprovada ? 'Enviar ao RD' : 'Aprovar e enviar ao RD'"),
+  'Prévia do RD não distingue envio de auditoria já aprovada.'
+);
+const inicioAprovacaoManual = audit.indexOf('function aprovarAuditoriaV3(idAuditoria)');
+const fimAprovacaoManual = audit.indexOf('function descartarAuditoriaV3', inicioAprovacaoManual);
+const trechoAprovacaoManual = audit.slice(inicioAprovacaoManual, fimAprovacaoManual);
+assert.ok(
+  !trechoAprovacaoManual.includes('audRdPublicarAutomaticamente_'),
+  'A aprovação manual não deve publicar automaticamente auditoria Closer no RD.'
+);
 assert.ok(audit.includes('function salvarLinkCircleAuditoria(dados)'), 'Backend não possui a ação chamada pelo campo manual de link do Circle no histórico.');
 assert.match(audit, /function salvarLinkCircleAuditoria\(dados\)[\s\S]*?CIRCLE_POST_URL:\s*url/, 'Salvar link do Circle não persiste a URL informada.');
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
