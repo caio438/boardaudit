@@ -2331,17 +2331,23 @@ function aprovarAuditoriaV3(idAuditoria) {
   };
   const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
   if (!transcricao) throw new Error('A transcrição original desta auditoria não está disponível.');
-  const fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO);
-  transcricao.CONTEUDO = String(fontePreparada.conteudo || '').trim();
-  transcricao.NORMALIZACAO_VERSAO = fontePreparada.normalizacaoVersao || '';
-  if (!String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
-  const hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, auditoria.TIPO_AUDITORIA);
   if (!String(auditoria.HASH_FONTE || '').trim()) {
     throw new Error('Esta auditoria foi gerada antes das travas de integridade. Gere uma nova análise antes de aprovar.');
   }
-  if (String(auditoria.HASH_FONTE) !== hashAtual) {
-    throw new Error('A fonte desta auditoria mudou após a geração. Gere uma nova análise antes de aprovar.');
+  const fonteIntegridade = audV3ResolverFonteHashAuditoria_(
+    auditoria,
+    transcricao,
+    interacao,
+    cliente,
+    pitch,
+    modelo
+  );
+  if (!fonteIntegridade.confere) {
+    throw new Error('A fonte persistida desta auditoria não corresponde ao snapshot usado na geração. Gere uma nova análise antes de aprovar.');
   }
+  transcricao.CONTEUDO = String(fonteIntegridade.conteudo || '').trim();
+  transcricao.NORMALIZACAO_VERSAO = fonteIntegridade.normalizacaoVersao || '';
+  if (!String(transcricao.CONTEUDO || '').trim()) throw new Error('A transcrição original desta auditoria não está disponível.');
   const criteriosOficiais = audV3ParseJson_(String(auditoria.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Os critérios da auditoria não são válidos.');
   audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
   const gateBoard = audV3ExigirGatePublicavel_(resultado, auditoria.TIPO_AUDITORIA);
@@ -4426,6 +4432,85 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3ResolverFonteHashAuditoria_(auditoria, transcricao, interacao, cliente, pitch, modelo) {
+  auditoria = auditoria || {};
+  transcricao = transcricao || {};
+  const esperado = String(auditoria.HASH_FONTE || '').trim();
+  if (!esperado) {
+    return { confere: false, origem: '', conteudo: '', normalizacaoVersao: '', hashAtual: '' };
+  }
+
+  const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  const candidatos = [];
+  const vistos = {};
+
+  const adicionarCandidato = function(origem, conteudo, normalizacaoVersao) {
+    const texto = String(conteudo || '').trim();
+    if (!texto) return;
+    const versao = String(normalizacaoVersao || '').trim();
+    const chave = versao + '\n' + texto;
+    if (vistos[chave]) return;
+    vistos[chave] = true;
+    candidatos.push({
+      origem: origem,
+      conteudo: texto,
+      normalizacaoVersao: versao
+    });
+  };
+
+  if (audV3UsaNormalizacaoV2_(auditoria.ENGINE_VERSAO)) {
+    adicionarCandidato(
+      'SNAPSHOT_NORMALIZADO_PERSISTIDO',
+      transcricao.CONTEUDO_NORMALIZADO,
+      transcricao.NORMALIZACAO_VERSAO || AUDV3_TRANSCRICAO_NORMALIZACAO_VERSAO
+    );
+  }
+
+  try {
+    const preparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO);
+    adicionarCandidato(
+      preparada.reutilizadaPersistida ? 'FONTE_PERSISTIDA_VALIDADA' : 'FONTE_ATUAL_RECONSTRUIDA',
+      preparada.conteudo,
+      preparada.normalizacaoVersao
+    );
+  } catch (erroPreparacao) {}
+
+  if (!audV3UsaNormalizacaoV2_(auditoria.ENGINE_VERSAO)) {
+    adicionarCandidato('FONTE_LEGADA_ARMAZENADA', transcricao.CONTEUDO, '');
+  }
+
+  for (let indice = 0; indice < candidatos.length; indice++) {
+    const candidato = candidatos[indice];
+    const hashAtual = audV3HashFonte_(
+      cliente,
+      pitch,
+      modelo,
+      Object.assign({}, transcricao, {
+        CONTEUDO: candidato.conteudo,
+        NORMALIZACAO_VERSAO: candidato.normalizacaoVersao
+      }),
+      tipo
+    );
+    if (hashAtual === esperado) {
+      return {
+        confere: true,
+        origem: candidato.origem,
+        conteudo: candidato.conteudo,
+        normalizacaoVersao: candidato.normalizacaoVersao,
+        hashAtual: hashAtual
+      };
+    }
+  }
+
+  return {
+    confere: false,
+    origem: candidatos.length ? candidatos[candidatos.length - 1].origem : '',
+    conteudo: candidatos.length ? candidatos[candidatos.length - 1].conteudo : '',
+    normalizacaoVersao: candidatos.length ? candidatos[candidatos.length - 1].normalizacaoVersao : '',
+    hashAtual: ''
+  };
 }
 
 function audV3TemRecomendacaoGenerica_(valor) {

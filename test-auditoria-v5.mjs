@@ -533,8 +533,10 @@ assert.ok(audit.includes("temperature: 0"), 'Gemini não está configurado de fo
 assert.ok(audit.includes("resultadoParseado.__modelo_ia = modeloApi"), 'Modelo de IA efetivamente usado não está sendo registrado.');
 assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado não recebe status de validação.');
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
-assert.ok(audit.includes("A fonte desta auditoria mudou após a geração"), 'Mudança de fonte não bloqueia aprovação.');
-assert.ok(audit.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)"), 'A aprovação precisa reutilizar a normalização persistida antes de recalcular o hash da fonte.');
+assert.ok(audit.includes("A fonte persistida desta auditoria não corresponde ao snapshot usado na geração"), 'Mudança de fonte sem snapshot compatível não bloqueia aprovação.');
+assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integridade não possui resolvedor do snapshot exato usado na geração.');
+assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
+assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');
 assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Integridade nao possui fonte canonica persistida compartilhada.');
 assert.ok(audit.includes("const conteudoNormalizado = String((transcricao || {}).CONTEUDO_NORMALIZADO || '').trim();"), 'Integridade nao reutiliza exatamente o conteudo normalizado persistido.');
 assert.ok(audit.includes('assinaturaGate === String(assinaturaAtual || \'\')'), 'Fonte persistida nao exige assinatura original identica.');
@@ -586,8 +588,8 @@ assert.ok(!audit.includes("['Critério', 'Status', 'Nota', 'Evidências e compar
 
 assert.match(rd, /String\(a\.STATUS \|\| ''\)\.toUpperCase\(\) !== 'APROVADA'/, 'RD ainda aceita auditoria em revisão.');
 assert.match(rd, /String\(a\.VALIDACAO_STATUS \|\| ''\)\.toUpperCase\(\) !== 'VALIDADA'/, 'RD não exige auditoria validada.');
-assert.ok(rd.includes('audV3HashFonte_'), 'RD não reconfirma a integridade da fonte.');
-assert.ok(rd.includes("audV3PrepararTranscricaoParaIntegridade_(transcricao, i, a.ENGINE_VERSAO)"), 'RD precisa reutilizar a normalização persistida antes de recalcular o hash da auditoria.');
+assert.ok(rd.includes('audV3ResolverFonteHashAuditoria_'), 'RD não reconfirma a integridade pelo snapshot persistido da fonte.');
+assert.ok(rd.includes('var fonteIntegridade = audV3ResolverFonteHashAuditoria_(a, transcricao, i, cliente, pitch, modelo);'), 'RD não usa o mesmo resolvedor de fonte utilizado na aprovação.');
 assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) < 0"), 'Plano de Otimização ainda pode ser enviado ao RD CRM.');
 assert.ok(rd.includes("if(tipo==='CLOSER')return audRdTextoCloserCanonico_(c);"), 'Closer não usa o modelo canônico compacto de anotação.');
 assert.ok(rd.includes("if(tipo==='SDR')return audRdTextoSdr_(c);"), 'SDR não usa exclusivamente o modelo objetivo de anotação.');

@@ -191,9 +191,6 @@ function audRdCtx_(id) {
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
   var transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', a.ID_INTERACAO);
   if (!transcricao) throw new Error('A transcrição original da auditoria não foi encontrada.');
-  var fontePreparada = audV3PrepararTranscricaoParaIntegridade_(transcricao, i, a.ENGINE_VERSAO);
-  transcricao.CONTEUDO = String(fontePreparada.conteudo || '').trim();
-  transcricao.NORMALIZACAO_VERSAO = fontePreparada.normalizacaoVersao || '';
 
   var pitch = {
     ID_PITCH: a.ID_PITCH || '',
@@ -214,10 +211,12 @@ function audRdCtx_(id) {
   var cliente = audV3Localizar_('CLIENTES', 'ID_CLIENTE', a.ID_CLIENTE);
   if (!cliente) throw new Error('Cliente da auditoria não encontrado.');
 
-  var hashAtual = audV3HashFonte_(cliente, pitch, modelo, transcricao, a.TIPO_AUDITORIA);
-  if (String(a.HASH_FONTE || '') !== hashAtual) {
-    throw new Error('A fonte da auditoria mudou após a aprovação. Gere uma nova auditoria antes de enviar ao RD CRM.');
+  var fonteIntegridade = audV3ResolverFonteHashAuditoria_(a, transcricao, i, cliente, pitch, modelo);
+  if (!fonteIntegridade.confere) {
+    throw new Error('A fonte persistida da auditoria não corresponde ao snapshot aprovado. Gere uma nova auditoria antes de enviar ao RD CRM.');
   }
+  transcricao.CONTEUDO = String(fonteIntegridade.conteudo || '').trim();
+  transcricao.NORMALIZACAO_VERSAO = fonteIntegridade.normalizacaoVersao || '';
 
   var resultado = audV3ParseJson_(a.RESULTADO_JSON, 'Resultado JSON inválido.');
   var criterios = audV3ParseJson_(String(a.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Critérios da auditoria inválidos.');
