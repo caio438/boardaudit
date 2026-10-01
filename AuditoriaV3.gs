@@ -2329,7 +2329,7 @@ function aprovarAuditoriaV3(idAuditoria) {
     CRITERIOS_JSON: auditoria.CRITERIOS_SNAPSHOT_JSON || '',
     PROMPT_AUDITORIA: auditoria.PROMPT_SNAPSHOT || ''
   };
-  const transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
+  const transcricao = audV3TranscricaoExataAuditoria_(auditoria);
   if (!transcricao) throw new Error('A transcrição original desta auditoria não está disponível.');
   if (!String(auditoria.HASH_FONTE || '').trim()) {
     throw new Error('Esta auditoria foi gerada antes das travas de integridade. Gere uma nova análise antes de aprovar.');
@@ -4432,6 +4432,19 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3TranscricaoExataAuditoria_(auditoria) {
+  auditoria = auditoria || {};
+  const idTranscricao = String(auditoria.ID_TRANSCRICAO || '').trim();
+  if (idTranscricao) {
+    const exata = audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', idTranscricao);
+    if (!exata) {
+      throw new Error('A transcrição exata usada na geração desta auditoria não foi encontrada.');
+    }
+    return exata;
+  }
+  return audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', auditoria.ID_INTERACAO);
 }
 
 function audV3ResolverFonteHashAuditoria_(auditoria, transcricao, interacao, cliente, pitch, modelo) {

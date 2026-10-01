@@ -534,6 +534,19 @@ assert.ok(audit.includes("resultadoParseado.__modelo_ia = modeloApi"), 'Modelo d
 assert.ok(audit.includes("VALIDACAO_STATUS: 'VALIDADA'"), 'Resultado validado não recebe status de validação.');
 assert.ok(audit.includes("Esta auditoria foi gerada antes das travas de integridade"), 'Aprovação de auditoria legada não está bloqueada.');
 assert.ok(audit.includes("A fonte persistida desta auditoria não corresponde ao snapshot usado na geração"), 'Mudança de fonte sem snapshot compatível não bloqueia aprovação.');
+assert.ok(audit.includes('function audV3TranscricaoExataAuditoria_'), 'Integridade não possui helper para recuperar a transcrição exata gravada na auditoria.');
+assert.ok(
+  audit.includes("audV3Localizar_('TRANSCRICOES', 'ID_TRANSCRICAO', idTranscricao)"),
+  'Helper de integridade não prioriza ID_TRANSCRICAO salvo na auditoria.'
+);
+assert.ok(
+  audit.includes("const transcricao = audV3TranscricaoExataAuditoria_(auditoria);"),
+  'Aprovação ainda pode validar contra outra transcrição da mesma interação.'
+);
+assert.ok(
+  rd.includes("var transcricao = audV3TranscricaoExataAuditoria_(a);"),
+  'Envio ao RD ainda pode usar outra transcrição da mesma interação.'
+);
 assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integridade não possui resolvedor do snapshot exato usado na geração.');
 assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
 assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');

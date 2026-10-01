@@ -189,7 +189,7 @@ function audRdCtx_(id) {
   }
 
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
-  var transcricao = audV3Localizar_('TRANSCRICOES', 'ID_INTERACAO', a.ID_INTERACAO);
+  var transcricao = audV3TranscricaoExataAuditoria_(a);
   if (!transcricao) throw new Error('A transcrição original da auditoria não foi encontrada.');
 
   var pitch = {

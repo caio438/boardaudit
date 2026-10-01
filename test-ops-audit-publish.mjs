@@ -83,6 +83,11 @@ assert.ok(
 );
 
 assert.ok(
+  ops.includes("const transcricao = audV3TranscricaoExataAuditoria_(auditoria);"),
+  'Revalidacao operacional nao usa a transcricao exata registrada na auditoria.'
+);
+
+assert.ok(
   ops.includes(
     'audV3PrepararTranscricaoParaIntegridade_(transcricao, interacao, auditoria.ENGINE_VERSAO)'
   ),
