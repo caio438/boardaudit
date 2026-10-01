@@ -8098,8 +8098,9 @@
     }).repararCoachingAuditoriaV3(idAuditoria);
   }
 
-  function aprovarAuditoriaV3Front(idAuditoria) {
-    const botao = document.getElementById('btnAprovarAuditoria');
+  function aprovarAuditoriaV3Front(idAuditoria, botaoAcao) {
+    const botao = botaoAcao || document.getElementById('btnAprovarAuditoria');
+    const textoOriginal = botao ? botao.textContent : 'Aprovar auditoria';
     if (botao) {
       botao.disabled = true;
       botao.textContent = 'Aprovando...';
@@ -8110,13 +8111,19 @@
         estado.auditorias = resposta.auditorias || [];
         estado.auditoriaAtual = resposta.auditoria || null;
         renderizarAuditorias();
-        renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
+        if (estado.auditoriaAtual) {
+          renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
+          const modal = document.getElementById('modalAuditoriaHistorico');
+          if (modal && modal.classList.contains('aberto')) {
+            renderizarAuditoriaHistoricoModal_(estado.auditoriaAtual);
+          }
+        }
         mostrarToast(resposta.mensagem, 'success');
       })
       .withFailureHandler(erro => {
         if (botao) {
           botao.disabled = false;
-          botao.textContent = 'Aprovar';
+          botao.textContent = textoOriginal;
         }
         tratarErro(erro);
       })
@@ -8402,6 +8409,27 @@
       ].join(' • ');
     }
 
+    const status = String(auditoria.status || '').toUpperCase();
+    const rdStatus = String(auditoria.rdStatus || '').toUpperCase();
+    const acoesRevisao = status === 'EM_REVISAO'
+      ? `<div class="audit-review-actions">
+           <span class="status warning" style="align-self:center">AGUARDANDO SUA REVISÃO</span>
+           <button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(auditoria.idAuditoria)}', this)">Aprovar auditoria</button>
+           ${['SDR', 'CLOSER'].includes(tipo) ? `<button class="btn secondary" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Prévia do RD</button>` : ''}
+         </div>`
+      : status === 'APROVADA'
+        ? `<div class="audit-review-actions">
+             <span class="status success" style="align-self:center">APROVADA</span>
+             ${auditoria.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(auditoria.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
+             ${['SDR', 'CLOSER'].includes(tipo) && auditoria.linkCrm && rdStatus !== 'PUBLICADA'
+               ? `<button class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(auditoria.idAuditoria)}', this)">Enviar ao RD</button>`
+               : ''}
+             ${rdStatus === 'PUBLICADA' && auditoria.linkCrm
+               ? `<a class="btn secondary" href="${escapeAtributo(auditoria.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>`
+               : ''}
+           </div>`
+        : '';
+
     conteudo.innerHTML = `
       <div class="audit-sheet">
         <h2>Auditoria - ${escapeHtml(tipo)}</h2>
@@ -8412,12 +8440,13 @@
           <div><small>Responsável</small><strong>${escapeHtml(responsavel)}</strong></div>
           <div><small>Data</small><strong>${escapeHtml(formatarDataDia(auditoria.dataInteracao))}</strong></div>
           <div><small>Base utilizada</small><strong>${escapeHtml(auditoria.pitchNome || '-')}${auditoria.pitchVersao ? ' - v' + escapeHtml(auditoria.pitchVersao) : ''}</strong></div>
-          <div><small>Status</small><span class="status ${auditoria.status === 'APROVADA' ? 'success' : 'warning'}">${escapeHtml(auditoria.status || 'EM_REVISAO')}</span></div>
+          <div><small>Status</small><span class="status ${status === 'APROVADA' ? 'success' : 'warning'}">${escapeHtml(auditoria.status || 'EM_REVISAO')}</span></div>
           <div style="grid-column:span 2"><small>Score global</small><strong>${auditoria.score === null || auditoria.score === undefined || auditoria.score === '' ? 'N/A' : escapeHtml(auditoria.score) + ' / 5 (' + escapeHtml(auditoria.scorePercentual) + '%)'}</strong></div>
         </div>
         <div class="audit-report">${renderizarConteudoAuditoriaV3(r, tipo, auditoria)}</div>
         ${renderizarJsonFormatadoAuditoria_(r)}
       </div>
+      ${acoesRevisao}
     `;
   }
 
@@ -8684,7 +8713,7 @@
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
           ${auditoriaLegada ? `<button class="btn success" type="button" onclick="regenerarAuditoriaLegadaFront('${escapeAtributo(item.idAuditoria)}')">Gerar auditoria atualizada</button>` : (crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? `<button class="btn success" type="button" onclick="regenerarAuditoriaGrupoSinergiaParaCrmFront('${escapeAtributo(item.idAuditoria)}')">Gerar versão pronta para CRM</button>` : '')}
           ${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar auditoria</button>` : ''}
-          ${item.status === 'EM_REVISAO' && !auditoriaLegada && crmGrupoSinergiaStatus !== 'REANALISE_NECESSARIA' ? `<span class="status warning">Aguardando revisão humana</span>` : ''}
+          ${item.status === 'EM_REVISAO' && !auditoriaLegada && crmGrupoSinergiaStatus !== 'REANALISE_NECESSARIA' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}', this)">Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado && !comunidadePublicada && !rdPublicado ? `<button class="btn danger" type="button" onclick="excluirAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Excluir auditoria</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !auditoriaLegada && !auditoriaSubstituida && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
