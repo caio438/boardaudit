@@ -210,6 +210,132 @@ jobs:
         if: always()
         run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt /tmp/manual-mode-result.txt
 
+  enable-isolated:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/sdr-enable-isolated' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Enable only SDR pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/sdr-enable-result.txt -w '%{http_code}' "$BASE?ops_sdr_enable_isolated=1" || true)"
+          echo "SDR_ENABLE_HTTP_STATUS=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/sdr-enable-result.txt','utf8').trim();
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta de ativacao SDR sem JSON.');
+          const r = JSON.parse(raw.slice(first,last+1));
+          const handlers = r.acionadores || {};
+          const outside = Array.isArray(handlers.foraDoPipelineSdr) ? handlers.foraDoPipelineSdr : ['status ausente'];
+          const ok = r.sucesso === true &&
+            r.pipelineSdrIsolado === true &&
+            r.modoBoard === 'MANUAL' &&
+            r.ingestaoRdApi4comAtiva === true &&
+            r.pipelineRdApi4comAtivo === true &&
+            r.auditoriaLigacoesAtiva === true &&
+            r.publicacaoAutomatica === false &&
+            r.aprovacaoAutomatica === false &&
+            Number(handlers.ingestao || 0) >= 1 &&
+            outside.length === 0;
+          const s = (r.statusSdr || {}).resumo || {};
+          const lines = [
+            '## Pipeline SDR isolado',
+            '',
+            '- Ativacao confirmada: '+String(ok),
+            '- BOARD_MODE: '+String(r.modoBoard || ''),
+            '- Ingestao RD/API4COM: '+String(r.ingestaoRdApi4comAtiva),
+            '- Pipeline de transcricao/auditoria: '+String(r.pipelineRdApi4comAtivo),
+            '- Auditoria de ligacoes: '+String(r.auditoriaLigacoesAtiva),
+            '- Trigger diario de ingestao: '+String(handlers.ingestao || 0),
+            '- Lote de backlog agendado: '+String(r.backlogAgendado),
+            '- Outros triggers ativos: '+(outside.join(', ') || 'nenhum'),
+            '- Publicacao automatica no RD: '+String(r.publicacaoAutomatica),
+            '- Aprovacao automatica: '+String(r.aprovacaoAutomatica),
+            '- Elegiveis no backlog: '+String(s.elegiveis || 0),
+            '- Transcritas aguardando auditoria: '+String(s.transcritasAguardandoAuditoria || 0),
+            '',
+            ok ? '**Resultado: somente o pipeline SDR foi reativado.**'
+               : '**Resultado: ativacao nao passou em todas as travas.**'
+          ];
+          fs.writeFileSync('/tmp/sdr-enable-report.md', lines.join('\n'));
+          fs.writeFileSync('/tmp/sdr-enable-summary.json', JSON.stringify(r,null,2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+
+      - name: Comment isolated SDR activation
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/sdr-enable-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/sdr-enable-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Pipeline SDR isolado\n\nFalha antes da validacao final."
+          fi
+
+      - name: Save activation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdr-enable-isolated-${{ github.run_id }}
+          path: |
+            /tmp/sdr-enable-result.txt
+            /tmp/sdr-enable-summary.json
+            /tmp/sdr-enable-report.md
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
+
+
   tecnosoft-preview:
     if: >-
       ${{ github.event.issue.number == 142 &&
