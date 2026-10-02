@@ -38,14 +38,14 @@ assert.ok(rd.includes("publicacao = audRdPublicarAutomaticamente_(id);"), 'Salva
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
 assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
-assert.ok(front.includes("const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA'].includes(crmGrupoSinergiaStatus);"), 'Auditorias atuais em revisão ainda estão bloqueando o preenchimento manual do vínculo do RD.');
+assert.ok(front.includes("const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA', 'PROCESSANDO'].includes(crmGrupoSinergiaStatus);"), 'Estados bloqueados do CRM não incluem processamento ativo.');
 assert.ok(front.includes('const rdVinculoEditavel = !rdPublicado && !crmGrupoSinergiaBloqueado && !integridadeBloqueada;'), 'Front não calcula explicitamente quando o vínculo manual do RD pode ser editado.');
 assert.ok(front.includes("Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação."), 'A interface não explica que o vínculo do RD pode ser salvo antes da aprovação sem publicar.');
 assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Campos manuais do histórico não protegem o foco contra eventos do card.');
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
 assert.ok(
-  front.includes("item.status === 'EM_REVISAO'") &&
+  front.includes("estadoOperacional === 'EM_REVISAO'") &&
   front.includes("aprovarAuditoriaV3Front('") &&
   front.includes('>Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>'),
   'Card de auditoria em revisão não exibe a ação Aprovar auditoria.'
