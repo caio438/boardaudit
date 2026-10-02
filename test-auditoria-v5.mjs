@@ -38,14 +38,14 @@ assert.ok(rd.includes("publicacao = audRdPublicarAutomaticamente_(id);"), 'Salva
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
 assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
-assert.ok(front.includes("const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA'].includes(crmGrupoSinergiaStatus);"), 'Auditorias atuais em revisão ainda estão bloqueando o preenchimento manual do vínculo do RD.');
+assert.ok(front.includes("const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA', 'PROCESSANDO'].includes(crmGrupoSinergiaStatus);"), 'Estados bloqueados do CRM não incluem processamento ativo.');
 assert.ok(front.includes('const rdVinculoEditavel = !rdPublicado && !crmGrupoSinergiaBloqueado && !integridadeBloqueada;'), 'Front não calcula explicitamente quando o vínculo manual do RD pode ser editado.');
 assert.ok(front.includes("Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação."), 'A interface não explica que o vínculo do RD pode ser salvo antes da aprovação sem publicar.');
 assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Campos manuais do histórico não protegem o foco contra eventos do card.');
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
 assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
 assert.ok(
-  front.includes("item.status === 'EM_REVISAO'") &&
+  front.includes("estadoOperacional === 'EM_REVISAO'") &&
   front.includes("aprovarAuditoriaV3Front('") &&
   front.includes('>Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>'),
   'Card de auditoria em revisão não exibe a ação Aprovar auditoria.'
@@ -298,18 +298,27 @@ assert.equal(
 assert.ok(audit.includes('function audV3EstadoCrmGrupoSinergia_'), 'Auditorias do Grupo Sinergia não possuem estado específico para CRM.');
 assert.ok(audit.includes('function regenerarAuditoriaGrupoSinergiaParaCrmV3'), 'Auditorias legadas do Grupo Sinergia não podem ser regeneradas com as travas atuais.');
 assert.ok(audit.includes("'CLI-20260806105306-25F3490A'"), 'Fluxo do Grupo Sinergia não aponta para o cliente canônico INGEE.');
-assert.ok(front.includes('Grupo Sinergia · refazer para CRM'), 'Board não sinaliza auditorias legadas do Grupo Sinergia.');
+assert.ok(front.includes('Grupo Sinergia · gerar nova auditoria'), 'Board não sinaliza auditorias legadas do Grupo Sinergia.');
 assert.ok(front.includes('Grupo Sinergia · vincular RD'), 'Board não sinaliza auditorias do Grupo Sinergia prontas para vínculo RD.');
 assert.ok(front.includes('function regenerarAuditoriaGrupoSinergiaParaCrmFront'), 'Board não oferece regeneração segura da auditoria legada para CRM.');
 assert.ok(audit.includes('function audV3EstadoIntegridadeAuditoria_'), 'Estado de integridade genérico das auditorias não foi implementado.');
+assert.ok(audit.includes('function audV3EstadoOperacionalAuditoria_'), 'Auditoria não possui resolvedor operacional único.');
+assert.ok(audit.includes("if (status === 'PROCESSANDO') return 'PROCESSANDO';"), 'PROCESSANDO ativo ainda pode virar reanálise no mesmo card.');
+assert.ok(audit.includes("if (estado === 'PROCESSANDO') return 'PROCESSANDO';"), 'CRM do Grupo Sinergia não respeita processamento ativo.');
+assert.ok(audit.includes('function audV3EncontrarSubstitutaAtual_'), 'Regeneração não procura uma substituta atual antes de consumir IA.');
+assert.match(audit, /regenerarAuditoriaLegadaV3[\s\S]*?evitarDuplicidade:\s*false/, 'Regeneração humana pode reutilizar a própria auditoria antiga em vez de criar uma nova.');
+assert.ok(front.includes("estadoOperacional === 'LEGADA_REANALISE'"), 'Front não usa o estado operacional canônico para liberar regeneração.');
+assert.ok(front.includes('RD: aguarda conclusão da auditoria'), 'Card PROCESSANDO ainda pode exibir bloqueio de reanálise do RD.');
+assert.ok(front.includes('Nada será publicado no RD automaticamente.'), 'Confirmação da regeneração não deixa explícito que Closer não publica automaticamente no RD.');
+assert.ok(front.includes("espaco === 'CLOSER' ? 'Já vinculadas e aguardando envio manual ao CRM.'"), 'Resumo do Closer ainda comunica publicação automática.');
 assert.ok(audit.includes("return 'LEGADA_REANALISE'"), 'Auditoria antiga sem HASH_FONTE não é classificada como legada.');
 assert.ok(audit.includes('function regenerarAuditoriaLegadaV3'), 'Regeneração genérica de auditoria legada não foi implementada.');
 assert.ok(audit.includes('audV3PitchAtualAutomatico_(auditoria.ID_CLIENTE, tipo)'), 'Regeneração legada não usa o pitch atual do cliente.');
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL'"), 'Versão antiga não é preservada como substituída após regeneração.');
 assert.ok(front.includes('Auditoria legada · regenerar'), 'Board não sinaliza auditorias legadas de qualquer cliente.');
-assert.ok(front.includes('Gerar auditoria atualizada'), 'Board não oferece ação genérica para atualizar auditoria legada.');
+assert.ok(front.includes('Gerar nova auditoria'), 'Board não oferece ação para criar a substituta atual da auditoria legada.');
 assert.ok(front.includes('function regenerarAuditoriaLegadaFront'), 'Board não possui a ação frontal de regeneração genérica.');
-assert.ok(front.includes('A gravação continua válida, mas este registro foi criado antes das validações atuais.'), 'Mensagem de auditoria legada ainda pode parecer que o Board está desatualizado.');
+assert.ok(front.includes('A gravação continua válida, mas esta auditoria foi criada antes das travas atuais.'), 'Mensagem de auditoria legada ainda pode parecer que o Board está desatualizado.');
 assert.ok(audit.includes("return 'AGUARDANDO_REVISAO'"), 'Auditoria atual em revisão humana ainda pode ser confundida com auditoria legada.');
 assert.ok(audit.includes('function audV3EhAuditoriaLegadaBase_'), 'Detector central de auditoria legada não foi implementado.');
 assert.ok(audit.includes('function audV3EhAuditoriaVisivelOperacao_'), 'Filtro operacional de auditorias não foi implementado.');

@@ -8642,20 +8642,30 @@
     }
 
     alvo.innerHTML = historicoAgrupadoPorData_(auditorias, item => item.dataInteracao || item.concluidoEm || item.solicitadoEm, item => {
-      const classe = item.status === 'APROVADA' ? 'status success' : item.status === 'ERRO' ? 'status danger' : 'status warning';
+      const estadoVisual = String(item.estadoOperacional || item.status || '').toUpperCase();
+      const classe = ['APROVADA', 'PUBLICADA'].includes(estadoVisual) ? 'status success' : ['ERRO', 'LEGADA_REANALISE'].includes(estadoVisual) ? 'status danger' : 'status warning';
+      const rotuloEstado = ({
+        LEGADA_REANALISE: 'REANÁLISE NECESSÁRIA',
+        EM_REVISAO: 'EM REVISÃO',
+        PROCESSANDO: 'PROCESSANDO',
+        APROVADA: 'APROVADA',
+        SUBSTITUIDA: 'SUBSTITUÍDA',
+        ERRO: 'ERRO',
+        PUBLICADA: 'PUBLICADA'
+      })[estadoVisual] || estadoVisual || String(item.status || '');
       const circlePublicado = Boolean(item.circlePostUrl) || ['PUBLICADA', 'PUBLICADA_MANUALMENTE', 'SUCESSO', 'POSTADA'].includes(String(item.circleStatus || '').toUpperCase());
       const comunidadePublicada = Boolean(item.comunidadePostUrl) || ['PUBLICADA', 'SUCESSO', 'POSTADA'].includes(String(item.comunidadeStatus || '').toUpperCase());
       const comunidadeErro = String(item.comunidadeStatus || '').toUpperCase() === 'ERRO';
       const rdPublicado = String(item.rdStatus || '').toUpperCase() === 'PUBLICADA';
+      const estadoOperacional = String(item.estadoOperacional || item.status || '').toUpperCase();
       const crmGrupoSinergiaStatus = String(item.crmGrupoSinergiaStatus || '').toUpperCase();
       const integridadeStatus = String(item.integridadeStatus || '').toUpperCase();
-      const auditoriaLegada = integridadeStatus === 'LEGADA_REANALISE';
-      const auditoriaSubstituida = integridadeStatus === 'SUBSTITUIDA';
+      const auditoriaLegada = estadoOperacional === 'LEGADA_REANALISE';
+      const auditoriaSubstituida = estadoOperacional === 'SUBSTITUIDA';
       const podeDescartar = !rdPublicado && !circlePublicado && !comunidadePublicada &&
-        !['PROCESSANDO', 'DESCARTADA'].includes(String(item.status || '').toUpperCase()) &&
-        (auditoriaLegada || crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' || ['ERRO', 'EM_REVISAO'].includes(String(item.status || '').toUpperCase()));
-      const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA'].includes(crmGrupoSinergiaStatus);
-      const integridadeBloqueada = auditoriaLegada || auditoriaSubstituida;
+        ['LEGADA_REANALISE', 'ERRO', 'EM_REVISAO'].includes(estadoOperacional);
+      const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA', 'PROCESSANDO'].includes(crmGrupoSinergiaStatus);
+      const integridadeBloqueada = auditoriaLegada || auditoriaSubstituida || estadoOperacional === 'PROCESSANDO';
       const rdVinculoEditavel = !rdPublicado && !crmGrupoSinergiaBloqueado && !integridadeBloqueada;
       const sinalIntegridade = auditoriaLegada
         ? '<span class="status danger">Auditoria legada · regenerar</span>'
@@ -8663,7 +8673,8 @@
           ? '<span class="status">Versão legada substituída</span>'
           : '';
       const sinalGrupoSinergia = (auditoriaLegada || auditoriaSubstituida) ? '' : ({
-        REANALISE_NECESSARIA: '<span class="status danger">Grupo Sinergia · refazer para CRM</span>',
+        PROCESSANDO: '<span class="status warning">Grupo Sinergia · processando auditoria</span>',
+        REANALISE_NECESSARIA: '<span class="status danger">Grupo Sinergia · gerar nova auditoria</span>',
         AGUARDANDO_VINCULO: '<span class="status warning">Grupo Sinergia · vincular RD</span>',
         PRONTA_ENVIO: '<span class="status warning">Grupo Sinergia · pronta para CRM</span>',
         ERRO: '<span class="status danger">Grupo Sinergia · erro no CRM</span>',
@@ -8673,8 +8684,10 @@
         AGUARDANDO_REVISAO: '<span class="status warning">Grupo Sinergia · aguardando revisão</span>'
       })[crmGrupoSinergiaStatus] || '';
       const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
-      const indicadorRd = auditoriaLegada || crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA'
-        ? '<span class="status danger">RD: bloqueado até reanálise</span>'
+      const indicadorRd = estadoOperacional === 'PROCESSANDO' || crmGrupoSinergiaStatus === 'PROCESSANDO'
+        ? '<span class="status warning">RD: aguarda conclusão da auditoria</span>'
+        : auditoriaLegada || crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA'
+          ? '<span class="status danger">RD: bloqueado até nova auditoria</span>'
         : auditoriaSubstituida || crmGrupoSinergiaStatus === 'SUBSTITUIDA'
           ? '<span class="status">RD: usar nova versão</span>'
           : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO'
@@ -8691,7 +8704,7 @@
       return `<div class="card" style="box-shadow:none;margin-bottom:10px">
         <div class="section-title">
           <div><strong>${escapeHtml(nomeAuditoriaExibicao_(item))}</strong><div class="small muted">${escapeHtml(item.tipoAuditoria || '')} - ${escapeHtml(formatarDataDia(item.dataInteracao))}</div></div>
-          <div class="actions" style="margin:0;justify-content:flex-end"><span class="${classe}">${escapeHtml(item.status || '')}</span>${sinalIntegridade}${sinalGrupoSinergia}${indicadorCircle}${indicadorComunidade}${indicadorRd}</div>
+          <div class="actions" style="margin:0;justify-content:flex-end"><span class="${classe}">${escapeHtml(rotuloEstado)}</span>${sinalIntegridade}${sinalGrupoSinergia}${indicadorCircle}${indicadorComunidade}${indicadorRd}</div>
         </div>
         ${item.erro ? `<div class="status danger">${escapeHtml(item.erro)}</div>` : ''}
         ${item.circleErro ? `<div class="status danger">${escapeHtml(item.circleErro)}</div>` : ''}
@@ -8708,13 +8721,13 @@
             <div class="field"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" onclick="event.stopPropagation();this.focus()" onmousedown="event.stopPropagation()" onkeydown="event.stopPropagation()" ${rdVinculoEditavel ? '' : 'disabled'}></div>
             ${rdVinculoEditavel ? `<button id="btnAuditRdDealId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="event.stopPropagation();salvarIdRdAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo do RD</button>` : ''}
           </div>
-          <div class="small muted audit-board-link-help">${auditoriaLegada ? 'Esta é uma auditoria legada. A gravação continua válida, mas este registro foi criado antes das validações atuais. Gere uma auditoria atualizada sobre a mesma gravação antes de publicar no RD.' : auditoriaSubstituida ? 'Esta versão legada foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser regenerada antes do envio ao RD.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação.' : crmGrupoSinergiaStatus === 'SUBSTITUIDA' ? 'Esta versão legada foi substituída. Use a nova auditoria sinalizada como “vincular RD”.' : String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div>
+          <div class="small muted audit-board-link-help">${estadoOperacional === 'PROCESSANDO' ? 'A nova auditoria está sendo gerada. Aguarde a conclusão antes de vincular ou enviar ao RD.' : auditoriaLegada ? 'A gravação continua válida, mas esta auditoria foi criada antes das travas atuais. Gere uma nova auditoria sobre a mesma gravação; a versão antiga será preservada como substituída.' : auditoriaSubstituida ? 'Esta versão antiga foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser substituída por uma nova análise antes do envio ao RD.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação.' : crmGrupoSinergiaStatus === 'SUBSTITUIDA' ? 'Esta versão legada foi substituída. Use a nova auditoria sinalizada como “vincular RD”.' : String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div>
         </div>
         <div class="actions">
           ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
-          ${auditoriaLegada ? `<button class="btn success" type="button" onclick="regenerarAuditoriaLegadaFront('${escapeAtributo(item.idAuditoria)}')">Gerar auditoria atualizada</button>` : (crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? `<button class="btn success" type="button" onclick="regenerarAuditoriaGrupoSinergiaParaCrmFront('${escapeAtributo(item.idAuditoria)}')">Gerar versão pronta para CRM</button>` : '')}
+          ${estadoOperacional === 'LEGADA_REANALISE' ? `<button class="btn success" type="button" onclick="regenerarAuditoriaGrupoSinergiaParaCrmFront('${escapeAtributo(item.idAuditoria)}')">Gerar nova auditoria</button>` : ''}
           ${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar auditoria</button>` : ''}
-          ${item.status === 'EM_REVISAO' && !auditoriaLegada && crmGrupoSinergiaStatus !== 'REANALISE_NECESSARIA' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}', this)">Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>` : ''}
+          ${estadoOperacional === 'EM_REVISAO' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}', this)">Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>` : ''}
           ${item.status === 'APROVADA' && !circlePublicado && !comunidadePublicada && !rdPublicado ? `<button class="btn danger" type="button" onclick="excluirAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Excluir auditoria</button>` : ''}
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !auditoriaLegada && !auditoriaSubstituida && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
@@ -8925,8 +8938,8 @@
   }
 
   function regenerarAuditoriaGrupoSinergiaParaCrmFront(idAuditoria) {
-    if (!window.confirm('Esta auditoria é anterior às travas atuais de integridade. Será gerada uma nova análise sobre a mesma gravação para preparar o envio ao CRM. A nova análise usa IA. Continuar?')) return;
-    mostrarLoading('Gerando versão validada para o CRM...');
+    if (!window.confirm('Esta auditoria antiga será preservada. O Board vai gerar uma NOVA auditoria sobre a mesma gravação, usando o pitch e as travas atuais. Nada será publicado no RD automaticamente. Continuar?')) return;
+    mostrarLoading('Gerando nova auditoria sobre a mesma gravação...');
     google.script.run
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
@@ -8976,7 +8989,7 @@
       ['Com vínculo CRM', resumo.vinculadas, 'Auditorias aprovadas com negociação vinculada.'],
       ['Aguardando vínculo', resumo.aguardandoVinculo, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
       ['Enviadas ao CRM', resumo.enviadas, 'Anotação e tarefas já registradas no CRM.'],
-      ['Pendentes de envio', resumo.pendentes, 'Já vinculadas e aguardando publicação automática.'],
+      ['Pendentes de envio', resumo.pendentes, espaco === 'CLOSER' ? 'Já vinculadas e aguardando envio manual ao CRM.' : 'Já vinculadas e aguardando processamento do envio.'],
       ['Erros de envio', resumo.erros, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');

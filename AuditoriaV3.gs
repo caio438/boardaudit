@@ -2155,31 +2155,74 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   };
 }
 
+function audV3EncontrarSubstitutaAtual_(auditoria) {
+  auditoria = auditoria || {};
+  const id = String(auditoria.ID_AUDITORIA || '').trim();
+  const idInteracao = String(auditoria.ID_INTERACAO || '').trim();
+  const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (!idInteracao || !tipo) return null;
+
+  return audV3Ler_('AUDITORIAS')
+    .filter(function(item) {
+      if (String(item.ID_AUDITORIA || '').trim() === id) return false;
+      if (String(item.ID_INTERACAO || '').trim() !== idInteracao) return false;
+      if (String(item.TIPO_AUDITORIA || '').toUpperCase() !== tipo) return false;
+      if (!audV3EhAuditoriaCicloAtual_(item)) return false;
+      if (!String(item.HASH_FONTE || '').trim()) return false;
+      if (String(item.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA') return false;
+      if (!['EM_REVISAO', 'APROVADA'].includes(String(item.STATUS || '').toUpperCase())) return false;
+      return Boolean(String(item.RESULTADO_JSON || item.RESULTADO_COMPLETO || '').trim());
+    })
+    .slice(-1)[0] || null;
+}
+
 function regenerarAuditoriaLegadaV3(idAuditoria) {
   const id = String(idAuditoria || '').trim();
+  audV3EncerrarProcessamentosExpirados_();
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   if (!auditoria) throw new Error('Auditoria não encontrada.');
 
-  const integridade = audV3EstadoIntegridadeAuditoria_(auditoria);
-  if (integridade === 'PUBLICADA') {
+  const estado = audV3EstadoOperacionalAuditoria_(auditoria);
+  if (estado === 'PUBLICADA') {
     throw new Error('Esta auditoria já foi publicada e não pode ser substituída automaticamente.');
   }
-  if (integridade === 'SUBSTITUIDA') {
+  if (estado === 'SUBSTITUIDA') {
+    const substitutaExistente = audV3EncontrarSubstitutaAtual_(auditoria);
     return {
       sucesso: true,
       reutilizada: true,
-      mensagem: 'Esta auditoria legada já foi substituída por uma versão atualizada.',
-      auditoria: audV3AuditoriaFront_(auditoria),
+      mensagem: 'Esta auditoria já foi substituída por uma versão atualizada.',
+      auditoria: audV3AuditoriaFront_(substitutaExistente || auditoria),
       auditorias: audV3ListarAuditoriasFront_()
     };
   }
-  if (integridade !== 'LEGADA_REANALISE') {
-    throw new Error('Esta auditoria já usa as travas atuais de integridade. Não é necessário regenerá-la.');
+  if (estado === 'PROCESSANDO') {
+    throw new Error('Já existe um processamento ativo para esta auditoria. Aguarde a conclusão antes de gerar outra versão.');
+  }
+  if (estado !== 'LEGADA_REANALISE') {
+    throw new Error('Esta auditoria não precisa de regeneração. Abra a versão atual para revisar ou aprovar.');
   }
 
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
   if (!['SDR', 'CLOSER'].includes(tipo)) {
-    throw new Error('A regeneração automática de auditoria legada está disponível para SDR e Closer.');
+    throw new Error('A regeneração de auditoria legada está disponível para SDR e Closer.');
+  }
+
+  const existente = audV3EncontrarSubstitutaAtual_(auditoria);
+  if (existente) {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL',
+      AUTOMACAO_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+    if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+    return {
+      sucesso: true,
+      reutilizada: true,
+      mensagem: 'A versão atualizada desta gravação já existe. O registro antigo foi preservado como substituído.',
+      auditoria: audV3AuditoriaFront_(existente),
+      auditorias: audV3ListarAuditoriasFront_()
+    };
   }
 
   const interacao = audV3Localizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO) || {};
@@ -2195,29 +2238,26 @@ function regenerarAuditoriaLegadaV3(idAuditoria) {
     idInteracao: auditoria.ID_INTERACAO,
     tipoAuditoria: tipo,
     nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
-    evitarDuplicidade: true
+    // Regeneração humana de auditoria legada precisa criar uma nova versão real.
+    evitarDuplicidade: false
   });
 
   const nova = resultado && resultado.auditoria ? resultado.auditoria : null;
-  if (!nova || !String(nova.idAuditoria || '').trim()) {
+  if (!nova || !String(nova.idAuditoria || '').trim() || String(nova.idAuditoria) === id) {
     throw new Error('A nova auditoria não foi criada corretamente.');
   }
 
-  if (String(nova.idAuditoria) !== id) {
-    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-      AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL',
-      AUTOMACAO_ERRO: '',
-      AUTOMACAO_ATUALIZADO_EM: new Date()
-    });
-  }
+  audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+    AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL',
+    AUTOMACAO_ERRO: '',
+    AUTOMACAO_ATUALIZADO_EM: new Date()
+  });
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   return {
     sucesso: true,
-    reutilizada: Boolean(resultado && resultado.reutilizada),
-    mensagem: resultado && resultado.reutilizada
-      ? 'Já existia uma versão atualizada desta gravação. A auditoria legada foi vinculada como substituída.'
-      : 'Nova auditoria criada com o pitch atual e as travas vigentes. Revise e aprove a nova versão antes da publicação.',
+    reutilizada: false,
+    mensagem: 'Nova auditoria criada sobre a mesma gravação com as travas atuais. Revise a nova versão; a anterior foi preservada como substituída.',
     auditoria: nova,
     auditorias: audV3ListarAuditoriasFront_()
   };
@@ -8474,11 +8514,12 @@ function audV3FiltrarAuditoriasVisiveisOperacao_(auditorias) {
   });
 }
 
-function audV3EstadoIntegridadeAuditoria_(auditoria) {
+function audV3EstadoOperacionalAuditoria_(auditoria) {
   auditoria = auditoria || {};
   const status = String(auditoria.STATUS || '').toUpperCase();
   const rdStatus = String(auditoria.RD_STATUS || '').toUpperCase();
   const automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
+  const validacao = String(auditoria.VALIDACAO_STATUS || '').toUpperCase();
   const hash = String(auditoria.HASH_FONTE || '').trim();
   const temResultado = Boolean(String(auditoria.RESULTADO_JSON || auditoria.RESULTADO_COMPLETO || '').trim());
   const publicada = rdStatus === 'PUBLICADA' ||
@@ -8488,26 +8529,37 @@ function audV3EstadoIntegridadeAuditoria_(auditoria) {
   if (publicada) return 'PUBLICADA';
   if (status === 'DESCARTADA' || rdStatus === 'DESCARTADA' || automacao === 'CONCLUIDA_DESCARTADA') return 'DESCARTADA';
   if (/^SUBSTITUIDA_PARA_/.test(automacao)) return 'SUBSTITUIDA';
-  if (temResultado && !hash && ['APROVADA', 'EM_REVISAO', 'ERRO'].includes(status)) return 'LEGADA_REANALISE';
+  if (status === 'PROCESSANDO') return 'PROCESSANDO';
+  if (temResultado && !hash) return 'LEGADA_REANALISE';
+  if (status === 'EM_REVISAO' && validacao === 'VALIDADA' && hash) return 'EM_REVISAO';
+  if (status === 'APROVADA' && validacao === 'VALIDADA' && hash) return 'APROVADA';
+  if (status === 'ERRO' || validacao === 'ERRO') return 'ERRO';
+  return status || 'ERRO';
+}
+
+function audV3EstadoIntegridadeAuditoria_(auditoria) {
+  const estado = audV3EstadoOperacionalAuditoria_(auditoria);
+  if (estado === 'PUBLICADA') return 'PUBLICADA';
+  if (estado === 'DESCARTADA') return 'DESCARTADA';
+  if (estado === 'SUBSTITUIDA') return 'SUBSTITUIDA';
+  if (estado === 'LEGADA_REANALISE') return 'LEGADA_REANALISE';
   return 'ATUAL';
 }
 
 function audV3EstadoCrmGrupoSinergia_(auditoria, interacao) {
   if (!audV3EhGrupoSinergiaCrm_(auditoria, interacao)) return '';
   const rdStatus = String((auditoria || {}).RD_STATUS || '').toUpperCase();
-  const status = String((auditoria || {}).STATUS || '').toUpperCase();
-  const validacao = String((auditoria || {}).VALIDACAO_STATUS || '').toUpperCase();
-  const hash = String((auditoria || {}).HASH_FONTE || '').trim();
   const linkCrm = String((interacao || {}).LINK_CRM || '').trim();
-  const integridade = audV3EstadoIntegridadeAuditoria_(auditoria);
+  const estado = audV3EstadoOperacionalAuditoria_(auditoria);
 
-  if (rdStatus === 'PUBLICADA') return 'ENVIADA';
-  if (integridade === 'DESCARTADA') return 'DESCARTADA';
-  if (integridade === 'SUBSTITUIDA') return 'SUBSTITUIDA';
-  if (integridade === 'LEGADA_REANALISE') return 'REANALISE_NECESSARIA';
-  if (status === 'EM_REVISAO' && validacao === 'VALIDADA' && hash) return 'AGUARDANDO_REVISAO';
-  if (status !== 'APROVADA') return 'REANALISE_NECESSARIA';
-  if (validacao !== 'VALIDADA' || !hash) return 'REANALISE_NECESSARIA';
+  if (rdStatus === 'PUBLICADA' || estado === 'PUBLICADA') return 'ENVIADA';
+  if (estado === 'DESCARTADA') return 'DESCARTADA';
+  if (estado === 'SUBSTITUIDA') return 'SUBSTITUIDA';
+  if (estado === 'PROCESSANDO') return 'PROCESSANDO';
+  if (estado === 'LEGADA_REANALISE') return 'REANALISE_NECESSARIA';
+  if (estado === 'EM_REVISAO') return 'AGUARDANDO_REVISAO';
+  if (estado === 'ERRO') return 'ERRO';
+  if (estado !== 'APROVADA') return 'ERRO';
   if (!linkCrm) return 'AGUARDANDO_VINCULO';
   if (rdStatus === 'ERRO') return 'ERRO';
   return 'PRONTA_ENVIO';
@@ -8531,6 +8583,7 @@ function audV3AuditoriaFront_(a, contexto) {
   if (resultado && String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER') {
     audV3CompletarInteligenciaMercadoCloser_(resultado);
   }
+  const estadoOperacional = audV3EstadoOperacionalAuditoria_(a);
   const crmGrupoSinergiaStatus = audV3EstadoCrmGrupoSinergia_(a, interacao);
   const integridadeStatus = audV3EstadoIntegridadeAuditoria_(a);
   return {
@@ -8541,6 +8594,7 @@ function audV3AuditoriaFront_(a, contexto) {
     idModelo: a.ID_MODELO || '',
     tipoAuditoria: a.TIPO_AUDITORIA,
     status: a.STATUS,
+    estadoOperacional: estadoOperacional,
     score: a.SCORE,
     scorePercentual: a.SCORE_PERCENTUAL || '',
     semaforo: a.SEMAFORO || '',
@@ -8614,9 +8668,14 @@ function audV3EncerrarProcessamentosExpirados_() {
     if (String(item.STATUS || '').toUpperCase() !== 'PROCESSANDO') return;
     const referencia = item.AUTOMACAO_ATUALIZADO_EM || item.SOLICITADO_EM;
     const referenciaMs = referencia ? new Date(referencia).getTime() : 0;
-    if (!referenciaMs || agoraMs - referenciaMs < limiteMs) return;
+    const expirado = !referenciaMs || agoraMs - referenciaMs >= limiteMs;
+    if (!expirado) return;
 
-    const mensagem = 'TEMPO_PROCESSAMENTO_EXPIRADO: A execução anterior excedeu o tempo operacional e foi encerrada automaticamente. Gere a auditoria novamente.';
+    const temResultadoLegado = Boolean(String(item.RESULTADO_JSON || item.RESULTADO_COMPLETO || '').trim()) &&
+      !String(item.HASH_FONTE || '').trim();
+    const mensagem = temResultadoLegado
+      ? 'PROCESSAMENTO_LEGADO_ENCERRADO: O registro antigo ficou preso em PROCESSANDO e foi normalizado para reanálise segura.'
+      : 'TEMPO_PROCESSAMENTO_EXPIRADO: A execução anterior excedeu o tempo operacional e foi encerrada automaticamente. Gere a auditoria novamente.';
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', item.ID_AUDITORIA, {
       STATUS: 'ERRO',
       VALIDACAO_STATUS: 'ERRO',
