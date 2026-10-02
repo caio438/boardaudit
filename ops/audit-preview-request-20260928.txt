@@ -11,3 +11,7 @@ Current diagnostic test: INT-20260925175419-2A39E974
 Unimed Sinergia fresh Closer audit preview: INT-20260925135700-1D7E9A4C
 
 Preview Unimed/Sinergia Closer: INT-20260925135700-1D7E9A4C
+
+Tecnosoft SDR controlled preview: INT-20260824155952-51CD35B8
+Purpose: validate current SDR audit engine on an already-transcribed Tecnosoft call that is stuck in ERRO_AUTOMACAO. Preview only; do not approve or publish.
+Requested-at: 2026-10-02T13:50-03:00
