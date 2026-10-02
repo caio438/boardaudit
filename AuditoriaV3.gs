@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.3.1
+ * Versão: 6.3.2
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.3.1',
+  versao: '6.3.2',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -2110,12 +2110,38 @@ function repararCoachingAuditoriaV3(idAuditoria) {
     };
 }
 
+function audV3EhBloqueioCoachingGenerico_(bloqueio) {
+  return /^Há orientação genérica sem comportamento observável(?: em [^:]+)?:/i.test(String(bloqueio || '').trim());
+}
+
 function audV3ExigirGatePublicavel_(resultado, tipo) {
   const gate = audV3ValidarQualidadeBoard_(resultado, tipo);
-  if (String(gate.status || '').toUpperCase() === 'BLOQUEADO') {
-    throw new Error('A auditoria possui inconsistências factuais bloqueantes e não pode ser aprovada/publicada: ' + (gate.bloqueios || []).join(' | '));
+  if (String(gate.status || '').toUpperCase() !== 'BLOQUEADO') return gate;
+
+  const bloqueios = (Array.isArray(gate.bloqueios) ? gate.bloqueios : [])
+    .map(function(item) { return String(item || '').trim(); })
+    .filter(Boolean);
+  const coaching = bloqueios.filter(audV3EhBloqueioCoachingGenerico_);
+  const factuais = bloqueios.filter(function(item) { return !audV3EhBloqueioCoachingGenerico_(item); });
+
+  if (factuais.length) {
+    throw new Error(
+      'A auditoria possui inconsistências factuais bloqueantes e não pode ser aprovada/publicada: ' +
+      factuais.join(' | ')
+    );
   }
-  return gate;
+
+  // A qualidade do coaching continua sinalizada para a revisão humana, mas não
+  // é uma inconsistência factual da auditoria e não deve impedir uma aprovação explícita.
+  return {
+    status: coaching.length ? 'REVISAR' : String(gate.status || 'OK'),
+    alertas: (Array.isArray(gate.alertas) ? gate.alertas.slice() : []).concat(
+      coaching.map(function(item) { return 'Revisão de coaching: ' + item; })
+    ),
+    bloqueios: [],
+    bloqueios_coaching: coaching,
+    revisao_humana_obrigatoria: true
+  };
 }
 
 function audV3FinalizarAutomaticamente_(idAuditoria) {
@@ -2125,8 +2151,15 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
-  if (['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_ === 'function') {
+  if (tipo === 'SDR' && typeof audRdPublicarAutomaticamente_ === 'function') {
     rd = audRdPublicarAutomaticamente_(id);
+  } else if (tipo === 'CLOSER') {
+    rd = {
+      aplicavel: true,
+      publicada: false,
+      status: 'AGUARDANDO_ENVIO_MANUAL',
+      mensagem: 'Closer aprovado. Informe/confirme o vínculo e use o envio manual ao RD.'
+    };
   }
 
   const statusAutomacao = rd && rd.aplicavel && !rd.publicada
@@ -2142,7 +2175,8 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
   if (rd && rd.aplicavel) {
     if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
-    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando somente o vínculo da negociação; ao salvar o vínculo, o envio será automático.');
+    else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando o vínculo da negociação.');
+    else if (rd.status === 'AGUARDANDO_ENVIO_MANUAL') partes.push('Closer aguardando envio manual ao RD.');
     else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push('RD aguardando a integração do cliente.');
     else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no RD precisa ser reprocessada.');
   }
@@ -2392,10 +2426,14 @@ function aprovarAuditoriaV3(idAuditoria) {
   audV3ValidarResultadoOficial_(resultado, auditoria.TIPO_AUDITORIA, criteriosOficiais, transcricao.CONTEUDO, auditoria.CONTEUDO_PITCH_SNAPSHOT || '');
   const gateBoard = audV3ExigirGatePublicavel_(resultado, auditoria.TIPO_AUDITORIA);
   resultado.validacao_board = Object.assign({}, resultado.validacao_board || {}, gateBoard);
+  const resultadoJsonAprovado = JSON.stringify(resultado);
+  const resultadoCompletoAprovado = audV3ResultadoTexto_(resultado, auditoria.TIPO_AUDITORIA);
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     STATUS: 'APROVADA',
+    RESULTADO_JSON: resultadoJsonAprovado,
+    RESULTADO_COMPLETO: resultadoCompletoAprovado,
     VALIDACAO_STATUS: 'VALIDADA',
     AUTOMACAO_STATUS: 'FINALIZANDO',
     AUTOMACAO_ERRO: '',
