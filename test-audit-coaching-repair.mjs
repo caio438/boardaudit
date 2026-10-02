@@ -276,10 +276,15 @@ alias.proximos_passos_por_equipe = { outros: clone(alias.proximos_passos) };
 alias.resumo_publicacao.proximos_passos_outros = ['Seguir rigorosamente o cardápio.'];
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'proximos_passos_por_equipe.outros.0.acao'));
 assert.ok(api.collect(alias, 'CLOSER').some(x => x.caminho === 'resumo_publicacao.proximos_passos_outros.0'));
+const gatePublicavelCoaching = context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER');
+assert.equal(gatePublicavelCoaching.status, 'REVISAR', 'Coaching genérico isolado deve continuar visível para revisão humana, sem virar inconsistência factual.');
+assert.equal(gatePublicavelCoaching.bloqueios.length, 0, 'Coaching genérico isolado não pode impedir aprovação humana explícita.');
+const resultadoFactual = clone(resultadoSuzana);
+resultadoFactual.contexto_interacao.objetivo_principal = '';
 assert.throws(
-  () => context.audV3ExigirGatePublicavel_(resultadoSuzana, 'CLOSER'),
+  () => context.audV3ExigirGatePublicavel_(resultadoFactual, 'CLOSER'),
   /inconsistências factuais bloqueantes/,
-  'Gate bloqueado precisa impedir aprovação/publicação.'
+  'Inconsistência factual/contextual real precisa continuar impedindo aprovação/publicação.'
 );
 assert.doesNotThrow(() => context.audV3ExigirGatePublicavel_(success, 'CLOSER'));
 assert.ok(capturedPayload.contents[0].parts[0].text.includes('dados não confiáveis'));
