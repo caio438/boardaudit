@@ -11,6 +11,20 @@ function audRdPublicarAutomaticamente_(idAuditoria) {
 
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
   var dealId = audRdDeal_(i);
+  if (tipo === 'CLOSER') {
+    var statusCloser = dealId ? 'AGUARDANDO_ENVIO_MANUAL' : 'AGUARDANDO_VINCULO';
+    audRdStatus_(id, statusCloser, '', dealId
+      ? 'Auditoria Closer aguardando envio manual.'
+      : 'Negociação do RD ainda não vinculada.');
+    return {
+      aplicavel: true,
+      publicada: false,
+      status: statusCloser,
+      mensagem: dealId
+        ? 'Auditoria Closer pronta para envio manual ao RD CRM.'
+        : 'Aguardando vínculo da negociação no RD CRM.'
+    };
+  }
   if (!dealId) {
     audRdStatus_(id, 'AGUARDANDO_VINCULO', '', 'Negociação do RD ainda não vinculada.');
     return {
@@ -73,9 +87,11 @@ function salvarIdRdAuditoriaV3(d) {
   });
 
   var publicacao = null;
-  if (deal &&
-      String(a.STATUS || '').toUpperCase() === 'APROVADA' &&
-      String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA') {
+  var tipoAuditoria = String(a.TIPO_AUDITORIA || '').toUpperCase();
+  var aprovadaValidada = String(a.STATUS || '').toUpperCase() === 'APROVADA' &&
+    String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA';
+
+  if (deal && aprovadaValidada && tipoAuditoria === 'SDR') {
     publicacao = audRdPublicarAutomaticamente_(id);
     if (typeof audV3Atualizar_ === 'function') {
       audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -86,6 +102,15 @@ function salvarIdRdAuditoriaV3(d) {
         AUTOMACAO_ATUALIZADO_EM: new Date()
       });
     }
+  } else if (deal && aprovadaValidada && tipoAuditoria === 'CLOSER') {
+    audRdStatus_(id, 'AGUARDANDO_ENVIO_MANUAL', '', 'Auditoria Closer aguardando envio manual.');
+    if (typeof audV3Atualizar_ === 'function') {
+      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+        AUTOMACAO_STATUS: 'CONCLUIDA_AGUARDANDO_RD',
+        AUTOMACAO_ERRO: '',
+        AUTOMACAO_ATUALIZADO_EM: new Date()
+      });
+    }
   }
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
@@ -93,11 +118,15 @@ function salvarIdRdAuditoriaV3(d) {
   return {
     sucesso: true,
     mensagem: deal
-      ? (publicacao && publicacao.publicada
-          ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
-          : statusAuditoria === 'APROVADA'
-            ? 'Negociação do RD vinculada. O envio automático foi processado.'
-            : 'Negociação do RD vinculada. O envio ficará bloqueado até a aprovação da auditoria.')
+      ? (tipoAuditoria === 'CLOSER'
+          ? (aprovadaValidada
+              ? 'Negociação do RD vinculada. Use “Enviar ao RD” quando quiser publicar esta auditoria.'
+              : 'Negociação do RD vinculada. O envio manual ficará disponível depois da aprovação.')
+          : publicacao && publicacao.publicada
+            ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
+            : statusAuditoria === 'APROVADA'
+              ? 'Negociação do RD vinculada. O envio automático foi processado.'
+              : 'Negociação do RD vinculada. O envio ficará bloqueado até a aprovação da auditoria.')
       : 'Vínculo com o RD removido.',
     publicacaoRd: publicacao,
     auditoria: audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id)),
