@@ -209,3 +209,161 @@ jobs:
       - name: Cleanup authentication
         if: always()
         run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt /tmp/manual-mode-result.txt
+
+  tecnosoft-preview:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/sdr-test-tecnosoft' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Select latest transcribed Tecnosoft call
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/tecnosoft-status.txt -w '%{http_code}' "$BASE?ops_sdr_status=1" || true)"
+          echo "SDR_STATUS_HTTP_STATUS=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/tecnosoft-status.txt','utf8').trim();
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Status SDR sem JSON.');
+          const r = JSON.parse(raw.slice(first,last+1));
+          const all = (r.backlog || []).filter(x => x.cliente === 'Tecnosoft' && x.transcrita === true);
+          if (!all.length) throw new Error('Nenhuma ligacao transcrita da Tecnosoft encontrada no backlog.');
+          const byDate = arr => arr.slice().sort((a,b) => Date.parse(b.dataInteracao || 0) - Date.parse(a.dataInteracao || 0));
+          const failed = byDate(all.filter(x => String(x.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO'));
+          const chosen = failed[0] || byDate(all)[0];
+          fs.writeFileSync('/tmp/tecnosoft-target.json', JSON.stringify(chosen,null,2));
+          fs.writeFileSync('/tmp/tecnosoft-target.txt', String(chosen.idInteracao || '').trim());
+          console.log('TECNOSOFT_TARGET='+chosen.idInteracao);
+          console.log('TECNOSOFT_PREVIOUS_STATUS='+chosen.statusAuditoria);
+          NODE
+
+      - name: Generate safe Tecnosoft SDR preview
+        id: preview
+        shell: bash
+        run: |
+          set -uo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          TARGET="$(cat /tmp/tecnosoft-target.txt)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          encoded="$(node -e "process.stdout.write(encodeURIComponent(process.env.TARGET))" TARGET="$TARGET")"
+          code="$(curl -sS --max-time 420 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/tecnosoft-preview.txt -w '%{http_code}' "$BASE?ops_audit_preview=1&transcript=$encoded" || true)"
+          echo "TECNOSOFT_PREVIEW_HTTP_STATUS=$code"
+          node <<'NODE'
+          const fs = require('fs');
+          const target = JSON.parse(fs.readFileSync('/tmp/tecnosoft-target.json','utf8'));
+          const raw = fs.existsSync('/tmp/tecnosoft-preview.txt') ? fs.readFileSync('/tmp/tecnosoft-preview.txt','utf8').trim() : '';
+          let result = {};
+          let parseError = '';
+          try {
+            const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+            if (first < 0 || last < first) throw new Error('Resposta do preview sem JSON.');
+            result = JSON.parse(raw.slice(first,last+1));
+          } catch (e) {
+            parseError = String(e.message || e);
+          }
+          const ok = result.sucesso === true &&
+            String(result.modo || '') === 'PREVIEW_SEM_PUBLICACAO' &&
+            result.rdPublicada === false &&
+            result.aprovada === false;
+          const lines = [
+            '## Teste SDR Tecnosoft',
+            '',
+            '- Interacao: '+String(target.idInteracao || ''),
+            '- Data da ligacao: '+String(target.dataInteracao || ''),
+            '- Duracao: '+String(target.duracaoSegundos || 0)+'s',
+            '- Transcricao existente: '+String(target.transcrita === true),
+            '- Status anterior: '+String(target.statusAuditoria || ''),
+            '- Preview seguro: '+String(ok),
+            '- Auditoria criada: '+String(result.idAuditoria || ''),
+            '- Engine: '+String(result.engineVersao || ''),
+            '- Status auditoria: '+String(result.status || ''),
+            '- Validacao: '+String(result.validacaoStatus || ''),
+            '- Gate: '+String(result.gateStatus || ''),
+            '- Gate publicavel: '+String(result.gatePublicavel),
+            '- Score: '+String(result.score ?? ''),
+            '- RD publicada: '+String(result.rdPublicada),
+            '- Auditoria aprovada: '+String(result.aprovada),
+            '',
+            ok ? '**Resultado: fluxo de auditoria SDR executou em preview sem publicar no RD.**'
+               : '**Resultado: teste nao concluiu com sucesso.**',
+            !ok ? '- Erro: '+String(result.erro || result.gateErro || parseError || 'sem detalhe') : ''
+          ].filter(Boolean);
+          fs.writeFileSync('/tmp/tecnosoft-preview-report.md', lines.join('\n'));
+          fs.writeFileSync('/tmp/tecnosoft-preview-summary.json', JSON.stringify({target,result,ok,parseError},null,2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+
+      - name: Comment Tecnosoft test result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/tecnosoft-preview-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/tecnosoft-preview-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Teste SDR Tecnosoft\n\nO runner falhou antes de gerar o relatório."
+          fi
+
+      - name: Save Tecnosoft preview evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdr-tecnosoft-preview-${{ github.run_id }}
+          path: |
+            /tmp/tecnosoft-status.txt
+            /tmp/tecnosoft-target.json
+            /tmp/tecnosoft-preview.txt
+            /tmp/tecnosoft-preview-summary.json
+            /tmp/tecnosoft-preview-report.md
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
+
