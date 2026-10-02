@@ -34,7 +34,11 @@ assert.ok(front.includes('aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAudit
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
 assert.ok(rd.includes('rdAuditoriaUsuarioVolumId'), 'RD não permite mapear o usuário VOLUM por ID na integração do cliente.');
-assert.ok(rd.includes("publicacao = audRdPublicarAutomaticamente_(id);"), 'Salvar o vínculo do RD não dispara publicação automática.');
+assert.ok(rd.includes("tipoAuditoria === 'SDR'"), 'Publicação automática ao salvar vínculo precisa ficar restrita ao SDR.');
+assert.ok(rd.includes("tipoAuditoria === 'CLOSER'"), 'Fluxo de vínculo do Closer precisa ser tratado separadamente.');
+assert.ok(rd.includes("'AGUARDANDO_ENVIO_MANUAL'"), 'Closer vinculado não fica explicitamente aguardando envio manual.');
+assert.ok(rd.includes('Use “Enviar ao RD” quando quiser publicar esta auditoria.'), 'Salvar vínculo do Closer não comunica o envio manual.');
+assert.ok(audit.includes("tipo === 'SDR' && typeof audRdPublicarAutomaticamente_"), 'Finalização automática ainda pode publicar Closer no RD.');
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
 assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
@@ -240,7 +244,7 @@ assert.deepEqual(
   'SDR publicado deve ser contado separadamente como realizado, vinculado e enviado.'
 );
 
-assert.match(audit, /versao:\s*'6\.3\.1'/, 'O engine não foi versionado para o fluxo canônico Closer v6.3.1.');
+assert.match(audit, /versao:\s*'6\.3\.2'/, 'O engine não foi versionado para o fluxo canônico Closer v6.3.2.');
 const inicioFragmentacaoCelula = audit.indexOf('const AUDV3_LIMITE_SEGURO_CELULA');
 const fimFragmentacaoCelula = audit.indexOf('function audV3Ler_', inicioFragmentacaoCelula);
 assert.ok(inicioFragmentacaoCelula >= 0 && fimFragmentacaoCelula > inicioFragmentacaoCelula, 'Helpers de fragmentação de célula não foram localizados.');
@@ -303,6 +307,9 @@ assert.ok(front.includes('Grupo Sinergia · vincular RD'), 'Board não sinaliza 
 assert.ok(front.includes('function regenerarAuditoriaGrupoSinergiaParaCrmFront'), 'Board não oferece regeneração segura da auditoria legada para CRM.');
 assert.ok(audit.includes('function audV3EstadoIntegridadeAuditoria_'), 'Estado de integridade genérico das auditorias não foi implementado.');
 assert.ok(audit.includes('function audV3EstadoOperacionalAuditoria_'), 'Auditoria não possui resolvedor operacional único.');
+assert.ok(audit.includes('function audV3EhBloqueioCoachingGenerico_'), 'Gate de aprovação não separa coaching genérico de inconsistência factual.');
+assert.ok(audit.includes('bloqueios_coaching: coaching'), 'Gate publicável não preserva coaching genérico como alerta de revisão.');
+assert.ok(audit.includes('RESULTADO_JSON: resultadoJsonAprovado'), 'Aprovação não persiste o gate final revisado usado no Google Doc.');
 assert.ok(audit.includes("if (status === 'PROCESSANDO') return 'PROCESSANDO';"), 'PROCESSANDO ativo ainda pode virar reanálise no mesmo card.');
 assert.ok(audit.includes("if (estado === 'PROCESSANDO') return 'PROCESSANDO';"), 'CRM do Grupo Sinergia não respeita processamento ativo.');
 assert.ok(audit.includes('function audV3EncontrarSubstitutaAtual_'), 'Regeneração não procura uma substituta atual antes de consumir IA.');
@@ -471,7 +478,7 @@ assert.ok(front.includes("const auditoria = (estado.auditorias || []).find(item 
 
 
 
-assert.match(audit, /versao:\s*'6\.3\.1'/, 'Engine de auditoria não foi versionado para o fluxo canônico Closer v6.3.1.');
+assert.match(audit, /versao:\s*'6\.3\.2'/, 'Engine de auditoria não foi versionado para o fluxo canônico Closer v6.3.2.');
 
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'AGUARDANDO_REVISAO'"), 'SDR/Closer não param para revisão humana.');
 assert.ok(audit.includes('function audV3ValidarQualidadeBoard_'), 'Gate de qualidade do Board não foi implementado.');
