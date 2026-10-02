@@ -20,5 +20,11 @@ assert.ok(workflow.includes('issues: write'), 'Workflow nao consegue devolver o 
 assert.ok(workflow.includes("github.event.comment.body == '/board-manual-mode'"), 'Comando de modo manual ausente.');
 assert.ok(workflow.includes('ops_disable_all_automation=1'), 'Workflow nao chama o endpoint de desligamento global.');
 assert.ok(code.includes("parametros.ops_disable_all_automation"), 'Endpoint de desligamento global ausente.');
+assert.ok(workflow.includes("github.event.comment.body == '/sdr-test-tecnosoft'"), 'Comando seguro de teste Tecnosoft ausente.');
+assert.ok(workflow.includes("x.cliente === 'Tecnosoft' && x.transcrita === true"), 'Teste Tecnosoft nao seleciona apenas ligacoes transcritas.');
+assert.ok(workflow.includes("String(x.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO'"), 'Teste Tecnosoft nao prioriza regressao de uma ligacao anteriormente com erro.');
+assert.ok(workflow.includes('ops_audit_preview=1'), 'Teste Tecnosoft nao usa o runner seguro de preview.');
+assert.ok(workflow.includes("result.rdPublicada === false"), 'Teste Tecnosoft nao protege contra publicacao no RD.');
+assert.ok(workflow.includes("result.aprovada === false"), 'Teste Tecnosoft nao protege contra aprovacao automatica.');
 
 console.log('Observabilidade SDR validada: endpoint autenticado, backlog, erros e comando GitHub presentes.');
