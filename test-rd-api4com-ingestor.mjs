@@ -54,6 +54,13 @@ assert.match(code, /RD_API4COM_PIPELINE_ATIVO/);
 assert.match(code, /PROCESSAR_PIPELINE_RD_API4COM/);
 assert.match(code, /origemInternaApi4com:\s*true/);
 assert.match(code, /const BOARD_MODE = 'MANUAL';/, 'As demais automações precisam permanecer em modo manual.');
+assert.match(code, /function ATIVAR_PIPELINE_SDR_ISOLADO\(\)/, 'Ativacao isolada do SDR nao foi implementada.');
+assert.match(code, /publicacaoAutomatica:\s*false/, 'Ativacao isolada do SDR nao protege contra publicacao automatica.');
+assert.match(code, /aprovacaoAutomatica:\s*false/, 'Ativacao isolada do SDR nao protege contra aprovacao automatica.');
+assert.match(code, /sdrRemoverAcionadoresNaoPermitidos_\(\)/, 'Ativacao isolada nao remove acionadores de automacoes fora do SDR.');
+assert.match(code, /reconciliarAcionadorRd_\(\)/, 'Ativacao isolada nao instala ingestao diaria RD\/API4COM.');
+assert.match(code, /agendarPipelineRdApi4com_\(\)/, 'Ativacao isolada nao inicia o backlog SDR existente.');
+
 
 const executor = trecho(
   audit,

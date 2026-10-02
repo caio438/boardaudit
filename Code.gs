@@ -891,6 +891,20 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_sdr_enable_isolated || '') === '1') {
+    const ativoOpsEnableSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsEnableSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsEnableSdr || !efetivoOpsEnableSdr || ativoOpsEnableSdr !== efetivoOpsEnableSdr) {
+      throw new Error('Ativacao isolada do SDR permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof ATIVAR_PIPELINE_SDR_ISOLADO !== 'function') {
+      throw new Error('Ativador isolado do pipeline SDR nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(ATIVAR_PIPELINE_SDR_ISOLADO(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_status || '') === '1') {
     const ativoOpsSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -3474,6 +3488,111 @@ function configurarAutomacaoRdApi4com(dados) {
   salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, pipeline);
   reconciliarAcionadorRd_();
   return { sucesso: true, automacaoRd: obterStatusAutomacaoRd_() };
+}
+
+function sdrHandlersNaoPermitidosNoModoIsolado_() {
+  return [
+    'SINCRONIZAR_TLDV_AGENDADO',
+    'EXECUTAR_AUTOMACAO_LIGACOES_V3',
+    'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA',
+    'EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA',
+    'EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO',
+    'SINCRONIZAR_JORNADA_CALENDARIO',
+    'SINCRONIZAR_JORNADA_PASTAS_RECENTES',
+    'EXECUTAR_AUTOMACAO_CENTRAL_19H',
+    'EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO'
+  ];
+}
+
+function sdrSnapshotAcionadoresIsolados_() {
+  const permitidos = {
+    SINCRONIZAR_RD_DIARIO: true,
+    PROCESSAR_FILA_RD: true,
+    PROCESSAR_PIPELINE_RD_API4COM: true
+  };
+  const handlers = ScriptApp.getProjectTriggers().map(function(trigger) {
+    return String(trigger.getHandlerFunction() || '');
+  }).filter(Boolean);
+  return {
+    todos: handlers,
+    ingestao: handlers.filter(function(handler) { return handler === 'SINCRONIZAR_RD_DIARIO'; }).length,
+    continuacaoRd: handlers.filter(function(handler) { return handler === 'PROCESSAR_FILA_RD'; }).length,
+    pipeline: handlers.filter(function(handler) { return handler === 'PROCESSAR_PIPELINE_RD_API4COM'; }).length,
+    foraDoPipelineSdr: handlers.filter(function(handler) { return !permitidos[handler]; })
+  };
+}
+
+function sdrRemoverAcionadoresNaoPermitidos_() {
+  const bloqueados = {};
+  sdrHandlersNaoPermitidosNoModoIsolado_().forEach(function(handler) { bloqueados[handler] = true; });
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (bloqueados[String(trigger.getHandlerFunction() || '')]) ScriptApp.deleteTrigger(trigger);
+  });
+}
+
+function ATIVAR_PIPELINE_SDR_ISOLADO() {
+  // O restante do Board continua em BOARD_MODE=MANUAL. Esta rotina libera
+  // somente ingestão de ligações RD/API4COM + transcrição + auditoria SDR.
+  salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
+  salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
+  salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
+  salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO');
+  salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO');
+  CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'NAO', 21600);
+
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM');
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
+
+  salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'SIM');
+  if (!String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_DURACAO_SEGUNDOS') || '').trim()) {
+    salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_DURACAO_SEGUNDOS', '105');
+  }
+  if (!String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_MAX_DIA') || '').trim()) {
+    salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_MAX_DIA', '15');
+  }
+  salvarConfiguracao_(
+    'AUDITORIA_AUTO_LIGACOES_INICIO',
+    Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd')
+  );
+
+  sdrRemoverAcionadoresNaoPermitidos_();
+  const ingestaoInstalada = reconciliarAcionadorRd_();
+  const backlogAgendado = agendarPipelineRdApi4com_();
+  const acionadores = sdrSnapshotAcionadoresIsolados_();
+  const statusSdr = typeof OBSERVAR_AUTOMACAO_SDR_V3 === 'function'
+    ? OBSERVAR_AUTOMACAO_SDR_V3()
+    : { sucesso: false };
+
+  const somenteSdr = acionadores.foraDoPipelineSdr.length === 0 &&
+    rdApi4comIngestaoAtiva_() &&
+    rdApi4comPipelineAtivo_() &&
+    String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || '').toUpperCase() === 'SIM';
+
+  registrarLog_(
+    'AUDITORIA',
+    'ATIVAR_PIPELINE_SDR_ISOLADO',
+    'Pipeline SDR isolado=' + String(somenteSdr) +
+      '; ingestao=' + String(ingestaoInstalada) +
+      '; backlog=' + String(backlogAgendado) +
+      '; demais acionadores=' + acionadores.foraDoPipelineSdr.join(',')
+  );
+
+  return {
+    sucesso: somenteSdr,
+    modoBoard: BOARD_MODE,
+    pipelineSdrIsolado: somenteSdr,
+    ingestaoRdApi4comAtiva: rdApi4comIngestaoAtiva_(),
+    pipelineRdApi4comAtivo: rdApi4comPipelineAtivo_(),
+    auditoriaLigacoesAtiva: String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || '').toUpperCase() === 'SIM',
+    publicacaoAutomatica: false,
+    aprovacaoAutomatica: false,
+    ingestaoInstalada: Boolean(ingestaoInstalada),
+    backlogAgendado: Boolean(backlogAgendado),
+    acionadores: acionadores,
+    statusSdr: statusSdr
+  };
 }
 
 function reconciliarAcionadorRd_() {
