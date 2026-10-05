@@ -55,11 +55,13 @@ assert.match(code, /PROCESSAR_PIPELINE_RD_API4COM/);
 assert.match(code, /origemInternaApi4com:\s*true/);
 assert.match(code, /const BOARD_MODE = 'MANUAL';/, 'As demais automações precisam permanecer em modo manual.');
 assert.match(code, /function ATIVAR_PIPELINE_SDR_ISOLADO\(\)/, 'Ativacao isolada do SDR nao foi implementada.');
-assert.match(code, /publicacaoAutomatica:\s*false/, 'Ativacao isolada do SDR nao protege contra publicacao automatica.');
-assert.match(code, /aprovacaoAutomatica:\s*false/, 'Ativacao isolada do SDR nao protege contra aprovacao automatica.');
+assert.match(code, /publicacaoAutomatica:\s*true/, 'Ativacao isolada do SDR precisa confirmar publicacao automatica.');
+assert.match(code, /aprovacaoAutomatica:\s*true/, 'Ativacao isolada do SDR precisa confirmar aprovacao automatica.');
 assert.match(code, /sdrRemoverAcionadoresNaoPermitidos_\(\)/, 'Ativacao isolada nao remove acionadores de automacoes fora do SDR.');
 assert.match(code, /reconciliarAcionadorRd_\(\)/, 'Ativacao isolada nao instala ingestao diaria RD\/API4COM.');
-assert.match(code, /agendarPipelineRdApi4com_\(\)/, 'Ativacao isolada nao inicia o backlog SDR existente.');
+assert.match(code, /reconciliarWatchdogPipelineRdApi4com_\(\)/, 'Ativacao isolada precisa instalar watchdog recorrente.');
+assert.match(code, /WATCHDOG_PIPELINE_RD_API4COM/, 'Watchdog SDR isolado ausente.');
+assert.match(code, /AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO/, 'Cutoff do backlog antigo ausente.');
 
 
 const executor = trecho(
@@ -70,9 +72,11 @@ const executor = trecho(
 assert.match(executor, /transcreverAudioMp3V4/);
 assert.match(executor, /tipoAuditoria:\s*'SDR'/);
 assert.match(executor, /executarAuditoriaV3/);
-assert.doesNotMatch(executor, /audV3FinalizarAutomaticamente_|aprovarAuditoriaV3|audRdPublicarAutomaticamente_/, 'O pipeline automático não pode aprovar ou publicar antes da revisão e dos gates.');
+assert.match(executor, /audV3FinalizarAutomaticamente_/, 'O pipeline SDR novo precisa aprovar e publicar automaticamente apos os gates.');
+assert.match(executor, /rdFinal\.publicada\s*!==\s*true/, 'O lote precisa tratar publicacao RD nao confirmada como falha recuperavel.');
+assert.match(audit, /cutoffMs/, 'A fila SDR precisa aplicar o cutoff temporal.');
 
 assert.match(audit, /function audV3ExigirGatePublicavel_/);
 assert.match(audit, /BLOQUEADO[\s\S]*não pode ser aprovada\/publicada/);
 
-console.log('Ingestor RD/API4COM exclusivo, deduplicado e isolado do BOARD_MODE validado.');
+console.log('Ingestor RD/API4COM validado com cutoff, watchdog e publicacao automatica do SDR.');

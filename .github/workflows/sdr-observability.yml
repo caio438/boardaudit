@@ -278,9 +278,11 @@ jobs:
             r.ingestaoRdApi4comAtiva === true &&
             r.pipelineRdApi4comAtivo === true &&
             r.auditoriaLigacoesAtiva === true &&
-            r.publicacaoAutomatica === false &&
-            r.aprovacaoAutomatica === false &&
+            r.publicacaoAutomatica === true &&
+            r.aprovacaoAutomatica === true &&
             Number(handlers.ingestao || 0) >= 1 &&
+            Number(handlers.watchdog || 0) >= 1 &&
+            String(r.cutoffIso || '') !== '' &&
             outside.length === 0;
           const s = (r.statusSdr || {}).resumo || {};
           const lines = [
@@ -292,11 +294,14 @@ jobs:
             '- Pipeline de transcricao/auditoria: '+String(r.pipelineRdApi4comAtivo),
             '- Auditoria de ligacoes: '+String(r.auditoriaLigacoesAtiva),
             '- Trigger diario de ingestao: '+String(handlers.ingestao || 0),
-            '- Lote de backlog agendado: '+String(r.backlogAgendado),
+            '- Lote inicial agendado: '+String(r.backlogAgendado),
+            '- Watchdogs SDR instalados: '+String(handlers.watchdog || 0),
+            '- Cutoff automatico: '+String(r.cutoffIso || ''),
             '- Outros triggers ativos: '+(outside.join(', ') || 'nenhum'),
             '- Publicacao automatica no RD: '+String(r.publicacaoAutomatica),
             '- Aprovacao automatica: '+String(r.aprovacaoAutomatica),
-            '- Elegiveis no backlog: '+String(s.elegiveis || 0),
+            '- Elegiveis apos cutoff: '+String(s.elegiveis || 0),
+            '- Processaveis agora: '+String(s.processaveis || 0),
             '- Transcritas aguardando auditoria: '+String(s.transcritasAguardandoAuditoria || 0),
             '',
             ok ? '**Resultado: somente o pipeline SDR foi reativado.**'
