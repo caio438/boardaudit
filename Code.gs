@@ -42,7 +42,11 @@ const BOARD_MODE = 'MANUAL';
 
 const RD_API4COM_AUTOMACAO = Object.freeze({
   chaveIngestao: 'RD_API4COM_INGESTAO_ATIVA',
-  chavePipeline: 'RD_API4COM_PIPELINE_ATIVO'
+  chavePipeline: 'RD_API4COM_PIPELINE_ATIVO',
+  chaveCutoff: 'AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO',
+  cutoffPadraoIso: '2026-10-05T13:28:00.000Z',
+  handlerWatchdog: 'WATCHDOG_PIPELINE_RD_API4COM',
+  watchdogHours: [7, 10, 13, 16, 19]
 });
 
 function boardModoManual_() {
@@ -3487,6 +3491,7 @@ function configurarAutomacaoRdApi4com(dados) {
   salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, pipeline);
   salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, pipeline);
   reconciliarAcionadorRd_();
+  reconciliarWatchdogPipelineRdApi4com_();
   return { sucesso: true, automacaoRd: obterStatusAutomacaoRd_() };
 }
 
@@ -3508,7 +3513,8 @@ function sdrSnapshotAcionadoresIsolados_() {
   const permitidos = {
     SINCRONIZAR_RD_DIARIO: true,
     PROCESSAR_FILA_RD: true,
-    PROCESSAR_PIPELINE_RD_API4COM: true
+    PROCESSAR_PIPELINE_RD_API4COM: true,
+    WATCHDOG_PIPELINE_RD_API4COM: true
   };
   const handlers = ScriptApp.getProjectTriggers().map(function(trigger) {
     return String(trigger.getHandlerFunction() || '');
@@ -3518,6 +3524,7 @@ function sdrSnapshotAcionadoresIsolados_() {
     ingestao: handlers.filter(function(handler) { return handler === 'SINCRONIZAR_RD_DIARIO'; }).length,
     continuacaoRd: handlers.filter(function(handler) { return handler === 'PROCESSAR_FILA_RD'; }).length,
     pipeline: handlers.filter(function(handler) { return handler === 'PROCESSAR_PIPELINE_RD_API4COM'; }).length,
+    watchdog: handlers.filter(function(handler) { return handler === RD_API4COM_AUTOMACAO.handlerWatchdog; }).length,
     foraDoPipelineSdr: handlers.filter(function(handler) { return !permitidos[handler]; })
   };
 }
@@ -3546,6 +3553,9 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
   salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
 
   salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'SIM');
+  if (!String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || '').trim()) {
+    salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff, RD_API4COM_AUTOMACAO.cutoffPadraoIso);
+  }
   if (!String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_DURACAO_SEGUNDOS') || '').trim()) {
     salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_DURACAO_SEGUNDOS', '105');
   }
@@ -3559,6 +3569,7 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
 
   sdrRemoverAcionadoresNaoPermitidos_();
   const ingestaoInstalada = reconciliarAcionadorRd_();
+  const watchdogInstalado = reconciliarWatchdogPipelineRdApi4com_();
   const backlogAgendado = agendarPipelineRdApi4com_();
   const acionadores = sdrSnapshotAcionadoresIsolados_();
   const statusSdr = typeof OBSERVAR_AUTOMACAO_SDR_V3 === 'function'
@@ -3568,6 +3579,8 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
   const somenteSdr = acionadores.foraDoPipelineSdr.length === 0 &&
     rdApi4comIngestaoAtiva_() &&
     rdApi4comPipelineAtivo_() &&
+    Boolean(watchdogInstalado) &&
+    Number(acionadores.watchdog || 0) === RD_API4COM_AUTOMACAO.watchdogHours.length &&
     String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || '').toUpperCase() === 'SIM';
 
   registrarLog_(
@@ -3586,9 +3599,11 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
     ingestaoRdApi4comAtiva: rdApi4comIngestaoAtiva_(),
     pipelineRdApi4comAtivo: rdApi4comPipelineAtivo_(),
     auditoriaLigacoesAtiva: String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || '').toUpperCase() === 'SIM',
-    publicacaoAutomatica: false,
-    aprovacaoAutomatica: false,
+    publicacaoAutomatica: true,
+    aprovacaoAutomatica: true,
+    cutoffIso: String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso),
     ingestaoInstalada: Boolean(ingestaoInstalada),
+    watchdogInstalado: Boolean(watchdogInstalado),
     backlogAgendado: Boolean(backlogAgendado),
     acionadores: acionadores,
     statusSdr: statusSdr
@@ -3650,6 +3665,8 @@ function SINCRONIZAR_RD_DIARIO(evento) {
   if (!rdApi4comIngestaoAtiva_()) {
     return { sucesso: true, ignorada: true, mensagem: 'Ingestão RD/API4COM desativada pela flag própria.' };
   }
+  reconciliarWatchdogPipelineRdApi4com_();
+
   if (!evento || !evento.triggerUid) {
     registrarLog_(
       'RD',
@@ -4050,6 +4067,66 @@ function agendarPipelineRdApi4com_() {
   return true;
 }
 
+function reconciliarWatchdogPipelineRdApi4com_() {
+  const handler = RD_API4COM_AUTOMACAO.handlerWatchdog;
+  const existentes = ScriptApp.getProjectTriggers().filter(function(trigger) {
+    return trigger.getHandlerFunction() === handler;
+  });
+
+  if (!rdApi4comPipelineAtivo_()) {
+    existentes.forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+    return false;
+  }
+
+  if (existentes.length === RD_API4COM_AUTOMACAO.watchdogHours.length) return true;
+
+  existentes.forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  RD_API4COM_AUTOMACAO.watchdogHours.forEach(function(hora) {
+    ScriptApp.newTrigger(handler)
+      .timeBased()
+      .atHour(hora)
+      .everyDays(1)
+      .inTimezone(APP.timezone)
+      .create();
+  });
+
+  registrarLog_(
+    'AUDITORIA',
+    'WATCHDOG_SDR_INSTALADO',
+    'Watchdog SDR isolado instalado nos horarios: ' +
+      RD_API4COM_AUTOMACAO.watchdogHours.join(', ') + 'h.'
+  );
+  return true;
+}
+
+function WATCHDOG_PIPELINE_RD_API4COM() {
+  if (!rdApi4comPipelineAtivo_()) {
+    return { sucesso: true, ignorada: true, mensagem: 'Pipeline SDR RD/API4COM desativado.' };
+  }
+  const status = obterStatusAutomacaoLigacoesV3();
+  const processaveis = Number(status.processaveis || 0);
+  const saldoHoje = Number(status.saldoHoje || 0);
+  if (processaveis > 0 && saldoHoje > 0) {
+    const agendado = agendarPipelineRdApi4com_();
+    return {
+      sucesso: true,
+      agendado: Boolean(agendado),
+      processaveis: processaveis,
+      saldoHoje: saldoHoje,
+      mensagem: 'Watchdog encontrou trabalho SDR processavel e acionou o proximo lote.'
+    };
+  }
+  return {
+    sucesso: true,
+    agendado: false,
+    processaveis: processaveis,
+    saldoHoje: saldoHoje,
+    mensagem: saldoHoje <= 0
+      ? 'Limite diario SDR atingido; o watchdog retomara no proximo dia.'
+      : 'Nenhuma ligacao SDR nova e processavel aguardando.'
+  };
+}
+
 function PROCESSAR_PIPELINE_RD_API4COM() {
   const handler = 'PROCESSAR_PIPELINE_RD_API4COM';
   ScriptApp.getProjectTriggers()
@@ -4058,10 +4135,10 @@ function PROCESSAR_PIPELINE_RD_API4COM() {
   if (!rdApi4comPipelineAtivo_()) {
     return { sucesso: true, ignorada: true, mensagem: 'Pipeline SDR RD/API4COM desativado pela flag própria.' };
   }
+  reconciliarWatchdogPipelineRdApi4com_();
   const retorno = EXECUTAR_AUTOMACAO_LIGACOES_V3({ origemInternaApi4com: true });
   const status = obterStatusAutomacaoLigacoesV3();
-  const processadas = Number((((retorno || {}).resultado || {}).processadas) || 0);
-  if (processadas > 0 && Number(status.elegiveis || 0) > 0 && Number(status.saldoHoje || 0) > 0) {
+  if (Number(status.processaveis || 0) > 0 && Number(status.saldoHoje || 0) > 0) {
     agendarPipelineRdApi4com_();
   }
   return retorno;
