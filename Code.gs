@@ -4560,17 +4560,30 @@ function extrairResponsaveisRd_(tarefa) {
 }
 
 function extrairDataTarefaRd_(tarefa) {
-  const valor =
-    tarefa.done_date ||
-    tarefa.date ||
-    tarefa.task_date ||
-    tarefa.created_at ||
-    '';
+  const valores = [
+    tarefa.done_at,
+    tarefa.completed_at,
+    tarefa.done_date,
+    tarefa.date,
+    tarefa.task_date,
+    tarefa.created_at
+  ].filter(function(valor) {
+    return valor !== undefined && valor !== null && String(valor).trim();
+  });
 
-  if (!valor) return '';
-
-  const texto = String(valor).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(texto) ? texto : '';
+  for (let i = 0; i < valores.length; i++) {
+    const bruto = valores[i];
+    if (bruto instanceof Date && !isNaN(bruto.getTime())) return bruto;
+    const texto = String(bruto).trim();
+    const possuiHora = /T\d{2}:\d{2}|\d{2}:\d{2}/.test(texto);
+    if (possuiHora) {
+      const dataHora = new Date(texto);
+      if (!isNaN(dataHora.getTime())) return dataHora;
+    }
+    const iso = texto.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  }
+  return '';
 }
 
 function criarGrupoResumoRd_(dataReferencia, cliente, responsavel) {
