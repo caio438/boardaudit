@@ -7818,6 +7818,8 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   chaveDuracao: 'AUDITORIA_AUTO_LIGACOES_DURACAO_SEGUNDOS',
   chaveMaxDia: 'AUDITORIA_AUTO_LIGACOES_MAX_DIA',
   chaveInicio: 'AUDITORIA_AUTO_LIGACOES_INICIO',
+  chaveCutoff: 'AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO',
+  cutoffPadraoIso: '2026-10-05T13:28:00.000Z',
   handler: 'EXECUTAR_AUTOMACAO_LIGACOES_V3',
   duracaoPadrao: 105,
   maxDiaPadrao: 15,
@@ -7849,11 +7851,26 @@ function audV3ConfigAutomacaoLigacoes_() {
       if (!isNaN(dataInicio.getTime())) inicio = Utilities.formatDate(dataInicio, APP.timezone, 'yyyy-MM-dd');
     }
   }
+  const cutoffBruto = obterConfiguracao_(AUTOMACAO_LIGACOES_V3.chaveCutoff) || AUTOMACAO_LIGACOES_V3.cutoffPadraoIso;
+  let cutoffIso = '';
+  let cutoffMs = 0;
+  if (cutoffBruto instanceof Date && !isNaN(cutoffBruto.getTime())) {
+    cutoffIso = cutoffBruto.toISOString();
+    cutoffMs = cutoffBruto.getTime();
+  } else {
+    const dataCutoff = new Date(String(cutoffBruto || '').trim());
+    if (!isNaN(dataCutoff.getTime())) {
+      cutoffIso = dataCutoff.toISOString();
+      cutoffMs = dataCutoff.getTime();
+    }
+  }
   return {
     ativa: String(obterConfiguracao_(AUTOMACAO_LIGACOES_V3.chaveAtiva) || '').toUpperCase() === 'SIM',
     duracaoSegundos: duracao,
     maxDia: maxDia,
     inicio: inicio,
+    cutoffIso: cutoffIso,
+    cutoffMs: cutoffMs,
     maxPorExecucao: AUTOMACAO_LIGACOES_V3.maxPorExecucao,
     horarios: AUTOMACAO_LIGACOES_V3.horarios.slice()
   };
@@ -7990,10 +8007,15 @@ function audV3FilaAutomacaoLigacoes_(config) {
   return audV3Ler_('INTERACOES').filter(function(item) {
     const id = String(item.ID_INTERACAO || '');
     const status = String(item.STATUS_AUDITORIA || '').toUpperCase();
+    const dataInteracao = item.DATA_INTERACAO instanceof Date
+      ? item.DATA_INTERACAO
+      : new Date(item.DATA_INTERACAO || 0);
+    const dataInteracaoMs = dataInteracao && !isNaN(dataInteracao.getTime()) ? dataInteracao.getTime() : 0;
     return String(item.ID_EXTERNO || '').indexOf('RD_TASK_') === 0 &&
       /^https:\/\/(?:[^/\s]+\.)?api4com\.com\/.*\.mp3(?:[?#]|$)/i.test(String(item.URL_GRAVACAO || '').trim()) &&
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       String(item.ID_CLIENTE || '').trim() &&
+      (!Number(config.cutoffMs || 0) || dataInteracaoMs >= Number(config.cutoffMs || 0)) &&
       !auditoriasValidas[id] &&
       audV3ErroAutomacaoElegivelRetry_(item, estadoErros, agoraMs);
   }).map(function(item) {
@@ -8037,9 +8059,11 @@ function obterStatusAutomacaoLigacoesV3() {
   const clientes = {};
   audV3Ler_('CLIENTES').forEach(function(item) { clientes[String(item.ID_CLIENTE || '')] = String(item.NOME_CLIENTE || ''); });
   const semPitch = {};
+  let processaveis = 0;
   fila.forEach(function(item) {
     const idCliente = String(item.interacao.ID_CLIENTE || '');
     if (!audV3PitchAtualAutomatico_(idCliente, 'SDR', pitches)) semPitch[idCliente] = clientes[idCliente] || idCliente;
+    else processaveis++;
   });
   const props = PropertiesService.getScriptProperties();
   return {
@@ -8049,7 +8073,9 @@ function obterStatusAutomacaoLigacoesV3() {
     maxPorExecucao: config.maxPorExecucao,
     horarios: config.horarios,
     inicio: config.inicio,
+    cutoffIso: config.cutoffIso,
     elegiveis: fila.length,
+    processaveis: processaveis,
     aguardandoTranscricao: fila.filter(function(item) { return !item.transcrita; }).length,
     transcritasAguardandoAuditoria: fila.filter(function(item) { return item.transcrita; }).length,
     processadasHoje: uso.processadas,
@@ -8120,6 +8146,8 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
     status: status,
     resumo: {
       elegiveis: Number(status.elegiveis || 0),
+      processaveis: Number(status.processaveis || 0),
+      cutoffIso: String(status.cutoffIso || ''),
       aguardandoTranscricao: Number(status.aguardandoTranscricao || 0),
       transcritasAguardandoAuditoria: Number(status.transcritasAguardandoAuditoria || 0),
       processadasHoje: Number(status.processadasHoje || 0),
@@ -8243,7 +8271,7 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
   props.setProperty('AUDITORIA_AUTO_LIGACOES_RODANDO_EM', String(Date.now()));
   props.setProperty('AUDITORIA_AUTO_LIGACOES_ULTIMA_EXECUCAO', new Date().toISOString());
 
-  const resultado = { processadas: 0, reutilizadas: 0, puladasSemPitch: 0, erros: [] };
+  const resultado = { processadas: 0, publicadas: 0, reutilizadas: 0, puladasSemPitch: 0, erros: [] };
   try {
     const uso = audV3UsoDiarioAutomacaoLigacoes_();
     const limiteLote = Math.min(config.maxPorExecucao, Math.max(0, config.maxDia - uso.processadas));
@@ -8296,7 +8324,18 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
           reclassificarInteracao: false,
           evitarDuplicidade: true
         });
+        const idAuditoria = String((((analisada || {}).auditoria || {}).idAuditoria) || '').trim();
+        if (!idAuditoria) throw new Error('A auditoria SDR foi gerada sem ID persistido.');
+        const finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
+        const rdFinal = (finalizada || {}).rd || {};
+        if (rdFinal.aplicavel && rdFinal.publicada !== true) {
+          throw new Error(
+            'Auditoria SDR concluida, mas a publicacao automatica no RD nao foi confirmada: ' +
+            String(rdFinal.mensagem || rdFinal.status || rdFinal.erro || 'sem detalhe')
+          );
+        }
         resultado.processadas++;
+        if (rdFinal.publicada === true) resultado.publicadas++;
         if (transcrita.reutilizada || analisada.reutilizada) resultado.reutilizadas++;
         audV3RegistrarUsoAutomacaoLigacoes_(1);
         audV3LimparErroAutomacaoLigacao_(interacao.ID_INTERACAO);
@@ -8311,7 +8350,8 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
         if (/cota|quota|limite|429|gratuit/i.test(mensagem)) break;
       }
     }
-    const mensagem = resultado.processadas + ' ligação(ões) preparada(s) para revisão' +
+    const mensagem = resultado.processadas + ' ligação(ões) auditada(s) automaticamente · ' +
+      resultado.publicadas + ' publicada(s) no RD' +
       (resultado.puladasSemPitch ? ' · ' + resultado.puladasSemPitch + ' sem pitch SDR atual' : '') +
       (resultado.erros.length ? ' · ' + resultado.erros.length + ' erro(s)' : '') +
       (interrompidoPorTempo ? ' · lote encerrado pelo orçamento de tempo' : '');
