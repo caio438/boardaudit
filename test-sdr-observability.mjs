@@ -23,8 +23,8 @@ assert.ok(code.includes("parametros.ops_disable_all_automation"), 'Endpoint de d
 assert.ok(workflow.includes("github.event.comment.body == '/sdr-enable-isolated'"), 'Comando de ativacao isolada SDR ausente.');
 assert.ok(workflow.includes('ops_sdr_enable_isolated=1'), 'Workflow nao chama o endpoint de ativacao isolada SDR.');
 assert.ok(workflow.includes("r.modoBoard === 'MANUAL'"), 'Ativacao SDR nao valida que o restante do Board continua manual.');
-assert.ok(workflow.includes('r.publicacaoAutomatica === false'), 'Ativacao SDR nao valida bloqueio de publicacao automatica.');
-assert.ok(workflow.includes('r.aprovacaoAutomatica === false'), 'Ativacao SDR nao valida bloqueio de aprovacao automatica.');
+assert.ok(workflow.includes('r.publicacaoAutomatica === true'), 'Ativacao SDR nao valida publicacao automatica.');
+assert.ok(workflow.includes('r.aprovacaoAutomatica === true'), 'Ativacao SDR nao valida aprovacao automatica.');
 assert.ok(code.includes('function ATIVAR_PIPELINE_SDR_ISOLADO()'), 'Ativador isolado SDR ausente.');
 assert.ok(code.includes("salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO')"), 'Ativador SDR nao mantem TLDV desligado.');
 assert.ok(code.includes("salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO')"), 'Ativador SDR nao mantem formalizacoes automaticas desligadas.');
@@ -32,9 +32,12 @@ assert.ok(code.includes("salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO')")
 assert.ok(code.includes("salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'SIM')"), 'Ativador SDR nao liga auditoria de ligacoes.');
 assert.ok(code.includes("salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM')"), 'Ativador SDR nao liga ingestao RD/API4COM.');
 assert.ok(code.includes("salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM')"), 'Ativador SDR nao liga pipeline RD/API4COM.');
-assert.ok(code.includes('agendarPipelineRdApi4com_()'), 'Ativador SDR nao agenda processamento do backlog atual.');
-assert.ok(code.includes("publicacaoAutomatica: false"), 'Ativador SDR nao declara publicacao automatica bloqueada.');
-assert.ok(code.includes("aprovacaoAutomatica: false"), 'Ativador SDR nao declara aprovacao automatica bloqueada.');
+assert.ok(code.includes('reconciliarWatchdogPipelineRdApi4com_()'), 'Ativador SDR nao instala watchdog recorrente.');
+assert.ok(code.includes("publicacaoAutomatica: true"), 'Ativador SDR nao declara publicacao automatica ativa.');
+assert.ok(code.includes("aprovacaoAutomatica: true"), 'Ativador SDR nao declara aprovacao automatica ativa.');
+assert.ok(code.includes('AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO'), 'Ativador SDR nao possui cutoff do backlog antigo.');
+assert.ok(audit.includes('processaveis'), 'Status SDR nao expoe itens realmente processaveis.');
+assert.ok(audit.includes('cutoffIso'), 'Status SDR nao expoe o cutoff vigente.');
 assert.ok(workflow.includes("github.event.comment.body == '/sdr-test-tecnosoft'"), 'Comando seguro de teste Tecnosoft ausente.');
 assert.ok(workflow.includes("x.cliente === 'Tecnosoft' && x.transcrita === true"), 'Teste Tecnosoft nao seleciona apenas ligacoes transcritas.');
 assert.ok(workflow.includes("String(x.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO'"), 'Teste Tecnosoft nao prioriza regressao de uma ligacao anteriormente com erro.');
