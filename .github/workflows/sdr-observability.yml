@@ -85,6 +85,8 @@ jobs:
             '- Transcritas aguardando auditoria: '+String(x.transcritasAguardandoAuditoria||0),
             '- Processadas hoje: '+String(x.processadasHoje||0),
             '- Saldo hoje: '+String(x.saldoHoje||0),
+            '- Fila de ingestao RD: '+String(x.filaIngestaoStatus||'sem estado')+' | '+String(x.filaIngestaoInicio||'?')+' a '+String(x.filaIngestaoFim||'?'),
+            '- Linhas persistidas na fila: '+String(x.filaIngestaoLinhasGravadas||0)+' | clientes pendentes: '+String(x.filaIngestaoPendentes||0),
             '- Erros no backlog: '+String(x.errosNoBacklog||0),
             '- Clientes sem pitch SDR atual: '+String(x.clientesSemPitchAtual||0),
             '- Ultima execucao: '+String(st.ultimaExecucao||''),

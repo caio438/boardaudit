@@ -343,7 +343,7 @@ assert.ok(audit.includes('function audV3FiltrarAuditoriasVisiveisOperacao_'), 'F
 assert.ok(audit.includes("return audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))\n    .slice(-200)"), 'Lista do Board ainda pode consultar auditorias legadas.');
 assert.ok(audit.includes("audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(auditoria)"), 'Analytics/Docs ainda podem misturar auditorias legadas.');
 assert.ok(audit.includes("const auditorias = audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'));"), 'Contexto histórico da IA ainda pode consultar auditoria legada.');
-assert.ok(audit.includes("audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(item)"), 'Auditoria legada ainda pode bloquear nova geração automática.');
+assert.match(audit, /audV3FiltrarAuditoriasVisiveisOperacao_\((?:dados\.auditorias \|\| )?audV3Ler_\('AUDITORIAS'\)\)\.forEach\(function\(item\)/, 'Auditoria legada ainda pode bloquear nova geração automática.');
 
 const inicioFiltroOperacional = audit.indexOf('function audV3EhAuditoriaLegadaBase_');
 const fimFiltroOperacional = audit.indexOf('function audV3EstadoIntegridadeAuditoria_', inicioFiltroOperacional);

@@ -62,6 +62,11 @@ assert.match(code, /reconciliarAcionadorRd_\(\)/, 'Ativacao isolada nao instala 
 assert.match(code, /reconciliarWatchdogPipelineRdApi4com_\(\)/, 'Ativacao isolada precisa instalar watchdog recorrente.');
 assert.match(code, /WATCHDOG_PIPELINE_RD_API4COM/, 'Watchdog SDR isolado ausente.');
 assert.match(code, /AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO/, 'Cutoff do backlog antigo ausente.');
+assert.match(code, /function garantirIngestaoSdrRecente_/, 'Watchdog nao garante ingestao recorrente do RD.');
+assert.match(code, /function WATCHDOG_PIPELINE_RD_API4COM\(\)[\s\S]*garantirIngestaoSdrRecente_\(\)/, 'Watchdog precisa consultar e persistir ligacoes recentes antes de acordar o pipeline.');
+assert.match(code, /dataFim:\s*hoje/, 'Janela incremental precisa incluir o dia corrente.');
+assert.match(code, /diasSobreposicaoIngestao:\s*1/, 'Ingestao precisa rever o dia anterior para absorver atrasos do RD.');
+assert.match(code, /garantirIngestaoSdrRecente_\(\{ desdeCutoff: true \}\)/, 'Ativacao isolada precisa recuperar somente a janela desde o cutoff.');
 
 
 const executor = trecho(

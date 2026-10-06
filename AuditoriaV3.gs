@@ -8001,27 +8001,12 @@ function audV3AtualizarPitchDocumentoAutomatico_(pitch) {
   return { pitch: pitch, origem: 'DOCUMENTO_ATUAL', atualizado: mudou, alerta: '', leituraDocumento: leitura };
 }
 
-function audV3FilaAutomacaoLigacoes_(config) {
+function audV3FilaAutomacaoLigacoes_(config, dados) {
   config = config || audV3ConfigAutomacaoLigacoes_();
+  dados = dados || {};
   const estadoErros = audV3EstadoErrosAutomacaoLigacoes_();
   const agoraMs = Date.now();
-  const transcricoes = {};
-  audV3Ler_('TRANSCRICOES').forEach(function(item) {
-    if (item.ID_INTERACAO && String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' && String(item.CONTEUDO || '').trim().length >= 20) {
-      transcricoes[String(item.ID_INTERACAO)] = item;
-    }
-  });
-  const auditoriasValidas = {};
-  audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(item) {
-    if (item.ID_INTERACAO &&
-        ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&
-        String(item.RESULTADO_JSON || '').trim()) {
-      auditoriasValidas[String(item.ID_INTERACAO)] = item;
-    }
-  });
-  return audV3Ler_('INTERACOES').filter(function(item) {
-    const id = String(item.ID_INTERACAO || '');
-    const status = String(item.STATUS_AUDITORIA || '').toUpperCase();
+  const interacoesElegiveis = (dados.interacoes || audV3Ler_('INTERACOES')).filter(function(item) {
     const dataInteracao = item.DATA_INTERACAO instanceof Date
       ? item.DATA_INTERACAO
       : new Date(item.DATA_INTERACAO || 0);
@@ -8031,8 +8016,27 @@ function audV3FilaAutomacaoLigacoes_(config) {
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       String(item.ID_CLIENTE || '').trim() &&
       (!Number(config.cutoffMs || 0) || dataInteracaoMs >= Number(config.cutoffMs || 0)) &&
-      !auditoriasValidas[id] &&
       audV3ErroAutomacaoElegivelRetry_(item, estadoErros, agoraMs);
+  });
+  const idsElegiveis = {};
+  interacoesElegiveis.forEach(function(item) { idsElegiveis[String(item.ID_INTERACAO || '')] = true; });
+  const transcricoes = {};
+  (dados.transcricoes || audV3Ler_('TRANSCRICOES')).forEach(function(item) {
+    if (idsElegiveis[String(item.ID_INTERACAO || '')] && String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' && String(item.CONTEUDO || '').trim().length >= 20) {
+      transcricoes[String(item.ID_INTERACAO)] = item;
+    }
+  });
+  const auditoriasValidas = {};
+  audV3FiltrarAuditoriasVisiveisOperacao_(dados.auditorias || audV3Ler_('AUDITORIAS')).forEach(function(item) {
+    if (idsElegiveis[String(item.ID_INTERACAO || '')] &&
+        ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&
+        String(item.RESULTADO_JSON || '').trim()) {
+      auditoriasValidas[String(item.ID_INTERACAO)] = item;
+    }
+  });
+  return interacoesElegiveis.filter(function(item) {
+    const id = String(item.ID_INTERACAO || '');
+    return !auditoriasValidas[id];
   }).map(function(item) {
     return {
       interacao: item,
@@ -8066,13 +8070,14 @@ function audV3RegistrarUsoAutomacaoLigacoes_(quantidade) {
   return total;
 }
 
-function obterStatusAutomacaoLigacoesV3() {
+function obterStatusAutomacaoLigacoesV3(dados) {
+  dados = dados || {};
   const config = audV3ConfigAutomacaoLigacoes_();
-  const fila = audV3FilaAutomacaoLigacoes_(config);
+  const fila = dados.fila || audV3FilaAutomacaoLigacoes_(config, dados);
   const uso = audV3UsoDiarioAutomacaoLigacoes_();
-  const pitches = audV3Ler_('PITCHES');
+  const pitches = dados.pitches || audV3Ler_('PITCHES');
   const clientes = {};
-  audV3Ler_('CLIENTES').forEach(function(item) { clientes[String(item.ID_CLIENTE || '')] = String(item.NOME_CLIENTE || ''); });
+  (dados.clientes || audV3Ler_('CLIENTES')).forEach(function(item) { clientes[String(item.ID_CLIENTE || '')] = String(item.NOME_CLIENTE || ''); });
   const semPitch = {};
   let processaveis = 0;
   fila.forEach(function(item) {
@@ -8108,10 +8113,18 @@ function obterStatusAutomacaoLigacoesV3() {
 
 function OBSERVAR_AUTOMACAO_SDR_V3() {
   const config = audV3ConfigAutomacaoLigacoes_();
-  const status = obterStatusAutomacaoLigacoesV3();
-  const fila = audV3FilaAutomacaoLigacoes_(config);
+  const dados = {
+    interacoes: audV3Ler_('INTERACOES'),
+    transcricoes: audV3Ler_('TRANSCRICOES'),
+    auditorias: audV3Ler_('AUDITORIAS'),
+    pitches: audV3Ler_('PITCHES'),
+    clientes: audV3Ler_('CLIENTES')
+  };
+  const fila = audV3FilaAutomacaoLigacoes_(config, dados);
+  dados.fila = fila;
+  const status = obterStatusAutomacaoLigacoesV3(dados);
   const clientes = {};
-  audV3Ler_('CLIENTES').forEach(function(item) {
+  dados.clientes.forEach(function(item) {
     if (item.ID_CLIENTE) clientes[String(item.ID_CLIENTE)] = String(item.NOME_CLIENTE || item.ID_CLIENTE);
   });
   const estadoErros = audV3EstadoErrosAutomacaoLigacoes_();
@@ -8155,6 +8168,9 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
   const errosBacklog = backlog.filter(function(item) {
     return item.tentativasErro > 0 || String(item.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO';
   });
+  const filaIngestao = typeof obterFilaRd_ === 'function' && typeof resumirFilaRd_ === 'function'
+    ? resumirFilaRd_(obterFilaRd_())
+    : null;
   return {
     sucesso: true,
     geradoEm: new Date().toISOString(),
@@ -8169,8 +8185,14 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
       saldoHoje: Number(status.saldoHoje || 0),
       errosNoBacklog: errosBacklog.length,
       clientesSemPitchAtual: (status.clientesSemPitchAtual || []).length,
-      gatilhosInstalados: Number(status.gatilhosInstalados || 0)
+      gatilhosInstalados: Number(status.gatilhosInstalados || 0),
+      filaIngestaoStatus: String((filaIngestao || {}).status || ''),
+      filaIngestaoInicio: String((filaIngestao || {}).dataInicio || ''),
+      filaIngestaoFim: String((filaIngestao || {}).dataFim || ''),
+      filaIngestaoLinhasGravadas: Number((filaIngestao || {}).linhasGravadas || 0),
+      filaIngestaoPendentes: Number((filaIngestao || {}).pendentes || 0)
     },
+    filaIngestao: filaIngestao,
     porCliente: Object.keys(porCliente).map(function(id) { return porCliente[id]; })
       .sort(function(a, b) { return b.elegiveis - a.elegiveis || a.cliente.localeCompare(b.cliente); }),
     backlog: backlog,
