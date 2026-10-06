@@ -4551,6 +4551,21 @@ function audV3ResolverFonteHashAuditoria_(auditoria, transcricao, interacao, cli
     });
   };
 
+  // O Plano de Otimizacao usa uma fonte manual propria, sem a normalizacao
+  // de locutores aplicada a SDR/Closer. Na aprovacao precisamos reconstruir
+  // exatamente a mesma fonte usada na geracao, inclusive a versao
+  // PLANO_MANUAL_V1, para que o hash de integridade seja comparavel.
+  if (tipo === 'PLANO') {
+    try {
+      const preparadaPlano = audV3PrepararPlanoManualRapido_(transcricao, interacao);
+      adicionarCandidato(
+        'FONTE_PLANO_MANUAL',
+        preparadaPlano.conteudo,
+        preparadaPlano.normalizacaoVersao
+      );
+    } catch (erroPlano) {}
+  }
+
   if (audV3UsaNormalizacaoV2_(auditoria.ENGINE_VERSAO)) {
     adicionarCandidato(
       'SNAPSHOT_NORMALIZADO_PERSISTIDO',
