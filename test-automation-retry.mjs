@@ -5,6 +5,8 @@ const source = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'ut
 
 assert.match(source, /chaveErros:\s*'AUDITORIA_AUTO_LIGACOES_ERROS_V1'/);
 assert.match(source, /atrasoRetryMs:\s*6 \* 60 \* 60 \* 1000/);
+assert.match(source, /atrasoRetryTransitorioMs:\s*10 \* 60 \* 1000/);
+assert.match(source, /atrasoMaxRetryTransitorioMs:\s*60 \* 60 \* 1000/);
 assert.match(source, /maxTentativasErro:\s*3/);
 assert.match(source, /horarios:\s*\[7, 10, 13, 16, 19\]/);
 assert.match(source, /function audV3ErroAutomacaoElegivelRetry_\(/);
@@ -14,5 +16,9 @@ assert.doesNotMatch(source, /status !== 'ERRO_AUTOMACAO';/);
 assert.match(source, /audV3RegistrarErroAutomacaoLigacao_\(interacao\.ID_INTERACAO, mensagem\)/);
 assert.match(source, /audV3LimparErroAutomacaoLigacao_\(interacao\.ID_INTERACAO\)/);
 assert.match(source, /proximaTentativaEm: tentativas >= AUTOMACAO_LIGACOES_V3\.maxTentativasErro/);
+assert.match(source, /function audV3ErroAutomacaoTransitorio_\(/);
+assert.match(source, /429\|500\|502\|503\|504/);
+assert.match(source, /Math\.pow\(2, Math\.max\(0, tentativas - 1\)\)/);
+assert.match(source, /function audV3ProximaTentativaAutomacaoLigacoes_\(/);
 
 console.log('Retry controlado de ERRO_AUTOMACAO validado sem perder os cinco horarios automaticos.');

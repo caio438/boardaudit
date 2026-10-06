@@ -3795,11 +3795,17 @@ function criarFilaRd_(dataInicio, dataFim, origem, apenasIdCliente) {
       }
     }
 
+    const filaAutomaticaSdr = /^AUTOMATICO_SDR/.test(String(origem || '').toUpperCase());
+    const pitchesSdr = filaAutomaticaSdr && typeof audV3Ler_ === 'function'
+      ? audV3Ler_('PITCHES')
+      : [];
     const clientes = listarClientes()
       .filter(cliente =>
         cliente.status === 'ATIVO' &&
         cliente.rdAtivo &&
         cliente.rdConfigurado &&
+        String(cliente.rdStatus || '').toUpperCase() !== 'BLOQUEADA_CREDENCIAL' &&
+        (!filaAutomaticaSdr || Boolean(audV3PitchAtualAutomatico_(cliente.idCliente, 'SDR', pitchesSdr))) &&
         (!apenasIdCliente || cliente.idCliente === apenasIdCliente)
       )
       .map(cliente => ({
@@ -3915,7 +3921,7 @@ function PROCESSAR_FILA_RD(evento) {
         const integracaoRd = obterIntegracaoCliente_(cliente.idCliente, 'RD_STATION');
         if (integracaoRd) {
           atualizarIntegracaoCliente_(integracaoRd.ID_INTEGRACAO, {
-            STATUS: 'ERRO',
+            STATUS: rdErroAutenticacao_(erro) ? 'BLOQUEADA_CREDENCIAL' : 'ERRO',
             ULTIMO_ERRO: erro.message,
             ULTIMA_SINCRONIZACAO: new Date()
           });
@@ -4095,15 +4101,22 @@ function agendarProcessamentoRd_() {
   return true;
 }
 
-function agendarPipelineRdApi4com_() {
+function agendarPipelineRdApi4com_(atrasoMs) {
   if (!rdApi4comPipelineAtivo_()) return false;
   const handler = 'PROCESSAR_PIPELINE_RD_API4COM';
   const existente = ScriptApp.getProjectTriggers().some(function(trigger) {
     return trigger.getHandlerFunction() === handler;
   });
   if (existente) return true;
-  ScriptApp.newTrigger(handler).timeBased().after(60 * 1000).create();
+  const atraso = Math.max(60 * 1000, Number(atrasoMs || 60 * 1000));
+  ScriptApp.newTrigger(handler).timeBased().after(atraso).create();
   return true;
+}
+
+function agendarRetryPipelineRdApi4com_(proximaTentativaEm) {
+  const proxima = new Date(String(proximaTentativaEm || '')).getTime();
+  if (!proxima || isNaN(proxima)) return false;
+  return agendarPipelineRdApi4com_(Math.max(60 * 1000, proxima - Date.now()));
 }
 
 function reconciliarWatchdogPipelineRdApi4com_() {
@@ -4184,6 +4197,8 @@ function PROCESSAR_PIPELINE_RD_API4COM() {
   const status = obterStatusAutomacaoLigacoesV3();
   if (Number(status.processaveis || 0) > 0 && Number(status.saldoHoje || 0) > 0) {
     agendarPipelineRdApi4com_();
+  } else if (status.proximaTentativaEm && Number(status.saldoHoje || 0) > 0) {
+    agendarRetryPipelineRdApi4com_(status.proximaTentativaEm);
   }
   return retorno;
 }
@@ -4243,6 +4258,11 @@ function consolidarTarefasRdCliente_(cliente, dataInicio, dataFim) {
     ligacoesComGravacao: ids.length,
     idsExternos: ids
   };
+}
+
+function rdErroAutenticacao_(erro) {
+  return /(?:HTTP\s*)?(?:401|403)\b|permission denied|unauthori[sz]ed|token.*(?:inválido|invalido|expired|expirado)/i
+    .test(String(erro && erro.message || erro || ''));
 }
 
 function buscarPaginaTarefasRd_(token, parametros) {
