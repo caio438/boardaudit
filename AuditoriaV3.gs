@@ -8004,6 +8004,7 @@ function audV3AtualizarPitchDocumentoAutomatico_(pitch) {
 function audV3FilaAutomacaoLigacoes_(config, dados) {
   config = config || audV3ConfigAutomacaoLigacoes_();
   dados = dados || {};
+  const pitches = dados.pitches || audV3Ler_('PITCHES');
   const estadoErros = audV3EstadoErrosAutomacaoLigacoes_();
   const agoraMs = Date.now();
   const interacoesElegiveis = (dados.interacoes || audV3Ler_('INTERACOES')).filter(function(item) {
@@ -8015,6 +8016,7 @@ function audV3FilaAutomacaoLigacoes_(config, dados) {
       /^https:\/\/(?:[^/\s]+\.)?api4com\.com\/.*\.mp3(?:[?#]|$)/i.test(String(item.URL_GRAVACAO || '').trim()) &&
       Number(item.DURACAO_SEGUNDOS || 0) > Number(config.duracaoSegundos || 105) &&
       String(item.ID_CLIENTE || '').trim() &&
+      Boolean(audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'SDR', pitches)) &&
       (!Number(config.cutoffMs || 0) || dataInteracaoMs >= Number(config.cutoffMs || 0)) &&
       audV3ErroAutomacaoElegivelRetry_(item, estadoErros, agoraMs);
   });
@@ -8073,18 +8075,10 @@ function audV3RegistrarUsoAutomacaoLigacoes_(quantidade) {
 function obterStatusAutomacaoLigacoesV3(dados) {
   dados = dados || {};
   const config = audV3ConfigAutomacaoLigacoes_();
+  const pitches = dados.pitches || audV3Ler_('PITCHES');
+  dados.pitches = pitches;
   const fila = dados.fila || audV3FilaAutomacaoLigacoes_(config, dados);
   const uso = audV3UsoDiarioAutomacaoLigacoes_();
-  const pitches = dados.pitches || audV3Ler_('PITCHES');
-  const clientes = {};
-  (dados.clientes || audV3Ler_('CLIENTES')).forEach(function(item) { clientes[String(item.ID_CLIENTE || '')] = String(item.NOME_CLIENTE || ''); });
-  const semPitch = {};
-  let processaveis = 0;
-  fila.forEach(function(item) {
-    const idCliente = String(item.interacao.ID_CLIENTE || '');
-    if (!audV3PitchAtualAutomatico_(idCliente, 'SDR', pitches)) semPitch[idCliente] = clientes[idCliente] || idCliente;
-    else processaveis++;
-  });
   const props = PropertiesService.getScriptProperties();
   return {
     ativa: config.ativa,
@@ -8095,12 +8089,12 @@ function obterStatusAutomacaoLigacoesV3(dados) {
     inicio: config.inicio,
     cutoffIso: config.cutoffIso,
     elegiveis: fila.length,
-    processaveis: processaveis,
+    processaveis: fila.length,
     aguardandoTranscricao: fila.filter(function(item) { return !item.transcrita; }).length,
     transcritasAguardandoAuditoria: fila.filter(function(item) { return item.transcrita; }).length,
     processadasHoje: uso.processadas,
     saldoHoje: Math.max(0, config.maxDia - uso.processadas),
-    clientesSemPitchAtual: Object.keys(semPitch).map(function(id) { return { idCliente: id, nomeCliente: semPitch[id] }; }),
+    clientesSemPitchAtual: [],
     ultimaExecucao: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMA_EXECUCAO') || '',
     ultimoResultado: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMO_RESULTADO') || '',
     gatilhosInstalados: ScriptApp.getProjectTriggers().filter(function(trigger) {
@@ -8174,6 +8168,7 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
       : new Date(interacao.DATA_INTERACAO || 0);
     const dataMs = data && !isNaN(data.getTime()) ? data.getTime() : 0;
     if (String(interacao.ID_EXTERNO || '').indexOf('RD_TASK_') === 0 &&
+        audV3PitchAtualAutomatico_(String(interacao.ID_CLIENTE || ''), 'SDR', dados.pitches) &&
         (!Number(config.cutoffMs || 0) || dataMs >= Number(config.cutoffMs || 0))) {
       interacoesPosCutoff[String(interacao.ID_INTERACAO || '')] = interacao;
     }
@@ -8306,8 +8301,8 @@ function INSTALAR_AUTOMACAO_LIGACOES_V3() {
 
 function DIAGNOSTICAR_AUTOMACAO_LIGACOES_V3() {
   const status = obterStatusAutomacaoLigacoesV3();
-  const fila = audV3FilaAutomacaoLigacoes_(audV3ConfigAutomacaoLigacoes_());
   const pitches = audV3Ler_('PITCHES');
+  const fila = audV3FilaAutomacaoLigacoes_(audV3ConfigAutomacaoLigacoes_(), { pitches: pitches });
   const clientesConferidos = {};
   const documentos = [];
   fila.forEach(function(item) {
@@ -8354,8 +8349,8 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
     const limiteLote = Math.min(config.maxPorExecucao, Math.max(0, config.maxDia - uso.processadas));
     if (!limiteLote) return { sucesso: true, mensagem: 'Limite diário automático atingido.', resultado: resultado };
 
-    const fila = audV3FilaAutomacaoLigacoes_(config);
     const pitches = audV3Ler_('PITCHES');
+    const fila = audV3FilaAutomacaoLigacoes_(config, { pitches: pitches });
     const inicioLoteMs = Date.now();
     let tentativas = 0;
     let examinadas = 0;
