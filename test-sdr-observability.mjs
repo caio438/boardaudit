@@ -10,6 +10,8 @@ assert.ok(audit.includes('transcritasAguardandoAuditoria'), 'Resumo nao expoe tr
 assert.ok(audit.includes('clientesSemPitchAtual'), 'Resumo nao expoe clientes sem pitch.');
 assert.ok(audit.includes('errosNoBacklog'), 'Resumo nao expoe erros do backlog.');
 assert.ok(audit.includes('filaIngestaoLinhasGravadas'), 'Resumo nao expoe persistencia da fila de ingestao.');
+assert.ok(audit.includes('interacoesPosCutoff'), 'Observabilidade nao inclui erros pós-cutoff durante o cooldown de retry.');
+assert.match(audit, /Object\.keys\(estadoErros\)[\s\S]*tentativasErro:[\s\S]*proximaTentativaEm:/, 'Erros em retry precisam continuar visiveis com tentativas e proxima janela.');
 const observador = audit.slice(audit.indexOf('function OBSERVAR_AUTOMACAO_SDR_V3()'), audit.indexOf('function instalarGatilhosAutomacaoLigacoesV3_'));
 assert.equal((observador.match(/audV3Ler_\('INTERACOES'\)/g) || []).length, 1, 'Observabilidade nao pode reler INTERACOES na mesma requisicao.');
 assert.equal((observador.match(/audV3Ler_\('CLIENTES'\)/g) || []).length, 1, 'Observabilidade nao pode reler CLIENTES na mesma requisicao.');
@@ -21,6 +23,7 @@ assert.ok(workflow.includes("github.event.comment.user.login == 'caio438'"), 'Wo
 assert.ok(workflow.includes("github.event.comment.body == '/sdr-status'"), 'Comando /sdr-status ausente.');
 assert.ok(workflow.includes('ops_sdr_status=1'), 'Workflow nao consulta o endpoint de producao.');
 assert.ok(workflow.includes('Fila de ingestao RD:'), 'Relatorio nao mostra a fila de ingestao do RD.');
+assert.ok(workflow.includes('Ultimo resultado:'), 'Relatorio nao mostra o resultado do ultimo lote SDR.');
 assert.ok(workflow.includes('issues: write'), 'Workflow nao consegue devolver o diagnostico no issue.');
 assert.ok(workflow.includes("github.event.comment.body == '/board-manual-mode'"), 'Comando de modo manual ausente.');
 assert.ok(workflow.includes('ops_disable_all_automation=1'), 'Workflow nao chama o endpoint de desligamento global.');
