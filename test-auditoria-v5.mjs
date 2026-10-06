@@ -14,6 +14,16 @@ assert.ok(audit.includes('function audV3PrepararPlanoManualRapido_'), 'Plano man
 assert.ok(audit.includes("tipo === 'PLANO' ? [0, 2000] : AUDITORIA_V3.esperasRetentativaMs.slice()"), 'Plano manual precisa usar uma política de retry curta.');
 assert.ok(audit.includes("maxOutputTokens: tipo === 'PLANO' ? 6000 : 12000"), 'Plano manual precisa limitar a resposta para reduzir latência.');
 assert.ok(audit.includes("mensagem: 'Plano estruturado e validado. Revise antes de aprovar, criar o Google Docs ou publicar.'"), 'Plano manual precisa terminar em revisão humana.');
+assert.match(
+  audit,
+  /function audV3ResolverFonteHashAuditoria_\([\s\S]*?tipo === 'PLANO'[\s\S]*?audV3PrepararPlanoManualRapido_\(transcricao, interacao\)[\s\S]*?'FONTE_PLANO_MANUAL'/,
+  'A aprovação do Plano precisa reconstruir a mesma fonte PLANO_MANUAL usada na geração.'
+);
+assert.match(
+  audit,
+  /function aprovarAuditoriaV3\([\s\S]*?audV3ResolverFonteHashAuditoria_\(/,
+  'A aprovação continua obrigada a validar o hash da fonte; o ajuste do Plano não pode ignorar integridade.'
+);
 assert.ok(audit.includes('aprovarAuditoriaV3(id);'), 'A finalização automática não cria/aprova o documento.');
 assert.ok(audit.includes("AUTOMACAO_STATUS: 'PROCESSANDO'"), 'O pipeline automático não registra início.');
 assert.match(audit, /processamentoExpiraMinutos:\s*8/, 'O motor precisa ter um limite explícito para PROCESSANDO expirado.');
