@@ -80,6 +80,9 @@ assert.match(executor, /executarAuditoriaV3/);
 assert.match(executor, /audV3FinalizarAutomaticamente_/, 'O pipeline SDR novo precisa aprovar e publicar automaticamente apos os gates.');
 assert.match(executor, /rdFinal\.publicada\s*!==\s*true/, 'O lote precisa tratar publicacao RD nao confirmada como falha recuperavel.');
 assert.match(audit, /cutoffMs/, 'A fila SDR precisa aplicar o cutoff temporal.');
+const filaAutomatica = trecho(audit, 'function audV3FilaAutomacaoLigacoes_', 'function audV3UsoDiarioAutomacaoLigacoes_');
+assert.match(filaAutomatica, /audV3PitchAtualAutomatico_\(String\(item\.ID_CLIENTE \|\| ''\), 'SDR', pitches\)/, 'Ligacoes sem pitch SDR nao podem entrar na fila automatica.');
+assert.ok(filaAutomatica.indexOf('audV3PitchAtualAutomatico_') < filaAutomatica.indexOf('return interacoesElegiveis.filter'), 'Filtro de pitch precisa ocorrer antes da fila ser devolvida.');
 
 assert.match(audit, /function audV3ExigirGatePublicavel_/);
 assert.match(audit, /BLOQUEADO[\s\S]*não pode ser aprovada\/publicada/);
