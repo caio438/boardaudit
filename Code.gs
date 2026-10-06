@@ -46,7 +46,8 @@ const RD_API4COM_AUTOMACAO = Object.freeze({
   chaveCutoff: 'AUDITORIA_AUTO_LIGACOES_CUTOFF_ISO',
   cutoffPadraoIso: '2026-10-05T13:28:00.000Z',
   handlerWatchdog: 'WATCHDOG_PIPELINE_RD_API4COM',
-  watchdogHours: [7, 10, 13, 16, 19]
+  watchdogHours: [7, 10, 13, 16, 19],
+  diasSobreposicaoIngestao: 1
 });
 
 function boardModoManual_() {
@@ -3570,6 +3571,7 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
   sdrRemoverAcionadoresNaoPermitidos_();
   const ingestaoInstalada = reconciliarAcionadorRd_();
   const watchdogInstalado = reconciliarWatchdogPipelineRdApi4com_();
+  const ingestaoInicial = garantirIngestaoSdrRecente_({ desdeCutoff: true });
   const backlogAgendado = agendarPipelineRdApi4com_();
   const acionadores = sdrSnapshotAcionadoresIsolados_();
   const statusSdr = typeof OBSERVAR_AUTOMACAO_SDR_V3 === 'function'
@@ -3603,6 +3605,7 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
     aprovacaoAutomatica: true,
     cutoffIso: String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso),
     ingestaoInstalada: Boolean(ingestaoInstalada),
+    ingestaoInicial: ingestaoInicial,
     watchdogInstalado: Boolean(watchdogInstalado),
     backlogAgendado: Boolean(backlogAgendado),
     acionadores: acionadores,
@@ -3681,12 +3684,48 @@ function SINCRONIZAR_RD_DIARIO(evento) {
     };
   }
 
-  const ontem = new Date();
-  ontem.setDate(ontem.getDate() - 1);
-  const dataReferencia = Utilities.formatDate(ontem, APP.timezone, 'yyyy-MM-dd');
-
-  criarFilaRd_(dataReferencia, dataReferencia, 'AUTOMATICO', '');
+  garantirIngestaoSdrRecente_();
   return PROCESSAR_FILA_RD({ origemInterna: true });
+}
+
+function periodoIngestaoSdrRecente_(opcoes) {
+  opcoes = opcoes || {};
+  const agora = new Date();
+  const hoje = Utilities.formatDate(agora, APP.timezone, 'yyyy-MM-dd');
+  const inicio = new Date(agora.getTime());
+  inicio.setDate(inicio.getDate() - RD_API4COM_AUTOMACAO.diasSobreposicaoIngestao);
+  let dataInicio = Utilities.formatDate(inicio, APP.timezone, 'yyyy-MM-dd');
+  if (opcoes.desdeCutoff === true) {
+    const cutoff = new Date(String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso));
+    if (!isNaN(cutoff.getTime())) dataInicio = Utilities.formatDate(cutoff, APP.timezone, 'yyyy-MM-dd');
+  }
+  return { dataInicio: dataInicio, dataFim: hoje };
+}
+
+function garantirIngestaoSdrRecente_(opcoes) {
+  if (!rdApi4comIngestaoAtiva_()) {
+    return { sucesso: true, ignorada: true, mensagem: 'Ingestão RD/API4COM desativada.' };
+  }
+  const filaAtual = obterFilaRd_();
+  if (filaAtual && ['PENDENTE', 'PROCESSANDO'].includes(String(filaAtual.status || '')) && !filaRdEstaAbandonada_(filaAtual)) {
+    agendarProcessamentoRd_();
+    return {
+      sucesso: true,
+      reutilizada: true,
+      filaRd: resumirFilaRd_(filaAtual),
+      mensagem: 'A fila de ingestão RD já estava ativa e teve a continuação garantida.'
+    };
+  }
+  const periodo = periodoIngestaoSdrRecente_(opcoes);
+  const fila = criarFilaRd_(periodo.dataInicio, periodo.dataFim, 'AUTOMATICO_SDR_WATCHDOG', '');
+  const agendada = agendarProcessamentoRd_();
+  return {
+    sucesso: true,
+    reutilizada: false,
+    agendada: Boolean(agendada),
+    filaRd: resumirFilaRd_(fila),
+    mensagem: 'Janela recente do RD/API4COM enfileirada para ingestão.'
+  };
 }
 
 /**
@@ -4103,22 +4142,27 @@ function WATCHDOG_PIPELINE_RD_API4COM() {
   if (!rdApi4comPipelineAtivo_()) {
     return { sucesso: true, ignorada: true, mensagem: 'Pipeline SDR RD/API4COM desativado.' };
   }
+  const ingestao = garantirIngestaoSdrRecente_();
   const status = obterStatusAutomacaoLigacoesV3();
   const processaveis = Number(status.processaveis || 0);
   const saldoHoje = Number(status.saldoHoje || 0);
-  if (processaveis > 0 && saldoHoje > 0) {
+  if (saldoHoje > 0) {
     const agendado = agendarPipelineRdApi4com_();
     return {
       sucesso: true,
       agendado: Boolean(agendado),
+      ingestao: ingestao,
       processaveis: processaveis,
       saldoHoje: saldoHoje,
-      mensagem: 'Watchdog encontrou trabalho SDR processavel e acionou o proximo lote.'
+      mensagem: processaveis > 0
+        ? 'Watchdog atualizou a ingestão e acionou o próximo lote SDR.'
+        : 'Watchdog atualizou a ingestão; o lote SDR verificará os registros persistidos pela fila.'
     };
   }
   return {
     sucesso: true,
     agendado: false,
+    ingestao: ingestao,
     processaveis: processaveis,
     saldoHoje: saldoHoje,
     mensagem: saldoHoje <= 0
