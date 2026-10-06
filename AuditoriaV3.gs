@@ -7845,8 +7845,10 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   orcamentoAntesNovoItemMs: 2 * 60 * 1000,
   horarios: [7, 10, 13, 16, 19],
   chaveErros: 'AUDITORIA_AUTO_LIGACOES_ERROS_V1',
-  revisaoRetry: '2026-09-23-runtime-speaker-v1',
+  revisaoRetry: '2026-10-06-transient-backoff-v2',
   atrasoRetryMs: 6 * 60 * 60 * 1000,
+  atrasoRetryTransitorioMs: 10 * 60 * 1000,
+  atrasoMaxRetryTransitorioMs: 60 * 60 * 1000,
   maxTentativasErro: 3
 });
 
@@ -7928,6 +7930,11 @@ function audV3ErroAutomacaoElegivelRetry_(interacao, estado, agoraMs) {
   return Number(agoraMs || Date.now()) >= proxima;
 }
 
+function audV3ErroAutomacaoTransitorio_(mensagem) {
+  return /(?:HTTP\s*)?(?:429|500|502|503|504)\b|high demand|temporar(?:y|iamente)|timeout|timed out|service unavailable|rate limit/i
+    .test(String(mensagem || ''));
+}
+
 function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
   const id = String(idInteracao || '').trim();
   if (!id) return;
@@ -7936,13 +7943,21 @@ function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
   const revisaoAtual = String(AUTOMACAO_LIGACOES_V3.revisaoRetry || '');
   const mesmaRevisao = String(anterior.revisaoRetry || '') === revisaoAtual;
   const tentativas = (mesmaRevisao ? Math.max(0, Number(anterior.tentativas || 0)) : 0) + 1;
+  const transitorio = audV3ErroAutomacaoTransitorio_(mensagem);
+  const atrasoRetryMs = transitorio
+    ? Math.min(
+      AUTOMACAO_LIGACOES_V3.atrasoMaxRetryTransitorioMs,
+      AUTOMACAO_LIGACOES_V3.atrasoRetryTransitorioMs * Math.pow(2, Math.max(0, tentativas - 1))
+    )
+    : AUTOMACAO_LIGACOES_V3.atrasoRetryMs * tentativas;
   estado[id] = {
     revisaoRetry: revisaoAtual,
     tentativas: tentativas,
+    transitorio: transitorio,
     ultimaFalhaEm: Date.now(),
     proximaTentativaEm: tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro
       ? 0
-      : Date.now() + AUTOMACAO_LIGACOES_V3.atrasoRetryMs * tentativas,
+      : Date.now() + atrasoRetryMs,
     erro: String(mensagem || '').slice(0, 500)
   };
   audV3SalvarEstadoErrosAutomacaoLigacoes_(estado);
@@ -8072,6 +8087,29 @@ function audV3RegistrarUsoAutomacaoLigacoes_(quantidade) {
   return total;
 }
 
+function audV3ProximaTentativaAutomacaoLigacoes_(config, dados) {
+  config = config || audV3ConfigAutomacaoLigacoes_();
+  dados = dados || {};
+  const pitches = dados.pitches || audV3Ler_('PITCHES');
+  const interacoes = dados.interacoes || audV3Ler_('INTERACOES');
+  const estado = audV3EstadoErrosAutomacaoLigacoes_();
+  const revisaoAtual = String(AUTOMACAO_LIGACOES_V3.revisaoRetry || '');
+  let proxima = 0;
+  interacoes.forEach(function(item) {
+    if (String(item.STATUS_AUDITORIA || '').toUpperCase() !== 'ERRO_AUTOMACAO') return;
+    const data = item.DATA_INTERACAO instanceof Date ? item.DATA_INTERACAO : new Date(item.DATA_INTERACAO || 0);
+    const dataMs = data && !isNaN(data.getTime()) ? data.getTime() : 0;
+    if (Number(config.cutoffMs || 0) && dataMs < Number(config.cutoffMs || 0)) return;
+    if (!audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'SDR', pitches)) return;
+    const registro = estado[String(item.ID_INTERACAO || '')] || {};
+    if (String(registro.revisaoRetry || '') !== revisaoAtual) return;
+    if (Number(registro.tentativas || 0) >= AUTOMACAO_LIGACOES_V3.maxTentativasErro) return;
+    const candidata = Number(registro.proximaTentativaEm || 0);
+    if (candidata > Date.now() && (!proxima || candidata < proxima)) proxima = candidata;
+  });
+  return proxima ? new Date(proxima).toISOString() : '';
+}
+
 function obterStatusAutomacaoLigacoesV3(dados) {
   dados = dados || {};
   const config = audV3ConfigAutomacaoLigacoes_();
@@ -8080,6 +8118,13 @@ function obterStatusAutomacaoLigacoesV3(dados) {
   const fila = dados.fila || audV3FilaAutomacaoLigacoes_(config, dados);
   const uso = audV3UsoDiarioAutomacaoLigacoes_();
   const props = PropertiesService.getScriptProperties();
+  const acionadores = typeof sdrSnapshotAcionadoresIsolados_ === 'function'
+    ? sdrSnapshotAcionadoresIsolados_()
+    : {};
+  const gatilhosPipeline = Number(acionadores.pipeline || 0);
+  const gatilhosContinuacaoRd = Number(acionadores.continuacaoRd || 0);
+  const gatilhosIngestao = Number(acionadores.ingestao || 0);
+  const gatilhosWatchdog = Number(acionadores.watchdog || 0);
   return {
     ativa: config.ativa,
     duracaoSegundos: config.duracaoSegundos,
@@ -8095,11 +8140,17 @@ function obterStatusAutomacaoLigacoesV3(dados) {
     processadasHoje: uso.processadas,
     saldoHoje: Math.max(0, config.maxDia - uso.processadas),
     clientesSemPitchAtual: [],
+    proximaTentativaEm: audV3ProximaTentativaAutomacaoLigacoes_(config, dados),
     ultimaExecucao: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMA_EXECUCAO') || '',
     ultimoResultado: props.getProperty('AUDITORIA_AUTO_LIGACOES_ULTIMO_RESULTADO') || '',
-    gatilhosInstalados: ScriptApp.getProjectTriggers().filter(function(trigger) {
+    gatilhosLegado: ScriptApp.getProjectTriggers().filter(function(trigger) {
       return trigger.getHandlerFunction() === AUTOMACAO_LIGACOES_V3.handler;
     }).length,
+    gatilhosIngestao: gatilhosIngestao,
+    gatilhosWatchdog: gatilhosWatchdog,
+    gatilhosPipeline: gatilhosPipeline,
+    gatilhosContinuacaoRd: gatilhosContinuacaoRd,
+    gatilhosInstalados: gatilhosIngestao + gatilhosWatchdog + gatilhosPipeline + gatilhosContinuacaoRd,
     centralizada: false
   };
 }
@@ -8218,9 +8269,14 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
       processadasHoje: Number(status.processadasHoje || 0),
       saldoHoje: Number(status.saldoHoje || 0),
       ultimoResultado: String(status.ultimoResultado || ''),
+      proximaTentativaEm: String(status.proximaTentativaEm || ''),
       errosNoBacklog: errosBacklog.length,
       clientesSemPitchAtual: (status.clientesSemPitchAtual || []).length,
       gatilhosInstalados: Number(status.gatilhosInstalados || 0),
+      gatilhosIngestao: Number(status.gatilhosIngestao || 0),
+      gatilhosWatchdog: Number(status.gatilhosWatchdog || 0),
+      gatilhosPipeline: Number(status.gatilhosPipeline || 0),
+      gatilhosContinuacaoRd: Number(status.gatilhosContinuacaoRd || 0),
       filaIngestaoStatus: String((filaIngestao || {}).status || ''),
       filaIngestaoInicio: String((filaIngestao || {}).dataInicio || ''),
       filaIngestaoFim: String((filaIngestao || {}).dataFim || ''),

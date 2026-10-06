@@ -67,6 +67,10 @@ assert.match(code, /function WATCHDOG_PIPELINE_RD_API4COM\(\)[\s\S]*garantirInge
 assert.match(code, /dataFim:\s*hoje/, 'Janela incremental precisa incluir o dia corrente.');
 assert.match(code, /diasSobreposicaoIngestao:\s*1/, 'Ingestao precisa rever o dia anterior para absorver atrasos do RD.');
 assert.match(code, /garantirIngestaoSdrRecente_\(\{ desdeCutoff: true \}\)/, 'Ativacao isolada precisa recuperar somente a janela desde o cutoff.');
+assert.match(code, /BLOQUEADA_CREDENCIAL/, 'Credenciais RD rejeitadas precisam ser isoladas sem interromper os demais clientes.');
+assert.match(code, /function rdErroAutenticacao_\(/, 'Classificador de erro de autenticacao RD ausente.');
+assert.match(code, /filaAutomaticaSdr[\s\S]*audV3PitchAtualAutomatico_/, 'Ingestao automatica SDR deve ignorar clientes sem pitch atual.');
+assert.match(code, /function agendarRetryPipelineRdApi4com_\(/, 'Pipeline precisa agendar a proxima tentativa apos cooldown.');
 
 
 const executor = trecho(
