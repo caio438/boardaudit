@@ -8165,8 +8165,47 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
       erro: String(erro.erro || '').slice(0, 300)
     };
   });
-  const errosBacklog = backlog.filter(function(item) {
-    return item.tentativasErro > 0 || String(item.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO';
+  const backlogPorId = {};
+  backlog.forEach(function(item) { backlogPorId[String(item.idInteracao || '')] = item; });
+  const interacoesPosCutoff = {};
+  dados.interacoes.forEach(function(interacao) {
+    const data = interacao.DATA_INTERACAO instanceof Date
+      ? interacao.DATA_INTERACAO
+      : new Date(interacao.DATA_INTERACAO || 0);
+    const dataMs = data && !isNaN(data.getTime()) ? data.getTime() : 0;
+    if (String(interacao.ID_EXTERNO || '').indexOf('RD_TASK_') === 0 &&
+        (!Number(config.cutoffMs || 0) || dataMs >= Number(config.cutoffMs || 0))) {
+      interacoesPosCutoff[String(interacao.ID_INTERACAO || '')] = interacao;
+    }
+  });
+  const errosBacklog = [];
+  const errosVistos = {};
+  Object.keys(estadoErros).forEach(function(idInteracao) {
+    const erro = estadoErros[idInteracao] || {};
+    const interacao = interacoesPosCutoff[idInteracao];
+    if (!interacao || Number(erro.tentativas || 0) <= 0) return;
+    const idCliente = String(interacao.ID_CLIENTE || '');
+    const itemFila = backlogPorId[idInteracao] || {};
+    errosVistos[idInteracao] = true;
+    errosBacklog.push(Object.assign({}, itemFila, {
+      idInteracao: idInteracao,
+      idCliente: idCliente,
+      cliente: clientes[idCliente] || idCliente || 'Sem cliente',
+      responsavel: String(interacao.COLABORADOR || interacao.VENDEDOR || ''),
+      lead: String(interacao.LEAD || ''),
+      dataInteracao: audV3DataIso_(interacao.DATA_INTERACAO),
+      duracaoSegundos: Number(interacao.DURACAO_SEGUNDOS || 0),
+      statusAuditoria: String(interacao.STATUS_AUDITORIA || ''),
+      tentativasErro: Number(erro.tentativas || 0),
+      proximaTentativaEm: erro.proximaTentativaEm ? new Date(Number(erro.proximaTentativaEm)).toISOString() : '',
+      erro: String(erro.erro || '').slice(0, 500)
+    }));
+  });
+  backlog.forEach(function(item) {
+    const idInteracao = String(item.idInteracao || '');
+    if (!errosVistos[idInteracao] && String(item.statusAuditoria || '').toUpperCase() === 'ERRO_AUTOMACAO') {
+      errosBacklog.push(item);
+    }
   });
   const filaIngestao = typeof obterFilaRd_ === 'function' && typeof resumirFilaRd_ === 'function'
     ? resumirFilaRd_(obterFilaRd_())
@@ -8183,6 +8222,7 @@ function OBSERVAR_AUTOMACAO_SDR_V3() {
       transcritasAguardandoAuditoria: Number(status.transcritasAguardandoAuditoria || 0),
       processadasHoje: Number(status.processadasHoje || 0),
       saldoHoje: Number(status.saldoHoje || 0),
+      ultimoResultado: String(status.ultimoResultado || ''),
       errosNoBacklog: errosBacklog.length,
       clientesSemPitchAtual: (status.clientesSemPitchAtual || []).length,
       gatilhosInstalados: Number(status.gatilhosInstalados || 0),

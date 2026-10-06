@@ -90,6 +90,7 @@ jobs:
             '- Erros no backlog: '+String(x.errosNoBacklog||0),
             '- Clientes sem pitch SDR atual: '+String(x.clientesSemPitchAtual||0),
             '- Ultima execucao: '+String(st.ultimaExecucao||''),
+            '- Ultimo resultado: '+String(st.ultimoResultado||''),
             '',
             '### Backlog por cliente',
             ...((r.porCliente||[]).slice(0,25).map(v=>'- '+v.cliente+': '+v.elegiveis+' elegiveis | '+v.transcritas+' transcritas | '+v.aguardandoTranscricao+' aguardando transcricao | '+v.comErro+' erro(s)')),
