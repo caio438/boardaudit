@@ -535,6 +535,10 @@ function ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA() {
     return handler === FORMALIZACAO_NOTURNA_CONFIG.handlerContinuacao;
   }).length;
 
+  const sdr = typeof sdrSnapshotAcionadoresIsolados_ === 'function'
+    ? sdrSnapshotAcionadoresIsolados_()
+    : { todos: [], foraDoPipelineSdr: [] };
+
   return {
     sucesso: Boolean(instalada) && diarios === 1,
     modoBoard: BOARD_MODE,
@@ -545,7 +549,12 @@ function ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA() {
     maximoNominalPorMadrugada:
       jornadaHorariosFormalizacaoNoturna_().length * FORMALIZACAO_NOTURNA_CONFIG.limitePorHora,
     triggerDiario: diarios,
-    triggersContinuacao: continuacoes
+    triggersContinuacao: continuacoes,
+    ingestaoRdApi4comAtiva:
+      typeof rdApi4comIngestaoAtiva_ === 'function' ? rdApi4comIngestaoAtiva_() : false,
+    pipelineRdApi4comAtivo:
+      typeof rdApi4comPipelineAtivo_ === 'function' ? rdApi4comPipelineAtivo_() : false,
+    acionadoresSdr: sdr
   };
 }
 
