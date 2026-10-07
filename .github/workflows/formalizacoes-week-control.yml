@@ -1,0 +1,131 @@
+name: Temporary formalizations week control
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enable-week:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/formalizacoes-week-enable' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Enable temporary formalizations
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 180 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/formal-week-result.txt -w '%{http_code}' "$BASE?ops_formalizacoes_week_enable=1" || true)"
+          echo "FORMAL_WEEK_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/formal-week-result.txt','utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,500))) throw new Error('Resposta invalida do endpoint de formalizacoes.');
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta de formalizacoes sem JSON.');
+          const r = JSON.parse(raw.slice(first,last+1));
+          const sdr = r.acionadoresSdr || {};
+          const outside = Array.isArray(sdr.foraDoPipelineSdr) ? sdr.foraDoPipelineSdr : ['status ausente'];
+          const ok = r.sucesso === true &&
+            String(r.modoBoard || '').toUpperCase() === 'MANUAL' &&
+            r.formalizacaoAutomatica === true &&
+            String(r.liberacaoTemporariaAte || '') === '2026-10-11' &&
+            Number(r.limitePorExecucao || 0) === 3 &&
+            Number(r.maximoNominalPorMadrugada || 0) === 24 &&
+            Number(r.triggerDiario || 0) === 1 &&
+            r.ingestaoRdApi4comAtiva === true &&
+            r.pipelineRdApi4comAtivo === true &&
+            outside.length === 0;
+
+          const lines = [
+            '## Formalizacoes temporarias ativadas',
+            '',
+            '- Ativacao confirmada: '+String(ok),
+            '- BOARD_MODE: '+String(r.modoBoard || ''),
+            '- Ativa ate: '+String(r.liberacaoTemporariaAte || ''),
+            '- Lote por execucao: '+String(r.limitePorExecucao || 0),
+            '- Horarios: '+((r.horarios || []).join(', ') || 'nenhum'),
+            '- Maximo nominal por madrugada: '+String(r.maximoNominalPorMadrugada || 0),
+            '- Trigger diario: '+String(r.triggerDiario || 0),
+            '- SDR ingestao RD/API4COM: '+String(r.ingestaoRdApi4comAtiva),
+            '- SDR pipeline: '+String(r.pipelineRdApi4comAtivo),
+            '- Triggers fora do conjunto permitido: '+(outside.join(', ') || 'nenhum'),
+            '',
+            ok
+              ? '**Resultado: formalizacoes liberadas temporariamente sem religar o restante do Board.**'
+              : '**Resultado: ativacao nao passou em todas as travas.**'
+          ];
+          fs.writeFileSync('/tmp/formal-week-report.md', lines.join('\n'));
+          fs.writeFileSync('/tmp/formal-week-summary.json', JSON.stringify(r,null,2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+
+      - name: Comment activation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/formal-week-report.md
+
+      - name: Save evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formalizacoes-week-${{ github.run_id }}
+          path: |
+            /tmp/formal-week-result.txt
+            /tmp/formal-week-report.md
+            /tmp/formal-week-summary.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
