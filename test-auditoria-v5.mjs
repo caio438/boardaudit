@@ -44,20 +44,18 @@ assert.ok(front.includes('aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAudit
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
 assert.ok(rd.includes('rdAuditoriaUsuarioVolumId'), 'RD não permite mapear o usuário VOLUM por ID na integração do cliente.');
-assert.ok(rd.includes("tipoAuditoria === 'SDR'"), 'Publicação automática ao salvar vínculo precisa ficar restrita ao SDR.');
-assert.ok(rd.includes("tipoAuditoria === 'CLOSER'"), 'Fluxo de vínculo do Closer precisa ser tratado separadamente.');
-assert.ok(rd.includes("'AGUARDANDO_ENVIO_MANUAL'"), 'Closer vinculado não fica explicitamente aguardando envio manual.');
-assert.ok(rd.includes('Use “Enviar ao RD” quando quiser publicar esta auditoria.'), 'Salvar vínculo do Closer não comunica o envio manual.');
-assert.ok(audit.includes("tipo === 'SDR' && typeof audRdPublicarAutomaticamente_"), 'Finalização automática ainda pode publicar Closer no RD.');
+assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) >= 0"), 'Salvar o vínculo precisa disparar publicação automática para SDR e Closer aprovados.');
+assert.ok(!rd.includes("'AGUARDANDO_ENVIO_MANUAL'"), 'Closer vinculado não pode permanecer artificialmente aguardando envio manual.');
+assert.ok(audit.includes("['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_"), 'Finalização automática precisa publicar SDR e Closer no RD.');
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
-assert.ok(front.includes('Para reuniões de Closer, este é o vínculo manual padrão.'), 'A interface não informa que reunião de Closer usa vínculo manual no RD.');
+assert.ok(front.includes('o vínculo permite publicar automaticamente a auditoria aprovada no RD'), 'A interface não informa o envio automático após vínculo e aprovação.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
 assert.ok(front.includes("const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA', 'PROCESSANDO'].includes(crmGrupoSinergiaStatus);"), 'Estados bloqueados do CRM não incluem processamento ativo.');
 assert.ok(front.includes('const rdVinculoEditavel = !rdPublicado && !crmGrupoSinergiaBloqueado && !integridadeBloqueada;'), 'Front não calcula explicitamente quando o vínculo manual do RD pode ser editado.');
 assert.ok(front.includes("Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação."), 'A interface não explica que o vínculo do RD pode ser salvo antes da aprovação sem publicar.');
 assert.ok(front.includes('onclick="event.stopPropagation();this.focus()"'), 'Campos manuais do histórico não protegem o foco contra eventos do card.');
 assert.ok(front.includes("botao.textContent = 'Salvando vínculo...'"), 'Salvar vínculo do RD ainda comunica publicação imediata durante a revisão.');
-assert.ok(rd.includes('O envio ficará bloqueado até a aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
+assert.ok(rd.includes('O envio automático ocorrerá depois da aprovação da auditoria.'), 'Backend do RD não preserva o vínculo sem publicar uma auditoria ainda em revisão.');
 assert.ok(
   front.includes("estadoOperacional === 'EM_REVISAO'") &&
   front.includes("aprovarAuditoriaV3Front('") &&
@@ -327,7 +325,7 @@ assert.match(audit, /regenerarAuditoriaLegadaV3[\s\S]*?evitarDuplicidade:\s*fals
 assert.ok(front.includes("estadoOperacional === 'LEGADA_REANALISE'"), 'Front não usa o estado operacional canônico para liberar regeneração.');
 assert.ok(front.includes('RD: aguarda conclusão da auditoria'), 'Card PROCESSANDO ainda pode exibir bloqueio de reanálise do RD.');
 assert.ok(front.includes('Nada será publicado no RD automaticamente.'), 'Confirmação da regeneração não deixa explícito que Closer não publica automaticamente no RD.');
-assert.ok(front.includes("espaco === 'CLOSER' ? 'Já vinculadas e aguardando envio manual ao CRM.'"), 'Resumo do Closer ainda comunica publicação automática.');
+assert.ok(front.includes('Já vinculadas e aguardando processamento ou nova tentativa automática do envio.'), 'Resumo do Closer não comunica a fila automática do RD.');
 assert.ok(audit.includes("return 'LEGADA_REANALISE'"), 'Auditoria antiga sem HASH_FONTE não é classificada como legada.');
 assert.ok(audit.includes('function regenerarAuditoriaLegadaV3'), 'Regeneração genérica de auditoria legada não foi implementada.');
 assert.ok(audit.includes('audV3PitchAtualAutomatico_(auditoria.ID_CLIENTE, tipo)'), 'Regeneração legada não usa o pitch atual do cliente.');

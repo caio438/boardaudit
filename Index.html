@@ -2001,7 +2001,7 @@
             <div class="field">
               <label for="manualRdDealId">ID do lead/negociação no RD</label>
               <input id="manualRdDealId" placeholder="24 caracteres ou link completo do RD" autocomplete="off">
-              <div class="small muted">Opcional. Para reuniões de Closer, este é o vínculo manual padrão. Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.</div>
+              <div class="small muted">Opcional. Quando informado, o vínculo permite publicar automaticamente a auditoria aprovada no RD. Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.</div>
             </div>
 
             <div class="field full">
@@ -8989,7 +8989,7 @@
       ['Com vínculo CRM', resumo.vinculadas, 'Auditorias aprovadas com negociação vinculada.'],
       ['Aguardando vínculo', resumo.aguardandoVinculo, 'Auditorias aprovadas que ainda precisam da negociação do CRM.'],
       ['Enviadas ao CRM', resumo.enviadas, 'Anotação e tarefas já registradas no CRM.'],
-      ['Pendentes de envio', resumo.pendentes, espaco === 'CLOSER' ? 'Já vinculadas e aguardando envio manual ao CRM.' : 'Já vinculadas e aguardando processamento do envio.'],
+      ['Pendentes de envio', resumo.pendentes, 'Já vinculadas e aguardando processamento ou nova tentativa automática do envio.'],
       ['Erros de envio', resumo.erros, 'Auditorias vinculadas que precisam de conferência antes de reenviar.']
     ];
     alvo.innerHTML = metricas.map(item => `<div class="card metric" style="box-shadow:none"><strong>${escapeHtml(item[1])}</strong><span>${escapeHtml(item[0])}</span><div class="small muted" style="margin-top:5px">${escapeHtml(item[2])}</div></div>`).join('');
