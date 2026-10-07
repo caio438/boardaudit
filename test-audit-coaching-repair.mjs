@@ -130,8 +130,8 @@ for (const caminho of [
 }
 
 const gateAntes = api.validateBoard(resultadoSuzana, 'CLOSER');
-assert.equal(gateAntes.status, 'BLOQUEADO', 'O gate precisa continuar bloqueando conteúdo realmente inválido.');
-assert.match(gateAntes.bloqueios.join(' | '), /criterios_avaliados\.0\.correcao_pratica/, 'O bloqueio precisa apontar o campo exato.');
+assert.equal(gateAntes.status, 'REVISAR', 'Coaching genérico do Closer deve gerar alerta sem bloquear o fluxo inteiro.');
+assert.match(gateAntes.alertas.join(' | '), /criterios_avaliados\.0\.correcao_pratica/, 'O alerta precisa apontar o campo exato.');
 
 const contextos = campos.map(campo => api.buildContext(resultadoSuzana, campo, pitchLiteral));
 const contextoCriterio = contextos.find(item => item.caminho === 'criterios_avaliados.0.correcao_pratica');
@@ -263,7 +263,7 @@ for (const failure of ['invalid', '503', 'truncated', 'other-gate']) {
   assert.equal(repair(failed).sucesso, false, failure);
   assert.equal(requests, 1, `${failure}: o reparo não deve tentar outro modelo nem regenerar a análise.`);
   assert.equal(failed.validacao_board.status, 'REVISAR');
-  assert.equal(failed.validacao_board.statusOriginal, 'BLOQUEADO');
+  assert.equal(failed.validacao_board.statusOriginal, failure === 'other-gate' ? 'BLOQUEADO' : 'REVISAR');
   assert.equal(failed.validacao_board.reparo_coaching.status, 'FALHOU');
   assert.deepEqual(shape(failed), original, `${failure}: reparo rejeitado deve ser atômico.`);
   assert.equal(repair(failed).tentou, false);

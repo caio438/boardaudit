@@ -88,7 +88,7 @@ assert.ok(schema.properties.mapa_oportunidade.required.includes('impacto_finance
 assert.deepEqual(Array.from(context.api.analiticaLegada({ SCORE_SCHEMA_VERSAO: '5.0' }, {})), [], 'Auditorias antigas não podem ganhar subcritérios retroativos inventados.');
 
 for (const coluna of ['SCORES_SUBCRITERIOS_JSON', 'MAPA_OPORTUNIDADE_JSON']) assert.ok(source.includes("'" + coluna + "'"), 'Coluna ausente: ' + coluna);
-assert.match(source, /SCORE_SCHEMA_VERSAO:\s*tipo === 'CLOSER' \? '6\.0'/);
+assert.match(source, /SCORE_SCHEMA_VERSAO:\s*tipo === 'CLOSER' \? '6\.1'/);
 assert.match(rd, /audRdTextoCloserCanonico_/);
 assert.match(rd, /Auditoria completa:/);
 assert.match(rd, /só pode ser publicada no RD após a criação do Google Doc completo/);

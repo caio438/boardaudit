@@ -1,6 +1,6 @@
 /**
  * MOTOR DE AUDITORIA ESTRUTURADA VOLUM — Apps Script
- * Versão: 6.3.2
+ * Versão: 6.4.0
  *
  * Instalação:
  * 1. Adicione este arquivo ao projeto atual.
@@ -12,7 +12,7 @@
  */
 
 const AUDITORIA_V3 = Object.freeze({
-  versao: '6.3.2',
+  versao: '6.4.0',
   modeloPadrao: 'MOD-SDR-VOLUM-V1',
   modeloCloserPadrao: 'MOD-CLOSER-VOLUM-V1',
   modeloPlanoPadrao: 'MOD-PLANO-VOLUM-V1',
@@ -27,7 +27,7 @@ const AUDITORIA_V3 = Object.freeze({
     'SCORES_SUBCRITERIOS_JSON', 'MAPA_OPORTUNIDADE_JSON',
     'SCORES_ETAPAS_JSON', 'SCORE_SCHEMA_VERSAO', 'SCORE_PERCENTUAL',
     'ITENS_AVALIADOS', 'ITENS_NA', 'DURACAO_PROCESSAMENTO_MS',
-    'HASH_FONTE', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM',
+    'HASH_FONTE', 'HASH_RESULTADO', 'MODELO_IA', 'ENGINE_VERSAO', 'VALIDACAO_STATUS', 'VALIDADA_EM',
     'AUTOMACAO_STATUS', 'AUTOMACAO_ERRO', 'AUTOMACAO_ATUALIZADO_EM',
     'COMUNIDADE_STATUS', 'COMUNIDADE_POST_ID', 'COMUNIDADE_POST_URL',
     'COMUNIDADE_PUBLICADO_EM', 'COMUNIDADE_ERRO',
@@ -1979,7 +1979,7 @@ function executarAuditoriaV3(dados) {
       SCORES_ETAPAS_JSON: JSON.stringify((tipo === 'CLOSER' ? resultado.momentos : resultado.etapas_pitch || []).map(function(item) {
         return { id: item.id || item.etapa, nome: item.nome || item.etapa, status: item.cor || item.status, nota: item.nota, divergencia: item.divergencia || item.desvio || '' };
       })),
-      SCORE_SCHEMA_VERSAO: tipo === 'CLOSER' ? '6.0' : '5.0',
+      SCORE_SCHEMA_VERSAO: tipo === 'CLOSER' ? '6.1' : '5.0',
       SCORE: scoreValue,
       SCORE_PERCENTUAL: scorePercentual,
       SEMAFORO: tipo === 'CLOSER' ? String((resultado.semaforo_geral || {}).cor || '') : '',
@@ -1988,6 +1988,7 @@ function executarAuditoriaV3(dados) {
       ITENS_AVALIADOS: tipo === 'PLANO' ? resultado.criterios.length : resultado.pontuacao_calculada.itens_avaliados,
       ITENS_NA: tipo === 'PLANO' ? 0 : resultado.pontuacao_calculada.itens_na,
       DURACAO_PROCESSAMENTO_MS: Date.now() - inicioMs,
+      HASH_RESULTADO: audV3HashResultado_(resultado),
       ERRO: '',
       CONCLUIDO_EM: ''
     });
@@ -2430,12 +2431,14 @@ function aprovarAuditoriaV3(idAuditoria) {
   const gateBoard = audV3ExigirGatePublicavel_(resultado, auditoria.TIPO_AUDITORIA);
   resultado.validacao_board = Object.assign({}, resultado.validacao_board || {}, gateBoard);
   const resultadoJsonAprovado = JSON.stringify(resultado);
+  const hashResultadoAprovado = audV3HashResultado_(resultado);
   const resultadoCompletoAprovado = audV3ResultadoTexto_(resultado, auditoria.TIPO_AUDITORIA);
   const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     STATUS: 'APROVADA',
     RESULTADO_JSON: resultadoJsonAprovado,
+    HASH_RESULTADO: hashResultadoAprovado,
     RESULTADO_COMPLETO: resultadoCompletoAprovado,
     VALIDACAO_STATUS: 'VALIDADA',
     AUTOMACAO_STATUS: 'FINALIZANDO',
@@ -4158,7 +4161,7 @@ function audV3MontarPrompt_(ctx) {
     '<CATALOGO_EVIDENCIAS_TRANSCRICAO>\n' + audV3CatalogarEvidencias_(ctx.transcricao.CONTEUDO || '') + '\n</CATALOGO_EVIDENCIAS_TRANSCRICAO>',
     'Cada código EV identifica um turno literal da transcrição. Para campos de evidência, escolha somente um turno pertinente ao critério e copie um trecho literal contíguo do texto após o código EV. Nunca coloque o código EV no campo de evidência. Se nenhum turno comprovar diretamente o item, use Não evidenciado na fala do profissional e locutor_evidencia=NAO_IDENTIFICADO. Não escolha uma fala apenas para preencher o campo.',
     'Em criterios_avaliados, devolva exatamente uma comparação para cada dimensão oficial e use o mesmo id recebido em CRITERIOS_OFICIAIS.',
-    tipo === 'CLOSER' ? 'Em subcriterios, devolva exatamente uma avaliação para cada ID canônico, nesta ordem: contexto_agenda, motivacao, dor_principal, processo_atual, decisao_autoridade, impacto_operacional, impacto_financeiro, impacto_inacao, urgencia_prioridade, conexao_solucao_dor, personalizacao, validacao_entendimento, fit_percebido, validacao_objetiva, percepcao_valor, objecoes, condicao_avanco, proximo_passo, data_hora, responsavel. Use somente ATINGIDO, PARCIAL, NAO_EXECUTADO, NAO_APLICAVEL ou NAO_EVIDENCIADO. Esses subcritérios explicam o comportamento, mas não alteram a média das cinco dimensões oficiais.' : '',
+    tipo === 'CLOSER' ? 'Em subcriterios, devolva exatamente uma avaliação para cada ID canônico, nesta ordem: contexto_agenda, motivacao, dor_principal, processo_atual, decisao_autoridade, impacto_operacional, impacto_financeiro, impacto_inacao, urgencia_prioridade, conexao_solucao_dor, personalizacao, validacao_entendimento, fit_percebido, validacao_objetiva, percepcao_valor, objecoes, condicao_avanco, proximo_passo, data_hora, responsavel. Use somente ATINGIDO, PARCIAL, NAO_EXECUTADO, NAO_APLICAVEL ou NAO_EVIDENCIADO. O Board recalculará cada dimensão pela média dos seus subcritérios aplicáveis e depois calculará o score geral pelas cinco dimensões; por isso, mantenha status, evidência e aplicabilidade estritamente coerentes.' : '',
     tipo === 'CLOSER' ? 'Preencha mapa_oportunidade somente com fatos sustentados pela transcrição: dor_principal, impacto_operacional, impacto_financeiro, motivacao, ganhos_esperados, impacto_nao_avancar, urgencia, decisor, ponto_focal, fit_percebido, proximo_passo e riscos. Quando a fonte não sustentar um campo, use exatamente Não evidenciado; nunca complete por inferência.' : '',
     'Cada comparação deve ligar, no mesmo objeto: o_que_foi_dito, regra_pitch, status, divergencia, correcao_pratica e justificativa_nota. Não atribua nota; o Board calcula a pontuação pelo status.',
     'Use somente os status CONFORME, DESVIO_EXECUCAO, NAO_EXECUTADO, NAO_APLICAVEL, LACUNA_PROCESSO ou NAO_EVIDENCIADO.',
@@ -4534,6 +4537,18 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
     fonteHash.normalizacaoVersao = String(transcricao.NORMALIZACAO_VERSAO);
   }
   const base = JSON.stringify(fonteHash);
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    base,
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(function(byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+}
+
+function audV3HashResultado_(resultado) {
+  const base = JSON.stringify(resultado || {});
   const bytes = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
     base,
@@ -5374,30 +5389,7 @@ function audV3AplicarRegrasDeterministicasCloser_(resultado, criterios, transcri
     }
   }
 
-  const avaliados = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
-  const validos = avaliados.filter(function(item) {
-    return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '';
-  });
-  const soma = validos.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0);
-  const score5 = validos.length ? Math.round((soma / validos.length) * 10) / 10 : null;
-  resultado.pontuacao = avaliados.map(function(item) {
-    return {
-      id: item.id,
-      nome: item.nome,
-      aplicavel: item.aplicavel,
-      pontuacao: item.pontuacao,
-      observacao: item.justificativa_nota
-    };
-  });
-  resultado.pontuacao_calculada = {
-    itens_avaliados: validos.length,
-    itens_na: avaliados.length - validos.length,
-    soma_pontos: Math.round(soma * 10) / 10,
-    maximo_aplicavel: validos.length * 5,
-    score_5: score5,
-    score_percentual: score5 === null ? null : Math.round(score5 * 20 * 10) / 10,
-    regra: 'Média das dimensões aplicáveis com nota fixa por status: CONFORME = 5; DESVIO_EXECUCAO = 2,5; NAO_EXECUTADO = 0; N/A excluído.'
-  };
+  audV3ReconciliarInteligenciaCanonicaCloser_(resultado, transcricao, conteudoPitch);
   return resultado;
 }
 
@@ -5469,6 +5461,40 @@ function audV3DerivarSuperficiesExecutivasCloser_(resultado) {
     };
   });
   resultado.resumo_publicacao = publicacao;
+
+  const subs = {};
+  (Array.isArray(resultado.subcriterios) ? resultado.subcriterios : []).forEach(function(item) { subs[String((item || {}).id || '')] = item || {}; });
+  const passos = Array.isArray(resultado.proximos_passos) ? resultado.proximos_passos.slice() : [];
+  const chaves = passos.map(function(item) { return audV3NormalizarTrechoRastreavel_((item || {}).acao); });
+  const adicionar = function(padrao, acao, criterioConclusao) {
+    if (chaves.some(function(chave) { return padrao.test(chave); })) return;
+    passos.push({
+      prioridade: 'ALTA',
+      acao: acao,
+      equipe: 'OUTRA',
+      responsavel: 'Closer',
+      prazo_dias: 0,
+      criterio_conclusao: criterioConclusao
+    });
+    chaves.push(audV3NormalizarTrechoRastreavel_(acao));
+  };
+  if (subs.impacto_financeiro && subs.impacto_financeiro.status !== 'ATINGIDO') {
+    adicionar(/impacto financeiro|custo|prejuizo|faturamento/, 'Quantificar com o lead o impacto financeiro da situação atual antes de apresentar a proposta.', 'Registrar valor, faixa ou premissa financeira confirmada pelo lead.');
+  }
+  if (subs.decisao_autoridade && subs.decisao_autoridade.status !== 'ATINGIDO') {
+    adicionar(/decisor|autoridade|processo decisorio/, 'Confirmar quem decide, quem participa e como ocorrerá a aprovação da proposta.', 'Decisor e processo de aprovação confirmados pelo lead.');
+  }
+  if (subs.validacao_objetiva && subs.validacao_objetiva.status !== 'ATINGIDO') {
+    adicionar(/validacao objetiva|zero a dez|0 a 10|interesse/, 'Aplicar a validação objetiva de interesse prevista no pitch após conectar a solução à dor.', 'Nota de interesse e motivo da nota registrados com fala do lead.');
+  }
+  resultado.proximos_passos = passos.slice(0, 6);
+
+  resultado.resumo_executivo = resultado.resumo_executivo || {};
+  if (!String(resultado.resumo_executivo.recomendacao_central || '').trim()) {
+    resultado.resumo_executivo.recomendacao_central = melhorias.length
+      ? melhorias[0]
+      : 'Manter a execução observada e registrar evidências objetivas dos critérios de avanço.';
+  }
   return resultado;
 }
 
@@ -5569,10 +5595,10 @@ function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
 
   const genericos = audV3ColetarOrientacoesGenericas_(resultado, tipo);
   if (genericos.length) {
-    bloqueios.push(
-      'Há orientação genérica sem comportamento observável em ' + genericos[0].caminho + ': ' +
-      String(genericos[0].trechoRejeitado).slice(0, 180)
-    );
+    const avisoGenerico = 'Há orientação genérica sem comportamento observável em ' + genericos[0].caminho + ': ' +
+      String(genericos[0].trechoRejeitado).slice(0, 180);
+    if (tipo === 'CLOSER') alertas.push(avisoGenerico);
+    else bloqueios.push(avisoGenerico);
   }
 
   if (tipo === 'SDR' && classificacao && classificacao !== 'PRIMEIRO_CONTATO') {
@@ -5596,7 +5622,7 @@ function audV3ValidarQualidadeBoard_(resultado, tipoAuditoria) {
     status: bloqueios.length ? 'BLOQUEADO' : (alertas.length ? 'REVISAR' : 'OK'),
     alertas: alertas,
     bloqueios: bloqueios,
-    revisao_humana_obrigatoria: true
+    revisao_humana_obrigatoria: bloqueios.length > 0
   };
 }
 
@@ -5696,6 +5722,7 @@ function audV3ValidarResultadoOficial_(resultado, tipoAuditoria, criterios, tran
       validarEvidencia(item.o_que_foi_dito, item.locutor_evidencia || 'NAO_IDENTIFICADO', 'O momento CLOSER ' + String(item.id || 'sem id'));
     });
     audV3ValidarSubcriteriosCloser_(resultado);
+    audV3ValidarCoerenciaCanonicaCloser_(resultado);
     audV3ValidarAfirmacoesFatuaisCloser_(resultado, transcricao, conteudoPitch);
     const perguntas = ((resultado.perguntas_diagnostico || {}).perguntas_realizadas || []);
     (Array.isArray(perguntas) ? perguntas : []).forEach(function(item) {
@@ -9587,6 +9614,231 @@ function audV3NormalizarSubcriteriosCloser_(resultado) {
     };
   });
   return resultado.subcriterios;
+}
+
+function audV3DataDeclaradaTranscricaoCloser_(transcricao) {
+  const texto = String(transcricao || '');
+  const meses = {
+    jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+    jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12
+  };
+  let achou = texto.match(/\b(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?\s+(\d{1,2}),\s*(\d{4})\b/i);
+  let ano;
+  let mes;
+  let dia;
+  if (achou) {
+    mes = meses[String(achou[1] || '').toLowerCase().slice(0, 3)];
+    dia = Number(achou[2]);
+    ano = Number(achou[3]);
+  } else {
+    achou = texto.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})\b/);
+    if (!achou) return null;
+    dia = Number(achou[1]);
+    mes = Number(achou[2]);
+    ano = Number(achou[3]);
+  }
+  if (!ano || !mes || !dia || mes > 12 || dia > 31) return null;
+  const dois = function(valor) { return String(valor).padStart(2, '0'); };
+  return { iso: ano + '-' + dois(mes) + '-' + dois(dia), texto: dois(dia) + '/' + dois(mes) + '/' + ano };
+}
+
+function audV3DuracaoDeclaradaTranscricaoCloser_(transcricao) {
+  const texto = String(transcricao || '');
+  const achou = texto.match(/(?:encerrad[ao]|finalizad[ao]|dura(?:ç|c)[aã]o)[^\n\r]{0,50}(\d{1,2}:\d{2}:\d{2})/i);
+  return achou ? audV3TimestampSegundos_(achou[1]) : null;
+}
+
+function audV3ReconciliarInteligenciaCanonicaCloser_(resultado, transcricao, conteudoPitch) {
+  resultado = resultado || {};
+  const texto = audV3NormalizarTrechoRastreavel_(transcricao);
+  const pitch = audV3NormalizarTrechoRastreavel_(conteudoPitch);
+  const contexto = resultado.contexto_interacao || {};
+  const classificacao = String(contexto.classificacao || '').toUpperCase();
+  const diagnosticoInicial = !classificacao || ['PRIMEIRA_REUNIAO', 'FOLLOW_UP_DIAGNOSTICO'].includes(classificacao);
+  const tinhaSubcriterios = Array.isArray(resultado.subcriterios) && resultado.subcriterios.length > 0;
+  const subcriterios = audV3NormalizarSubcriteriosCloser_(resultado);
+  const porId = {};
+  subcriterios.forEach(function(item) { porId[item.id] = item; });
+  const definir = function(id, status, analise) {
+    const item = porId[id];
+    if (!item) return;
+    item.status = status;
+    item.aplicavel = status !== 'NAO_APLICAVEL';
+    item.nota = audV3PontosSubcriterioCloser_(status);
+    if (analise) item.analise = analise;
+    if (status === 'NAO_EXECUTADO') item.evidencia = 'Não evidenciado';
+  };
+
+  if (!tinhaSubcriterios) {
+    const criteriosLegados = {};
+    (Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : []).forEach(function(item) {
+      criteriosLegados[String((item || {}).id || '')] = item || {};
+    });
+    audV3CatalogoSubcriteriosCloser_().forEach(function(ref) {
+      const criterio = criteriosLegados[ref.dimensao_id] || {};
+      const statusCriterio = String(criterio.status || '').toUpperCase();
+      const status = criterio.aplicavel === false || statusCriterio === 'NAO_APLICAVEL'
+        ? 'NAO_APLICAVEL'
+        : (statusCriterio === 'CONFORME' ? 'ATINGIDO' : (statusCriterio === 'DESVIO_EXECUCAO' ? 'PARCIAL' : 'NAO_EXECUTADO'));
+      definir(ref.id, status, 'Compatibilidade com resultado legado; reavalie para obter os 20 subcritérios nativos.');
+    });
+  }
+
+  if (diagnosticoInicial) {
+    subcriterios.forEach(function(item) {
+      if (item.status === 'NAO_EVIDENCIADO' && item.id !== 'objecoes') definir(item.id, 'NAO_EXECUTADO', 'Comportamento aplicável, mas não evidenciado na reunião.');
+    });
+  }
+  if (tinhaSubcriterios && pitch && /(?:impacto|consequencia).{0,35}(?:financeir|faturamento|custo|prejuizo|receita)/.test(pitch) &&
+      !/(?:quanto|qual).{0,45}(?:custa|custo|financeir|faturamento|prejuizo|receita)|impacto financeiro/.test(texto)) {
+    definir('impacto_financeiro', 'NAO_EXECUTADO', 'O impacto financeiro previsto no pitch não foi quantificado nem explorado.');
+  }
+  if (audV3ScoreInteressePrevistoNoPitch_(conteudoPitch) && !audV3ScoreInteresseRealizado_(transcricao)) {
+    definir('validacao_objetiva', 'NAO_EXECUTADO', 'A validação objetiva de interesse prevista no pitch não foi realizada.');
+    if (porId.validacao_entendimento && porId.validacao_entendimento.status === 'ATINGIDO') {
+      definir('validacao_entendimento', 'PARCIAL', 'Houve explicação da solução, mas faltou a validação objetiva de entendimento prevista no pitch.');
+    }
+  }
+  if (tinhaSubcriterios && diagnosticoInicial && !/(?:quem|como).{0,45}(?:decide|aprova|contrata)|(?:decisor|socios|sócios).{0,35}(?:decis|aprov)/.test(texto)) {
+    if (porId.decisao_autoridade && porId.decisao_autoridade.status === 'ATINGIDO') {
+      definir('decisao_autoridade', 'PARCIAL', 'O ponto focal foi identificado, mas autoridade e processo decisório não foram confirmados.');
+    }
+  }
+
+  if (!tinhaSubcriterios) {
+    const avaliadosLegados = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+    const validosLegados = avaliadosLegados.filter(function(item) {
+      return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== '';
+    });
+    const somaLegada = validosLegados.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0);
+    const scoreLegado = validosLegados.length ? Math.round((somaLegada / validosLegados.length) * 10) / 10 : null;
+    resultado.pontuacao = avaliadosLegados.map(function(item) {
+      return { id: item.id, nome: item.nome, aplicavel: item.aplicavel, pontuacao: item.pontuacao, observacao: item.justificativa_nota };
+    });
+    resultado.pontuacao_calculada = {
+      itens_avaliados: validosLegados.length,
+      itens_na: avaliadosLegados.length - validosLegados.length,
+      soma_pontos: Math.round(somaLegada * 10) / 10,
+      maximo_aplicavel: validosLegados.length * 5,
+      score_5: scoreLegado,
+      score_percentual: scoreLegado === null ? null : Math.round(scoreLegado * 20 * 10) / 10,
+      regra: 'Compatibilidade com auditoria legada baseada nas cinco dimensões.'
+    };
+    return resultado;
+  }
+
+  const criterios = Array.isArray(resultado.criterios_avaliados) ? resultado.criterios_avaliados : [];
+  const catalogo = audV3CatalogoSubcriteriosCloser_();
+  criterios.forEach(function(criterio) {
+    const itens = catalogo.filter(function(ref) { return ref.dimensao_id === criterio.id; }).map(function(ref) { return porId[ref.id]; }).filter(Boolean);
+    const aplicaveis = itens.filter(function(item) { return item.aplicavel !== false && item.nota !== null; });
+    const media = aplicaveis.length ? aplicaveis.reduce(function(total, item) { return total + Number(item.nota || 0); }, 0) / aplicaveis.length : null;
+    const nota = media === null ? null : Math.round(media * 2) / 2;
+    criterio.aplicavel = nota !== null;
+    criterio.pontuacao = nota;
+    criterio.status = nota === null ? 'NAO_APLICAVEL' : (nota >= 4.5 ? 'CONFORME' : (nota > 0 ? 'DESVIO_EXECUCAO' : 'NAO_EXECUTADO'));
+    const lacunas = aplicaveis.filter(function(item) { return item.status !== 'ATINGIDO'; }).map(function(item) { return item.nome; });
+    if (lacunas.length) {
+      criterio.divergencia = 'Lacunas canônicas: ' + lacunas.join(', ') + '.';
+      criterio.justificativa_nota = 'Nota agregada dos subcritérios aplicáveis desta dimensão.';
+    }
+  });
+
+  const validos = criterios.filter(function(item) { return item && item.aplicavel !== false && item.pontuacao !== null && item.pontuacao !== undefined && item.pontuacao !== ''; });
+  const soma = validos.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0);
+  const score5 = validos.length ? Math.round((soma / validos.length) * 10) / 10 : null;
+  resultado.pontuacao = criterios.map(function(item) {
+    return { id: item.id, nome: item.nome, aplicavel: item.aplicavel, pontuacao: item.pontuacao, observacao: item.justificativa_nota };
+  });
+  resultado.pontuacao_calculada = {
+    itens_avaliados: validos.length,
+    itens_na: criterios.length - validos.length,
+    soma_pontos: Math.round(soma * 10) / 10,
+    maximo_aplicavel: validos.length * 5,
+    score_5: score5,
+    score_percentual: score5 === null ? null : Math.round(score5 * 20 * 10) / 10,
+    regra: 'Média das cinco dimensões; cada dimensão é agregada pelos 20 subcritérios canônicos aplicáveis.'
+  };
+  resultado.score_schema_versao = '6.1';
+
+  const gruposMomentos = {
+    momento_0: ['contexto_agenda'],
+    momento_1: ['motivacao', 'dor_principal', 'processo_atual', 'decisao_autoridade', 'impacto_operacional', 'impacto_financeiro', 'impacto_inacao', 'urgencia_prioridade'],
+    momento_2: ['conexao_solucao_dor', 'personalizacao', 'validacao_entendimento', 'fit_percebido', 'validacao_objetiva', 'percepcao_valor'],
+    momento_3: ['objecoes', 'condicao_avanco', 'proximo_passo', 'data_hora', 'responsavel']
+  };
+  (Array.isArray(resultado.momentos) ? resultado.momentos : []).forEach(function(momento) {
+    const ids = gruposMomentos[String((momento || {}).id || '')] || [];
+    const itens = ids.map(function(id) { return porId[id]; }).filter(function(item) { return item && item.aplicavel !== false && item.nota !== null; });
+    if (!itens.length) return;
+    const nota = Math.round((itens.reduce(function(total, item) { return total + Number(item.nota || 0); }, 0) / itens.length) * 2) / 2;
+    const cor = nota >= 4.5 ? 'VERDE' : (nota > 0 ? 'AMARELO' : 'VERMELHO');
+    momento.nota = nota;
+    momento.cor = cor;
+    momento.status = cor;
+    momento.gatilho_alcancado = nota > 0;
+    momento.divergencia_identificada = cor !== 'VERDE';
+    if (cor !== 'VERDE') {
+      const lacunasMomento = itens.filter(function(item) { return item.status !== 'ATINGIDO'; }).map(function(item) { return item.nome; });
+      momento.divergencia = 'Lacunas canônicas: ' + lacunasMomento.join(', ') + '.';
+      momento.justificativa_nota = 'Nota agregada dos subcritérios aplicáveis deste momento.';
+    }
+  });
+  const momentosCanonicos = Array.isArray(resultado.momentos) ? resultado.momentos : [];
+  const vermelhos = momentosCanonicos.filter(function(item) { return item.cor === 'VERMELHO'; }).length;
+  const amarelos = momentosCanonicos.filter(function(item) { return item.cor === 'AMARELO'; }).length;
+  const corGeral = vermelhos >= 2 ? 'VERMELHO' : ((vermelhos || amarelos) ? 'AMARELO' : 'VERDE');
+  resultado.semaforo_geral = Object.assign({}, resultado.semaforo_geral || {}, {
+    cor: corGeral,
+    momentos_nao_alcancados: vermelhos,
+    justificativa: 'Semáforo reconciliado com os 20 subcritérios canônicos.'
+  });
+  resultado.semaforo = corGeral;
+
+  const mapa = resultado.mapa_oportunidade || {};
+  if (!porId.impacto_financeiro || porId.impacto_financeiro.status !== 'ATINGIDO') mapa.impacto_financeiro = 'Não quantificado na reunião.';
+  if (!porId.decisao_autoridade || porId.decisao_autoridade.status !== 'ATINGIDO') mapa.decisor = 'Não confirmado na reunião.';
+  resultado.mapa_oportunidade = mapa;
+
+  const dataFonte = audV3DataDeclaradaTranscricaoCloser_(transcricao);
+  if (dataFonte) {
+    resultado.metadados = resultado.metadados || {};
+    resultado.metadados.data_hora = dataFonte.texto;
+    resultado.metadados.data_fonte = 'TRANSCRICAO';
+  }
+  const duracaoFonte = audV3DuracaoDeclaradaTranscricaoCloser_(transcricao);
+  if (duracaoFonte) {
+    resultado.duracao = { segundos: duracaoFonte, texto: audV3DuracaoCurta_(duracaoFonte), fonte: 'TRANSCRICAO' };
+    resultado.analise_temporal = resultado.analise_temporal || {};
+    resultado.analise_temporal.duracao_total = audV3DuracaoCurta_(duracaoFonte);
+    resultado.analise_temporal.duracao_total_segundos = duracaoFonte;
+    resultado.analise_temporal.limitacoes = (Array.isArray(resultado.analise_temporal.limitacoes) ? resultado.analise_temporal.limitacoes : []).filter(function(item) {
+      return !/dura(?:ç|c)[aã]o total.*n[aã]o inform/i.test(String(item || ''));
+    });
+  }
+  resultado.confianca_resultado = {
+    nivel: dataFonte && duracaoFonte ? 'ALTA' : 'MEDIA',
+    base: 'Resultado reconciliado com fonte, pitch oficial e catálogo canônico de subcritérios.'
+  };
+  return resultado;
+}
+
+function audV3ValidarCoerenciaCanonicaCloser_(resultado) {
+  const catalogo = audV3CatalogoSubcriteriosCloser_();
+  const subs = Array.isArray((resultado || {}).subcriterios) ? resultado.subcriterios : [];
+  const criterios = Array.isArray((resultado || {}).criterios_avaliados) ? resultado.criterios_avaliados : [];
+  criterios.forEach(function(criterio) {
+    const ids = catalogo.filter(function(item) { return item.dimensao_id === criterio.id; }).map(function(item) { return item.id; });
+    const aplicaveis = subs.filter(function(item) { return ids.includes(item.id) && item.aplicavel !== false && item.nota !== null; });
+    if (!aplicaveis.length) return;
+    const esperado = Math.round((aplicaveis.reduce(function(total, item) { return total + Number(item.nota || 0); }, 0) / aplicaveis.length) * 2) / 2;
+    if (Math.abs(Number(criterio.pontuacao) - esperado) > 0.001) throw new Error('Resultado CLOSER inconsistente entre a dimensão ' + criterio.id + ' e seus subcritérios.');
+  });
+  const validos = criterios.filter(function(item) { return item.aplicavel !== false && item.pontuacao !== null; });
+  const esperadoTotal = validos.length ? Math.round((validos.reduce(function(total, item) { return total + Number(item.pontuacao || 0); }, 0) / validos.length) * 10) / 10 : null;
+  const atual = ((resultado || {}).pontuacao_calculada || {}).score_5;
+  if (esperadoTotal !== null && Math.abs(Number(atual) - esperadoTotal) > 0.001) throw new Error('Resultado CLOSER inconsistente entre score total e dimensões.');
+  return true;
 }
 
 function audV3NormalizarMapaOportunidadeCloser_(resultado) {
