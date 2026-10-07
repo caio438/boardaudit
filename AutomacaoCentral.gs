@@ -25,8 +25,7 @@ function automacaoCentralHandlersLegados_() {
     'SINCRONIZAR_TLDV_AGENDADO',
     'EXECUTAR_AUTOMACAO_LIGACOES_V3',
     'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA',
-    'SINCRONIZAR_JORNADA_CALENDARIO',
-    'SINCRONIZAR_RD_DIARIO'
+    'SINCRONIZAR_JORNADA_CALENDARIO'
   ];
 }
 
@@ -154,6 +153,9 @@ function automacaoCentralPrepararRd_() {
   if (boardModoManual_()) return boardRespostaManual_('automacaoCentralPrepararRd_');
   if (String(obterConfiguracao_('RD_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() !== 'SIM') {
     return { sucesso: true, ignorada: true, mensagem: 'RD automático desativado.' };
+  }
+  if (typeof rdApi4comIngestaoAtiva_ === 'function' && rdApi4comIngestaoAtiva_()) {
+    return garantirIngestaoSdrRecente_();
   }
   const ontem = new Date();
   ontem.setDate(ontem.getDate() - 1);

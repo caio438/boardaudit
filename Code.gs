@@ -39,6 +39,7 @@ const APP = {
 };
 
 const BOARD_MODE = 'MANUAL';
+const BOARD_RUNTIME_MODE_KEY = 'BOARD_RUNTIME_MODE';
 
 const RD_API4COM_AUTOMACAO = Object.freeze({
   chaveIngestao: 'RD_API4COM_INGESTAO_ATIVA',
@@ -51,7 +52,14 @@ const RD_API4COM_AUTOMACAO = Object.freeze({
 });
 
 function boardModoManual_() {
-  return String(BOARD_MODE || '').toUpperCase() === 'MANUAL';
+  return boardModoAtual_() === 'MANUAL';
+}
+
+function boardModoAtual_() {
+  const runtime = String(
+    PropertiesService.getScriptProperties().getProperty(BOARD_RUNTIME_MODE_KEY) || BOARD_MODE || 'MANUAL'
+  ).toUpperCase();
+  return runtime === 'AUTOMATICO' ? 'AUTOMATICO' : 'MANUAL';
 }
 
 function boardRespostaManual_(origem) {
@@ -71,6 +79,7 @@ function DESLIGAR_TODAS_AUTOMACOES_BOARD() {
     ScriptApp.deleteTrigger(trigger);
   });
   salvarConfiguracao_('BOARD_MODE', 'MANUAL');
+  PropertiesService.getScriptProperties().setProperty(BOARD_RUNTIME_MODE_KEY, 'MANUAL');
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
@@ -667,7 +676,7 @@ function SINCRONIZAR_COMPLIANCE_CLIENTE_VOLUMBERG(chave) {
 
   return {
     sucesso: true,
-    boardMode: BOARD_MODE,
+    boardMode: boardModoAtual_(),
     chave: chaveNormalizada,
     cliente: { idCliente: cliente.ID_CLIENTE, nome: catalogo.nome, grupo: catalogo.grupoCliente || '' },
     equipe: {
@@ -921,6 +930,20 @@ function doGet(e) {
     }
     return ContentService
       .createTextOutput(JSON.stringify(ATIVAR_PIPELINE_SDR_ISOLADO(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_board_enable_full || '') === '1') {
+    const ativoOpsEnableFull = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsEnableFull = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsEnableFull || !efetivoOpsEnableFull || ativoOpsEnableFull !== efetivoOpsEnableFull) {
+      throw new Error('Ativacao completa do Board permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof ATIVAR_BOARD_AUTOMATICO_COMPLETO !== 'function') {
+      throw new Error('Ativador completo do Board nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(ATIVAR_BOARD_AUTOMATICO_COMPLETO(), null, 2))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -3563,6 +3586,8 @@ function sdrRemoverAcionadoresNaoPermitidos_() {
 function ATIVAR_PIPELINE_SDR_ISOLADO() {
   // O restante do Board continua em BOARD_MODE=MANUAL. Esta rotina libera
   // somente ingestão de ligações RD/API4COM + transcrição + auditoria SDR.
+  PropertiesService.getScriptProperties().setProperty(BOARD_RUNTIME_MODE_KEY, 'MANUAL');
+  salvarConfiguracao_('BOARD_MODE', 'MANUAL');
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
@@ -3623,7 +3648,7 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
 
   return {
     sucesso: somenteSdr,
-    modoBoard: BOARD_MODE,
+    modoBoard: boardModoAtual_(),
     pipelineSdrIsolado: somenteSdr,
     ingestaoRdApi4comAtiva: rdApi4comIngestaoAtiva_(),
     pipelineRdApi4comAtivo: rdApi4comPipelineAtivo_(),
@@ -3637,6 +3662,109 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
     backlogAgendado: Boolean(backlogAgendado),
     acionadores: acionadores,
     statusSdr: statusSdr
+  };
+}
+
+function snapshotAutomacaoBoardCompleto_() {
+  const handlers = ScriptApp.getProjectTriggers().map(function(trigger) {
+    return String(trigger.getHandlerFunction() || '');
+  }).filter(Boolean);
+  const contar = function(nome) {
+    return handlers.filter(function(handler) { return handler === nome; }).length;
+  };
+  return {
+    todos: handlers,
+    central19h: contar('EXECUTAR_AUTOMACAO_CENTRAL_19H'),
+    centralContinuacao: contar('EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO'),
+    ingestaoRdApi4com: contar('SINCRONIZAR_RD_DIARIO'),
+    watchdogsSdr: contar(RD_API4COM_AUTOMACAO.handlerWatchdog),
+    pipelineSdr: contar('PROCESSAR_PIPELINE_RD_API4COM'),
+    continuacaoRd: contar('PROCESSAR_FILA_RD'),
+    jornadaPastas: contar('SINCRONIZAR_JORNADA_PASTAS_RECENTES'),
+    formalizacaoNoturna: contar('EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA'),
+    formalizacaoContinuacao: contar('EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO'),
+    legadosDuplicados: handlers.filter(function(handler) {
+      return [
+        'SINCRONIZAR_TLDV_AGENDADO',
+        'EXECUTAR_AUTOMACAO_LIGACOES_V3',
+        'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA',
+        'SINCRONIZAR_JORNADA_CALENDARIO'
+      ].indexOf(handler) >= 0;
+    })
+  };
+}
+
+function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(BOARD_RUNTIME_MODE_KEY, 'AUTOMATICO');
+  salvarConfiguracao_('BOARD_MODE', 'AUTOMATICO');
+
+  salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'SIM');
+  salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'SIM');
+  salvarSegredo_('RD_AUTOMACAO_ATIVA', 'SIM');
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM');
+  salvarConfiguracao_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
+  salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
+  salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'SIM');
+
+  if (!String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || '').trim()) {
+    salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff, RD_API4COM_AUTOMACAO.cutoffPadraoIso);
+  }
+  if (!String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_INICIO') || '').trim()) {
+    salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_INICIO', Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
+  }
+
+  salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'SIM');
+  salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA_INICIO', Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
+  salvarConfiguracao_('FORMALIZACAO_TEMPORARIA_LIBERADA_ATE', '');
+
+  const jornada = instalarAutomacaoJornadaCliente();
+  const ingestaoInstalada = reconciliarAcionadorRd_();
+  const watchdogInstalado = reconciliarWatchdogPipelineRdApi4com_();
+  const ingestaoInicial = garantirIngestaoSdrRecente_();
+  const pipelineAgendado = agendarPipelineRdApi4com_();
+  const central = instalarAutomacaoCentral19h_();
+  const acionadores = snapshotAutomacaoBoardCompleto_();
+  const cutoffIso = String(
+    obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso
+  );
+  const sucesso = boardModoAtual_() === 'AUTOMATICO' &&
+    central.ativa === true &&
+    Number(acionadores.central19h || 0) === 1 &&
+    Number(acionadores.ingestaoRdApi4com || 0) === 1 &&
+    Number(acionadores.watchdogsSdr || 0) === RD_API4COM_AUTOMACAO.watchdogHours.length &&
+    Number(acionadores.jornadaPastas || 0) === 1 &&
+    Number(acionadores.formalizacaoNoturna || 0) === 1 &&
+    acionadores.legadosDuplicados.length === 0;
+
+  registrarLog_(
+    'AUTOMACAO',
+    'ATIVAR_BOARD_AUTOMATICO_COMPLETO',
+    'Ativacao completa=' + String(sucesso) + '; cutoff SDR=' + cutoffIso +
+      '; triggers=' + acionadores.todos.join(',')
+  );
+
+  return {
+    sucesso: sucesso,
+    modoBoard: boardModoAtual_(),
+    cutoffSdrIso: cutoffIso,
+    backlogSdrAnteriorAoCutoffIgnorado: true,
+    tldvAutomatico: String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM',
+    rdAutomatico: String(obterConfiguracao_('RD_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM',
+    ingestaoRdApi4comAtiva: rdApi4comIngestaoAtiva_(),
+    pipelineRdApi4comAtivo: rdApi4comPipelineAtivo_(),
+    auditoriaLigacoesAtiva: String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA') || '').toUpperCase() === 'SIM',
+    formalizacaoAutomatica: String(obterConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA') || '').toUpperCase() === 'SIM',
+    publicacaoAutomaticaRd: true,
+    aprovacaoAutomatica: true,
+    ingestaoInstalada: Boolean(ingestaoInstalada),
+    watchdogInstalado: Boolean(watchdogInstalado),
+    pipelineAgendado: Boolean(pipelineAgendado),
+    ingestaoInicial: ingestaoInicial,
+    jornada: jornada,
+    central: central,
+    acionadores: acionadores
   };
 }
 
@@ -4838,7 +4966,7 @@ function obterStatusAutomacaoRd_() {
     ingestaoApi4comAtiva: ativa,
     pipelineSdrAtivo: rdApi4comPipelineAtivo_(),
     isoladaDoBoardMode: true,
-    boardMode: BOARD_MODE,
+    boardMode: boardModoAtual_(),
     horarioAproximado: String(APP.rdTriggerHour).padStart(2, '0') + ':00',
     ultimaExecucao: serializarData_(obterSegredo_('RD_ULTIMA_EXECUCAO')),
     ultimaOrigem: obterSegredo_('RD_ULTIMA_ORIGEM') || '',

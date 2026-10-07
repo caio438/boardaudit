@@ -1,0 +1,135 @@
+name: Board full automation control
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enable-full:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/board-enable-full' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure clasp authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token =
+            (j.tokens && j.tokens.default && j.tokens.default.access_token) ||
+            (j.token && j.token.access_token) ||
+            j.access_token || '';
+          if (!token) throw new Error('Access token do clasp ausente.');
+          fs.writeFileSync('/tmp/google_access_token', token, {mode: 0o600});
+          NODE
+
+      - name: Enable and verify the full Board
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/board-full-result.txt -w '%{http_code}' "$BASE?ops_board_enable_full=1" || true)"
+          echo "BOARD_FULL_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/board-full-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0, 500))) throw new Error('Resposta invalida do endpoint do Board.');
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta do Board sem JSON.');
+          const r = JSON.parse(raw.slice(first, last + 1));
+          const t = r.acionadores || {};
+          const ok = r.sucesso === true &&
+            String(r.modoBoard || '') === 'AUTOMATICO' &&
+            r.backlogSdrAnteriorAoCutoffIgnorado === true &&
+            String(r.cutoffSdrIso || '') === '2026-10-05T13:28:00.000Z' &&
+            r.tldvAutomatico === true && r.rdAutomatico === true &&
+            r.ingestaoRdApi4comAtiva === true && r.pipelineRdApi4comAtivo === true &&
+            r.auditoriaLigacoesAtiva === true && r.formalizacaoAutomatica === true &&
+            r.publicacaoAutomaticaRd === true && r.aprovacaoAutomatica === true &&
+            Number(t.central19h || 0) === 1 && Number(t.ingestaoRdApi4com || 0) === 1 &&
+            Number(t.watchdogsSdr || 0) === 5 && Number(t.jornadaPastas || 0) === 1 &&
+            Number(t.formalizacaoNoturna || 0) === 1 &&
+            Array.isArray(t.legadosDuplicados) && t.legadosDuplicados.length === 0;
+          const lines = [
+            '## Board automatico completo', '',
+            '- Ativacao confirmada: ' + String(ok),
+            '- Modo do Board: ' + String(r.modoBoard || ''),
+            '- Rotina central das 19h: ' + String(t.central19h || 0),
+            '- Sincronizacao de reunioes/pastas: ' + String(t.jornadaPastas || 0),
+            '- Formalizacao noturna: ' + String(t.formalizacaoNoturna || 0),
+            '- Ingestao diaria RD/API4COM: ' + String(t.ingestaoRdApi4com || 0),
+            '- Watchdogs SDR: ' + String(t.watchdogsSdr || 0),
+            '- Cutoff SDR preservado: ' + String(r.cutoffSdrIso || ''),
+            '- Backlog anterior ao cutoff: ignorado',
+            '- Aprovacao e publicacao no RD: automaticas',
+            '- Triggers legados duplicados: ' + ((t.legadosDuplicados || []).join(', ') || 'nenhum'), '',
+            ok ? '**Resultado: Board inteiro reativado em modo automatico.**'
+               : '**Resultado: a ativacao nao passou em todas as travas.**'
+          ];
+          fs.writeFileSync('/tmp/board-full-report.md', lines.join('\n'));
+          fs.writeFileSync('/tmp/board-full-summary.json', JSON.stringify(r, null, 2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+
+      - name: Comment activation result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/board-full-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/board-full-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Board automatico completo\n\nA ativacao falhou antes da verificacao final."
+          fi
+
+      - name: Save production evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-full-automation-${{ github.run_id }}
+          path: |
+            /tmp/board-full-result.txt
+            /tmp/board-full-report.md
+            /tmp/board-full-summary.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Cleanup authentication
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/google_access_token /tmp/clasp-versions.txt
+

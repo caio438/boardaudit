@@ -541,7 +541,7 @@ function ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA() {
 
   return {
     sucesso: Boolean(instalada) && diarios === 1,
-    modoBoard: BOARD_MODE,
+    modoBoard: boardModoAtual_(),
     formalizacaoAutomatica: true,
     liberacaoTemporariaAte: ate,
     limitePorExecucao: FORMALIZACAO_NOTURNA_CONFIG.limitePorHora,
