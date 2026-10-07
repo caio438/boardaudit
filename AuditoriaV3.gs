@@ -2408,14 +2408,17 @@ function aprovarAuditoriaV3(idAuditoria) {
   if (!String(auditoria.HASH_FONTE || '').trim()) {
     throw new Error('Esta auditoria foi gerada antes das travas de integridade. Gere uma nova análise antes de aprovar.');
   }
-  const fonteIntegridade = audV3ResolverFonteHashAuditoria_(
-    auditoria,
-    transcricao,
-    interacao,
-    cliente,
-    pitch,
-    modelo
-  );
+  let fonteIntegridade = audV3HashFonteSnapshotPersistido_(auditoria, transcricao);
+  if (!fonteIntegridade.confere) {
+    fonteIntegridade = audV3ResolverFonteHashAuditoria_(
+      auditoria,
+      transcricao,
+      interacao,
+      cliente,
+      pitch,
+      modelo
+    );
+  }
   if (!fonteIntegridade.confere) {
     throw new Error('A fonte persistida desta auditoria não corresponde ao snapshot usado na geração. Gere uma nova análise antes de aprovar.');
   }
@@ -4539,6 +4542,57 @@ function audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo) {
   return bytes.map(function(byte) {
     return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
   }).join('');
+}
+
+function audV3HashFonteSnapshotPersistido_(auditoria, transcricao) {
+  auditoria = auditoria || {};
+  transcricao = transcricao || {};
+  const esperado = String(auditoria.HASH_FONTE || '').trim();
+  const conteudoNormalizado = String(transcricao.CONTEUDO_NORMALIZADO || '').trim();
+  const normalizacaoVersao = String(transcricao.NORMALIZACAO_VERSAO || '').trim();
+
+  if (!esperado || !conteudoNormalizado || !normalizacaoVersao) {
+    return {
+      confere: false,
+      origem: 'SNAPSHOT_PERSISTIDO_DIRETO',
+      conteudo: '',
+      normalizacaoVersao: normalizacaoVersao,
+      hashAtual: ''
+    };
+  }
+
+  const fonteHash = {
+    tipo: String(auditoria.TIPO_AUDITORIA || '').toUpperCase(),
+    idCliente: String(auditoria.ID_CLIENTE || ''),
+    idTranscricao: String(transcricao.ID_TRANSCRICAO || ''),
+    transcricao: conteudoNormalizado,
+    idPitch: String(auditoria.ID_PITCH || ''),
+    versaoPitch: String(auditoria.VERSAO_PITCH_SNAPSHOT || ''),
+    conteudoPitch: String(auditoria.CONTEUDO_PITCH_SNAPSHOT || ''),
+    idModelo: String(auditoria.ID_MODELO || ''),
+    versaoModelo: String(auditoria.VERSAO_MODELO_SNAPSHOT || ''),
+    promptOficial: String(auditoria.PROMPT_SNAPSHOT || ''),
+    criterios: String(auditoria.CRITERIOS_SNAPSHOT_JSON || ''),
+    normalizacaoVersao: normalizacaoVersao
+  };
+
+  const base = JSON.stringify(fonteHash);
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    base,
+    Utilities.Charset.UTF_8
+  );
+  const hashAtual = bytes.map(function(byte) {
+    return ('0' + ((byte + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+
+  return {
+    confere: hashAtual === esperado,
+    origem: 'SNAPSHOT_PERSISTIDO_DIRETO',
+    conteudo: conteudoNormalizado,
+    normalizacaoVersao: normalizacaoVersao,
+    hashAtual: hashAtual
+  };
 }
 
 function audV3TranscricaoExataAuditoria_(auditoria) {

@@ -575,8 +575,22 @@ assert.ok(
 );
 assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integridade não possui resolvedor do snapshot exato usado na geração.');
 assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
-assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');
+assert.ok(audit.includes('fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação perdeu o fallback de reconstrução do snapshot persistido.');
 assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Integridade nao possui fonte canonica persistida compartilhada.');
+assert.ok(
+  audit.includes('function audV3HashFonteSnapshotPersistido_'),
+  'Aprovacao precisa conseguir validar diretamente o snapshot persistido da auditoria.'
+);
+assert.match(
+  audit,
+  /function aprovarAuditoriaV3\([\s\S]*?audV3HashFonteSnapshotPersistido_\(auditoria, transcricao\)[\s\S]*?if \(!fonteIntegridade\.confere\)[\s\S]*?audV3ResolverFonteHashAuditoria_/,
+  'A aprovacao deve tentar primeiro o hash exato do snapshot persistido e usar a reconstrucao apenas como fallback.'
+);
+assert.match(
+  audit,
+  /function audV3HashFonteSnapshotPersistido_\([\s\S]*?promptOficial: String\(auditoria\.PROMPT_SNAPSHOT[\s\S]*?criterios: String\(auditoria\.CRITERIOS_SNAPSHOT_JSON[\s\S]*?hashAtual === esperado/,
+  'Hash direto precisa usar somente os snapshots persistidos e ainda exigir igualdade criptografica.'
+);
 assert.ok(
   audit.includes('function audV3NormalizarRotuloLocutorLegadoV1_'),
   'Integridade de auditorias 6.0/6.1 precisa preservar o reconhecedor historico de locutor.'
