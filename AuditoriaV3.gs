@@ -2152,15 +2152,8 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
-  if (tipo === 'SDR' && typeof audRdPublicarAutomaticamente_ === 'function') {
+  if (['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_ === 'function') {
     rd = audRdPublicarAutomaticamente_(id);
-  } else if (tipo === 'CLOSER') {
-    rd = {
-      aplicavel: true,
-      publicada: false,
-      status: 'AGUARDANDO_ENVIO_MANUAL',
-      mensagem: 'Closer aprovado. Informe/confirme o vínculo e use o envio manual ao RD.'
-    };
   }
 
   const statusAutomacao = rd && rd.aplicavel && !rd.publicada
@@ -2177,7 +2170,6 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   if (rd && rd.aplicavel) {
     if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
     else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando o vínculo da negociação.');
-    else if (rd.status === 'AGUARDANDO_ENVIO_MANUAL') partes.push('Closer aguardando envio manual ao RD.');
     else if (rd.status === 'AGUARDANDO_INTEGRACAO') partes.push('RD aguardando a integração do cliente.');
     else if (rd.status === 'ERRO') partes.push('A auditoria foi concluída, mas a publicação no RD precisa ser reprocessada.');
   }
