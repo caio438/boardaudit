@@ -7845,11 +7845,12 @@ const AUTOMACAO_LIGACOES_V3 = Object.freeze({
   orcamentoAntesNovoItemMs: 2 * 60 * 1000,
   horarios: [7, 10, 13, 16, 19],
   chaveErros: 'AUDITORIA_AUTO_LIGACOES_ERROS_V1',
-  revisaoRetry: '2026-10-06-transient-backoff-v2',
+  revisaoRetry: '2026-10-07-transient-quota-v3',
   atrasoRetryMs: 6 * 60 * 60 * 1000,
   atrasoRetryTransitorioMs: 10 * 60 * 1000,
   atrasoMaxRetryTransitorioMs: 60 * 60 * 1000,
-  maxTentativasErro: 3
+  maxTentativasErro: 3,
+  maxTentativasErroTransitorio: 12
 });
 
 function audV3ConfigAutomacaoLigacoes_() {
@@ -7920,7 +7921,7 @@ function audV3ErroAutomacaoElegivelRetry_(interacao, estado, agoraMs) {
   // recebem uma nova janela de tentativas sem remover o limite por revisão.
   if (revisaoRegistro !== revisaoAtual) return true;
   const tentativas = Math.max(1, Number(registro.tentativas || 1));
-  if (tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro) return false;
+  if (tentativas >= audV3LimiteTentativasErro_(registro)) return false;
 
   let proxima = Number(registro.proximaTentativaEm || 0);
   if (!proxima) {
@@ -7935,6 +7936,23 @@ function audV3ErroAutomacaoTransitorio_(mensagem) {
     .test(String(mensagem || ''));
 }
 
+function audV3LimiteTentativasErro_(registro) {
+  return (registro || {}).transitorio === true
+    ? AUTOMACAO_LIGACOES_V3.maxTentativasErroTransitorio
+    : AUTOMACAO_LIGACOES_V3.maxTentativasErro;
+}
+
+function audV3AtrasoRetrySugeridoMs_(mensagem) {
+  const texto = String(mensagem || '');
+  const match = texto.match(/retry in\s*(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/i);
+  if (!match) return 0;
+  const horas = Number(match[1] || 0);
+  const minutos = Number(match[2] || 0);
+  const segundos = Number(match[3] || 0);
+  const total = (horas * 60 * 60 + minutos * 60 + segundos) * 1000;
+  return isFinite(total) && total > 0 ? Math.ceil(total + 60 * 1000) : 0;
+}
+
 function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
   const id = String(idInteracao || '').trim();
   if (!id) return;
@@ -7944,18 +7962,22 @@ function audV3RegistrarErroAutomacaoLigacao_(idInteracao, mensagem) {
   const mesmaRevisao = String(anterior.revisaoRetry || '') === revisaoAtual;
   const tentativas = (mesmaRevisao ? Math.max(0, Number(anterior.tentativas || 0)) : 0) + 1;
   const transitorio = audV3ErroAutomacaoTransitorio_(mensagem);
-  const atrasoRetryMs = transitorio
+  const atrasoCalculadoMs = transitorio
     ? Math.min(
       AUTOMACAO_LIGACOES_V3.atrasoMaxRetryTransitorioMs,
       AUTOMACAO_LIGACOES_V3.atrasoRetryTransitorioMs * Math.pow(2, Math.max(0, tentativas - 1))
     )
     : AUTOMACAO_LIGACOES_V3.atrasoRetryMs * tentativas;
+  const atrasoRetryMs = Math.max(atrasoCalculadoMs, audV3AtrasoRetrySugeridoMs_(mensagem));
+  const limiteTentativas = transitorio
+    ? AUTOMACAO_LIGACOES_V3.maxTentativasErroTransitorio
+    : AUTOMACAO_LIGACOES_V3.maxTentativasErro;
   estado[id] = {
     revisaoRetry: revisaoAtual,
     tentativas: tentativas,
     transitorio: transitorio,
     ultimaFalhaEm: Date.now(),
-    proximaTentativaEm: tentativas >= AUTOMACAO_LIGACOES_V3.maxTentativasErro
+    proximaTentativaEm: tentativas >= limiteTentativas
       ? 0
       : Date.now() + atrasoRetryMs,
     erro: String(mensagem || '').slice(0, 500)
@@ -8043,12 +8065,20 @@ function audV3FilaAutomacaoLigacoes_(config, dados) {
       transcricoes[String(item.ID_INTERACAO)] = item;
     }
   });
+  const interacoesPorId = {};
+  interacoesElegiveis.forEach(function(item) {
+    interacoesPorId[String(item.ID_INTERACAO || '')] = item;
+  });
   const auditoriasValidas = {};
   audV3FiltrarAuditoriasVisiveisOperacao_(dados.auditorias || audV3Ler_('AUDITORIAS')).forEach(function(item) {
-    if (idsElegiveis[String(item.ID_INTERACAO || '')] &&
+    const idInteracao = String(item.ID_INTERACAO || '');
+    const interacao = interacoesPorId[idInteracao] || {};
+    const reprocessarErroAutomatico = String(interacao.STATUS_AUDITORIA || '').toUpperCase() === 'ERRO_AUTOMACAO' &&
+      String(item.STATUS || '').toUpperCase() === 'EM_REVISAO';
+    if (idsElegiveis[idInteracao] && !reprocessarErroAutomatico &&
         ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&
         String(item.RESULTADO_JSON || '').trim()) {
-      auditoriasValidas[String(item.ID_INTERACAO)] = item;
+      auditoriasValidas[idInteracao] = item;
     }
   });
   return interacoesElegiveis.filter(function(item) {
@@ -8103,7 +8133,7 @@ function audV3ProximaTentativaAutomacaoLigacoes_(config, dados) {
     if (!audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'SDR', pitches)) return;
     const registro = estado[String(item.ID_INTERACAO || '')] || {};
     if (String(registro.revisaoRetry || '') !== revisaoAtual) return;
-    if (Number(registro.tentativas || 0) >= AUTOMACAO_LIGACOES_V3.maxTentativasErro) return;
+    if (Number(registro.tentativas || 0) >= audV3LimiteTentativasErro_(registro)) return;
     const candidata = Number(registro.proximaTentativaEm || 0);
     if (candidata > Date.now() && (!proxima || candidata < proxima)) proxima = candidata;
   });
@@ -8442,7 +8472,7 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
           dataInteracao: serializarDataSomenteDia_(interacao.DATA_INTERACAO),
           urlAudio: interacao.URL_GRAVACAO
         });
-        const analisada = executarAuditoriaV3({
+        const dadosAnalise = {
           idCliente: idCliente,
           tipoAuditoria: 'SDR',
           fonte: 'API4COM',
@@ -8451,10 +8481,28 @@ function EXECUTAR_AUTOMACAO_LIGACOES_V3(evento) {
           nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
           reclassificarInteracao: false,
           evitarDuplicidade: true
-        });
-        const idAuditoria = String((((analisada || {}).auditoria || {}).idAuditoria) || '').trim();
+        };
+        let analisada = executarAuditoriaV3(dadosAnalise);
+        let idAuditoria = String((((analisada || {}).auditoria || {}).idAuditoria) || '').trim();
         if (!idAuditoria) throw new Error('A auditoria SDR foi gerada sem ID persistido.');
-        const finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
+        let finalizada;
+        try {
+          finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
+        } catch (erroFinalizacao) {
+          const mensagemFinalizacao = String(erroFinalizacao && erroFinalizacao.message || erroFinalizacao || '');
+          if (!/fonte persistida.*não corresponde ao snapshot|gere uma nova análise antes de aprovar/i.test(mensagemFinalizacao)) {
+            throw erroFinalizacao;
+          }
+          audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
+            AUTOMACAO_STATUS: 'SUBSTITUIDA_REGERACAO_AUTO',
+            AUTOMACAO_ERRO: mensagemFinalizacao,
+            AUTOMACAO_ATUALIZADO_EM: new Date()
+          });
+          analisada = executarAuditoriaV3(Object.assign({}, dadosAnalise, { evitarDuplicidade: false }));
+          idAuditoria = String((((analisada || {}).auditoria || {}).idAuditoria) || '').trim();
+          if (!idAuditoria) throw new Error('A regeneração automática da auditoria SDR não persistiu um novo ID.');
+          finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
+        }
         const rdFinal = (finalizada || {}).rd || {};
         if (rdFinal.aplicavel && rdFinal.publicada !== true) {
           throw new Error(
