@@ -120,11 +120,14 @@ function audRdPreviewCtx_(id){
   if(it&&String(it.ATIVO||'').toUpperCase()==='SIM'){
     try{temToken=Boolean(obterSegredo_('INTEGRACAO_TOKEN_'+it.ID_INTEGRACAO));}catch(e){}
   }
+  var nomeResponsavelPreview=audRdUsaResponsavelGrupoSinergia_(a)
+    ? 'Sinergia Engenharia'
+    : String(i.COLABORADOR||i.VENDEDOR||((r.metadados||{}).closer)||((r.metadados||{}).sdr)||'Não identificado');
   return{
     a:a,i:i,r:r,
     dealId:audRdDeal_(i),
     token:'',
-    sdr:{id:'',nome:String(i.COLABORADOR||i.VENDEDOR||((r.metadados||{}).closer)||((r.metadados||{}).sdr)||'Não identificado'),email:''},
+    sdr:{id:'',nome:nomeResponsavelPreview,email:''},
     volum:{id:'',nome:'VOLUM',email:RD_AUDITORIA_EMAIL_VOLUM},
     temToken:temToken
   };
@@ -283,29 +286,39 @@ function audRdUsuarioVolum_(token,integracao){
   if(candidatos.length>1)throw new Error('Há mais de um usuário VOLUM ativo no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
   throw new Error('Nenhum usuário VOLUM ativo foi encontrado no RD CRM. Configure rdAuditoriaUsuarioVolumId no CONFIG_JSON da integração.');
 }
+function audRdUsaResponsavelGrupoSinergia_(auditoria){
+  var ids={
+    'CLI-20260806105306-25F3490A':true,
+    'CLI-20260806112340-E575DA0D':true,
+    'CLI_VOL_SEMEIO_CBI':true
+  };
+  var a=auditoria||{};
+  var tipo=String(a.TIPO_AUDITORIA||'').toUpperCase();
+  return Boolean(ids[String(a.ID_CLIENTE||'')]) && ['SDR','CLOSER'].indexOf(tipo)>=0;
+}
+function audRdResponsavelGrupoSinergia_(token){
+  var chaveCompartilhada=normalizarTextoComparacao_('Sinergia Engenharia');
+  var compartilhados=audRdUsuarios_(token).filter(function(u){
+    return normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||''))===chaveCompartilhada;
+  });
+  if(compartilhados.length!==1){
+    throw new Error(compartilhados.length
+      ? 'Há mais de um usuário ativo no RD chamado Sinergia Engenharia. Mantenha apenas um usuário canônico para INGEE, Sinergia e Semeio.'
+      : 'O usuário Sinergia Engenharia não foi encontrado entre os usuários ativos do RD CRM.');
+  }
+  var compartilhado=compartilhados[0]||{};
+  return{
+    id:String(compartilhado.id||compartilhado._id||compartilhado.user_id||''),
+    nome:String(compartilhado.name||compartilhado.nome||'Sinergia Engenharia'),
+    email:String(compartilhado.email||'')
+  };
+}
 function audRdResponsavel_(token,i,r,a){
   var meta=(r||{}).metadados||{};
   var ident=String((i||{}).COLABORADOR||(i||{}).VENDEDOR||meta.sdr||meta.closer||'').trim();
-  var ingeCloser=String((a||{}).ID_CLIENTE||'')==='CLI-20260806105306-25F3490A' &&
-    String((a||{}).TIPO_AUDITORIA||'').toUpperCase()==='CLOSER' &&
-    typeof audV3CloserIngeeValido_==='function' && audV3CloserIngeeValido_(ident);
 
-  if(ingeCloser){
-    var chaveCompartilhada=normalizarTextoComparacao_('Sinergia Engenharia');
-    var compartilhados=audRdUsuarios_(token).filter(function(u){
-      return normalizarTextoComparacao_(String((u||{}).name||(u||{}).nome||''))===chaveCompartilhada;
-    });
-    if(compartilhados.length!==1){
-      throw new Error(compartilhados.length
-        ? 'Há mais de um usuário ativo no RD chamado Sinergia Engenharia. Mantenha apenas um usuário canônico para as closers da INGEE.'
-        : 'O usuário Sinergia Engenharia não foi encontrado entre os usuários ativos do RD CRM.');
-    }
-    var compartilhado=compartilhados[0]||{};
-    return{
-      id:String(compartilhado.id||compartilhado._id||compartilhado.user_id||''),
-      nome:String(compartilhado.name||compartilhado.nome||'Sinergia Engenharia'),
-      email:String(compartilhado.email||'')
-    };
+  if(audRdUsaResponsavelGrupoSinergia_(a)){
+    return audRdResponsavelGrupoSinergia_(token);
   }
 
   var ext=String((i||{}).ID_EXTERNO||'');
@@ -334,7 +347,34 @@ function audRdCmp_(t){return String(t||'').replace(/^\[BOARDAUDIT:[^\]]+\]\s*/i,
 function audRdStatus_(id,s,aid,erro,t){t=t||{};audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',id,{RD_STATUS:s,RD_ACTIVITY_ID:aid||'',RD_PUBLICADO_EM:s==='PUBLICADA'?new Date():'',RD_TAREFA_VOLUM_ID:t.idVolum||'',RD_TAREFA_SDR_ID:t.idSdr||'',RD_ERRO:erro||''});}
 function audRdListaTarefas_(c){var r=requisicaoJson_(APP.rdBaseUrl+'/tasks?token='+encodeURIComponent(c.token)+'&deal_id='+encodeURIComponent(c.dealId)+'&limit=200',{method:'get',headers:{Accept:'application/json'}});return Array.isArray(r)?r:(r.tasks||r.data||r.results||r.items||[]);}
 function audRdIdent_(c){var n=String(c.i.OPORTUNIDADE||c.i.TITULO||'Ligação').trim(),d=audV3DataIso_(c.i.DATA_INTERACAO).slice(0,10);return n+(d?' · '+d:'');}
-function audRdTarefas_(c){var a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)||c.a,lista=audRdListaTarefas_(c),ident=audRdIdent_(c),sv='Auditoria da ligação registrada — '+ident,ss='Confira a anotação da Auditoria do '+(String(a.TIPO_AUDITORIA||'').toUpperCase()==='CLOSER'?'atendimento':'ligação')+' no histórico — '+ident,idv=String(a.RD_TAREFA_VOLUM_ID||''),ids=String(a.RD_TAREFA_SDR_ID||'');if(!idv){var ev=lista.find(function(x){return String((x||{}).subject||'')===sv;});idv=ev?String(ev.id||ev._id||ev.task_id||''):'';}if(!ids){var es=lista.find(function(x){return String((x||{}).subject||'')===ss;});ids=es?String(es.id||es._id||es.task_id||''):'';}if(!idv){idv=audRdCriarTarefa_(c,c.volum.id,sv,'Resultado da auditoria registrado no histórico da negociação.');audRdConcluir_(c,idv);}if(!ids)ids=audRdCriarTarefa_(c,c.sdr.id,ss,'Confira a anotação da Auditoria do '+(String(a.TIPO_AUDITORIA||'').toUpperCase()==='CLOSER'?'atendimento':'ligação')+' no histórico.');return{idVolum:idv,idSdr:ids};}
+function audRdTarefas_(c){
+  var a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)||c.a;
+  var lista=audRdListaTarefas_(c);
+  var ident=audRdIdent_(c);
+  var rotulo=String(a.TIPO_AUDITORIA||'').toUpperCase()==='CLOSER'?'atendimento':'ligação';
+  var sv='Auditoria da ligação registrada — '+ident;
+  var ss='Confira a anotação da Auditoria do '+rotulo+' no histórico — '+ident;
+  var idv=String(a.RD_TAREFA_VOLUM_ID||'');
+  var ids=String(a.RD_TAREFA_SDR_ID||'');
+
+  if(!idv){
+    var ev=lista.find(function(x){return String((x||{}).subject||'')===sv;});
+    idv=ev?String(ev.id||ev._id||ev.task_id||''):'';
+  }
+  if(!ids){
+    var es=lista.find(function(x){return String((x||{}).subject||'')===ss;});
+    ids=es?String(es.id||es._id||es.task_id||''):'';
+  }
+  if(!idv){
+    idv=audRdCriarTarefa_(c,c.volum.id,sv,'Resultado da auditoria registrado no histórico da negociação.');
+    audRdConcluir_(c,idv);
+  }
+  if(!ids){
+    var notaResponsavel=c.sdr&&c.sdr.nome?' Responsável pela tarefa: '+String(c.sdr.nome)+'.':'';
+    ids=audRdCriarTarefa_(c,c.sdr.id,ss,'Confira a anotação da Auditoria do '+rotulo+' no histórico.'+notaResponsavel);
+  }
+  return{idVolum:idv,idSdr:ids};
+}
 function audRdCriarTarefa_(c,uid,subject,notes){var n=new Date(),r=requisicaoJson_(APP.rdBaseUrl+'/tasks?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({task:{deal_id:c.dealId,user_ids:[String(uid)],subject:subject,type:'task',hour:Utilities.formatDate(n,APP.timezone,'HH:mm'),date:Utilities.formatDate(n,APP.timezone,'yyyy-MM-dd'),notes:notes}})}),t=r.task||r.data||r||{},id=String(t.id||t._id||t.task_id||'');if(!id)throw new Error('O RD criou a tarefa, mas não devolveu o ID.');return id;}
 function audRdConcluir_(c,id){return requisicaoJson_(APP.rdBaseUrl+'/tasks/'+encodeURIComponent(id)+'?token='+encodeURIComponent(c.token),{method:'put',contentType:'application/json',payload:audRdJsonSeguro_({task:{deal_id:c.dealId,done:true}})});}
 function audRdTexto_(c){
