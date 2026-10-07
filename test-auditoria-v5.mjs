@@ -577,6 +577,25 @@ assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integrid
 assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
 assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');
 assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Integridade nao possui fonte canonica persistida compartilhada.');
+assert.ok(
+  audit.includes('function audV3NormalizarRotuloLocutorLegadoV1_'),
+  'Integridade de auditorias 6.0/6.1 precisa preservar o reconhecedor historico de locutor.'
+);
+assert.match(
+  audit,
+  /function audV3NormalizarTranscricaoTextoLegado_\([\s\S]*?audV3NormalizarRotuloLocutorLegadoV1_\(match\[2\], interacao \|\| \{\}\)/,
+  'Normalizacao legada ainda usa o reconhecedor atual e pode alterar o hash de Closers antigos.'
+);
+assert.match(
+  audit,
+  /function audV3PrepararTranscricaoParaIntegridade_\([\s\S]*?!audV3UsaNormalizacaoV2_\(engineVersao\)[\s\S]*?audV3NormalizarTranscricaoTextoLegado_/,
+  'Auditorias anteriores a 6.2 precisam reconstruir a fonte pelo caminho historico antes do hash.'
+);
+assert.match(
+  audit,
+  /function audV3NormalizarRotuloLocutorLegadoV1_\([\s\S]*?COLABORADOR[\s\S]*?VENDEDOR[\s\S]*?papelProfissional \+ ' \(' \+ profissional \+ '\)'/,
+  'Reconhecedor historico precisa reproduzir o rotulo profissional persistido nos motores 6.0/6.1.'
+);
 assert.ok(audit.includes("const conteudoNormalizado = String((transcricao || {}).CONTEUDO_NORMALIZADO || '').trim();"), 'Integridade nao reutiliza exatamente o conteudo normalizado persistido.');
 assert.ok(audit.includes('assinaturaGate === String(assinaturaAtual || \'\')'), 'Fonte persistida nao exige assinatura original identica.');
 assert.ok(audit.includes("['BOA', 'ATENCAO'].includes(statusGate) && qualidade.apta_para_auditoria === true"), 'Fonte persistida nao exige gate apto BOA/ATENCAO.');
