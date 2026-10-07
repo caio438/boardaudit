@@ -896,6 +896,20 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_formalizacoes_week_enable || '') === '1') {
+    const ativoOpsFormal = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsFormal = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsFormal || !efetivoOpsFormal || ativoOpsFormal !== efetivoOpsFormal) {
+      throw new Error('Ativacao temporaria de formalizacoes permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA !== 'function') {
+      throw new Error('Ativador temporario de formalizacoes nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_enable_isolated || '') === '1') {
     const ativoOpsEnableSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsEnableSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -3517,6 +3531,10 @@ function sdrSnapshotAcionadoresIsolados_() {
     PROCESSAR_PIPELINE_RD_API4COM: true,
     WATCHDOG_PIPELINE_RD_API4COM: true
   };
+  if (typeof jornadaFormalizacaoTemporariaAtiva_ === 'function' && jornadaFormalizacaoTemporariaAtiva_()) {
+    permitidos.EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA = true;
+    permitidos.EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO = true;
+  }
   const handlers = ScriptApp.getProjectTriggers().map(function(trigger) {
     return String(trigger.getHandlerFunction() || '');
   }).filter(Boolean);
@@ -3533,6 +3551,10 @@ function sdrSnapshotAcionadoresIsolados_() {
 function sdrRemoverAcionadoresNaoPermitidos_() {
   const bloqueados = {};
   sdrHandlersNaoPermitidosNoModoIsolado_().forEach(function(handler) { bloqueados[handler] = true; });
+  if (typeof jornadaFormalizacaoTemporariaAtiva_ === 'function' && jornadaFormalizacaoTemporariaAtiva_()) {
+    delete bloqueados.EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA;
+    delete bloqueados.EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO;
+  }
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (bloqueados[String(trigger.getHandlerFunction() || '')]) ScriptApp.deleteTrigger(trigger);
   });
@@ -3544,7 +3566,12 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'NAO');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'NAO');
-  salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO');
+  const formalizacaoTemporariaAtiva =
+    typeof jornadaFormalizacaoTemporariaAtiva_ === 'function' &&
+    jornadaFormalizacaoTemporariaAtiva_();
+  if (!formalizacaoTemporariaAtiva) {
+    salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'NAO');
+  }
   salvarConfiguracao_('AUTOMACAO_CENTRAL_ATIVA', 'NAO');
   CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'NAO', 21600);
 
