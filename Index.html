@@ -713,6 +713,49 @@
       color: var(--muted);
     }
 
+    .audit-progress {
+      padding: 22px;
+      text-align: left;
+    }
+
+    .audit-progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .audit-progress-track {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    .audit-progress-fill {
+      position: relative;
+      height: 100%;
+      min-width: 3%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #2563eb, #60a5fa, #2563eb);
+      background-size: 200% 100%;
+      transition: width .45s ease;
+      animation: auditProgressShimmer 1.8s linear infinite;
+    }
+
+    .audit-progress-fill.done { background: var(--success); animation: none; }
+    .audit-progress-fill.error { background: var(--danger); animation: none; }
+    .audit-progress-meta { margin-top: 9px; color: var(--muted); font-size: 12px; }
+    .audit-progress-warning { margin-top: 8px; color: var(--warning); font-size: 12px; }
+
+    @keyframes auditProgressShimmer {
+      from { background-position: 100% 0; }
+      to { background-position: -100% 0; }
+    }
+
     .muted { color: var(--muted); }
     .small { font-size: 12px; }
 
@@ -6786,7 +6829,12 @@
     for (let indice = 0; indice < idsInteracoes.length; indice++) {
       const idInteracao = idsInteracoes[indice];
       const interacao = (estado.interacoesAuditoria || []).find(item => String(item.idInteracao) === String(idInteracao));
-      resultado.innerHTML = '<div class="card" style="box-shadow:none"><div class="empty">Processando ' + (indice + 1) + ' de ' + idsInteracoes.length + ': ' + escapeHtml(tituloInteracaoAuditoria_(interacao || {})) + '. Para SDR e Closer, o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.</div></div>';
+      const idProgresso = 'AUD-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+      const acompanhamento = criarAcompanhamentoGeracaoAuditoria_(resultado, idProgresso, {
+        atual: indice + 1,
+        total: idsInteracoes.length,
+        titulo: tituloInteracaoAuditoria_(interacao || {})
+      });
       try {
         const resposta = await analisarAudioLote_({
           idCliente: valor('audCliente'),
@@ -6798,6 +6846,7 @@
           idInteracao: idInteracao,
           nomeSdr: closerSimplificado ? '' : (idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr'))),
           reclassificarInteracao: Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
+          idProgresso: idProgresso,
           // No Board manual, cada clique gera uma auditoria nova e independente.
           // O histórico anterior é preservado, mas nunca bloqueia a operação atual.
           evitarDuplicidade: false
@@ -6805,10 +6854,12 @@
         estado.auditorias = resposta.auditorias || [];
         ultimaAuditoria = resposta.auditoria || ultimaAuditoria;
         concluidas++;
+        acompanhamento.concluir();
       } catch (erro) {
         falhas++;
         const mensagem = erro && erro.message ? erro.message : String(erro);
         mensagensErro.push(tituloInteracaoAuditoria_(interacao || {}) + ': ' + mensagem);
+        acompanhamento.falhar(mensagem);
         if (/cota|quota|limite|429|gratuit/i.test(mensagem)) break;
       }
     }
@@ -6820,6 +6871,83 @@
     if (ultimaAuditoria) renderizarPreviewAuditoriaV3(ultimaAuditoria);
     else resultado.innerHTML = '<div class="card" style="box-shadow:none;border-color:#fecdca;background:#fef3f2"><strong>Não foi possível concluir</strong><div class="small" style="margin-top:6px">' + escapeHtml(mensagensErro.join(' | ')) + '</div></div>';
     mostrarToast(concluidas + ' auditoria(s) concluída(s) automaticamente' + (falhas ? ' · ' + falhas + ' falha(s)' : ''), falhas ? 'warning' : 'success');
+  }
+
+  function criarAcompanhamentoGeracaoAuditoria_(alvo, idProgresso, contexto) {
+    const inicio = Date.now();
+    let ativo = true;
+    let consultando = false;
+    let ultimaMudanca = inicio;
+    let estadoProgresso = {
+      etapa: 'INICIANDO',
+      percentual: 3,
+      mensagem: 'Iniciando a geração',
+      detalhe: 'Preparando o processamento da auditoria.'
+    };
+
+    const formatarTempo = segundos => {
+      const total = Math.max(0, Math.floor(segundos));
+      const minutos = Math.floor(total / 60);
+      const resto = total % 60;
+      return minutos ? minutos + ' min ' + String(resto).padStart(2, '0') + ' s' : resto + ' s';
+    };
+    const renderizar = () => {
+      if (!ativo && !['CONCLUIDA', 'ERRO'].includes(estadoProgresso.etapa)) return;
+      const decorrido = Math.floor((Date.now() - inicio) / 1000);
+      const semMudanca = Math.floor((Date.now() - ultimaMudanca) / 1000);
+      const classe = estadoProgresso.etapa === 'CONCLUIDA' ? ' done' : (estadoProgresso.etapa === 'ERRO' ? ' error' : '');
+      const aviso = ativo && semMudanca >= 60
+        ? '<div class="audit-progress-warning">Esta etapa está levando mais tempo, mas o Board continua acompanhando o processamento.</div>'
+        : '';
+      alvo.style.display = 'block';
+      alvo.innerHTML = '<div class="card audit-progress" style="box-shadow:none">' +
+        '<div class="audit-progress-head"><strong>' + escapeHtml(estadoProgresso.mensagem) + '</strong><span class="small muted">' +
+        escapeHtml(String(contexto.atual) + ' de ' + String(contexto.total)) + '</span></div>' +
+        '<div class="small" style="margin-bottom:10px">' + escapeHtml(contexto.titulo) + '</div>' +
+        '<div class="audit-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
+        Number(estadoProgresso.percentual || 0) + '"><div class="audit-progress-fill' + classe + '" style="width:' +
+        Number(estadoProgresso.percentual || 0) + '%"></div></div>' +
+        '<div class="audit-progress-meta">' + escapeHtml(estadoProgresso.detalhe || '') + ' · ' + formatarTempo(decorrido) + '</div>' + aviso +
+        '</div>';
+    };
+    const aplicar = resposta => {
+      if (!ativo || !(resposta || {}).encontrado) return;
+      const mudou = resposta.etapa !== estadoProgresso.etapa || Number(resposta.percentual) !== Number(estadoProgresso.percentual);
+      estadoProgresso = Object.assign({}, estadoProgresso, resposta);
+      if (mudou) ultimaMudanca = Date.now();
+      renderizar();
+    };
+    const consultar = () => {
+      if (!ativo || consultando) return;
+      consultando = true;
+      google.script.run
+        .withSuccessHandler(resposta => { consultando = false; aplicar(resposta); })
+        .withFailureHandler(() => { consultando = false; })
+        .obterProgressoAuditoriaV3(idProgresso);
+    };
+    const relogio = setInterval(renderizar, 1000);
+    const polling = setInterval(consultar, 2500);
+    renderizar();
+    consultar();
+    const parar = () => {
+      ativo = false;
+      clearInterval(relogio);
+      clearInterval(polling);
+    };
+    return {
+      concluir: () => {
+        estadoProgresso = { etapa: 'CONCLUIDA', percentual: 100, mensagem: 'Auditoria gerada e validada', detalhe: 'O resultado está pronto no Board.' };
+        ultimaMudanca = Date.now();
+        renderizar();
+        parar();
+      },
+      falhar: mensagem => {
+        estadoProgresso = { etapa: 'ERRO', percentual: 100, mensagem: 'A geração não foi concluída', detalhe: String(mensagem || 'Falha não identificada.') };
+        ultimaMudanca = Date.now();
+        renderizar();
+        parar();
+      }
+    };
   }
 
   function renderizarContextoAuditoriaFront_(r) {

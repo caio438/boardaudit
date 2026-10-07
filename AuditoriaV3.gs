@@ -1713,8 +1713,36 @@ function audV3PrepararPlanoManualRapido_(transcricao, interacao) {
   };
 }
 
+function audV3AtualizarProgressoGeracao_(idProgresso, etapa, percentual, mensagem, detalhe) {
+  const id = String(idProgresso || '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+  if (!id) return;
+  const payload = {
+    id: id,
+    etapa: String(etapa || 'PROCESSANDO'),
+    percentual: Math.max(0, Math.min(100, Number(percentual || 0))),
+    mensagem: String(mensagem || 'Processando auditoria...'),
+    detalhe: String(detalhe || ''),
+    atualizadoEm: new Date().toISOString()
+  };
+  CacheService.getScriptCache().put('AUD_PROGRESS_' + id, JSON.stringify(payload), 15 * 60);
+}
+
+function obterProgressoAuditoriaV3(idProgresso) {
+  const id = String(idProgresso || '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+  if (!id) return { encontrado: false };
+  const bruto = CacheService.getScriptCache().get('AUD_PROGRESS_' + id);
+  if (!bruto) return { encontrado: false };
+  try {
+    return Object.assign({ encontrado: true }, JSON.parse(bruto));
+  } catch (erro) {
+    return { encontrado: false };
+  }
+}
+
 function executarAuditoriaV3(dados) {
   dados = dados || {};
+  const idProgresso = String(dados.idProgresso || '').trim();
+  audV3AtualizarProgressoGeracao_(idProgresso, 'PREPARANDO', 8, 'Preparando a transcrição', 'Conferindo cliente, pitch e fonte selecionada.');
   audV3EncerrarProcessamentosExpirados_();
   const inicioMs = Date.now();
   const tipo = String(dados.tipoAuditoria || 'SDR').trim().toUpperCase();
@@ -1775,6 +1803,7 @@ function executarAuditoriaV3(dados) {
     interacao.ID_CLIENTE = cliente.ID_CLIENTE;
   }
   audV3ValidarEntradas_(cliente, pitch, interacao, transcricao, tipo);
+  audV3AtualizarProgressoGeracao_(idProgresso, 'PREPARANDO', 22, 'Transcrição preparada', 'Fonte e autoria conferidas.');
 
   const modelo = audV3SelecionarModelo_(dados.idModelo, cliente.ID_CLIENTE, tipo);
   const hashFonte = audV3HashFonte_(cliente, pitch, modelo, transcricao, tipo);
@@ -1938,13 +1967,16 @@ function executarAuditoriaV3(dados) {
     };
 
     let processado;
+    audV3AtualizarProgressoGeracao_(idProgresso, 'ANALISANDO', 38, 'Analisando a reunião', 'O motor está comparando a conversa com o pitch e os critérios.');
     const primeiraRespostaIa = audV3ChamarGemini_(contextoIa);
     try {
+      audV3AtualizarProgressoGeracao_(idProgresso, 'VALIDANDO', 72, 'Validando o resultado', 'Conferindo evidências, autoria e consistência das notas.');
       processado = processarRespostaIa(primeiraRespostaIa);
     } catch (erroValidacaoIa) {
       if (tipo === 'PLANO') throw erroValidacaoIa;
       contextoIa.correcaoValidacao = String(erroValidacaoIa && erroValidacaoIa.message ? erroValidacaoIa.message : erroValidacaoIa);
       console.warn('Resposta da auditoria rejeitada pelo validador. Executando uma tentativa de reparo: ' + contextoIa.correcaoValidacao);
+      audV3AtualizarProgressoGeracao_(idProgresso, 'REVALIDANDO', 78, 'Revalidando a auditoria', 'Um ajuste automático de consistência está sendo aplicado.');
       const segundaRespostaIa = audV3ChamarGemini_(contextoIa);
       processado = processarRespostaIa(segundaRespostaIa);
     }
@@ -1963,6 +1995,7 @@ function executarAuditoriaV3(dados) {
       scorePercentual = resultado.pontuacao_calculada.score_percentual === null ? '' : resultado.pontuacao_calculada.score_percentual;
     }
 
+    audV3AtualizarProgressoGeracao_(idProgresso, 'FINALIZANDO', 90, 'Finalizando o resultado', 'Salvando nota, dimensões e recomendações no Board.');
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'EM_REVISAO',
       RESULTADO_COMPLETO: texto,
@@ -1992,6 +2025,7 @@ function executarAuditoriaV3(dados) {
       ERRO: '',
       CONCLUIDO_EM: ''
     });
+    audV3AtualizarProgressoGeracao_(idProgresso, 'CONCLUIDA', 100, 'Auditoria gerada e validada', 'O resultado já está disponível no Board.');
     
     audV3Atualizar_('INTERACOES', 'ID_INTERACAO', interacao.ID_INTERACAO, {
       STATUS_AUDITORIA: 'VALIDADA',
@@ -2026,6 +2060,7 @@ function executarAuditoriaV3(dados) {
     };
   } catch (erro) {
     const erroTecnico = audV3DescreverErroTecnico_(erro);
+    audV3AtualizarProgressoGeracao_(idProgresso, 'ERRO', 100, 'A geração não foi concluída', erroTecnico);
     audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', idAuditoria, {
       STATUS: 'ERRO',
       VALIDACAO_STATUS: 'ERRO',

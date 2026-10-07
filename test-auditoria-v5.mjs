@@ -100,7 +100,7 @@ assert.match(audit, /function salvarLinkCircleAuditoria\(dados\)[\s\S]*?CIRCLE_P
 assert.ok(front.includes('Gerar para revisão'), 'A interface não apresenta o fluxo de revisão antes da publicação.');
 assert.ok(front.includes('id="circleManualPreview"'), 'Modal do Circle precisa manter a prévia do conteúdo.');
 assert.ok(front.includes('background:#fff;color:#111827'), 'Prévia clara do Circle precisa usar texto escuro explícito, inclusive no modo dark.');
-assert.ok(front.includes('o resultado será validado e ficará no Board para sua revisão antes de criar o Google Docs ou publicar no RD.'), 'A interface não informa o fluxo de revisão humana.');
+assert.ok(front.includes('Auditoria gerada e validada'), 'A interface não informa a conclusão da geração e validação.');
 assert.ok(front.includes('function reprocessarAutomacaoAuditoriaFront'), 'A interface não possui contingência para reprocessar falha do RD.');
 assert.ok(front.includes('function modoSimplificadoCloserFront_'), 'Closer não possui modo simplificado próprio.');
 assert.ok(front.includes("fonte.value = 'TODAS'"), 'Closer simplificado ainda exige seleção manual da origem.');
