@@ -4,7 +4,12 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
 const context = vm.createContext({ console });
-vm.runInContext(source + '\nthis.formatSdr = audRdTextoSdr_;', context);
+vm.runInContext(
+  source +
+  '\nthis.formatSdr = audRdTextoSdr_;' +
+  '\nthis.usaResponsavelGrupoSinergia = audRdUsaResponsavelGrupoSinergia_;',
+  context
+);
 
 const ctx = {
   a: {
@@ -114,6 +119,38 @@ assert.match(preview, /PLANO DE AÇÃO/);
 assert.match(preview, /Gravação: https:\/\/listener\.example\/audio\.mp3/);
 assert.match(preview, /Auditoria completa: https:\/\/docs\.google\.com\/open\?id=auditoria-teste/);
 assert.ok(preview.length < 4000, 'Preview SDR voltou a ficar excessivamente longo para o CRM.');
+
+for (const idCliente of [
+  'CLI-20260806105306-25F3490A',
+  'CLI-20260806112340-E575DA0D',
+  'CLI_VOL_SEMEIO_CBI'
+]) {
+  assert.equal(
+    context.usaResponsavelGrupoSinergia({ ID_CLIENTE: idCliente, TIPO_AUDITORIA: 'SDR' }),
+    true,
+    idCliente + ' precisa usar Sinergia Engenharia como responsável da tarefa SDR.'
+  );
+  assert.equal(
+    context.usaResponsavelGrupoSinergia({ ID_CLIENTE: idCliente, TIPO_AUDITORIA: 'CLOSER' }),
+    true,
+    idCliente + ' precisa usar Sinergia Engenharia como responsável da tarefa Closer.'
+  );
+}
+assert.equal(
+  context.usaResponsavelGrupoSinergia({ ID_CLIENTE: 'CLI-OUTRO', TIPO_AUDITORIA: 'CLOSER' }),
+  false,
+  'Regra compartilhada do Grupo Sinergia não pode vazar para outros clientes.'
+);
+assert.match(
+  source,
+  /nomeResponsavelPreview=audRdUsaResponsavelGrupoSinergia_\(a\)[\s\S]*?'Sinergia Engenharia'/,
+  'Prévia do RD precisa indicar Sinergia Engenharia como responsável nos três clientes.'
+);
+assert.match(
+  source,
+  /Responsável pela tarefa: '\+String\(c\.sdr\.nome\)/,
+  'Tarefa do RD precisa indicar explicitamente o responsável atribuído.'
+);
 
 console.log(preview);
 console.log('\nPreview SDR compacto validado sem publicação no CRM.');
