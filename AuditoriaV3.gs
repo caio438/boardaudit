@@ -2785,6 +2785,35 @@ function audV3InferirLocutorPorAncora_(fala, interacao) {
   return null;
 }
 
+function audV3NormalizarRotuloLocutorLegadoV1_(rotulo, interacao) {
+  const bruto = String(rotulo || '').replace(/^[-*•\s]+/, '').trim();
+  const n = audV3NormalizarTrechoRastreavel_(bruto);
+  const funcao = String((interacao || {}).FUNCAO || '').trim().toUpperCase();
+  const papelProfissional = ['SDR', 'CLOSER'].includes(funcao) ? funcao : 'PROFISSIONAL';
+  const profissional = String((interacao || {}).COLABORADOR || (interacao || {}).VENDEDOR || '').trim();
+  const lead = String((interacao || {}).LEAD || '').trim();
+
+  if (/^(sdr|closer|consultor|consultora|vendedor|vendedora|profissional|atendente)$/.test(n)) {
+    return { rotulo: papelProfissional + (profissional ? ' (' + profissional + ')' : ''), tipo: papelProfissional, identificado: true, corrigido: n !== audV3NormalizarTrechoRastreavel_(papelProfissional) };
+  }
+  if (/^(lead|cliente|prospect|prospecto|comprador|compradora)$/.test(n)) {
+    return { rotulo: 'LEAD' + (lead ? ' (' + lead + ')' : ''), tipo: 'LEAD', identificado: true, corrigido: n !== 'lead' };
+  }
+  if (/^(participante|speaker|locutor|interlocutor|desconhecido|unknown)(\s*[0-9]+)?$/.test(n)) {
+    return { rotulo: 'LOCUTOR_NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', identificado: false, corrigido: true };
+  }
+  if (profissional && audV3RotuloPareceNome_(bruto, profissional)) {
+    return { rotulo: papelProfissional + ' (' + profissional + ')', tipo: papelProfissional, identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(profissional) };
+  }
+  if (lead && audV3RotuloPareceNome_(bruto, lead)) {
+    return { rotulo: 'LEAD (' + lead + ')', tipo: 'LEAD', identificado: true, corrigido: audV3NormalizarTrechoRastreavel_(bruto) !== audV3NormalizarTrechoRastreavel_(lead) };
+  }
+  return { rotulo: 'PARTICIPANTE (' + bruto.slice(0, 60) + ')', tipo: 'OUTRO', identificado: false, corrigido: false };
+}
+
+// Compatibilidade criptografica para auditorias geradas antes da normalizacao v2.
+// Esse caminho deve reproduzir o reconhecedor de locutor vigente no motor 6.0/6.1
+// para que a aprovacao compare o hash contra a mesma fonte historica, sem bypass.
 function audV3NormalizarTranscricaoTextoLegado_(texto, interacao) {
   const original = String(texto || '').replace(/\r\n?/g, '\n').trim();
   if (!original) return { texto: '', turnos: [], metricas: { linhas: 0, turnos: 0, semRotulo: 0, rotulosDesconhecidos: 0, rotulosCorrigidos: 0, duplicadasRemovidas: 0, continuacoesUnidas: 0 } };
@@ -2798,7 +2827,7 @@ function audV3NormalizarTranscricaoTextoLegado_(texto, interacao) {
     const match = linha.match(/^(\[[^\]]{1,24}\]\s*)?([^:\n]{1,80}):\s*(.+)$/);
     if (match) {
       const timestamp = String(match[1] || '').trim();
-      const info = audV3NormalizarRotuloLocutor_(match[2], interacao || {});
+      const info = audV3NormalizarRotuloLocutorLegadoV1_(match[2], interacao || {});
       const fala = String(match[3] || '').replace(/\s+/g, ' ').trim();
       if (!fala) return;
       if (!info.identificado) metricas.rotulosDesconhecidos += 1;
