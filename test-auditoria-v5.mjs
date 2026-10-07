@@ -575,7 +575,7 @@ assert.ok(
 );
 assert.ok(audit.includes('function audV3ResolverFonteHashAuditoria_'), 'Integridade não possui resolvedor do snapshot exato usado na geração.');
 assert.ok(audit.includes("'SNAPSHOT_NORMALIZADO_PERSISTIDO'"), 'Aprovação não tenta primeiro o conteúdo normalizado persistido usado no hash.');
-assert.ok(audit.includes('const fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação não valida a auditoria contra o snapshot persistido.');
+assert.ok(audit.includes('fonteIntegridade = audV3ResolverFonteHashAuditoria_('), 'A aprovação perdeu o fallback de reconstrução do snapshot persistido.');
 assert.ok(audit.includes('function audV3PrepararTranscricaoPersistidaValidada_'), 'Integridade nao possui fonte canonica persistida compartilhada.');
 assert.ok(
   audit.includes('function audV3HashFonteSnapshotPersistido_'),
