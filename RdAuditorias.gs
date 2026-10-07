@@ -248,6 +248,10 @@ function audRdCtx_(id) {
   transcricao.NORMALIZACAO_VERSAO = fonteIntegridade.normalizacaoVersao || '';
 
   var resultado = audV3ParseJson_(a.RESULTADO_JSON, 'Resultado JSON inválido.');
+  var hashResultado = String(a.HASH_RESULTADO || '').trim();
+  if (hashResultado && hashResultado !== audV3HashResultado_(resultado)) {
+    throw new Error('O resultado aprovado foi alterado depois da validação. Gere uma nova auditoria antes de enviar ao RD CRM.');
+  }
   var criterios = audV3ParseJson_(String(a.CRITERIOS_SNAPSHOT_JSON || '{}'), 'Critérios da auditoria inválidos.');
   audV3ValidarResultadoOficial_(resultado, a.TIPO_AUDITORIA, criterios, transcricao.CONTEUDO, a.CONTEUDO_PITCH_SNAPSHOT || '');
   audV3ExigirGatePublicavel_(resultado, a.TIPO_AUDITORIA);
@@ -271,7 +275,7 @@ function audRdCtx_(id) {
     volum: audRdUsuarioVolum_(token, it)
   };
 }
-function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO','RD_TEXTO_APROVADO','RD_TEXTO_APROVADO_EM']);}
+function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO','RD_TEXTO_APROVADO','RD_TEXTO_APROVADO_EM','HASH_RESULTADO']);}
 function audRdDeal_(i){var item=i||{},tipoInteracao=String(item.TIPO_INTERACAO||'').toUpperCase(),l=String(item.LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];if(tipoInteracao==='REUNIAO')return'';m=String(item.DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}
@@ -738,7 +742,17 @@ function audRdTextoCloserCanonico_(c) {
     return texto.length > limite ? texto.slice(0, limite - 1).trim() + '…' : texto;
   };
   var dimensoes = criterios.slice(0, 5).map(function(item) {
-    return '- ' + String((item || {}).nome || (item || {}).id || 'Dimensão') + ': ' + audRdRotuloPublico_((item || {}).status);
+    var nota = (item || {}).pontuacao;
+    return '- ' + String((item || {}).nome || (item || {}).id || 'Dimensão') + ': ' +
+      (nota != null && nota !== '' ? String(nota) + '/5 | ' : '') + audRdRotuloPublico_((item || {}).status);
+  });
+  var fortes = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && Number(item.pontuacao) >= 4.5;
+  }).slice(0, 2).map(function(item) { return '- ' + curtoCanonico(item.nome, 100); });
+  var lacunas = criterios.filter(function(item) {
+    return item && item.aplicavel !== false && Number(item.pontuacao) < 4.5;
+  }).sort(function(a, b) { return Number(a.pontuacao || 0) - Number(b.pontuacao || 0); }).slice(0, 3).map(function(item) {
+    return '- ' + curtoCanonico(item.nome + ': ' + (item.divergencia || item.justificativa_nota || 'requer melhoria'), 240);
   });
   var mapaLinhas = [
     ['Dor', mapa.dor_principal], ['Impacto operacional', mapa.impacto_operacional],
@@ -757,6 +771,12 @@ function audRdTextoCloserCanonico_(c) {
     '',
     'DIMENSÕES OFICIAIS',
     dimensoes.length ? dimensoes.join(n) : '- Não evidenciado',
+    '',
+    'PONTOS FORTES',
+    fortes.length ? fortes.join(n) : '- Nenhuma dimensão plenamente atingida.',
+    '',
+    'LACUNAS PRIORITÁRIAS',
+    lacunas.length ? lacunas.join(n) : '- Nenhuma lacuna prioritária identificada.',
     '',
     'MAPA DA OPORTUNIDADE',
     mapaLinhas.join(n),

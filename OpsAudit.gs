@@ -423,10 +423,17 @@ function opsCriarReparoDeterministico_(base, interacao) {
     VERSAO_MODELO_SNAPSHOT: modelo.VERSAO_MODELO,
     CRITERIOS_SNAPSHOT_JSON: modelo.CRITERIOS_JSON,
     RESULTADO_JSON: JSON.stringify(resultado),
+    SCORES_DIMENSOES_JSON: JSON.stringify((resultado.criterios_avaliados || []).map(function(item) {
+      return { id: item.id, nome: item.nome, status: item.status, aplicavel: item.aplicavel, nota: item.pontuacao, justificativa: item.justificativa_nota };
+    })),
+    SCORES_SUBCRITERIOS_JSON: tipo === 'CLOSER' ? JSON.stringify(resultado.subcriterios || []) : '',
+    MAPA_OPORTUNIDADE_JSON: tipo === 'CLOSER' ? JSON.stringify(resultado.mapa_oportunidade || {}) : '',
+    SCORE_SCHEMA_VERSAO: tipo === 'CLOSER' ? '6.1' : '5.0',
     ITENS_AVALIADOS: Number(pc.itens_avaliados || 0),
     ITENS_NA: Number(pc.itens_na || 0),
     DURACAO_PROCESSAMENTO_MS: 0,
     HASH_FONTE: hashFonte,
+    HASH_RESULTADO: audV3HashResultado_(resultado),
     MODELO_IA: 'REPARO_DETERMINISTICO_SEM_IA',
     ENGINE_VERSAO: audV3VersaoPersistida_(),
     VALIDACAO_STATUS: String((gate || {}).status || '').toUpperCase() === 'BLOQUEADO' ? 'BLOQUEADA' : 'VALIDADA',
