@@ -8065,15 +8065,14 @@ function audV3FilaAutomacaoLigacoes_(config, dados) {
       transcricoes[String(item.ID_INTERACAO)] = item;
     }
   });
-  const interacoesPorId = {};
-  interacoesElegiveis.forEach(function(item) {
-    interacoesPorId[String(item.ID_INTERACAO || '')] = item;
-  });
   const auditoriasValidas = {};
   audV3FiltrarAuditoriasVisiveisOperacao_(dados.auditorias || audV3Ler_('AUDITORIAS')).forEach(function(item) {
     const idInteracao = String(item.ID_INTERACAO || '');
-    const interacao = interacoesPorId[idInteracao] || {};
-    const reprocessarErroAutomatico = String(interacao.STATUS_AUDITORIA || '').toUpperCase() === 'ERRO_AUTOMACAO' &&
+    const erroAutomatico = estadoErros[idInteracao] || {};
+    // Um lote pode expirar depois de marcar a interação como PROCESSANDO_AUTOMATICO.
+    // Enquanto o erro persistido não for limpo por uma conclusão bem-sucedida,
+    // uma auditoria EM_REVISAO não pode esconder essa interação da fila de retry.
+    const reprocessarErroAutomatico = Number(erroAutomatico.tentativas || 0) > 0 &&
       String(item.STATUS || '').toUpperCase() === 'EM_REVISAO';
     if (idsElegiveis[idInteracao] && !reprocessarErroAutomatico &&
         ['EM_REVISAO', 'APROVADA'].indexOf(String(item.STATUS || '').toUpperCase()) >= 0 &&

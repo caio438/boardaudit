@@ -26,5 +26,7 @@ assert.match(source, /retry in\\s\*/);
 assert.match(source, /audV3LimiteTentativasErro_\(registro\)/);
 assert.match(source, /SUBSTITUIDA_REGERACAO_AUTO/);
 assert.match(source, /evitarDuplicidade: false/);
+assert.match(source, /Number\(erroAutomatico\.tentativas \|\| 0\) > 0/);
+assert.match(source, /PROCESSANDO_AUTOMATICO/);
 
 console.log('Retry controlado de ERRO_AUTOMACAO validado sem perder os cinco horarios automaticos.');
