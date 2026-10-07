@@ -63,14 +63,45 @@ const FORMALIZACAO_NOTURNA_CONFIG = Object.freeze({
   horaFim: 7,
   minutoInicio: 15,
   intervaloMs: 60 * 60 * 1000,
-  limitePorHora: 1,
+  limitePorHora: 3,
   diasBusca: 30,
   esperaAposErroMs: 6 * 60 * 60 * 1000,
   chaveUltimaExecucao: 'FORMALIZACAO_NOTURNA_ULTIMA_EXECUCAO',
   chaveUltimoResultado: 'FORMALIZACAO_NOTURNA_ULTIMO_RESULTADO',
   chaveFalhasFila: 'FORMALIZACAO_NOTURNA_FALHAS_FILA',
-  chaveRecuperacaoAtiva: 'FORMALIZACAO_RECUPERACAO_ATIVA'
+  chaveRecuperacaoAtiva: 'FORMALIZACAO_RECUPERACAO_ATIVA',
+  chaveLiberacaoTemporariaAte: 'FORMALIZACAO_TEMPORARIA_LIBERADA_ATE',
+  liberacaoTemporariaAtePadrao: '2026-10-11'
 });
+
+function jornadaFormalizacaoTemporariaAtiva_() {
+  const ativa = String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM';
+  const ate = String(obterConfiguracao_(FORMALIZACAO_NOTURNA_CONFIG.chaveLiberacaoTemporariaAte) || '').trim();
+  if (!ativa || !ate) return false;
+  const hoje = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
+  return hoje <= ate;
+}
+
+function jornadaFormalizacaoPermitida_() {
+  return !boardModoManual_() || jornadaFormalizacaoTemporariaAtiva_();
+}
+
+function jornadaDesativarFormalizacaoTemporariaSeExpirada_() {
+  const ate = String(obterConfiguracao_(FORMALIZACAO_NOTURNA_CONFIG.chaveLiberacaoTemporariaAte) || '').trim();
+  if (!ate) return false;
+  const hoje = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
+  if (hoje <= ate) return false;
+
+  salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'NAO');
+  salvarConfiguracao_(FORMALIZACAO_NOTURNA_CONFIG.chaveLiberacaoTemporariaAte, '');
+  jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
+  registrarLog_(
+    'JORNADA',
+    'DESATIVAR_FORMALIZACAO_TEMPORARIA',
+    'Janela temporaria encerrada em ' + ate + '; automacao de formalizacoes desligada.'
+  );
+  return true;
+}
 
 function jornadaChaveFilaFormalizacao_(reuniao) {
   return String(reuniao.ID_TRANSCRICAO || reuniao.ID_INTERACAO || reuniao.ID_REUNIAO || '').trim();
@@ -481,6 +512,43 @@ function instalarAutomacaoJornadaCliente() {
   };
 }
 
+function ATIVAR_FORMALIZACOES_TEMPORARIAS_SEMANA() {
+  const hoje = Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd');
+  const ate = FORMALIZACAO_NOTURNA_CONFIG.liberacaoTemporariaAtePadrao;
+  if (hoje > ate) {
+    throw new Error('A janela temporaria de formalizacoes terminou em ' + ate + '.');
+  }
+
+  salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'SIM');
+  salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave, hoje);
+  salvarConfiguracao_(FORMALIZACAO_NOTURNA_CONFIG.chaveLiberacaoTemporariaAte, ate);
+
+  const instalada = instalarAutomacaoFormalizacoesAgenda_();
+  const triggers = ScriptApp.getProjectTriggers().map(function(trigger) {
+    return String(trigger.getHandlerFunction() || '');
+  });
+
+  const diarios = triggers.filter(function(handler) {
+    return handler === FORMALIZACAO_NOTURNA_CONFIG.handlerDiario;
+  }).length;
+  const continuacoes = triggers.filter(function(handler) {
+    return handler === FORMALIZACAO_NOTURNA_CONFIG.handlerContinuacao;
+  }).length;
+
+  return {
+    sucesso: Boolean(instalada) && diarios === 1,
+    modoBoard: BOARD_MODE,
+    formalizacaoAutomatica: true,
+    liberacaoTemporariaAte: ate,
+    limitePorExecucao: FORMALIZACAO_NOTURNA_CONFIG.limitePorHora,
+    horarios: jornadaHorariosFormalizacaoNoturna_(),
+    maximoNominalPorMadrugada:
+      jornadaHorariosFormalizacaoNoturna_().length * FORMALIZACAO_NOTURNA_CONFIG.limitePorHora,
+    triggerDiario: diarios,
+    triggersContinuacao: continuacoes
+  };
+}
+
 function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
   if (boardModoManual_()) {
     jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
@@ -498,12 +566,13 @@ function INSTALAR_FORMALIZACOES_AUTOMATICAS_AGENDA() {
     sucesso: true,
     inicio: String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave) || ''),
     horarios: jornadaHorariosFormalizacaoNoturna_(),
-    mensagem: 'Fila noturna instalada: uma formalização por hora, entre 00:15 e 07:15.'
+    mensagem: 'Fila noturna instalada: ate ' + FORMALIZACAO_NOTURNA_CONFIG.limitePorHora + ' formalizacoes por execucao, entre 00:15 e 07:15.'
   };
 }
 
 function instalarAutomacaoFormalizacoesAgenda_() {
-  if (boardModoManual_()) {
+  jornadaDesativarFormalizacaoTemporariaSeExpirada_();
+  if (!jornadaFormalizacaoPermitida_()) {
     jornadaRemoverAcionadoresFormalizacaoNoturna_(true);
     salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'NAO');
     return false;
@@ -524,7 +593,13 @@ function instalarAutomacaoFormalizacoesAgenda_() {
     .nearMinute(FORMALIZACAO_NOTURNA_CONFIG.minutoInicio)
     .inTimezone(APP.timezone)
     .create();
-  registrarLog_('JORNADA', 'INSTALAR_FORMALIZACAO_NOTURNA', 'Fila noturna instalada entre 00:15 e 07:15, com uma formalização por hora.');
+  registrarLog_(
+    'JORNADA',
+    'INSTALAR_FORMALIZACAO_NOTURNA',
+    'Fila noturna instalada entre 00:15 e 07:15, com ate ' +
+      FORMALIZACAO_NOTURNA_CONFIG.limitePorHora + ' formalizacoes por execucao.'
+  );
+  return true;
 }
 
 function jornadaAutomacaoFormalizacoesInstalada_() {
@@ -551,7 +626,8 @@ function jornadaRemoverAcionadoresFormalizacaoNoturna_(incluirDiario) {
 }
 
 function jornadaAgendarProximaFormalizacaoNoturna_() {
-  if (boardModoManual_()) {
+  jornadaDesativarFormalizacaoTemporariaSeExpirada_();
+  if (!jornadaFormalizacaoPermitida_()) {
     jornadaRemoverAcionadoresFormalizacaoNoturna_(false);
     return false;
   }
@@ -605,26 +681,35 @@ function iniciarRecuperacaoFormalizacoesAtrasadas() {
     restantes: Number(resultado.restantes || 0),
     erros: resultado.erros || [],
     mensagem: resultado.geradas
-      ? 'A primeira formalização atrasada foi preparada. A fila seguirá uma por hora até zerar.'
+      ? 'O primeiro lote de formalizacoes atrasadas foi preparado. A fila seguira em lotes de ate ' + FORMALIZACAO_NOTURNA_CONFIG.limitePorHora + ' por execucao ate zerar.'
       : ((resultado.erros || []).length
         ? 'A fila foi encontrada, mas a primeira formalização falhou: ' + String(resultado.erros[0] || '')
-        : (resultado.restantes ? 'A regularização foi iniciada e seguirá uma por hora.' : 'Não há formalizações atrasadas elegíveis na fila.')),
+        : (resultado.restantes ? 'A regularizacao foi iniciada e seguira em lotes de ate ' + FORMALIZACAO_NOTURNA_CONFIG.limitePorHora + ' por execucao.' : 'Não há formalizações atrasadas elegíveis na fila.')),
     diagnostico: resultado.diagnostico || {}
   };
 }
 
 function EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA() {
-  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA');
+  if (jornadaDesativarFormalizacaoTemporariaSeExpirada_()) {
+    return { sucesso: true, ignorada: true, encerrada: true, mensagem: 'Janela temporaria de formalizacoes encerrada.' };
+  }
+  if (!jornadaFormalizacaoPermitida_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_AGENDA');
   return jornadaExecutarFormalizacaoNoturna_(true);
 }
 
 function EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO() {
-  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO');
+  if (jornadaDesativarFormalizacaoTemporariaSeExpirada_()) {
+    return { sucesso: true, ignorada: true, encerrada: true, mensagem: 'Janela temporaria de formalizacoes encerrada.' };
+  }
+  if (!jornadaFormalizacaoPermitida_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO');
   return jornadaExecutarFormalizacaoNoturna_(false);
 }
 
 function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
-  if (boardModoManual_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA');
+  if (jornadaDesativarFormalizacaoTemporariaSeExpirada_()) {
+    return { sucesso: true, ignorada: true, encerrada: true, mensagem: 'Janela temporaria de formalizacoes encerrada.' };
+  }
+  if (!jornadaFormalizacaoPermitida_()) return boardRespostaManual_('EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA');
   opcoes = opcoes || {};
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return { sucesso: false, mensagem: 'Outra rotina de formalização já está em andamento.' };
