@@ -44,9 +44,9 @@ assert.ok(front.includes('aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAudit
 assert.ok(rd.includes("status: 'AGUARDANDO_VINCULO'"), 'Auditoria sem vínculo do RD não fica aguardando o vínculo automaticamente.');
 assert.ok(rd.includes('function audRdUsuarioVolum_'), 'RD não possui resolução configurável do usuário VOLUM por integração.');
 assert.ok(rd.includes('rdAuditoriaUsuarioVolumId'), 'RD não permite mapear o usuário VOLUM por ID na integração do cliente.');
-assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) >= 0"), 'Salvar o vínculo precisa disparar publicação automática para SDR e Closer aprovados.');
+assert.ok(rd.includes("['SDR', 'CLOSER'].indexOf(tipoAuditoria) >= 0") && rd.includes("!audRdBloqueioCanonicoCloser_(a)"), 'Salvar vínculo SDR continua publicando; Closer deve aguardar o Canônico.');
 assert.ok(!rd.includes("'AGUARDANDO_ENVIO_MANUAL'"), 'Closer vinculado não pode permanecer artificialmente aguardando envio manual.');
-assert.ok(audit.includes("['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_"), 'Finalização automática precisa publicar SDR e Closer no RD.');
+assert.ok(audit.includes("tipo === 'SDR' && typeof audRdPublicarAutomaticamente_") && audit.includes("CONCLUIDA_AGUARDANDO_CANONICO"), 'A finalização automática deve publicar somente SDR; Closer aguarda Canônico sem RD.');
 assert.ok(rd.includes("if(tipoInteracao==='REUNIAO')return'';"), 'Reuniões não estão protegidas contra inferência automática de negociação pelo texto de origem.');
 assert.ok(front.includes('o vínculo permite publicar automaticamente a auditoria aprovada no RD'), 'A interface não informa o envio automático após vínculo e aprovação.');
 assert.ok(front.includes('Em ligações, use somente quando o RD/API4COM não trouxer a negociação automaticamente.'), 'A interface não preserva o fallback manual das ligações sem vínculo automático.');
