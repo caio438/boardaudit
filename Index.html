@@ -759,6 +759,86 @@
     .muted { color: var(--muted); }
     .small { font-size: 12px; }
 
+
+    /* Estado visível de ações com processamento assíncrono. Sem percentual fictício. */
+    button.board-processing, input.board-processing {
+      position: relative;
+      overflow: hidden;
+      cursor: progress;
+    }
+    button.board-processing::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 36%;
+      height: 3px;
+      border-radius: 4px;
+      background: #26a69a;
+      pointer-events: none;
+      animation: boardProgressIndeterminate 1.45s ease-in-out infinite;
+    }
+    @keyframes boardProgressIndeterminate {
+      from { transform: translateX(-105%); }
+      to { transform: translateX(285%); }
+    }
+    .board-operation-panel {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 995;
+      width: min(420px, calc(100vw - 36px));
+      padding: 16px 18px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      font-size: 13px;
+    }
+    .board-operation-panel[hidden] { display: none !important; }
+    .board-operation-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; margin-bottom: 7px; }
+    .board-operation-head strong { overflow-wrap: anywhere; font-size: 14px; }
+    .board-operation-time { color: var(--muted); white-space: nowrap; font-size: 12px; }
+    .board-operation-status { color: var(--muted); margin-bottom: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+    .board-operation-track {
+      width: 100%;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .board-operation-track-fill {
+      display: block;
+      height: 100%;
+      width: 36%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #157f70, #31c4b0);
+      animation: boardProgressIndeterminate 1.45s ease-in-out infinite;
+    }
+    .board-operation-track.done .board-operation-track-fill {
+      animation: none;
+      transform: none;
+      width: 100%;
+      background: var(--success);
+    }
+    .board-operation-track.error .board-operation-track-fill {
+      animation: none;
+      transform: none;
+      width: 100%;
+      background: var(--danger);
+    }
+    .board-operation-track.warning .board-operation-track-fill { background: var(--warning); }
+    .board-operation-panel.error .board-operation-status { color: var(--danger); }
+    .board-operation-panel.warning .board-operation-status { color: var(--warning); }
+    .board-operation-subtitle { font-size: 12px; margin-top: 9px; color: var(--muted); }
+    .loading-box .board-operation-track { margin-top: 14px; }
+    .loading-box .board-operation-subtitle { font-weight: 400; }
+    @media (prefers-reduced-motion: reduce) {
+      button.board-processing::after, .board-operation-track-fill { animation-duration: 3s; }
+    }
+
     .loading {
       position: fixed;
       inset: 0;
@@ -2933,13 +3013,24 @@
   </div>
 
   <div id="loading" class="loading">
-    <div class="loading-box">
+    <div class="loading-box" role="status" aria-live="polite">
       <div id="loadingTexto">Processando...</div>
+      <div class="board-operation-track" role="progressbar" aria-label="Processamento em andamento, progresso indeterminado"><span class="board-operation-track-fill"></span></div>
+      <div class="board-operation-subtitle">Aguardando retorno do servidor. A barra indica atividade, não uma porcentagem estimada.</div>
       <button id="loadingDestravar" class="btn secondary" type="button" onclick="esconderLoading()" style="display:none;margin-top:14px;width:100%">Destravar tela</button>
     </div>
   </div>
 
   <div id="toast" class="toast"></div>
+  <div id="boardOperationProgress" class="board-operation-panel" role="status" aria-live="polite" aria-atomic="false" hidden>
+    <div class="board-operation-head">
+      <strong id="boardOperationTitle">Processando ação</strong>
+      <span id="boardOperationElapsed" class="board-operation-time" aria-hidden="true">0s</span>
+    </div>
+    <div id="boardOperationStatus" class="board-operation-status">Aguardando resposta do servidor...</div>
+    <div id="boardOperationTrack" class="board-operation-track" role="progressbar" aria-label="Aguardando confirmação do servidor; progresso indeterminado"><span class="board-operation-track-fill"></span></div>
+    <div id="boardOperationSubtitle" class="board-operation-subtitle">Você verá aqui quando o servidor responder.</div>
+  </div>
 
   <script>
     const AUDIT_BUILD_ATUAL = String(document.querySelector('meta[name="audit-build"]')?.content || '');
@@ -2947,7 +3038,7 @@
 
     function verificarNovaVersaoAudit_() {
       if (auditBuildRecarregando || !AUDIT_BUILD_ATUAL || !window.google || !google.script || !google.script.run) return;
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(function(build) {
           const idServidor = String((build || {}).id || '');
           if (!idServidor || idServidor === AUDIT_BUILD_ATUAL || auditBuildRecarregando) return;
@@ -3297,6 +3388,7 @@
       ativarBlocosExpansiveis();
       ativarCarregamentoSobDemanda_();
       ativarProtecaoCliqueDuplicado_();
+      instalarProgressoBoard_();
       document.querySelectorAll('details').forEach(bloco => {
         bloco.open = false;
       });
@@ -3328,7 +3420,7 @@
       botao.textContent = 'Verificando...';
       mensagem.textContent = '';
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(retorno => {
           botao.disabled = false;
           botao.textContent = 'Entrar';
@@ -3428,6 +3520,227 @@
         return carregarIntegracoesConfiguracao_(forcar);
       }
     }
+
+
+    // BEGIN_BOARD_OPERATION_PROGRESS
+    // Cada chamada originada de um clique é acompanhada até o retorno do Apps Script.
+    // Leituras de fundo permanecem inalteradas; não estimamos percentuais no cliente.
+    const operacoesBoard_ = new Map();
+    let cliqueOperacaoBoard_ = null;
+    let contextoOperacaoBoard_ = null;
+    let relogioOperacoesBoard_ = null;
+    let sequenciaOperacaoBoard_ = 0;
+
+    function iniciarCliqueOperacaoBoard_(botao) {
+      if (!botao) return null;
+      const rotulo = String(botao.getAttribute('aria-label') || botao.textContent || botao.value || 'Processamento')
+        .replace(/\s+/g, ' ').trim().slice(0, 100) || 'Processamento';
+      const acao = {
+        id: ++sequenciaOperacaoBoard_, botao: botao, rotulo: rotulo,
+        iniciadaEm: Date.now(), pendentes: 0, chamadas: 0,
+        exibida: false, erro: '', alerta: false, estado: 'iniciando',
+        timerFechamento: null, timerRemocao: null,
+        ariaBusyOriginal: botao.getAttribute('aria-busy')
+      };
+      cliqueOperacaoBoard_ = acao;
+      setTimeout(function() {
+        if (cliqueOperacaoBoard_ === acao) cliqueOperacaoBoard_ = null;
+      }, 0);
+      return acao;
+    }
+
+    function instalarProgressoBoard_() {
+      document.addEventListener('click', function(evento) {
+        const alvo = evento.target;
+        const botao = alvo && alvo.closest
+          ? alvo.closest('button, input[type="button"], input[type="submit"]')
+          : null;
+        if (!botao) return;
+        const anterior = operacoesBoard_.get(botao);
+        if (anterior && anterior.pendentes > 0) {
+          evento.preventDefault();
+          evento.stopImmediatePropagation();
+          mostrarToast('Esta ação continua em andamento. Aguarde a resposta do servidor.', 'warning');
+          return;
+        }
+        iniciarCliqueOperacaoBoard_(botao);
+      }, true);
+      document.addEventListener('submit', function(evento) {
+        const formulario = evento.target;
+        const botao = evento.submitter || (formulario && formulario.querySelector
+          ? formulario.querySelector('button[type="submit"], input[type="submit"]')
+          : null);
+        if (botao && (!cliqueOperacaoBoard_ || cliqueOperacaoBoard_.botao !== botao)) {
+          iniciarCliqueOperacaoBoard_(botao);
+        }
+      }, true);
+    }
+
+    function atualizarPainelOperacoesBoard_() {
+      const painel = document.getElementById('boardOperationProgress');
+      if (!painel) return;
+      const lista = Array.from(operacoesBoard_.values()).filter(function(acao) { return acao.exibida; });
+      if (!lista.length) {
+        painel.hidden = true;
+        if (relogioOperacoesBoard_) {
+          clearInterval(relogioOperacoesBoard_);
+          relogioOperacoesBoard_ = null;
+        }
+        return;
+      }
+      const pendentes = lista.filter(function(acao) { return acao.pendentes > 0; });
+      const acao = (pendentes.length ? pendentes : lista).sort(function(a, b) { return b.id - a.id; })[0];
+      const segundos = Math.floor((Date.now() - acao.iniciadaEm) / 1000);
+      const status = document.getElementById('boardOperationStatus');
+      const titulo = document.getElementById('boardOperationTitle');
+      const tempo = document.getElementById('boardOperationElapsed');
+      const faixa = document.getElementById('boardOperationTrack');
+      const detalhe = document.getElementById('boardOperationSubtitle');
+      painel.hidden = false;
+      painel.classList.toggle('error', acao.estado === 'erro');
+      painel.classList.toggle('warning', acao.pendentes > 0 && segundos >= 90);
+      faixa.classList.toggle('done', acao.estado === 'respondida');
+      faixa.classList.toggle('error', acao.estado === 'erro');
+      faixa.classList.toggle('warning', acao.pendentes > 0 && segundos >= 90);
+      titulo.textContent = acao.rotulo;
+      tempo.textContent = segundos < 60 ? segundos + 's' : Math.floor(segundos / 60) + 'm ' + String(segundos % 60).padStart(2, '0') + 's';
+      if (acao.estado === 'erro') {
+        status.textContent = 'Falha no processamento: ' + acao.erro;
+      } else if (acao.estado === 'respondida') {
+        status.textContent = acao.alerta ? 'Resposta recebida com avisos. Confira o resultado na tela.' : 'Resposta recebida do servidor. Confira o resultado na tela.';
+      } else if (segundos >= 90 && acao.pendentes > 0) {
+        status.textContent = 'Aguardando retorno há mais de 90 segundos. A operação ainda não foi confirmada.';
+      } else if (acao.pendentes > 0) {
+        status.textContent = 'Processando no servidor · ' + acao.pendentes + (acao.pendentes === 1 ? ' solicitação em andamento.' : ' solicitações em andamento.');
+      } else {
+        status.textContent = 'Resposta recebida; atualizando a interface...';
+      }
+      detalhe.textContent = pendentes.length > 1
+        ? pendentes.length + ' ações em andamento. Cada botão mantém sua própria barra.'
+        : (acao.pendentes > 0
+          ? 'Barra animada: progresso indeterminado até a confirmação do servidor.'
+          : 'O botão foi liberado após a resposta.');
+    }
+
+    function ativarOperacaoBoard_(acao) {
+      if (!acao) return;
+      clearTimeout(acao.timerFechamento);
+      clearTimeout(acao.timerRemocao);
+      acao.estado = 'processando';
+      if (!acao.exibida) {
+        acao.exibida = true;
+        operacoesBoard_.set(acao.botao, acao);
+        if (acao.botao && acao.botao.classList) {
+          acao.botao.classList.add('board-processing');
+          acao.botao.setAttribute('aria-busy', 'true');
+        }
+      }
+      if (!relogioOperacoesBoard_) {
+        relogioOperacoesBoard_ = setInterval(atualizarPainelOperacoesBoard_, 1000);
+      }
+      atualizarPainelOperacoesBoard_();
+    }
+
+    function encerrarOperacaoBoard_(acao) {
+      if (!acao || acao.pendentes > 0) return;
+      clearTimeout(acao.timerFechamento);
+      acao.timerFechamento = setTimeout(function() {
+        if (acao.pendentes > 0) return;
+        acao.estado = acao.erro ? 'erro' : 'respondida';
+        const botao = acao.botao;
+        if (botao && botao.classList) {
+          botao.classList.remove('board-processing');
+          if (acao.ariaBusyOriginal === null) botao.removeAttribute('aria-busy');
+          else botao.setAttribute('aria-busy', acao.ariaBusyOriginal);
+        }
+        atualizarPainelOperacoesBoard_();
+        acao.timerRemocao = setTimeout(function() {
+          if (operacoesBoard_.get(botao) === acao) operacoesBoard_.delete(botao);
+          acao.exibida = false;
+          atualizarPainelOperacoesBoard_();
+        }, acao.erro ? 6500 : 2500);
+      }, 650);
+    }
+
+    function registrarRespostaOperacaoBoard_(acao, retorno, erro) {
+      if (!acao) return;
+      if (erro) acao.erro = String(erro.message || erro);
+      else if (retorno && (retorno.sucesso === false || retorno.ok === false)) {
+        acao.erro = String(retorno.mensagem || retorno.erro || 'O servidor informou que a operação não foi concluída.');
+      } else if (retorno && Array.isArray(retorno.erros) && retorno.erros.length) {
+        acao.alerta = true;
+      }
+      acao.pendentes = Math.max(0, acao.pendentes - 1);
+      if (acao.pendentes === 0) encerrarOperacaoBoard_(acao);
+      atualizarPainelOperacoesBoard_();
+    }
+
+    // Preserva o runner original fora de cliques, sem interferir nas cargas em segundo plano.
+    function runnerBoardComProgresso_() {
+      // Confirmações do navegador bloqueiam o relógio, mas permanecem no mesmo clique.
+      const acao = contextoOperacaoBoard_ || cliqueOperacaoBoard_;
+      if (!acao) return google.script.run;
+      function acompanharRunner(runner) {
+        return new Proxy(runner, {
+          get: function(alvo, propriedade) {
+            if (propriedade === 'withSuccessHandler') return function(handler) {
+              return acompanharRunner(alvo.withSuccessHandler(function(retorno) {
+                const anterior = contextoOperacaoBoard_;
+                contextoOperacaoBoard_ = acao;
+                let erroCallback = null;
+                try {
+                  if (typeof handler === 'function') return handler.apply(this, arguments);
+                } catch (erro) {
+                  erroCallback = erro;
+                  throw erro;
+                } finally {
+                  registrarRespostaOperacaoBoard_(acao, retorno, erroCallback);
+                  queueMicrotask(function() {
+                    if (contextoOperacaoBoard_ === acao) contextoOperacaoBoard_ = anterior;
+                  });
+                }
+              }));
+            };
+            if (propriedade === 'withFailureHandler') return function(handler) {
+              return acompanharRunner(alvo.withFailureHandler(function(erro) {
+                const anterior = contextoOperacaoBoard_;
+                contextoOperacaoBoard_ = acao;
+                try {
+                  if (typeof handler === 'function') return handler.apply(this, arguments);
+                } finally {
+                  registrarRespostaOperacaoBoard_(acao, null, erro || new Error('O servidor não respondeu.'));
+                  queueMicrotask(function() {
+                    if (contextoOperacaoBoard_ === acao) contextoOperacaoBoard_ = anterior;
+                  });
+                }
+              }));
+            };
+            if (propriedade === 'withUserObject') return function(objeto) {
+              return acompanharRunner(alvo.withUserObject(objeto));
+            };
+            const metodo = Reflect.get(alvo, propriedade);
+            if (typeof metodo !== 'function') return metodo;
+            return function() {
+              // O progresso detalhado da auditoria tem sua própria barra e polling.
+              if (propriedade === 'obterProgressoAuditoriaV3') {
+                return metodo.apply(alvo, arguments);
+              }
+              acao.chamadas++;
+              acao.pendentes++;
+              ativarOperacaoBoard_(acao);
+              try {
+                return metodo.apply(alvo, arguments);
+              } catch (erro) {
+                registrarRespostaOperacaoBoard_(acao, null, erro);
+                throw erro;
+              }
+            };
+          }
+        });
+      }
+      return acompanharRunner(google.script.run);
+    }
+    // END_BOARD_OPERATION_PROGRESS
 
     function ativarProtecaoCliqueDuplicado_() {
       const acoesComRegistro = /^(salvar|gerar|executar|sincronizar|importar|publicar|registrar|adicionar|excluir|descartar|transcrever|processar|aprovar)/i;
@@ -3549,7 +3862,7 @@
         ultimaOrigem: ''
       });
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => {
           estado.dados = dados;
           document.getElementById('appNome').textContent = dados.app.nome;
@@ -3569,7 +3882,7 @@
     }
 
     function carregarDashboardEmSegundoPlano() {
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => {
           renderizarDashboard(dados.dashboard);
           renderizarAutomacaoRd(dados.automacaoRd);
@@ -3589,7 +3902,7 @@
       if (!forcar && estado.carregado[nome]) return;
 
       if (nome === 'dashboard') {
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             renderizarDashboard(dados.dashboard);
             renderizarAutomacaoRd(dados.automacaoRd);
@@ -3607,7 +3920,7 @@
 
       if (nome === 'clientes') {
         mostrarLoadingLocal('listaClientes', 'Carregando clientes...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             estado.clientes = dados.clientes || [];
             renderizarClientes();
@@ -3623,14 +3936,14 @@
 
       if (nome === 'pitches') {
         mostrarLoadingLocal('listaPitches', 'Carregando pitches...');
-        google.script.run.withSuccessHandler(dados => { estado.clientes=dados.clientes||[]; estado.pitches=dados.pitches||[]; preencherSelectsClientes(); renderizarPitches(); estado.carregado.pitches=true; }).withFailureHandler(erro=>tratarErroLocal('listaPitches',erro)).carregarDadosPitches();
+        runnerBoardComProgresso_().withSuccessHandler(dados => { estado.clientes=dados.clientes||[]; estado.pitches=dados.pitches||[]; preencherSelectsClientes(); renderizarPitches(); estado.carregado.pitches=true; }).withFailureHandler(erro=>tratarErroLocal('listaPitches',erro)).carregarDadosPitches();
         return;
       }
 
       if (nome === 'rd') {
         if (!iniciarCarga_('rd', forcar)) return;
         mostrarLoadingLocal('tabelaResumoRd', 'Carregando resumo do RD...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             estado.clientes = dados.clientes || [];
             estado.resumoRd = dados.resumoRd || [];
@@ -3654,7 +3967,7 @@
       if (nome === 'reunioes') {
         if (!iniciarCarga_('reunioes', forcar)) return;
         mostrarLoadingLocal('tabelaReunioes', 'Carregando reuniões...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             estado.reunioes = dados.reunioes || [];
             renderizarStatusTldv(dados.tldvConfigurado, dados.automacaoTldv);
@@ -3670,7 +3983,7 @@
       if (nome === 'auditorias') {
         if (!iniciarCarga_('auditorias', forcar)) return;
         mostrarLoadingLocal('listaAuditorias','Carregando auditorias...');
-        google.script.run.withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); selecionarEspacoAuditoriaFront_(estado.auditoriaEspaco || 'SDR', true); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
+        runnerBoardComProgresso_().withSuccessHandler(dados=>{ try { aplicarDadosAuditoriaFront_(dados); preencherSelectAuditoriaClientes(); selecionarEspacoAuditoriaFront_(estado.auditoriaEspaco || 'SDR', true); renderizarAuditorias(); concluirCarga_('auditorias', true); aplicarAuditoriaJornadaPendente_(0); aplicarAuditoriaExistenteJornadaPendente_(0); } catch(erro) { falharCarga_('auditorias', 'listaAuditorias', erro); console.error('Falha ao renderizar auditorias V3:', erro); } }).withFailureHandler(erro=>falharCarga_('auditorias', 'listaAuditorias',erro)).carregarDadosAuditoriasV3();
         return;
       }
 
@@ -3682,7 +3995,7 @@
         }
         if (!iniciarCarga_('formalizacoes', Boolean(forcar || cacheLocal))) return;
         if (!cacheLocal) mostrarLoadingLocal('listaFormalizacoes', 'Carregando transcrições...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             aplicarDadosFormalizacoesFront_(dados, false);
             concluirCarga_('formalizacoes', true);
@@ -3703,7 +4016,7 @@
       if (nome === 'tarefasFormalizacoes') {
         if (!iniciarCarga_('tarefasFormalizacoes', forcar)) return;
         mostrarLoadingLocal('tarefasFormalizacoesLista', 'Organizando tarefas das formalizações...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             estado.tarefasFormalizacoes = dados.tarefas || [];
             estado.resumoTarefasFormalizacoes = dados.resumo || {};
@@ -3724,7 +4037,7 @@
       if (nome === 'consumoIa') {
         if (!iniciarCarga_('consumoIa', forcar)) return;
         mostrarLoadingLocal('tabelaConsumoIa', 'Carregando consumo da IA...');
-        google.script.run
+        runnerBoardComProgresso_()
           .withSuccessHandler(dados => {
             estado.consumoIa = dados || {};
             renderizarConsumoIa(estado.consumoIa);
@@ -3767,7 +4080,7 @@
     function carregarClientesConfiguracao_(forcar) {
       if (!iniciarCarga_('configClientes', forcar)) return;
       mostrarLoadingLocal('listaClientesAuditoria', 'Conferindo conexões dos clientes...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => {
           try {
             aplicarDadosAuditoriaFront_(dados);
@@ -3784,7 +4097,7 @@
     function carregarFontesConfiguracao_(forcar) {
       if (!iniciarCarga_('configFontes', forcar)) return;
       mostrarLoadingLocal('formalListaFontes', 'Carregando agendas e pastas...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => {
           if (dados.clientes && dados.clientes.length) estado.clientes = dados.clientes;
           estado.agendaFormalizacao = dados.agenda || {};
@@ -3798,7 +4111,7 @@
 
     function carregarIntegracoesConfiguracao_(forcar) {
       if (!iniciarCarga_('configIntegracoes', forcar)) return;
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => {
           if (dados.clientes && dados.clientes.length) estado.clientes = dados.clientes;
           estado.integracoesClientes = dados.integracoesClientes || [];
@@ -3855,7 +4168,7 @@
       if (estado.carregandoAreaCliente) return;
       estado.carregandoAreaCliente = true;
       mostrarLoadingLocal('areaEntregas', 'Carregando jornada do cliente...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(dados => { estado.carregandoAreaCliente = false; aplicarAreaClienteDados_(dados); })
         .withFailureHandler(erro => { estado.carregandoAreaCliente = false; tratarErroLocal('areaEntregas', erro); })
         .carregarAreaCliente({
@@ -4108,7 +4421,7 @@
       const cliente = dadosArea.cliente || {};
       if (!cliente.idCliente) return mostrarToast('Selecione um cliente.', 'error');
       mostrarLoading('Salvando dados do cliente...');
-      google.script.run.withSuccessHandler(() => { esconderLoading(); estado.carregado.areaCliente = false; carregarAreaClienteFront(true); mostrarToast('Dados gerais atualizados.', 'success'); }).withFailureHandler(tratarErro).salvarCliente({
+      runnerBoardComProgresso_().withSuccessHandler(() => { esconderLoading(); estado.carregado.areaCliente = false; carregarAreaClienteFront(true); mostrarToast('Dados gerais atualizados.', 'success'); }).withFailureHandler(tratarErro).salvarCliente({
         idCliente: cliente.idCliente,
         nomeCliente: cliente.nomeCliente,
         tipoOperacao: document.getElementById('areaPerfilOperacao').value,
@@ -4151,11 +4464,11 @@
       if (!idCliente) return mostrarToast('Selecione um cliente.', 'error');
       const dados = { idCliente, periodo: document.getElementById('areaPeriodo').value, idMembro: document.getElementById('areaMembroId').value, nome: document.getElementById('areaMembroNome').value, papel: document.getElementById('areaMembroPapel').value, email: document.getElementById('areaMembroEmail').value, telefone: document.getElementById('areaMembroTelefone').value, liderId: document.getElementById('areaMembroLider').value, dataInicio: document.getElementById('areaMembroInicio').value, observacoes: document.getElementById('areaMembroObservacoes').value };
       mostrarLoading('Salvando integrante da equipe...');
-      google.script.run.withSuccessHandler(retorno => { esconderLoading(); limparMembroArea_(); aplicarAreaClienteDados_(retorno); mostrarToast('Equipe atualizada.', 'success'); }).withFailureHandler(tratarErro).salvarMembroEquipeCliente(dados);
+      runnerBoardComProgresso_().withSuccessHandler(retorno => { esconderLoading(); limparMembroArea_(); aplicarAreaClienteDados_(retorno); mostrarToast('Equipe atualizada.', 'success'); }).withFailureHandler(tratarErro).salvarMembroEquipeCliente(dados);
     }
 
     function alterarStatusMembroAreaFront(idMembro, ativo) {
-      google.script.run.withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast(ativo ? 'Profissional reativado.' : 'Profissional inativado.', 'success'); }).withFailureHandler(tratarErro).alterarStatusMembroEquipeCliente({ idMembro, ativo, periodo: document.getElementById('areaPeriodo').value });
+      runnerBoardComProgresso_().withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast(ativo ? 'Profissional reativado.' : 'Profissional inativado.', 'success'); }).withFailureHandler(tratarErro).alterarStatusMembroEquipeCliente({ idMembro, ativo, periodo: document.getElementById('areaPeriodo').value });
     }
 
     function renderizarEntregasArea_() {
@@ -4225,7 +4538,7 @@
 
     function validarReuniaoAgendaAreaFront(idEntrega, idReuniao, realizada) {
       mostrarLoading(realizada ? 'Confirmando a realização...' : 'Registrando que a reunião não ocorreu...');
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         esconderLoading();
         aplicarAreaClienteDados_(retorno);
         mostrarToast(realizada ? 'Reunião confirmada como realizada.' : 'Reunião marcada como não realizada.', 'success');
@@ -4273,7 +4586,7 @@
       const idCliente = document.getElementById('areaClienteSelect').value;
       if (!idCliente) return mostrarToast('Selecione o cliente.', 'error');
       mostrarLoading('Salvando as configurações das reuniões...');
-      google.script.run.withSuccessHandler(dados => { esconderLoading(); aplicarAreaClienteDados_(dados); mostrarToast('Configurações salvas e automação ativa.', 'success'); }).withFailureHandler(tratarErro)
+      runnerBoardComProgresso_().withSuccessHandler(dados => { esconderLoading(); aplicarAreaClienteDados_(dados); mostrarToast('Configurações salvas e automação ativa.', 'success'); }).withFailureHandler(tratarErro)
         .salvarConfiguracaoJornadaCliente({ idCliente, periodo: document.getElementById('areaPeriodo').value, calendarioId: document.getElementById('areaCalendarioId').value, urlPastaGravacoes: document.getElementById('areaPastaGravacoes').value, urlPastaTranscricoes: document.getElementById('areaPastaTranscricoes').value, formalizacaoAutomatica: document.getElementById('areaFormalizacaoAutomatica').checked });
     }
 
@@ -4291,7 +4604,7 @@
       const inicio = new Date(agora.getTime() - 14 * 86400000);
       const fim = new Date(agora.getTime() + 86400000);
       mostrarLoading('Buscando reuniões recentes e conferindo gravações e transcrições...');
-      google.script.run.withSuccessHandler(dados => {
+      runnerBoardComProgresso_().withSuccessHandler(dados => {
         esconderLoading();
         if (Array.isArray(dados.reunioes)) {
           estado.areaCliente.reunioes = dados.reunioes;
@@ -4319,19 +4632,19 @@
     function salvarIdentificadoresAreaFront() {
       const idCliente = document.getElementById('areaClienteSelect').value;
       if (!idCliente) return mostrarToast('Selecione um cliente.', 'error');
-      google.script.run.withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Identificadores salvos.', 'success'); }).withFailureHandler(tratarErro)
+      runnerBoardComProgresso_().withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Identificadores salvos.', 'success'); }).withFailureHandler(tratarErro)
         .salvarIdentificadoresCliente({ idCliente, periodo: document.getElementById('areaPeriodo').value, nomes: document.getElementById('areaIdsNomes').value, emails: document.getElementById('areaIdsEmails').value, dominios: document.getElementById('areaIdsDominios').value, titulos: document.getElementById('areaIdsTitulos').value });
     }
 
     function registrarCircleAreaFront(idEntrega) {
       const campo = document.getElementById('area-circle-' + idEntrega);
-      google.script.run.withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Post registrado na jornada.', 'success'); }).withFailureHandler(tratarErro)
+      runnerBoardComProgresso_().withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Post registrado na jornada.', 'success'); }).withFailureHandler(tratarErro)
         .registrarLinkCircleEntregaJornada({ idEntrega, linkCircle: campo ? campo.value : '' });
     }
 
     function salvarTipoReuniaoAreaFront(idReuniao) {
       const campo = document.getElementById('area-tipo-' + idReuniao);
-      google.script.run.withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Classificação da reunião atualizada.', 'success'); }).withFailureHandler(tratarErro)
+      runnerBoardComProgresso_().withSuccessHandler(dados => { aplicarAreaClienteDados_(dados); mostrarToast('Classificação da reunião atualizada.', 'success'); }).withFailureHandler(tratarErro)
         .salvarClassificacaoReuniaoJornada({ idReuniao, tipoReuniao: campo.value, periodo: document.getElementById('areaPeriodo').value });
     }
 
@@ -4343,7 +4656,7 @@
       window.__salvandoDiarioArea = true;
       botao.disabled = true;
       botao.textContent = 'Salvando...';
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         window.__salvandoDiarioArea = false;
         cancelarEdicaoDiarioAreaFront();
         aplicarAreaClienteDados_(retorno);
@@ -4364,7 +4677,7 @@
       window.__salvandoOtimizacaoArea = true;
       botao.disabled = true;
       botao.textContent = 'Salvando...';
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         window.__salvandoOtimizacaoArea = false;
         cancelarEdicaoOtimizacaoAreaFront();
         aplicarAreaClienteDados_(retorno);
@@ -4409,7 +4722,7 @@
     function excluirDiarioAreaFront(idRegistro, botao) {
       if (!window.confirm('Excluir este registro do diário de bordo?')) return;
       if (botao) botao.disabled = true;
-      google.script.run.withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Registro excluído.', 'success'); }).withFailureHandler(erro => { if (botao) botao.disabled = false; tratarErro(erro); }).excluirRegistroDiarioCliente({ idRegistro, periodo: document.getElementById('areaPeriodo').value });
+      runnerBoardComProgresso_().withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Registro excluído.', 'success'); }).withFailureHandler(erro => { if (botao) botao.disabled = false; tratarErro(erro); }).excluirRegistroDiarioCliente({ idRegistro, periodo: document.getElementById('areaPeriodo').value });
     }
 
     function editarOtimizacaoAreaFront(idOtimizacao) {
@@ -4440,12 +4753,12 @@
     function excluirOtimizacaoAreaFront(idOtimizacao, botao) {
       if (!window.confirm('Excluir esta otimização da fila?')) return;
       if (botao) botao.disabled = true;
-      google.script.run.withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Otimização excluída.', 'success'); }).withFailureHandler(erro => { if (botao) botao.disabled = false; tratarErro(erro); }).excluirOtimizacaoCliente({ idOtimizacao, periodo: document.getElementById('areaPeriodo').value });
+      runnerBoardComProgresso_().withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Otimização excluída.', 'success'); }).withFailureHandler(erro => { if (botao) botao.disabled = false; tratarErro(erro); }).excluirOtimizacaoCliente({ idOtimizacao, periodo: document.getElementById('areaPeriodo').value });
     }
 
     function salvarEntregaExternaAreaFront() {
       const dados = { idCliente: document.getElementById('areaClienteSelect').value, periodo: document.getElementById('areaPeriodo').value, tipoEntrega: document.getElementById('areaExternaTipo').value, escopo: document.getElementById('areaExternaEscopo').value, nome: document.getElementById('areaExternaNome').value, linkDocumento: document.getElementById('areaExternaDocumento').value, linkCircle: document.getElementById('areaExternaCircle').value };
-      google.script.run.withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Entrega externa registrada.', 'success'); }).withFailureHandler(tratarErro).registrarEntregaExternaJornada(dados);
+      runnerBoardComProgresso_().withSuccessHandler(retorno => { aplicarAreaClienteDados_(retorno); mostrarToast('Entrega externa registrada.', 'success'); }).withFailureHandler(tratarErro).registrarEntregaExternaJornada(dados);
     }
 
     function abrirFormalizacaoDaJornada(idTranscricao, idCliente) {
@@ -4647,7 +4960,7 @@
       const botao = evento && evento.currentTarget ? evento.currentTarget : null;
       if (botao) botao.disabled = true;
       mostrarLoading('Salvando a fila automática e os horários...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           esconderLoading();
           if (botao) botao.disabled = false;
@@ -4665,7 +4978,7 @@
 
     function diagnosticarAutomacaoLigacoesFront() {
       mostrarLoading('Conferindo a fila, os pitches atuais e o acesso aos documentos...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           esconderLoading();
           const status = resposta.status || {};
@@ -4751,7 +5064,7 @@
         status: 'ATIVO'
       };
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || [];
           estado.carregado.clientes = true;
@@ -4846,7 +5159,7 @@
 
       mostrarToast('Adicionando o mês atual de todos os clientes RD à fila...', 'success');
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           if (botao) botao.disabled = false;
           renderizarAutomacaoRd(resposta.automacaoRd || {});
@@ -4876,7 +5189,7 @@
       const botao = evento && evento.currentTarget ? evento.currentTarget : null;
       if (botao) botao.disabled = true;
       mostrarToast('Adicionando o período selecionado à fila do RD...', 'success');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           if (botao) botao.disabled = false;
           renderizarAutomacaoRd(resposta.automacaoRd || {});
@@ -5379,7 +5692,7 @@
 
     function testarTldv() {
       mostrarLoadingLocal('tabelaReunioes', 'Testando conexão com o tl;dv...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           mostrarToast(resposta.mensagem, 'success');
           carregarPagina('reunioes', true);
@@ -5390,7 +5703,7 @@
 
     function sincronizarReunioesTldv() {
       mostrarLoadingLocal('tabelaReunioes', 'Sincronizando reuniões do tl;dv...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.reunioes = resposta.reunioes || [];
           renderizarReunioes();
@@ -5417,7 +5730,7 @@
         botao.textContent = 'Transcrevendo...';
       }
       mostrarLoadingLocal('tabelaReunioes', 'Importando transcrições selecionadas...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.reunioes = resposta.reunioes || [];
           renderizarReunioes();
@@ -5433,7 +5746,7 @@
     function salvarPitch(evento) {
       evento.preventDefault(); mostrarLoading('Salvando versão do pitch...');
       const dados={idPitch:valor('pitchId'),idCliente:valor('pitchCliente'),tipoPitch:valor('pitchTipo'),nomeVersao:valor('pitchNome'),numeroVersao:valor('pitchNumero'),dataVigenciaInicio:valor('pitchInicio'),dataVigenciaFim:valor('pitchFim'),pitchAtual:document.getElementById('pitchAtual').checked,conteudoPitch:valor('pitchConteudo'),status:'ATIVO'};
-      google.script.run.withSuccessHandler(r=>{estado.pitches=r.pitches||[];renderizarPitches();limparPitch();esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarPitch(dados);
+      runnerBoardComProgresso_().withSuccessHandler(r=>{estado.pitches=r.pitches||[];renderizarPitches();limparPitch();esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarPitch(dados);
     }
     function renderizarPitches(){const alvo=document.getElementById('listaPitches');if(!estado.pitches.length){alvo.innerHTML='<div class="empty">Nenhum pitch cadastrado.</div>';return;}alvo.innerHTML=estado.pitches.map(p=>{const c=estado.clientes.find(x=>x.idCliente===p.idCliente);return `<div class="card" style="box-shadow:none;margin-bottom:10px"><strong>${escapeHtml((c&&c.nomeCliente)||p.idCliente)} — ${escapeHtml(p.tipoPitch)}</strong><div class="small muted">${escapeHtml(p.nomeVersao)} | v${escapeHtml(p.numeroVersao||'-')} ${p.pitchAtual?'| ATUAL':''}</div><div class="actions"><button class="btn secondary" onclick="editarPitch('${escapeAtributo(p.idPitch)}')">Editar</button></div></div>`}).join('');}
     function editarPitch(id){const p=estado.pitches.find(x=>x.idPitch===id);if(!p)return;document.getElementById('pitchId').value=p.idPitch;document.getElementById('pitchCliente').value=p.idCliente;document.getElementById('pitchTipo').value=p.tipoPitch;document.getElementById('pitchNome').value=p.nomeVersao;document.getElementById('pitchNumero').value=p.numeroVersao||'';document.getElementById('pitchInicio').value=(p.dataVigenciaInicio||'').slice(0,10);document.getElementById('pitchFim').value=(p.dataVigenciaFim||'').slice(0,10);document.getElementById('pitchAtual').checked=!!p.pitchAtual;document.getElementById('pitchConteudo').value=p.conteudoPitch||'';}
@@ -5544,7 +5857,7 @@
     }
     
     const funcao = valor('audTipo');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         const dados = resposta.dados || {};
         estado.clientes = dados.clientes || estado.clientes || [];
@@ -5628,7 +5941,7 @@
     resultado.style.display = 'block';
     resultado.innerHTML = '<div class="empty" style="padding:12px">Baixando o MP3 e gerando a transcrição. Isso pode levar alguns minutos...</div>';
 
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         const dados = resposta.dados || {};
         estado.clientes = dados.clientes || estado.clientes || [];
@@ -5682,13 +5995,13 @@
 
   function transcreverAudioLote_(dados) {
     return new Promise((resolve, reject) => {
-      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).transcreverAudioMp3V4(dados);
+      runnerBoardComProgresso_().withSuccessHandler(resolve).withFailureHandler(reject).transcreverAudioMp3V4(dados);
     });
   }
 
   function analisarAudioLote_(dados) {
     return new Promise((resolve, reject) => {
-      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).executarAuditoriaV3(dados);
+      runnerBoardComProgresso_().withSuccessHandler(resolve).withFailureHandler(reject).executarAuditoriaV3(dados);
     });
   }
 
@@ -6440,7 +6753,7 @@
       botao.textContent = 'Salvando...';
       status.textContent = 'Salvando cliente na base...';
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           const cliente = resposta.cliente;
           const indice = estado.clientes.findIndex(item => String(item.idCliente) === String(cliente.idCliente));
@@ -6557,7 +6870,7 @@
       botao.textContent = 'Salvando...';
       status.textContent = 'Salvando referência na base...';
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.pitches = resposta.pitches || estado.pitches;
           botao.disabled = false;
@@ -6634,7 +6947,7 @@
 
       const status = document.getElementById('statusPitchCliente');
       status.textContent = 'Excluindo versão...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.pitches = resposta.pitches || estado.pitches.filter(pitch => String(pitch.idPitch) !== String(idPitch));
           if (valor('pitchClienteId') === String(idPitch)) limparFormularioPitchCliente();
@@ -6848,7 +7161,7 @@
 
     function sincronizarClientesVolumbergFront() {
       mostrarLoading('Sincronizando VOLUMBERG, materiais e Comunidade...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || [];
           estado.materiaisClientes = resposta.materiais || [];
@@ -6885,7 +7198,7 @@
       if (espaco === null) return;
       if (!String(espaco).trim()) return mostrarToast('Informe o espaço da Comunidade.', 'warning');
       mostrarLoading('Vinculando o espaço da Comunidade...');
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         esconderLoading();
         mostrarToast(retorno.mensagem, 'success');
         carregarVerificacaoClientesConfig_();
@@ -6974,7 +7287,7 @@
       botao.disabled = true;
       botao.textContent = 'Salvando...';
       status.textContent = 'Salvando material na biblioteca...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.materiaisClientes = resposta.materiais || [];
           estado.clientes = resposta.clientes || estado.clientes;
@@ -7080,7 +7393,7 @@
       botao.disabled = true;
       botao.textContent = 'Salvando...';
       status.textContent = 'Registrando a meta do período...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.metasClientes = resposta.metas || [];
           limparFormularioMetaCliente();
@@ -7112,7 +7425,7 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function salvarConfiguracaoAuditoriaFront(){mostrarLoading('Salvando configurações...');google.script.run.withSuccessHandler(r=>{esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarConfiguracaoAuditoria({promptSdr:valor('audPromptSdr'),promptCloser:valor('audPromptCloser'),pastaDriveId:valor('audPastaDrive')});}
+    function salvarConfiguracaoAuditoriaFront(){mostrarLoading('Salvando configurações...');runnerBoardComProgresso_().withSuccessHandler(r=>{esconderLoading();mostrarToast(r.mensagem,'success');}).withFailureHandler(tratarErro).salvarConfiguracaoAuditoria({promptSdr:valor('audPromptSdr'),promptCloser:valor('audPromptCloser'),pastaDriveId:valor('audPastaDrive')});}
   async function executarAuditoriaV3Front() {
     if (!valor('audCliente')) return mostrarToast('Selecione o cliente.', 'error');
     const closerSimplificado = modoSimplificadoCloserFront_();
@@ -7229,7 +7542,7 @@
     const consultar = () => {
       if (!ativo || consultando) return;
       consultando = true;
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => { consultando = false; aplicar(resposta); })
         .withFailureHandler(() => { consultando = false; })
         .obterProgressoAuditoriaV3(idProgresso);
@@ -8525,7 +8838,7 @@
   function repararCoachingAuditoriaFront(idAuditoria) {
     const botao = document.getElementById('btnRepararCoaching');
     if (botao) { botao.disabled = true; botao.textContent = 'Corrigindo orientações...'; }
-    google.script.run.withSuccessHandler(resposta => {
+    runnerBoardComProgresso_().withSuccessHandler(resposta => {
       estado.auditorias = resposta.auditorias || [];
       estado.auditoriaAtual = resposta.auditoria || null;
       renderizarAuditorias();
@@ -8545,7 +8858,7 @@
       botao.textContent = 'Aprovando...';
     }
 
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         estado.auditoriaAtual = resposta.auditoria || null;
@@ -8582,7 +8895,7 @@
       botao.textContent = 'Publicando...';
     }
 
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         estado.auditoriaAtual = resposta.auditoria || null;
@@ -8613,7 +8926,7 @@
       botao.textContent = 'Publicando no Circle...';
     }
 
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         estado.auditoriaAtual = resposta.auditoria || null;
@@ -8633,7 +8946,7 @@
 
   function abrirPlanoCircleManualFront(idAuditoria) {
     mostrarLoading('Preparando publicação para o Circle...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.circleManualAtual = resposta;
         const auditoria = (estado.auditorias || []).find(item =>
@@ -8758,7 +9071,7 @@
     catch (erro) { return mostrarToast('Informe uma URL válida do Circle.', 'error'); }
 
     window.open(url, '_blank', 'noopener');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
         mostrarToast('Espaço do Circle salvo para este cliente.', 'success');
@@ -8776,7 +9089,7 @@
     const botao = document.getElementById('btnRegistrarCircleManual');
     botao.disabled = true;
     botao.textContent = 'Registrando...';
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         estado.auditoriaAtual = resposta.auditoria || null;
@@ -8895,7 +9208,7 @@
 
     abrirAuditoriaHistoricoModalCarregando_();
 
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(auditoria => {
         if (!auditoria || !auditoria.idAuditoria) {
           const conteudo = document.getElementById('auditoriaHistoricoModalConteudo');
@@ -9234,7 +9547,7 @@
     estado.carregandoAnaliticaAuditorias = true;
     const aviso = document.getElementById('audPerformanceAviso');
     if (aviso) aviso.textContent = 'Calculando histórico de performance...';
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(dados => {
         estado.carregandoAnaliticaAuditorias = false;
         estado.analiticaAuditorias = dados || {};
@@ -9399,7 +9712,7 @@
   function regenerarAuditoriaLegadaFront(idAuditoria) {
     if (!window.confirm('Esta auditoria é legada. Será criada uma nova auditoria usando a mesma gravação, o pitch atual e as validações vigentes. O histórico antigo será preservado como substituído. A nova análise usa IA. Continuar?')) return;
     mostrarLoading('Gerando auditoria atualizada...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
@@ -9414,7 +9727,7 @@
   function regenerarAuditoriaGrupoSinergiaParaCrmFront(idAuditoria) {
     if (!window.confirm('Esta auditoria antiga será preservada. O Board vai gerar uma NOVA auditoria sobre a mesma gravação, usando o pitch e as travas atuais. Nada será publicado no RD automaticamente. Continuar?')) return;
     mostrarLoading('Gerando nova auditoria sobre a mesma gravação...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
@@ -9433,7 +9746,7 @@
     const rdDealId = String(campo.value || '').trim();
     if (rdDealId && !extrairIdRdFront_(rdDealId)) return mostrarToast('Informe o ID de 24 caracteres ou o link completo da negociação do RD.', 'error');
     const textoOriginal = botao.textContent; botao.disabled = true; botao.textContent = 'Salvando vínculo...';
-    google.script.run.withSuccessHandler(resposta => {
+    runnerBoardComProgresso_().withSuccessHandler(resposta => {
       estado.auditorias = resposta.auditorias || [];
       if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = resposta.auditoria;
       renderizarAuditorias(); mostrarToast(resposta.mensagem, 'success');
@@ -9474,7 +9787,7 @@
     if (!item) return mostrarToast('Auditoria não encontrada.', 'error');
     if (!window.confirm('Descartar auditoria?\n\nEsta ação retira esta auditoria do fluxo atual e impede envio ao RD CRM. O histórico será preservado.')) return;
     mostrarLoading('Descartando a auditoria...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = null;
@@ -9491,7 +9804,7 @@
     if (!item) return mostrarToast('Auditoria não encontrada.', 'error');
     if (!window.confirm('Excluir esta auditoria e liberar a interação para uma nova geração? O Google Docs criado será movido para a lixeira.')) return;
     mostrarLoading('Excluindo a auditoria...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) estado.auditoriaAtual = null;
@@ -9505,7 +9818,7 @@
 
   function reprocessarAutomacaoAuditoriaFront(idAuditoria) {
     mostrarLoading('Reprocessando publicação automática...');
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
@@ -9520,7 +9833,7 @@
 
   function prepararEnvioAuditoriaRdFront(idAuditoria, botao) {
     if (botao) { botao.disabled = true; botao.dataset.textoOriginal = botao.textContent; botao.textContent = 'Preparando...'; }
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(preview => {
         if (botao) { botao.disabled = false; botao.textContent = botao.dataset.textoOriginal || 'Enviar ao RD'; }
         estado.rdPreviewAtual = preview;
@@ -9566,7 +9879,7 @@
     if (!texto.trim()) return mostrarToast('Revise o texto antes de aprovar.', 'error');
     const botao = document.getElementById('btnAprovarEnviarRd');
     if (botao) { botao.disabled = true; botao.textContent = 'Aprovando...'; }
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
@@ -9584,7 +9897,7 @@
 
   function enviarAuditoriaParaRdFront(idAuditoria, texto, botao) {
     if (botao) { botao.disabled = true; botao.textContent = 'Enviando ao RD...'; }
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
@@ -9610,7 +9923,7 @@
     const textoOriginal = botao.textContent;
     botao.disabled = true;
     botao.textContent = 'Salvando...';
-    google.script.run
+    runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
         estado.auditorias = resposta.auditorias || [];
         if (estado.auditoriaAtual && String(estado.auditoriaAtual.idAuditoria || '') === String(idAuditoria || '')) {
@@ -9687,7 +10000,7 @@
         ? existente.config
         : { modo:'RESUMIDO_DIARIO' };
       if (botao) { botao.disabled = true; botao.textContent = 'Salvando...'; }
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || estado.clientes;
           estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
@@ -9718,7 +10031,7 @@
         ? existente.config
         : { modo:'RESUMIDO_DIARIO' };
       if (botao) { botao.disabled = true; botao.textContent = 'Testando...'; }
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
           renderizarMatrizRdClientes_();
@@ -9797,7 +10110,7 @@
       }
 
       mostrarLoading('Salvando integração...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || estado.clientes;
           estado.integracoesClientes = resposta.integracoesClientes || [];
@@ -9832,7 +10145,7 @@
       }
 
       mostrarLoading('Testando integração...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.integracoesClientes = resposta.integracoesClientes || estado.integracoesClientes;
           renderizarMatrizRdClientes_();
@@ -9896,7 +10209,7 @@
 
     function desativarIntegracaoClienteFront(idIntegracao) {
       mostrarLoading('Desativando integração...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.clientes || estado.clientes;
           estado.integracoesClientes = resposta.integracoesClientes || [];
@@ -9943,7 +10256,7 @@
         circleAuthorEmail: valor('circleAuthorEmail')
       };
 
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           document.getElementById('tldvApiKey').value = '';
           document.getElementById('geminiApiKey').value = '';
@@ -10096,7 +10409,7 @@
         endereco: valor('formalFonteEndereco')
       };
       mostrarLoading('Conferindo e salvando a fonte...');
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         estado.agendaFormalizacao = retorno.agenda || estado.agendaFormalizacao || {};
         cancelarEdicaoFonteReuniaoFront();
         renderizarIntegracoesFormalizacao_();
@@ -10108,7 +10421,7 @@
     function removerFonteReuniaoFront(idFonte) {
       if (!window.confirm('Remover esta fonte de reuniões?')) return;
       mostrarLoading('Removendo a fonte...');
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         estado.agendaFormalizacao = retorno.agenda || estado.agendaFormalizacao || {};
         renderizarIntegracoesFormalizacao_();
         esconderLoading();
@@ -10118,7 +10431,7 @@
 
     function salvarPreferenciasFormalizacaoFront() {
       mostrarLoading('Salvando a preferência...');
-      google.script.run.withSuccessHandler(retorno => {
+      runnerBoardComProgresso_().withSuccessHandler(retorno => {
         estado.agendaFormalizacao = retorno.agenda || estado.agendaFormalizacao || {};
         renderizarIntegracoesFormalizacao_();
         esconderLoading();
@@ -10221,7 +10534,7 @@
       const idFormalizacaoFila = formalizacaoFila ? formalizacaoFila.idFormalizacao : '';
       const painel = botao && botao.closest ? botao.closest('.meeting-outcome-panel, .formal-quick-actions') : null;
       if (painel) painel.querySelectorAll('button').forEach(item => { item.disabled = true; });
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           const dados = resposta.dados || {};
           estado.clientes = dados.clientes || estado.clientes;
@@ -10395,7 +10708,7 @@
       botao.disabled = true;
       botao.textContent = 'Sincronizando...';
       mostrarLoading('Buscando reuniões, gravações e transcrições no Google Agenda e Meet...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = (resposta.dados || {}).clientes || estado.clientes;
           estado.transcricoesFormalizacao = (resposta.dados || {}).transcricoes || [];
@@ -10439,7 +10752,7 @@
       botao.disabled = true;
       botao.textContent = 'Gerando resumo...';
       mostrarLoading('Lendo a reunião e preparando a formalização...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           resposta.formalizacao.semGravacao = semGravacao;
           estado.formalizacaoAtual = resposta.formalizacao;
@@ -10480,7 +10793,7 @@
       const botao = document.getElementById('btnFormalManual');
       botao.disabled = true;
       botao.textContent = 'Salvando...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.clientes = resposta.dados.clientes || estado.clientes;
           estado.transcricoesFormalizacao = resposta.dados.transcricoes || [];
@@ -10664,7 +10977,7 @@
       const idBotao = status === 'APROVADA' ? 'btnAprovarFormalizacao' : 'btnSalvarFormalizacao';
       const botao = document.getElementById(idBotao);
       botao.disabled = true;
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalizacaoAtual = resposta.formalizacao;
           estado.formalizacoes = resposta.formalizacoes || [];
@@ -10789,7 +11102,7 @@
       }
       const botao = document.getElementById('btnAprovarHistorico_' + idFormalizacao);
       if (botao) { botao.disabled = true; botao.textContent = 'Aprovando...'; }
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalizacoes = resposta.formalizacoes || [];
           estado.formalizacoesResumoClientes = resposta.formalizacoes || [];
@@ -10824,7 +11137,7 @@
       const textoOriginal = botao.textContent;
       botao.disabled = true;
       botao.textContent = 'Salvando...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalizacoes = resposta.formalizacoes || [];
           estado.formalizacoesResumoClientes = resposta.formalizacoes || [];
@@ -10849,7 +11162,7 @@
       if (!item) return mostrarToast('Formalização não encontrada.', 'error');
       if (!window.confirm('Descartar esta formalização em revisão? Ela sairá do histórico ativo e poderá ser gerada novamente.')) return;
       mostrarLoading('Descartando a formalização...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalizacoes = resposta.formalizacoes || [];
           estado.formalizacoesResumoClientes = resposta.formalizacoes || [];
@@ -10881,7 +11194,7 @@
 
     function abrirPreviewFormalComunidade(idFormalizacao) {
       mostrarLoading('Preparando a prévia da Comunidade VOLUM...');
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalComunidadeAtual = resposta;
           removerCapaFormalComunidade();
@@ -11055,7 +11368,7 @@
       const botao = document.getElementById('btnPublicarFormalComunidade');
       botao.disabled = true;
       botao.textContent = 'Publicando...';
-      google.script.run
+      runnerBoardComProgresso_()
         .withSuccessHandler(resposta => {
           estado.formalizacaoAtual = resposta.formalizacao;
           estado.formalizacoes = resposta.formalizacoes || [];
@@ -11263,7 +11576,7 @@
     function iniciarRecuperacaoFormalizacoesFront() {
       const botao = document.getElementById('btnRegularizarFormalizacoes');
       if (botao) { botao.disabled = true; botao.textContent = 'Iniciando fila...'; }
-      google.script.run.withSuccessHandler(resultado => {
+      runnerBoardComProgresso_().withSuccessHandler(resultado => {
         if (botao) { botao.disabled = false; botao.textContent = 'Regularizar atrasadas agora'; }
         mostrarToast(resultado.mensagem || 'Regularização iniciada.', 'success');
         carregarPagina('tarefasFormalizacoes', true);
@@ -11296,7 +11609,7 @@
 
     function atualizarStatusTarefaFormalizacaoFront(idTarefa, status, seletor) {
       if (seletor) seletor.disabled = true;
-      google.script.run.withSuccessHandler(dados => {
+      runnerBoardComProgresso_().withSuccessHandler(dados => {
         estado.tarefasFormalizacoes = dados.tarefas || [];
         estado.resumoTarefasFormalizacoes = dados.resumo || {};
         renderizarTarefasFormalizacoes();
