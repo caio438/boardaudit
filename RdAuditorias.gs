@@ -1,4 +1,15 @@
 var RD_AUDITORIA_EMAIL_VOLUM='crm@govolum.com';
+// O envio de Closer fica desligado até a liberação explícita após o Canônico.
+// O padrão seguro é NÃO, inclusive quando já há LINK_CRM preenchido.
+function audRdPublicacaoCloserLiberada_() {
+  return typeof obterConfiguracao_ === 'function' &&
+    String(obterConfiguracao_('AUDITORIA_CLOSER_RD_AUTORIZADA') || '').toUpperCase() === 'SIM';
+}
+function audRdBloqueioCanonicoCloser_(auditoria) {
+  return String((auditoria || {}).TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+    !audRdPublicacaoCloserLiberada_();
+}
+
 function audRdPublicarAutomaticamente_(idAuditoria) {
   audRdEstr_();
   var id = String(idAuditoria || '').trim();
@@ -7,6 +18,17 @@ function audRdPublicarAutomaticamente_(idAuditoria) {
   var tipo = String(a.TIPO_AUDITORIA || '').toUpperCase();
   if (['SDR', 'CLOSER'].indexOf(tipo) < 0) {
     return { aplicavel: false, publicada: false, status: 'NAO_APLICAVEL', mensagem: 'Publicação no RD não se aplica a este tipo de auditoria.' };
+  }
+  if (audRdBloqueioCanonicoCloser_(a)) {
+    if (String(a.RD_STATUS || '').toUpperCase() !== 'PUBLICADA') {
+      audRdStatus_(id, 'AGUARDANDO_CANONICO', '', '');
+    }
+    return {
+      aplicavel: false,
+      publicada: false,
+      status: 'AGUARDANDO_CANONICO',
+      mensagem: 'Closer não será enviado ao RD antes da liberação explícita após o vínculo Canônico.'
+    };
   }
 
   var i = audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {};
@@ -77,7 +99,8 @@ function salvarIdRdAuditoriaV3(d) {
   var aprovadaValidada = String(a.STATUS || '').toUpperCase() === 'APROVADA' &&
     String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA';
 
-  if (deal && aprovadaValidada && ['SDR', 'CLOSER'].indexOf(tipoAuditoria) >= 0) {
+  if (deal && aprovadaValidada && ['SDR', 'CLOSER'].indexOf(tipoAuditoria) >= 0 &&
+      !audRdBloqueioCanonicoCloser_(a)) {
     publicacao = audRdPublicarAutomaticamente_(id);
     if (typeof audV3Atualizar_ === 'function') {
       audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
@@ -94,7 +117,11 @@ function salvarIdRdAuditoriaV3(d) {
   var statusAuditoria = String(a.STATUS || '').toUpperCase();
   return {
     sucesso: true,
-    mensagem: deal
+    mensagem: audRdBloqueioCanonicoCloser_(a)
+      ? (deal
+          ? 'Vínculo da negociação salvo no Board. O Closer permanece sem envio ao RD até a liberação após o Canônico.'
+          : 'Vínculo removido. O Closer permanece sem envio ao RD até o Canônico.')
+      : deal
       ? (publicacao && publicacao.publicada
             ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
             : statusAuditoria === 'APROVADA'
@@ -148,7 +175,7 @@ function prepararEnvioAuditoriaRd(id){
     aviso:'Revise e edite o texto antes de aprovar. O RD registra a anotação no histórico da negociação.'
   };
 }
-function enviarAuditoriaParaRd(d){d=d||{};var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
+function enviarAuditoriaParaRd(d){d=d||{};var registro=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',String(d.idAuditoria||'').trim());if(!registro)throw new Error('Auditoria não encontrada.');if(audRdBloqueioCanonicoCloser_(registro))throw new Error('Publicação de auditorias Closer no RD bloqueada até o vínculo Canônico ser validado por Sales Ops.');var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
 if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}
 var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,publicada:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
 function aprovarEEnviarAuditoriaRd(d){
