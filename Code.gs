@@ -5523,6 +5523,7 @@ function identificarClienteReuniaoTldv_(reuniao, regras, clientes) {
   // Nunca usa VOLUM, nomes de grupos, nomes parciais ou domínios públicos.
   const titulo = ' ' + String(reuniao.name || '').normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  if (/\bgrupo\b/.test(titulo)) return null;
   const candidatos = (Array.isArray(clientes) ? clientes : []).filter(function(cliente) {
     const nome = String(cliente.NOME_CLIENTE || '').normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
