@@ -2187,11 +2187,29 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
-  if (['SDR', 'CLOSER'].includes(tipo) && typeof audRdPublicarAutomaticamente_ === 'function') {
+  if (tipo === 'CLOSER') {
+    // Closer: gerar/validar/aprovar/documentar no Board, mas nunca publicar no RD
+    // automaticamente. Sales Ops ainda precisa validar o vínculo Canônico.
+    rd = {
+      aplicavel: false,
+      publicada: false,
+      status: 'AGUARDANDO_CANONICO',
+      mensagem: 'Auditoria Closer concluída no Board. Publicação no RD bloqueada até o vínculo Canônico.'
+    };
+    if (String(auditoria.RD_STATUS || '').toUpperCase() !== 'PUBLICADA') {
+      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+        RD_STATUS: 'AGUARDANDO_CANONICO',
+        RD_ERRO: '',
+        AUTOMACAO_ATUALIZADO_EM: new Date()
+      });
+    }
+  } else if (tipo === 'SDR' && typeof audRdPublicarAutomaticamente_ === 'function') {
     rd = audRdPublicarAutomaticamente_(id);
   }
 
-  const statusAutomacao = rd && rd.aplicavel && !rd.publicada
+  const statusAutomacao = tipo === 'CLOSER'
+    ? 'CONCLUIDA_AGUARDANDO_CANONICO'
+    : rd && rd.aplicavel && !rd.publicada
     ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
     : 'CONCLUIDA';
 
@@ -2202,6 +2220,7 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   });
 
   const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
+  if (tipo === 'CLOSER') partes.push('Sem envio ao RD: Sales Ops deve validar o vínculo Canônico.');
   if (rd && rd.aplicavel) {
     if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
     else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando o vínculo da negociação.');
@@ -2485,7 +2504,9 @@ function aprovarAuditoriaV3(idAuditoria) {
 
   const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-    AUTOMACAO_STATUS: ['SDR', 'CLOSER'].includes(tipoAuditoria) ? 'CONCLUIDA_AGUARDANDO_RD' : 'CONCLUIDA',
+    AUTOMACAO_STATUS: tipoAuditoria === 'CLOSER'
+      ? 'CONCLUIDA_AGUARDANDO_CANONICO'
+      : (tipoAuditoria === 'SDR' ? 'CONCLUIDA_AGUARDANDO_RD' : 'CONCLUIDA'),
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: new Date()
   });
@@ -2494,9 +2515,11 @@ function aprovarAuditoriaV3(idAuditoria) {
   const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   return {
     sucesso: true,
-    mensagem: ['SDR', 'CLOSER'].includes(tipoAuditoria)
-      ? 'Auditoria aprovada e Google Docs criado. Revise a prévia e envie ao RD quando estiver pronta.'
-      : 'Auditoria aprovada e Google Docs criado.',
+    mensagem: tipoAuditoria === 'CLOSER'
+      ? 'Auditoria Closer aprovada e Google Docs criado. Sem envio ao RD até o vínculo Canônico de Sales Ops.'
+      : (tipoAuditoria === 'SDR'
+        ? 'Auditoria aprovada e Google Docs criado. Revise a prévia e envie ao RD quando estiver pronta.'
+        : 'Auditoria aprovada e Google Docs criado.'),
     publicacaoRd: null,
     auditoria: audV3AuditoriaFront_(atualizada),
     auditorias: audV3ListarAuditoriasFront_()
@@ -8163,7 +8186,7 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
   }
   props.setProperty(AUTOMACAO_REUNIOES_CLOSER_V3.chaveRodando, String(Date.now()));
   props.setProperty(AUTOMACAO_REUNIOES_CLOSER_V3.chaveUltimaExecucao, new Date().toISOString());
-  const resultado = { processadas: 0, publicadasRd: 0, aguardandoRd: 0, reutilizadas: 0, erros: [] };
+  const resultado = { processadas: 0, publicadasRd: 0, aguardandoRd: 0, aguardandoCanonico: 0, reutilizadas: 0, erros: [] };
   try {
     const pitches = audV3Ler_('PITCHES');
     const fila = audV3FilaAutomacaoReunioesCloser_(config, { pitches: pitches });
@@ -8200,7 +8223,8 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
         const finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
         const rd = (finalizada || {}).rd || {};
         resultado.processadas++;
-        if (rd.publicada === true) resultado.publicadasRd++;
+        if (rd.status === 'AGUARDANDO_CANONICO') resultado.aguardandoCanonico++;
+        else if (rd.publicada === true) resultado.publicadasRd++;
         else if (rd.aplicavel) resultado.aguardandoRd++;
         if (reutilizada) resultado.reutilizadas++;
         audV3LimparErroReuniaoCloser_(idInteracao);
@@ -8215,7 +8239,7 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
       }
     }
     const mensagem = resultado.processadas + ' reunião(ões) Closer auditada(s) automaticamente · ' +
-      resultado.publicadasRd + ' publicada(s) no RD · ' + resultado.aguardandoRd + ' aguardando vínculo/publicação' +
+      resultado.publicadasRd + ' publicada(s) no RD · ' + resultado.aguardandoCanonico + ' aguardando Canônico (sem envio ao RD)' +
       (resultado.erros.length ? ' · ' + resultado.erros.length + ' erro(s)' : '');
     props.setProperty(AUTOMACAO_REUNIOES_CLOSER_V3.chaveUltimoResultado, mensagem);
     registrarLog_('AUDITORIA', 'AUTOMACAO_REUNIOES_CLOSER_TLDV', mensagem);
