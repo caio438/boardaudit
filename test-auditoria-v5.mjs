@@ -79,7 +79,7 @@ assert.ok(
   'Preview detalhado de SDR/Closer precisa separar Aprovar auditoria de Prévia do RD.'
 );
 assert.ok(
-  front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
+  front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && !closerSemRd && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
   front.includes("prepararEnvioAuditoriaRdFront('") &&
   front.includes('>Enviar ao RD</button>'),
   'Auditoria aprovada e vinculada não exibe a ação manual Enviar ao RD.'
