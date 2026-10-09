@@ -85,6 +85,16 @@ fire(650);
 assert.equal(chain.classList.contains('board-processing'),false);
 fire(2500);
 
+// O usuário pode demorar ao confirmar Exclusão; o mesmo clique deve continuar elegível.
+const confirmation=button('Excluir registro');
+const pendingConfirm=ctx.api.start(confirmation);
+pendingConfirm.iniciadaEm -= 120000;
+ctx.api.run().withSuccessHandler(()=>{}).withFailureHandler(()=>{}).salvar();
+assert.equal(confirmation.classList.contains('board-processing'),true);
+calls.shift().success({sucesso:true});
+fire(650);
+fire(2500);
+
 const denied=button('Sincronizar');
 ctx.api.start(denied);
 ctx.api.run().withSuccessHandler(()=>{}).withFailureHandler(()=>{}).salvar();
