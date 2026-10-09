@@ -58,5 +58,35 @@ assert.match(front, /return \{ PENDENTE: 'Criada', EM_ANDAMENTO: 'Em andamento',
 assert.match(front, /ehPlano[\s\S]*?'Gerar plano'/, 'Plano ainda usa ação visual de gerar auditoria.');
 assert.match(front, /Novo Plano de Otimização/, 'Plano não possui título operacional próprio.');
 assert.match(front, /Mesmos nomes, mesma ordem, mesmos ícones e mesmas etapas\./, 'Guia não declara paridade com a operação.');
+assert.match(
+  front,
+  /const permitirImportacaoManual = !closerSimplificado && !ehPlano;/,
+  'Closer e Plano não podem oferecer importação manual no seletor de transcrições.'
+);
+assert.match(
+  front,
+  /\['CLOSER', 'PLANO'\]\.includes\(tipoEspaco\)[\s\S]*?painel\.style\.display = 'none'/,
+  'Painel de transcrição manual precisa permanecer oculto em Closer e Plano.'
+);
+assert.match(
+  front,
+  /const ocultarImportacaoManual = ativo \|\| ehPlano;[\s\S]*?manual\.style\.display = 'none'/,
+  'Sincronização visual precisa esconder toda a área manual/lote em Closer e Plano.'
+);
+assert.match(
+  front,
+  /if \(acoesFontePlano\) acoesFontePlano\.style\.display = 'none';/,
+  'Plano não pode exibir ação para usar transcrição manual.'
+);
+assert.match(
+  front,
+  /Nenhuma reunião ou ligação com transcrição está disponível para este cliente\./,
+  'Closer sem transcrição não deve sugerir importação manual.'
+);
+assert.match(
+  front,
+  /Nenhuma interação concluída deste cliente foi encontrada para a equipe escolhida\./,
+  'Plano sem fonte não deve sugerir transcrição manual.'
+);
 
 console.log('UX validado: Guia/Roadmap e telas operacionais usam a mesma definição de fluxo.');
