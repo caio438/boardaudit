@@ -1,0 +1,105 @@
+name: Repair Closer tl;dv intake
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  repair-tldv:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/closer-tldv-repair' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+    steps:
+      - name: Checkout approved main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Configure clasp owner authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx --yes @google/clasp versions > /tmp/tldv-clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json','utf8'));
+          const token = j?.tokens?.default?.access_token || j?.token?.access_token || j?.access_token || '';
+          if (!token) throw new Error('Token de autenticação do Apps Script ausente.');
+          fs.writeFileSync('/tmp/tldv-repair-token', token, {mode:0o600});
+          NODE
+      - name: Repair agenda and synchronize new meetings
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/tldv-repair-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/tldv-repair-result.txt -w '%{http_code}' "$BASE?ops_closer_tldv_repair=1" || true)"
+          echo "TLDV_REPAIR_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/tldv-repair-result.txt','utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,200))) throw new Error('Resposta inválida do Apps Script.');
+          const data = JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));
+          const agenda = data.agenda || {}, status = data.statusCloser || {}, sync = data.sincronizacao || {};
+          const ok = data.sucesso === true && agenda.ativa === true &&
+            agenda.totalAcionadores === 1 && agenda.intervaloHoras === 2 &&
+            status.ativa === true && status.backlogAnteriorAoCutoffIgnorado === true;
+          const lines = [
+            '## Reparo tl;dv / Closer', '',
+            '- Agenda independente instalada: '+String(agenda.ativa===true),
+            '- Acionadores tl;dv: '+String(agenda.totalAcionadores||0),
+            '- Intervalo: '+String(agenda.intervaloHoras||0)+' horas',
+            '- Cutoff Closer preservado: '+String(status.cutoffIso||''),
+            '- Novas reuniões: '+String(sync.novas||0),
+            '- Clientes identificados: '+String(sync.clientesIdentificados||0),
+            '- Closers identificados: '+String(sync.closersIdentificados||0),
+            '- Transcrições novas: '+String(sync.transcricoesImportadas||0),
+            '- Reuniões elegíveis em fila: '+String(status.aguardandoAuditoria||0),
+            '- Sem Closer confirmado: '+String(status.semCloserConfirmado||0),
+            '- Reuniões operacionais ignoradas: '+String(status.operacionaisIgnoradas||0), '',
+            ok ? '**Agenda tl;dv corrigida e sincronização executada.**' : '**Reparo tl;dv não confirmado.**'
+          ];
+          fs.writeFileSync('/tmp/tldv-repair-report.md',lines.join('\n'));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+      - name: Report repair result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/tldv-repair-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/tldv-repair-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Reparo tl;dv / Closer\n\nO reparo falhou antes da verificação da resposta."
+          fi
+      - name: Store repair evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closer-tldv-repair-${{ github.run_id }}
+          path: |
+            /tmp/tldv-repair-result.txt
+            /tmp/tldv-repair-report.md
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/tldv-repair-token
