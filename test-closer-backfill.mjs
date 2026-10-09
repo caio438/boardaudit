@@ -54,7 +54,7 @@ assert.equal(queue[1].backfill,true);
 assert.equal(ctx.audV3JaExisteAuditoriaCloserInteracao_('DUP',auditorias),true);
 assert.equal(ctx.audV3JaExisteAuditoriaCloserInteracao_('HIST',auditorias),false);
 for(const state of ['APROVADA','DESCARTADA','EM_REVISAO','ERRO','PROCESSANDO']) {
-  data.auditorias=[{ID_AUDITORIA:'AUD-OLD',ID_INTERACAO:'HIST',TIPO_AUDITORIA:'CLOSER',STATUS:state}];
+  data.auditorias=[...auditorias,{ID_AUDITORIA:'AUD-OLD-H',ID_INTERACAO:'HIST',TIPO_AUDITORIA:'CLOSER',STATUS:state}];
   queue=ctx.audV3FilaAutomacaoReunioesCloser_(opts,data);
   assert.deepEqual(Array.from(queue,x=>x.interacao.ID_INTERACAO),['NEW'],'Deve pular qualquer auditoria existente: '+state);
 }
