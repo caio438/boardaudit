@@ -20,7 +20,7 @@ assert.match(audit, /function audV3FilaAutomacaoReunioesCloser_/);
 assert.match(audit, /String\(item\.FONTE \|\| ''\)\.toUpperCase\(\) === 'TLDV'/);
 assert.match(audit, /audV3PitchAtualAutomatico_\(String\(item\.ID_CLIENTE \|\| ''\), 'CLOSER', pitches\)/);
 assert.match(audit, /Boolean\(transcricoes\[id\]\)/);
-assert.match(audit, /!auditoriasAprovadas\[id\]/);
+assert.match(audit, /!auditoriasExistentes\[id\]/);
 assert.match(audit, /function PROCESSAR_PIPELINE_CLOSER_TLDV\(\)/);
 assert.match(audit, /tipoAuditoria: 'CLOSER'/);
 assert.match(audit, /fonte: 'TLDV'/);
