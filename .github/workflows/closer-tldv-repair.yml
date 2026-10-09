@@ -26,6 +26,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install dependencies
+        run: npm ci
       - name: Configure clasp owner authentication
         shell: bash
         env:
@@ -35,7 +37,7 @@ jobs:
           test -n "$CLASPRC_JSON"
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           chmod 600 "$HOME/.clasprc.json"
-          npx --yes @google/clasp versions > /tmp/tldv-clasp-versions.txt
+          npx clasp versions > /tmp/tldv-clasp-versions.txt
           node <<'NODE'
           const fs = require('fs');
           const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json','utf8'));
