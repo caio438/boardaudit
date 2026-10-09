@@ -1430,7 +1430,7 @@ function obterCabecalhosOficiais_() {
     'DECISAO', 'ID_REGISTRO_DIARIO', 'ID_ORIGEM', 'CRIADO_EM', 'ATUALIZADO_EM'
   ];
 
-  estruturas[APP.sheets.equipeClientess] = [
+  estruturas[APP.sheets.equipeClientes] = [
     'ID_MEMBRO', 'ID_CLIENTE', 'NOME', 'PAPEL', 'EMAIL', 'TELEFONE',
     'LIDER_ID', 'ATIVO', 'DATA_INICIO', 'DATA_FIM', 'OBSERVACOES',
     'CRIADO_EM', 'ATUALIZADO_EM'
@@ -1513,7 +1513,7 @@ function validarEstruturaBanco_() {
   chavesPrimarias[APP.sheets.entregasMensais] = 'ID_ENTREGA';
   chavesPrimarias[APP.sheets.diarioClientes] = 'ID_REGISTRO';
   chavesPrimarias[APP.sheets.otimizacoesClientes] = 'ID_OTIMIZACAO';
-  chavesPrimarias[APP.sheets.equipeClientess] = 'ID_MEMBRO';
+  chavesPrimarias[APP.sheets.equipeClientes] = 'ID_MEMBRO';
 
   const erros = [];
   const avisos = [];
@@ -1562,7 +1562,7 @@ function validarEstruturaBanco_() {
     APP.sheets.pitches, APP.sheets.interacoes, APP.sheets.auditorias, APP.sheets.formalizacoes, APP.sheets.resumoRd,
     APP.sheets.identificadoresClientes, APP.sheets.reunioesCalendario, APP.sheets.regrasEntregas,
     APP.sheets.entregasMensais, APP.sheets.diarioClientes, APP.sheets.otimizacoesClientes,
-    APP.sheets.equipeClientess]
+    APP.sheets.equipeClientes]
     .forEach(nome => lerObjetos_(nome).forEach(item => {
       const idCliente = String(item.ID_CLIENTE || '').trim();
       if (idCliente && !idsClientes.has(idCliente)) {
@@ -2394,7 +2394,7 @@ function unificacaoIngeeAbasComCliente_() {
     APP.sheets.entregasMensais,
     APP.sheets.diarioClientes,
     APP.sheets.otimizacoesClientes,
-    APP.sheets.equipeClientess,
+    APP.sheets.equipeClientes,
     APP.sheets.resumoRd
   ];
 }
@@ -2831,7 +2831,7 @@ function sincronizarClientesVolumberg() {
 }
 
 function sincronizarOperacaoCatalogoVolumberg_(clientes) {
-  const equipeExistente = lerObjetos_(APP.sheets.equipeClientess).filter(item => item.ID_MEMBRO);
+  const equipeExistente = lerObjetos_(APP.sheets.equipeClientes).filter(item => item.ID_MEMBRO);
   const chavesExistentes = new Set(equipeExistente.map(item => [
     String(item.ID_CLIENTE || ''),
     normalizarTextoComparacao_(item.NOME),
@@ -2877,7 +2877,7 @@ function sincronizarOperacaoCatalogoVolumberg_(clientes) {
   });
 
   if (novos.length) {
-    const aba = abrirPlanilha_().getSheetByName(APP.sheets.equipeClientess);
+    const aba = abrirPlanilha_().getSheetByName(APP.sheets.equipeClientes);
     const cabecalhos = aba.getRange(1, 1, 1, aba.getLastColumn()).getDisplayValues()[0];
     const linhas = novos.map(item => cabecalhos.map(campo => item[campo] !== undefined ? item[campo] : ''));
     aba.getRange(aba.getLastRow() + 1, 1, linhas.length, cabecalhos.length).setValues(linhas);
@@ -5972,7 +5972,7 @@ function adicionarObjeto_(nomeAba, objeto) {
   chaves[APP.sheets.entregasMensais] = 'ID_ENTREGA';
   chaves[APP.sheets.diarioClientes] = 'ID_REGISTRO';
   chaves[APP.sheets.otimizacoesClientes] = 'ID_OTIMIZACAO';
-  chaves[APP.sheets.equipeClientess] = 'ID_MEMBRO';
+  chaves[APP.sheets.equipeClientes] = 'ID_MEMBRO';
   const chave = chaves[nomeAba];
   if (chave && String(objeto[chave] || '').trim()) {
     const duplicado = localizarObjeto_(nomeAba, chave, objeto[chave]);
