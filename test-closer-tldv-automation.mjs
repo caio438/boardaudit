@@ -5,7 +5,7 @@ const code = fs.readFileSync('Code.gs', 'utf8');
 const audit = fs.readFileSync('AuditoriaV3.gs', 'utf8');
 const workflow = fs.readFileSync('.github/workflows/board-full-automation.yml', 'utf8');
 
-assert.match(code, /function identificarClienteReuniaoTldv_\(reuniao, regras\)/);
+assert.match(code, /function identificarClienteReuniaoTldv_\(reuniao, regras, clientes\)/);
 assert.match(code, /jornadaIdentificarClienteEvento_\(evento, regras\)/);
 assert.match(code, /Number\(candidato\.pontos \|\| 0\) >= 50/);
 assert.match(code, /ID_CLIENTE: idCliente/);

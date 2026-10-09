@@ -15,9 +15,9 @@ assert.match(code, /ops_disable_all_automation/, 'Endpoint autenticado para desl
 assert.match(central, /boardModoManual_\(\)/, 'Automacao central nao respeita BOARD_MODE.');
 assert.match(auditoria, /BOARD_MODE=MANUAL: automação pausada|boardModoManual_\(\)/, 'Automacao de ligacoes nao respeita BOARD_MODE.');
 assert.match(jornada, /boardModoManual_\(\)/, 'Jornada nao respeita BOARD_MODE.');
-assert.match(code, /tldvSyncHours:\s*\[6, 10, 12, 14, 16, 18, 20\]/);
+assert.match(code, /ScriptApp\.newTrigger\(handler\)\.timeBased\(\)\.everyHours\(2\)\.create\(\)/);
 assert.match(code, /rdTriggerHour:\s*6/);
-assert.match(code, /configurada em 7 horários diários/);
+assert.match(code, /const agendaTldv = instalarAutomacaoTldv\(\)/);
 assert.match(code, /ops_restore_automation/);
 assert.match(code, /\{ chave: 'grupo_eleva', nome: 'Grupo Eleva', tipoCliente: 'GRUPO' \}/);
 assert.match(code, /\{ chave: 'grupo_sinergia', nome: 'Grupo Sinergia', tipoCliente: 'GRUPO' \}/);
