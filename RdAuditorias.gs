@@ -313,10 +313,14 @@ function audRdResponsavelGrupoSinergia_(token){
     email:String(compartilhado.email||'')
   };
 }
+function audRdNomeResponsavelPublico_(c){
+  c=c||{};
+  if(audRdUsaResponsavelGrupoSinergia_(c.a||{}))return'Sinergia Engenharia';
+  return String((c.i||{}).COLABORADOR||(c.i||{}).VENDEDOR||((c.sdr||{}).nome)||'Não identificado');
+}
 function audRdResponsavel_(token,i,r,a){
   var meta=(r||{}).metadados||{};
   var ident=String((i||{}).COLABORADOR||(i||{}).VENDEDOR||meta.sdr||meta.closer||'').trim();
-
   if(audRdUsaResponsavelGrupoSinergia_(a)){
     return audRdResponsavelGrupoSinergia_(token);
   }
@@ -668,7 +672,7 @@ function audRdTextoCloser_(c) {
 
   var linhas = [
     'AUDITORIA CLOSER — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
-    'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
+    'Responsável: ' + audRdNomeResponsavelPublico_(c),
     'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     '',
     'CENÁRIO DA REUNIÃO',
@@ -779,7 +783,7 @@ function audRdTextoCloserCanonico_(c) {
   });
   return audRdSanitizarTextoPublico_([
     'AUDITORIA CLOSER — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
-    'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
+    'Responsável: ' + audRdNomeResponsavelPublico_(c),
     'Resultado: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     '',
     'DIMENSÕES OFICIAIS',
@@ -916,7 +920,7 @@ function audRdTextoSdr_(c) {
 
   var linhas = [
     'AUDITORIA SDR — ' + String(c.i.TITULO || c.i.OPORTUNIDADE || ''),
-    'Responsável: ' + String(c.i.COLABORADOR || c.i.VENDEDOR || c.sdr.nome || 'Não identificado'),
+    'Responsável: ' + audRdNomeResponsavelPublico_(c),
     'Nota geral: ' + String(score != null && score !== '' ? score : '-') + '/5' + (pct != null && pct !== '' ? ' (' + pct + '%)' : ''),
     'PONTUAÇÃO POR CRITÉRIO',
     notasCriterios.length ? notasCriterios.join(n) : '- Pontuação por critério indisponível.',
