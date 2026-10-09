@@ -9268,6 +9268,31 @@ function carregarAnaliticaAuditoriasV3(dados) {
   const mediaScore = scores.length ? scores.reduce(function(soma, valor) { return soma + valor; }, 0) / scores.length : null;
   const ultimoScore = scores.length ? scores[scores.length - 1] : null;
   const anteriorScore = scores.length > 1 ? scores[scores.length - 2] : null;
+  const medianaScore = audV3AnaliticaMediana_(scores);
+  const notasQuatroOuMais = scores.filter(function(valor) { return Number(valor) >= 4; }).length;
+  const taxaQuatroOuMais = scores.length ? Math.round((notasQuatroOuMais / scores.length) * 1000) / 10 : 0;
+  const scoresRecentes = scores.slice(-3);
+  const scoresAnteriores = scores.slice(Math.max(0, scores.length - 6), Math.max(0, scores.length - 3));
+  const mediaRecente = scoresRecentes.length
+    ? scoresRecentes.reduce(function(soma, valor) { return soma + valor; }, 0) / scoresRecentes.length
+    : null;
+  const mediaAnterior = scoresAnteriores.length
+    ? scoresAnteriores.reduce(function(soma, valor) { return soma + valor; }, 0) / scoresAnteriores.length
+    : null;
+  const tendenciaRecente = mediaRecente !== null && mediaAnterior !== null
+    ? Math.round((mediaRecente - mediaAnterior) * 10) / 10
+    : null;
+  const serieAuditorias = registros.filter(function(item) { return item.score !== null; }).map(function(item, indice) {
+    return {
+      data: item.data,
+      score: item.score,
+      auditorias: 1,
+      ordem: indice + 1,
+      rotulo: String(indice + 1) + 'ª',
+      profissional: item.profissional,
+      cliente: item.cliente
+    };
+  });
 
   const porDia = {};
   registros.forEach(function(item) {
@@ -9327,12 +9352,14 @@ function carregarAnaliticaAuditoriasV3(dados) {
   const comportamentos = Object.keys(mapaComportamentos).map(function(chave) {
     const item = mapaComportamentos[chave];
     const media = item.pontos.length ? item.pontos.reduce(function(soma, valor) { return soma + valor; }, 0) / item.pontos.length : null;
+    const desvios = Math.max(0, item.avaliacoes - item.atingidos);
     return {
       id: item.id, nome: item.nome, dimensaoId: item.dimensaoId, avaliacoes: item.avaliacoes,
+      desvios: desvios,
       taxaAtingimento: item.avaliacoes ? Math.round((item.atingidos / item.avaliacoes) * 1000) / 10 : 0,
       mediaNota: media === null ? null : Math.round(media * 10) / 10
     };
-  }).sort(function(a, b) { return a.taxaAtingimento - b.taxaAtingimento || b.avaliacoes - a.avaliacoes || a.nome.localeCompare(b.nome); });
+  }).sort(function(a, b) { return b.desvios - a.desvios || a.taxaAtingimento - b.taxaAtingimento || b.avaliacoes - a.avaliacoes || a.nome.localeCompare(b.nome); });
 
   const mapaPeriodos = {};
   registros.forEach(function(item) {
@@ -9408,11 +9435,19 @@ function carregarAnaliticaAuditoriasV3(dados) {
     resumo: {
       auditorias: registros.length,
       mediaScore: mediaScore === null ? null : Math.round(mediaScore * 10) / 10,
+      medianaScore: medianaScore,
       ultimoScore: ultimoScore,
       variacaoScore: ultimoScore !== null && anteriorScore !== null ? Math.round((ultimoScore - anteriorScore) * 10) / 10 : null,
+      notasQuatroOuMais: notasQuatroOuMais,
+      taxaQuatroOuMais: taxaQuatroOuMais,
+      mediaRecente: mediaRecente === null ? null : Math.round(mediaRecente * 10) / 10,
+      mediaAnterior: mediaAnterior === null ? null : Math.round(mediaAnterior * 10) / 10,
+      tendenciaRecente: tendenciaRecente,
+      baseSuficiente: registros.length >= 5,
       coberturaTemporal: temposTotais ? Math.round((temposMensuraveis / temposTotais) * 1000) / 10 : 0
     },
     linhaTempo: linhaTempo,
+    serieAuditorias: serieAuditorias,
     historicoPeriodos: historicoPeriodos,
     erros: erros,
     comportamentos: comportamentos,
