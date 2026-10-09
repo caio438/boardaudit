@@ -8090,6 +8090,9 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
     return String(item.FONTE || '').toUpperCase() === 'TLDV' &&
       String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' &&
       Boolean(String(item.ID_CLIENTE || '').trim()) &&
+      String(item.FUNCAO || '').toUpperCase() === 'CLOSER' &&
+      Boolean(String(item.COLABORADOR || '').trim()) &&
+      !(typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(item.TITULO)) &&
       Boolean(audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches)) &&
       Boolean(transcricoes[id]) &&
       (!Number(config.cutoffMs || 0) || dataMs >= Number(config.cutoffMs || 0)) &&
@@ -8139,6 +8142,14 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
     backlogAnteriorAoCutoffIgnorado: true,
     reunioesPosCutoff: posCutoff.length,
     semCliente: posCutoff.filter(function(item) { return !String(item.ID_CLIENTE || '').trim(); }).length,
+    semCloserConfirmado: posCutoff.filter(function(item) {
+      return String(item.ID_CLIENTE || '').trim() &&
+        !(typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(item.TITULO)) &&
+        (!String(item.COLABORADOR || '').trim() || String(item.FUNCAO || '').toUpperCase() !== 'CLOSER');
+    }).length,
+    operacionaisIgnoradas: posCutoff.filter(function(item) {
+      return typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(item.TITULO);
+    }).length,
     semPitchCloser: posCutoff.filter(function(item) {
       return String(item.ID_CLIENTE || '').trim() &&
         !audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches);
@@ -8212,7 +8223,7 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
             fonte: 'TLDV',
             idPitch: pitchConferido.pitch.ID_PITCH,
             idInteracao: idInteracao,
-            nomeSdr: interacao.COLABORADOR || interacao.VENDEDOR || '',
+            nomeSdr: interacao.COLABORADOR,
             reclassificarInteracao: false,
             evitarDuplicidade: true
           });
