@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 const audit = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
 const rd = fs.readFileSync(new URL('./RdAuditorias.gs', import.meta.url), 'utf8');
+const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
 function trecho(source, start, end) {
   const i = source.indexOf(start);
   const f = source.indexOf(end, i + start.length);
@@ -75,6 +76,9 @@ assert.deepEqual(ctx.calls,['publication']);
 assert.equal(ctx.audRdBloqueioCanonicoCloser_(ctx.obj),false);
 
 assert.match(audit,/aguardandoCanonico/);
+assert.match(front,/const closerSemRd = String\(item\.tipoAuditoria \|\| ''\)\.toUpperCase\(\) === 'CLOSER' && !rdPublicado;/);
+assert.match(front,/!rdPublicado && !closerSemRd && String\(item\.rdStatus/);
+assert.match(front,/Closer: aguardando Canônico · sem envio ao RD/);
 assert.match(audit,/tipo === 'CLOSER'[\s\S]{0,800}AGUARDANDO_CANONICO/);
 assert.match(rd,/AUDITORIA_CLOSER_RD_AUTORIZADA/);
 assert.match(rd,/if\(audRdBloqueioCanonicoCloser_\(registro\)\)throw/);
