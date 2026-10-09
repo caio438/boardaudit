@@ -20,6 +20,8 @@ const script=[
   seller+': Nosso sistema tem três planos e funciona por assinatura e mensalidade.',
   'Heloisa Coutinho: O plano básico parece interessante.',
   seller+': Vamos apresentar a solução focando nos desafios que você comentou.',
+  seller+': Nosso sistema oferece recursos de controle e integração, e eu gostaria de entender melhor quais atividades você executa hoje.',
+  seller+': Posso te mostrar a plataforma, demonstrar as funcionalidades e explicar nossa proposta comercial com base nessas informações.',
   'Heloisa Coutinho: Antes preciso ver a proposta.'
 ].join('\n');
 const guessed=ctx.tldvInferirApresentadorComercial_(script);
@@ -38,7 +40,12 @@ const duo=[
  'Fernanda: Nosso sistema funciona com planos de mensalidade.',
  'Vinícius: Vamos apresentar o nosso produto com mais detalhes.',
  'Fernanda: Vamos apresentar o nosso produto com mais detalhes.'
-].join('\n');
+].concat([ // Duas vozes com evidências equivalentes e falas extensas não são atribuíveis com confiança.
+ 'Vinícius: Nosso sistema permite configurar a plataforma e eu vou te apresentar a solução da empresa com atenção ao seu processo.',
+ 'Fernanda: Nosso sistema permite configurar a plataforma e eu vou te apresentar a solução da empresa com atenção ao seu processo.',
+ 'Vinícius: Eu sou especialista nesta solução e gostaria de entender quais informações da empresa estão faltando na operação.',
+ 'Fernanda: Eu sou especialista nesta solução e gostaria de entender quais informações da empresa estão faltando na operação.'
+]).join('\n');
 assert.equal(ctx.tldvInferirApresentadorComercial_(duo),null,'Duas identidades comerciais plausíveis devem ser sinalizadas como ambíguas.');
 assert.match(code,/inferidosPelaTranscricao: inferidosPelaTranscricao/);
 assert.match(code,/if \(identificados >= 8/,'Limitar escritas para evitar timeout.');
