@@ -46,6 +46,11 @@ assert.doesNotMatch(section(central,'function automacaoCentralHandlersLegados_()
 assert.match(code,/const agendaTldv = instalarAutomacaoTldv\(\)/);
 assert.match(code,/Number\(acionadores\.tldvDedicado \|\| 0\) === 1/);
 assert.match(code,/ops_closer_tldv_repair/);
+const trechoAtivacao = section(code,'function ATIVAR_BOARD_AUTOMATICO_COMPLETO()','function reconciliarAcionadorRd_(');
+const trechoReparo = section(code,"if (String(parametros.ops_closer_tldv_repair || '') === '1')","if (String(parametros.ops_closer_tldv_status || '') === '1')");
+assert.match(trechoAtivacao,/salvarConfiguracao_\('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA', 'SIM'\)/);
+assert.match(trechoReparo,/salvarConfiguracao_\('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA', 'SIM'\)/);
+assert.doesNotMatch(trechoReparo,/salvarConfiguracao_\('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO'/);
 assert.match(workflow,/github\.event\.comment\.body == '\/closer-tldv-repair'/);
 assert.match(workflow,/ops_closer_tldv_repair=1/);
 assert.match(code,/tldvDataMs_\(item\.DATA_INTERACAO\) >= cutoffMs/);
