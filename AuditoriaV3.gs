@@ -8238,7 +8238,8 @@ function agendarPipelineCloserTldv_(opcoes) {
   if (audV3UsoDiarioBackfillCloser_().tentativas >= config.maxBackfillDia) {
     fila = fila.filter(function(item) { return !item.backfill; });
   }
-  if (!fila.length && opcoes.forcar !== true) return false;
+  // Sem item elegível não cria acionador vazio (inclusive durante cooldown).
+  if (!fila.length) return false;
   ScriptApp.newTrigger(AUTOMACAO_REUNIOES_CLOSER_V3.handler)
     .timeBased()
     .after(Math.max(60000, Number(opcoes.atrasoMs || AUTOMACAO_REUNIOES_CLOSER_V3.atrasoMs)))
