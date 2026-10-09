@@ -947,6 +947,48 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_closer_tldv_status || '') === '1') {
+    const ativoOpsCloserStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsCloserStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsCloserStatus || !efetivoOpsCloserStatus || ativoOpsCloserStatus !== efetivoOpsCloserStatus) {
+      throw new Error('Observabilidade do Closer tl;dv permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof obterStatusAutomacaoReunioesCloserV3 !== 'function') {
+      throw new Error('Observabilidade do Closer tl;dv nao esta disponivel no HEAD do Apps Script.');
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify(obterStatusAutomacaoReunioesCloserV3(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_closer_tldv_sync || '') === '1') {
+    const ativoOpsCloserSync = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsCloserSync = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsCloserSync || !efetivoOpsCloserSync || ativoOpsCloserSync !== efetivoOpsCloserSync) {
+      throw new Error('Sincronizacao do Closer tl;dv permitida somente para a conta proprietaria autenticada.');
+    }
+    const sincronizacaoCloser = SINCRONIZAR_TLDV_AGENDADO();
+    const statusCloserSync = typeof obterStatusAutomacaoReunioesCloserV3 === 'function'
+      ? obterStatusAutomacaoReunioesCloserV3()
+      : {};
+    const reunioesCloserSync = (sincronizacaoCloser || {}).sincronizacao || {};
+    const transcricoesCloserSync = (sincronizacaoCloser || {}).transcricoes || {};
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        sucesso: Boolean((sincronizacaoCloser || {}).sucesso),
+        sincronizacao: {
+          novas: Number(reunioesCloserSync.novas || 0),
+          atualizadas: Number(reunioesCloserSync.atualizadas || 0),
+          clientesIdentificados: Number(reunioesCloserSync.clientesIdentificados || 0),
+          transcricoesImportadas: Number(transcricoesCloserSync.importadas || 0),
+          transcricoesPendentes: Number((transcricoesCloserSync.erros || []).length),
+          pipelineCloserAgendado: Boolean((sincronizacaoCloser || {}).pipelineCloserAgendado)
+        },
+        status: statusCloserSync
+      }, null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_status || '') === '1') {
     const ativoOpsSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -3606,6 +3648,7 @@ function ATIVAR_PIPELINE_SDR_ISOLADO() {
   salvarSegredo_(RD_API4COM_AUTOMACAO.chavePipeline, 'SIM');
 
   salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_ATIVA', 'SIM');
+  salvarConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA', 'SIM');
   if (!String(obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || '').trim()) {
     salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff, RD_API4COM_AUTOMACAO.cutoffPadraoIso);
   }
@@ -3714,6 +3757,9 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
   if (!String(obterConfiguracao_('AUDITORIA_AUTO_LIGACOES_INICIO') || '').trim()) {
     salvarConfiguracao_('AUDITORIA_AUTO_LIGACOES_INICIO', Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
   }
+  if (!String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '').trim()) {
+    salvarConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO', new Date().toISOString());
+  }
 
   salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA', 'SIM');
   salvarConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA_INICIO', Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
@@ -3724,11 +3770,18 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
   const watchdogInstalado = reconciliarWatchdogPipelineRdApi4com_();
   const ingestaoInicial = garantirIngestaoSdrRecente_();
   const pipelineAgendado = agendarPipelineRdApi4com_();
+  const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
+    ? agendarPipelineCloserTldv_()
+    : false;
   const central = instalarAutomacaoCentral19h_();
   const acionadores = snapshotAutomacaoBoardCompleto_();
   const cutoffIso = String(
     obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso
   );
+  const cutoffCloserIso = String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '');
+  const statusCloser = typeof obterStatusAutomacaoReunioesCloserV3 === 'function'
+    ? obterStatusAutomacaoReunioesCloserV3()
+    : { ativa: false };
   const sucesso = boardModoAtual_() === 'AUTOMATICO' &&
     central.ativa === true &&
     Number(acionadores.central19h || 0) === 1 &&
@@ -3736,12 +3789,14 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
     Number(acionadores.watchdogsSdr || 0) === RD_API4COM_AUTOMACAO.watchdogHours.length &&
     Number(acionadores.jornadaPastas || 0) === 1 &&
     Number(acionadores.formalizacaoNoturna || 0) === 1 &&
+    statusCloser.ativa === true && Boolean(cutoffCloserIso) &&
     acionadores.legadosDuplicados.length === 0;
 
   registrarLog_(
     'AUTOMACAO',
     'ATIVAR_BOARD_AUTOMATICO_COMPLETO',
     'Ativacao completa=' + String(sucesso) + '; cutoff SDR=' + cutoffIso +
+      '; cutoff Closer=' + cutoffCloserIso +
       '; triggers=' + acionadores.todos.join(',')
   );
 
@@ -3750,6 +3805,10 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
     modoBoard: boardModoAtual_(),
     cutoffSdrIso: cutoffIso,
     backlogSdrAnteriorAoCutoffIgnorado: true,
+    cutoffCloserIso: cutoffCloserIso,
+    backlogCloserAnteriorAoCutoffIgnorado: true,
+    auditoriaReunioesCloserAtiva: statusCloser.ativa === true,
+    statusCloserTldv: statusCloser,
     tldvAutomatico: String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM',
     rdAutomatico: String(obterConfiguracao_('RD_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM',
     ingestaoRdApi4comAtiva: rdApi4comIngestaoAtiva_(),
@@ -3761,6 +3820,7 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
     ingestaoInstalada: Boolean(ingestaoInstalada),
     watchdogInstalado: Boolean(watchdogInstalado),
     pipelineAgendado: Boolean(pipelineAgendado),
+    pipelineCloserAgendado: Boolean(pipelineCloserAgendado),
     ingestaoInicial: ingestaoInicial,
     jornada: jornada,
     central: central,
@@ -5172,11 +5232,16 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       transcricoes = importarTranscricoesTldv(pendentes);
     }
 
+    const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
+      ? agendarPipelineCloserTldv_()
+      : false;
+
     const resumo = [
       'Reuniões novas: ' + Number(sincronizacao.novas || 0),
       'atualizadas: ' + Number(sincronizacao.atualizadas || 0),
       'transcrições importadas: ' + Number(transcricoes.importadas || 0),
-      'pendências ainda indisponíveis: ' + Number((transcricoes.erros || []).length)
+      'pendências ainda indisponíveis: ' + Number((transcricoes.erros || []).length),
+      'pipeline Closer: ' + (pipelineCloserAgendado ? 'agendado' : 'sem fila')
     ].join('; ');
 
     salvarConfiguracao_('TLDV_ULTIMO_STATUS', 'CONCLUIDA');
@@ -5187,6 +5252,7 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       sucesso: true,
       sincronizacao: sincronizacao,
       transcricoes: transcricoes,
+      pipelineCloserAgendado: pipelineCloserAgendado,
       mensagem: resumo
     };
   } catch (erro) {
@@ -5222,6 +5288,12 @@ function sincronizarReunioesTldv() {
   });
   let novas = 0;
   let atualizadas = 0;
+  let clientesIdentificados = 0;
+  const regrasClientes = typeof jornadaIdentificarClienteEvento_ === 'function'
+    ? lerObjetos_(APP.sheets.identificadoresClientes).filter(item =>
+        String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO' && item.ID_CLIENTE
+      )
+    : [];
 
   reunioes.forEach(reuniao => {
     const idExterno = String(reuniao.id || '').trim();
@@ -5234,13 +5306,20 @@ function sincronizarReunioesTldv() {
     const idInteracao = existente ? String(existente.ID_INTERACAO) : idInteracaoPadrao;
     const agora = new Date();
     const organizador = reuniao.organizer || {};
+    const candidatoCliente = existente && String(existente.ID_CLIENTE || '').trim()
+      ? null
+      : identificarClienteReuniaoTldv_(reuniao, regrasClientes);
+    const idCliente = existente && String(existente.ID_CLIENTE || '').trim()
+      ? String(existente.ID_CLIENTE || '').trim()
+      : String((candidatoCliente || {}).idCliente || '').trim();
+    if (idCliente && (!existente || !String(existente.ID_CLIENTE || '').trim())) clientesIdentificados++;
 
     const objeto = {
       ID_INTERACAO: idInteracao,
       FONTE: 'TLDV',
       ID_EXTERNO: idExterno,
       TIPO_INTERACAO: 'REUNIAO',
-      ID_CLIENTE: existente ? existente.ID_CLIENTE : '',
+      ID_CLIENTE: idCliente,
       VENDEDOR: String(organizador.name || organizador.email || ''),
       LEAD: extrairConvidadosTldv_(reuniao),
       TITULO: String(reuniao.name || 'Reunião sem título'),
@@ -5251,6 +5330,11 @@ function sincronizarReunioesTldv() {
       PARTICIPANTES_JSON: JSON.stringify(Array.isArray(reuniao.invitees) ? reuniao.invitees : []),
       STATUS_TRANSCRICAO: existente ? (existente.STATUS_TRANSCRICAO || 'PENDENTE') : 'PENDENTE',
       STATUS_AUDITORIA: existente ? (existente.STATUS_AUDITORIA || 'NAO_AUDITADA') : 'NAO_AUDITADA',
+      DESCRICAO_ORIGEM: existente && existente.DESCRICAO_ORIGEM
+        ? existente.DESCRICAO_ORIGEM
+        : (candidatoCliente
+          ? 'Cliente identificado automaticamente no tl;dv (' + Math.round(Number(candidatoCliente.pontos || 0)) + '): ' + String(candidatoCliente.motivo || '')
+          : ''),
       IMPORTADO_EM: existente ? existente.IMPORTADO_EM : agora,
       ATUALIZADO_EM: agora
     };
@@ -5267,15 +5351,40 @@ function sincronizarReunioesTldv() {
   });
 
   limparCachesDados_();
-  registrarLog_('TLDV', 'SINCRONIZAR_REUNIOES', 'Novas: ' + novas + '. Atualizadas: ' + atualizadas + '.');
+  registrarLog_('TLDV', 'SINCRONIZAR_REUNIOES', 'Novas: ' + novas + '. Atualizadas: ' + atualizadas + '. Clientes identificados: ' + clientesIdentificados + '.');
 
   return {
     sucesso: true,
     mensagem: reunioes.length + ' reunião(ões) recebida(s) do tl;dv.',
     novas: novas,
     atualizadas: atualizadas,
+    clientesIdentificados: clientesIdentificados,
     reunioes: listarReunioes_()
   };
+}
+
+function identificarClienteReuniaoTldv_(reuniao, regras) {
+  if (typeof jornadaIdentificarClienteEvento_ !== 'function') return null;
+  reuniao = reuniao || {};
+  const convidados = Array.isArray(reuniao.invitees) ? reuniao.invitees : [];
+  const organizador = reuniao.organizer || {};
+  const emails = convidados.map(function(item) {
+    return String((item || {}).email || (item || {}).mail || '').trim().toLowerCase();
+  }).filter(Boolean);
+  const emailOrganizador = String(organizador.email || '').trim().toLowerCase();
+  if (emailOrganizador) emails.push(emailOrganizador);
+  const evento = {
+    getTitle: function() { return String(reuniao.name || ''); },
+    getDescription: function() { return String(reuniao.description || reuniao.notes || ''); },
+    getGuestList: function() {
+      return Array.from(new Set(emails)).map(function(email) {
+        return { getEmail: function() { return email; } };
+      });
+    },
+    getCreators: function() { return emailOrganizador ? [emailOrganizador] : []; }
+  };
+  const candidato = jornadaIdentificarClienteEvento_(evento, regras);
+  return candidato && Number(candidato.pontos || 0) >= 50 ? candidato : null;
 }
 
 function importarTranscricoesTldv(idsInteracoes) {

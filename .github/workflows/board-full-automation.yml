@@ -79,6 +79,9 @@ jobs:
             r.tldvAutomatico === true && r.rdAutomatico === true &&
             r.ingestaoRdApi4comAtiva === true && r.pipelineRdApi4comAtivo === true &&
             r.auditoriaLigacoesAtiva === true && r.formalizacaoAutomatica === true &&
+            r.auditoriaReunioesCloserAtiva === true &&
+            r.backlogCloserAnteriorAoCutoffIgnorado === true &&
+            /^\d{4}-\d{2}-\d{2}T/.test(String(r.cutoffCloserIso || '')) &&
             r.publicacaoAutomaticaRd === true && r.aprovacaoAutomatica === true &&
             Number(t.central19h || 0) === 1 && Number(t.ingestaoRdApi4com || 0) === 1 &&
             Number(t.watchdogsSdr || 0) === 5 && Number(t.jornadaPastas || 0) === 1 &&
@@ -95,6 +98,9 @@ jobs:
             '- Watchdogs SDR: ' + String(t.watchdogsSdr || 0),
             '- Cutoff SDR preservado: ' + String(r.cutoffSdrIso || ''),
             '- Backlog anterior ao cutoff: ignorado',
+            '- Closer tl;dv automatico: ' + String(r.auditoriaReunioesCloserAtiva === true),
+            '- Cutoff Closer: ' + String(r.cutoffCloserIso || ''),
+            '- Reunioes Closer anteriores ao cutoff: ignoradas',
             '- Aprovacao e publicacao no RD: automaticas',
             '- Triggers legados duplicados: ' + ((t.legadosDuplicados || []).join(', ') || 'nenhum'), '',
             ok ? '**Resultado: Board inteiro reativado em modo automatico.**'
@@ -102,6 +108,47 @@ jobs:
           ];
           fs.writeFileSync('/tmp/board-full-report.md', lines.join('\n'));
           fs.writeFileSync('/tmp/board-full-summary.json', JSON.stringify(r, null, 2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+
+      - name: Verify tl;dv intake and Closer queue
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/google_access_token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/closer-tldv-safe-result.json -w '%{http_code}' "$BASE?ops_closer_tldv_sync=1" || true)"
+          echo "CLOSER_TLDV_SYNC_HTTP_STATUS=$code"
+          test "$code" = "200"
+
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/closer-tldv-safe-result.json', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0, 500))) throw new Error('Resposta invalida da sincronizacao tl;dv.');
+          const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+          if (first < 0 || last < first) throw new Error('Resposta tl;dv sem JSON.');
+          const r = JSON.parse(raw.slice(first, last + 1));
+          const s = r.status || {};
+          const sync = r.sincronizacao || {};
+          const ok = r.sucesso === true && s.ativa === true &&
+            s.backlogAnteriorAoCutoffIgnorado === true && /^\d{4}-\d{2}-\d{2}T/.test(String(s.cutoffIso || ''));
+          const lines = [
+            '', '## Closer tl;dv', '',
+            '- Sincronizacao respondeu: ' + String(r.sucesso === true),
+            '- Reunioes novas: ' + String(sync.novas || 0),
+            '- Clientes identificados: ' + String(sync.clientesIdentificados || 0),
+            '- Transcricoes importadas: ' + String(sync.transcricoesImportadas || 0),
+            '- Reunioes pos-cutoff: ' + String(s.reunioesPosCutoff || 0),
+            '- Aguardando transcricao: ' + String(s.aguardandoTranscricao || 0),
+            '- Aguardando auditoria: ' + String(s.aguardandoAuditoria || 0),
+            '- Sem cliente confirmado: ' + String(s.semCliente || 0),
+            '- Sem pitch Closer atual (ignoradas): ' + String(s.semPitchCloser || 0),
+            '- Pipeline agendado: ' + String(sync.pipelineCloserAgendado === true),
+            '', ok ? '**Resultado: ingestao tl;dv e fila automatica do Closer responderam em producao.**'
+                   : '**Resultado: a verificacao do Closer tl;dv falhou.**'
+          ];
+          fs.appendFileSync('/tmp/board-full-report.md', lines.join('\n') + '\n');
           console.log(lines.join('\n'));
           if (!ok) process.exit(1);
           NODE
@@ -126,6 +173,7 @@ jobs:
             /tmp/board-full-result.txt
             /tmp/board-full-report.md
             /tmp/board-full-summary.json
+            /tmp/closer-tldv-safe-result.json
           if-no-files-found: warn
           retention-days: 7
 
