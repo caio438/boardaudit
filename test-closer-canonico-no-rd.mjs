@@ -62,6 +62,8 @@ assert.match(salvo.mensagem,/permanece sem envio ao RD/);
 assert.equal(ctx.calls.includes('publication'),false,'Salvar vínculo Canônico não pode publicar Closer.');
 
 ctx.calls.length=0;ctx.updates.length=0;
+// Exercitar o guard real para Closer e isolar a chamada SDR no teste.
+ctx.audRdPublicarAutomaticamente_=()=>{ctx.calls.push('publication');return{aplicavel:true,publicada:true,status:'PUBLICADA'};};
 ctx.obj={ ID_AUDITORIA:'AUD-2', ID_INTERACAO:'INT-2', TIPO_AUDITORIA:'SDR', STATUS:'APROVADA', VALIDACAO_STATUS:'VALIDADA' };
 const sdr=ctx.audV3FinalizarAutomaticamente_('AUD-2');
 assert.equal(sdr.rd.publicada,true);
