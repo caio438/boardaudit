@@ -5358,6 +5358,47 @@ function tldvReconciliarClientesHistoricos_() {
   return { identificados: identificados, semClienteConfiavel: ambiguos };
 }
 
+/**
+ * Fallback conservador para transcrições antigas sem membro CLOSER no Canônico.
+ * Identifica o apresentador somente quando suas próprias falas demonstram
+ * explicitamente papel comercial (não pelo nome do organizador ou do lead).
+ * O nome fica pendente de vinculação no Canônico, sem enviar auditoria ao RD.
+ */
+function tldvInferirApresentadorComercial_(texto) {
+  const pessoas = {};
+  String(texto || '').split('\n').slice(0, 1800).forEach(function(linha) {
+    const match = String(linha).match(/^\s*(?:\[[^\]]{1,40}\]\s*)?([^:\n]{3,75}):\s*(.+)$/);
+    if (!match) return;
+    const nome = String(match[1] || '').trim();
+    const chave = tldvNormalizarPessoa_(nome);
+    if (!chave || chave.split(' ').length > 5 ||
+        /^(?:speaker|participante|desconhecido|nao identificado|volum|usuario|cliente)(?: \d+)?$/.test(chave)) return;
+    if (!pessoas[chave]) pessoas[chave] = { nome: nome, turnos: 0, falas: [] };
+    pessoas[chave].turnos++;
+    if (pessoas[chave].falas.length < 250) pessoas[chave].falas.push(match[2]);
+  });
+  const candidatos = Object.keys(pessoas).map(function(chave) {
+    const pessoa = pessoas[chave];
+    const fala = pessoa.falas.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // O apresentador precisa falar da própria atuação, não pedir demo como lead.
+    const apresentacao = /\b(?:vou|vamos|quero|gostaria|preciso)\b.{0,90}\b(?:apresentar|mostrar|demonstrar|explicar)\b.{0,100}\b(?:sistema|plataforma|solucao|ferramenta|produto|servico)\b/.test(fala);
+    const especialista = /\b(?:eu sou|sou o|sou a|meu nome e)\b.{0,90}\b(?:especialista|consultor|consultora|executivo|vendedor|comercial)\b/.test(fala);
+    const produtoProprio = /\b(?:nosso|nossa|nossos|nossas)\b.{0,60}\b(?:sistema|plataforma|solucao|produto|servico|planos|ferramenta)\b/.test(fala);
+    const diagnostico = /\b(?:preciso|gostaria|vou|queria)\b.{0,100}\b(?:confirmar|perguntar|entender)\b.{0,100}\b(?:informac|necessidad|trabalh|empresa|situac)\b/.test(fala);
+    const comercial = /\b(?:plano|planos|mensalidade|assinatura|implantacao|valor|valores|investimento|fidelidade)\b/.test(fala);
+    const forte = (especialista && (apresentacao || produtoProprio)) ||
+      (apresentacao && produtoProprio && diagnostico);
+    const score = (especialista ? 5 : 0) + (apresentacao ? 5 : 0) +
+      (produtoProprio ? 3 : 0) + (diagnostico ? 2 : 0) + (comercial ? 1 : 0);
+    return { nome: pessoa.nome, turnos: pessoa.turnos, tamanho: fala.length,
+      score: score, forte: forte };
+  }).filter(function(c) {
+    return c.forte && c.turnos >= 4 && c.tamanho >= 600 && c.score >= 9;
+  }).sort(function(a,b) { return b.score - a.score; });
+  if (!candidatos.length || (candidatos[1] && candidatos[0].score - candidatos[1].score < 3)) return null;
+  return { nome: candidatos[0].nome, pontos: candidatos[0].score, origem: 'APRESENTADOR_DA_TRANSCRICAO_PENDENTE_CANONICO' };
+}
+
 function tldvReconciliarCloserTranscricoes_(cutoffMs) {
   const equipe = lerObjetos_(APP.sheets.equipeClientes);
   const transcricoes = lerObjetos_(APP.sheets.transcricoes);
@@ -5365,25 +5406,39 @@ function tldvReconciliarCloserTranscricoes_(cutoffMs) {
   transcricoes.forEach(t => { if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA') porInteracao[t.ID_INTERACAO] = t; });
   let identificados = 0;
   let naoIdentificados = 0;
+  let inferidosPelaTranscricao = 0;
   lerObjetos_(APP.sheets.interacoes).forEach(function(item) {
-    if (String(item.FONTE || '').toUpperCase() !== 'TLDV' ||
-        !item.ID_CLIENTE || item.COLABORADOR ||
+    // No máximo 8 gravações atualizadas por rodada do tl;dv para evitar timeout.
+    if (identificados >= 8 ||
+        String(item.FONTE || '').toUpperCase() !== 'TLDV' ||
+        !item.ID_CLIENTE ||
+        (String(item.COLABORADOR || '').trim() &&
+         !/^(nao evidenciado|nao identificado|volum)$/i.test(tldvNormalizarPessoa_(item.COLABORADOR))) ||
         tldvDataMs_(item.DATA_INTERACAO) < cutoffMs ||
         tldvReuniaoOperacional_(item.TITULO)) return;
     const transcricao = porInteracao[item.ID_INTERACAO] || {};
     if (!String(transcricao.CONTEUDO || '').trim()) return;
     let convidados = [];
     try { convidados = JSON.parse(String(item.PARTICIPANTES_JSON || '[]')); } catch (_) {}
-    const closer = identificarCloserReuniaoTldv_({
+    const closerDaEquipe = identificarCloserReuniaoTldv_({
       name: item.TITULO, organizer: {name: item.VENDEDOR}, invitees: convidados
     }, item.ID_CLIENTE, equipe, transcricao.CONTEUDO);
+    const inferencia = !closerDaEquipe && String(obterConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO') || '').toUpperCase() === 'SIM'
+      ? tldvInferirApresentadorComercial_(transcricao.CONTEUDO) : null;
+    const closer = closerDaEquipe || (inferencia && inferencia.nome) || '';
     if (!closer) { naoIdentificados++; return; }
     atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', item.ID_INTERACAO, {
-      COLABORADOR: closer, FUNCAO: 'CLOSER', ATUALIZADO_EM: new Date()
+      COLABORADOR: closer,
+      FUNCAO: 'CLOSER',
+      DESCRICAO_ORIGEM: inferencia
+        ? String(item.DESCRICAO_ORIGEM || '') + '; Closer inferido da fala da reunião (' + inferencia.pontos + ' pontos). Validar vínculo no Canônico.'
+        : item.DESCRICAO_ORIGEM,
+      ATUALIZADO_EM: new Date()
     });
+    if (inferencia) inferidosPelaTranscricao++;
     identificados++;
   });
-  return { identificados: identificados, semCloserConfirmado: naoIdentificados };
+  return { identificados: identificados, inferidosPelaTranscricao: inferidosPelaTranscricao, semCloserConfirmado: naoIdentificados };
 }
 
 /**
