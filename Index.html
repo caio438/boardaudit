@@ -8722,10 +8722,12 @@
     });
     const titulo = document.getElementById('audHistoricoTitulo');
     if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
-    ['auditReunioesDetails','auditRdDetails','audPerformanceDetails'].forEach(function(id) {
+    ['auditReunioesDetails','auditRdDetails'].forEach(function(id) {
       const bloco = document.getElementById(id);
-      if (bloco) bloco.style.display = tipo === 'PLANO' ? 'none' : '';
+      if (bloco) bloco.style.display = tipo === 'CLOSER' ? '' : 'none';
     });
+    const performance = document.getElementById('audPerformanceDetails');
+    if (performance) performance.style.display = tipo === 'PLANO' ? 'none' : '';
     const resumoRd = document.getElementById('resumoEnviosRdAuditorias');
     if (resumoRd) resumoRd.style.display = tipo === 'PLANO' ? 'none' : '';
     sincronizarModoSimplificadoCloserFront_();
