@@ -1941,7 +1941,7 @@
 
             <div id="audEquipePlanoBox" class="field" style="display:none">
               <label for="audEquipePlano">Equipe analisada no plano</label>
-              <select id="audEquipePlano" onchange="atualizarResumoAuditoria()">
+              <select id="audEquipePlano" onchange="atualizarSeletoresAuditoria()">
                 <option value="">Selecione a equipe</option>
                 <option value="SDR">SDR</option>
                 <option value="CLOSER">Closer</option>
@@ -1974,7 +1974,10 @@
                 <option value="">Selecione uma ou mais transcrições</option>
               </select>
               <div id="audInteracoesLista" class="audit-transcript-list"></div>
-              <div class="small muted" style="margin-top:6px">Marque até três transcrições. As auditorias serão executadas uma por vez.</div>
+              <div id="audTranscricoesAjuda" class="small muted" style="margin-top:6px">Marque até três transcrições. As auditorias serão executadas uma por vez.</div>
+              <div id="audPlanoFonteAcoes" class="actions" style="display:none;margin-top:10px">
+                <button class="btn secondary" type="button" onclick="usarTranscricaoManualAuditoriaFront_()">Usar transcrição manual</button>
+              </div>
             </div>
 
             <div id="audReclassificarBox" class="field full" style="display:none">
@@ -5593,7 +5596,10 @@
     const select = document.getElementById('audInteracao');
     const alvo = document.getElementById('audInteracoesLista');
     if (!select || !alvo) return;
-    const opcoes = Array.from(select.options || []).filter(opcao => opcao.value);
+    const ehPlano = String(valor('audTipo') || '').toUpperCase() === 'PLANO';
+    const opcoes = Array.from(select.options || []).filter(opcao =>
+      opcao.value && (!ehPlano || opcao.value !== OPCAO_TRANSCRICAO_MANUAL)
+    );
     if (!opcoes.length) {
       alvo.innerHTML = '<div class="small muted" style="padding:10px 2px">Nenhuma transcrição disponível para os filtros atuais.</div>';
       return;
@@ -5611,6 +5617,17 @@
           <span class="audit-transcript-copy"><strong>${escapeHtml(titulo)}</strong><span class="audit-transcript-meta">${escapeHtml(detalhes)}</span></span>
         </label>`;
     }).join('');
+  }
+
+  function usarTranscricaoManualAuditoriaFront_() {
+    const select = document.getElementById('audInteracao');
+    if (!select) return;
+    Array.from(select.options || []).forEach(function(opcao) {
+      opcao.selected = opcao.value === OPCAO_TRANSCRICAO_MANUAL;
+    });
+    selecionarTranscricaoAuditoriaFront_();
+    const painel = document.getElementById('audImportacaoManual');
+    if (painel) painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function alternarTranscricaoAuditoriaFront_(idInteracao, marcada) {
@@ -5709,26 +5726,33 @@
 
     function sincronizarModoSimplificadoCloserFront_() {
       const ativo = modoSimplificadoCloserFront_();
+      const ehPlano = String(estado.auditoriaEspaco || '').toUpperCase() === 'PLANO';
       const tipo = document.getElementById('audTipo');
       const fonte = document.getElementById('audFonte');
       if (ativo) {
         if (tipo) tipo.value = 'CLOSER';
         if (fonte) fonte.value = 'TODAS';
+      } else if (ehPlano) {
+        if (tipo) tipo.value = 'PLANO';
+        if (fonte) fonte.value = 'TODAS';
       }
 
       ['audTipoBox','audFonteBox','audModeloBox','audPitchBox','audNomeColaboradorBox'].forEach(function(id) {
         const elemento = document.getElementById(id);
-        if (elemento) elemento.style.display = ativo ? 'none' : '';
+        if (!elemento) return;
+        const ocultarNoPlano = ['audTipoBox','audFonteBox','audPitchBox'].includes(id);
+        elemento.style.display = (ativo || (ehPlano && ocultarNoPlano)) ? 'none' : '';
       });
       const botaoPitches = document.getElementById('audGerenciarPitchesBtn');
-      if (botaoPitches) botaoPitches.style.display = ativo ? 'none' : '';
+      if (botaoPitches) botaoPitches.style.display = (ativo || ehPlano) ? 'none' : '';
       const reclassificar = document.getElementById('audReclassificarBox');
       if (ativo && reclassificar) reclassificar.style.display = 'none';
 
       const titulo = document.getElementById('audNovaTitulo');
       const subtitulo = document.getElementById('audNovaSubtitulo');
       const labelTranscricoes = document.getElementById('audTranscricoesLabel');
-      const ajudaTranscricoes = document.querySelector('#audTranscricoesBox .small.muted');
+      const ajudaTranscricoes = document.getElementById('audTranscricoesAjuda');
+      const acoesFontePlano = document.getElementById('audPlanoFonteAcoes');
       const botao = document.getElementById('btnExecutarAuditoria');
       if (ativo) {
         if (titulo) titulo.textContent = 'Nova auditoria Closer';
@@ -5736,12 +5760,19 @@
         if (labelTranscricoes) labelTranscricoes.textContent = 'Transcrição';
         if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Selecione uma transcrição por auditoria.';
         if (botao && !botao.disabled) botao.textContent = 'Auditar';
+      } else if (ehPlano) {
+        if (titulo) titulo.textContent = 'Novo Plano de Otimização';
+        if (subtitulo) subtitulo.textContent = 'Escolha o cliente, a equipe e até três interações recentes para consolidar o plano.';
+        if (labelTranscricoes) labelTranscricoes.innerHTML = 'Interações-base <span class="muted">(recentes deste cliente)</span>';
+        if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Mostramos somente interações concluídas do cliente e da equipe escolhida. Selecione até três.';
+        if (botao && !botao.disabled) botao.textContent = 'Gerar plano';
       } else {
         if (titulo) titulo.textContent = 'Nova auditoria';
         if (subtitulo) subtitulo.textContent = 'Primeiro selecione o cliente. Depois escolha a função e a transcrição.';
         if (labelTranscricoes) labelTranscricoes.innerHTML = 'Transcrições <span class="muted">(selecione até 3)</span>';
         if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Marque até três transcrições. As auditorias serão executadas uma por vez.';
       }
+      if (acoesFontePlano) acoesFontePlano.style.display = ehPlano ? 'flex' : 'none';
 
       const manual = document.getElementById('audImportacaoManual');
       if (manual) {
@@ -5803,13 +5834,21 @@
         pitchSelect.value = atual.idPitch;
       }
 
-      const interacoes = !fonte ? [] : estado.interacoesAuditoria.filter(interacao => {
+      const equipePlano = String(valor('audEquipePlano') || '').toUpperCase();
+      const interacoes = (!fonte || !idCliente) ? [] : estado.interacoesAuditoria.filter(interacao => {
         const fonteInteracao = String(interacao.fonte || '').toUpperCase();
         const tipoInteracao = String(interacao.tipoInteracao || '').toUpperCase();
+        const pertenceAoCliente = String(interacao.idCliente || '') === String(idCliente || '');
+        if (!pertenceAoCliente) return false;
+        if (String(interacao.statusTranscricao || 'CONCLUIDA').toUpperCase() === 'ERRO') return false;
         if (closerSimplificado) {
-          return String(interacao.idCliente || '') === String(idCliente || '') &&
-            ['REUNIAO', 'LIGACAO'].includes(tipoInteracao) &&
-            String(interacao.statusTranscricao || 'CONCLUIDA').toUpperCase() !== 'ERRO';
+          return ['REUNIAO', 'LIGACAO'].includes(tipoInteracao);
+        }
+        if (ehPlano) {
+          if (!['REUNIAO', 'LIGACAO'].includes(tipoInteracao)) return false;
+          if (equipePlano === 'SDR') return tipoInteracao === 'LIGACAO';
+          if (equipePlano === 'CLOSER') return tipoInteracao === 'REUNIAO';
+          return equipePlano === 'AUTO';
         }
         
         const manualCompativel = fonteInteracao === 'MANUAL' && (
@@ -5822,7 +5861,9 @@
           ? fonteInteracao === 'TLDV'
           : (fonte === 'API4COM' ? fonteInteracao === 'API4COM' : fonteInteracao === 'PLANO'));
         return fonteCompativel;
-      });
+      }).sort(function(a, b) {
+        return String(b.dataInteracao || '').localeCompare(String(a.dataInteracao || ''));
+      }).slice(0, ehPlano ? 12 : 50);
 
       interacaoSelect.innerHTML = '<option value="">Selecione uma ou mais transcrições</option>' +
         '<option value="' + OPCAO_TRANSCRICAO_MANUAL + '">+ Adicionar transcrição manualmente</option>' +
@@ -5836,6 +5877,9 @@
       } else if (!tipo) {
         aviso.textContent = 'Selecione a função ou o tipo de análise.';
         aviso.style.display = 'block';
+      } else if (ehPlano && !equipePlano) {
+        aviso.textContent = 'Selecione a equipe para listar somente as interações que podem compor este plano.';
+        aviso.style.display = 'block';
       } else if (!fonte) {
         aviso.textContent = 'Selecione o tipo da interação para listar as transcrições.';
         aviso.style.display = 'block';
@@ -5843,9 +5887,11 @@
         aviso.textContent = 'Este cliente ainda não possui base cadastrada para ' + tipo + '. Cadastre a versão necessária na Área do cliente ou em Gerenciar pitches.';
         aviso.style.display = 'block';
       } else if (!interacoes.length) {
-        aviso.textContent = fonte === 'TLDV'
+        aviso.textContent = ehPlano
+          ? 'Nenhuma interação concluída deste cliente foi encontrada para a equipe escolhida. Você pode usar uma transcrição manual.'
+          : (fonte === 'TLDV'
           ? 'Nenhuma reunião com transcrição está disponível. Sincronize pelo tl;dv ou escolha a importação manual no seletor de transcrição.'
-          : (fonte === 'PLANO' ? 'Nenhum plano com transcrição está disponível. Escolha a importação manual no seletor de transcrição.' : 'Nenhuma ligação com transcrição está disponível. Escolha a importação manual no seletor ou use a integração API4COM.');
+          : (fonte === 'PLANO' ? 'Nenhum plano com transcrição está disponível. Escolha a importação manual no seletor de transcrição.' : 'Nenhuma ligação com transcrição está disponível. Escolha a importação manual no seletor ou use a integração API4COM.'));
         aviso.style.display = 'block';
       } else {
         aviso.style.display = 'none';
@@ -8676,6 +8722,12 @@
     });
     const titulo = document.getElementById('audHistoricoTitulo');
     if (titulo) titulo.textContent = (tipo === 'PLANO' ? 'Planos de Otimização realizados' : 'Auditorias ' + rotuloEspacoAuditoria_(tipo) + ' realizadas');
+    ['auditReunioesDetails','auditRdDetails','audPerformanceDetails'].forEach(function(id) {
+      const bloco = document.getElementById(id);
+      if (bloco) bloco.style.display = tipo === 'PLANO' ? 'none' : '';
+    });
+    const resumoRd = document.getElementById('resumoEnviosRdAuditorias');
+    if (resumoRd) resumoRd.style.display = tipo === 'PLANO' ? 'none' : '';
     sincronizarModoSimplificadoCloserFront_();
   }
 
