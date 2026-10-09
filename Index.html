@@ -1275,6 +1275,77 @@
     .roadmap-item { display:grid; grid-template-columns:130px minmax(0,1fr); gap:14px; align-items:start; padding:14px; border:1px solid var(--border); border-radius:12px; }
     .roadmap-item .status { justify-self:start; }
 
+    .ux-flow-shell {
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:var(--surface);
+      padding:16px;
+      margin-bottom:18px;
+      box-shadow:0 6px 18px rgba(0,0,0,.12);
+    }
+    .ux-flow-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    .ux-flow-header strong { font-size:14px; }
+    .ux-flow-header small { display:block; margin-top:3px; color:var(--muted); }
+    .ux-flow-stepper { display:grid; grid-template-columns:repeat(var(--ux-flow-count,4),minmax(0,1fr)); gap:0; }
+    .ux-flow-step { position:relative; min-width:0; padding:4px 16px 4px 0; }
+    .ux-flow-step:not(:last-child)::after {
+      content:'';
+      position:absolute;
+      top:20px;
+      left:39px;
+      right:0;
+      height:2px;
+      background:var(--border);
+      z-index:0;
+    }
+    .ux-flow-step.is-done:not(:last-child)::after { background:rgba(74,222,128,.65); }
+    .ux-flow-step.is-current:not(:last-child)::after { background:linear-gradient(90deg,var(--primary) 0 35%,var(--border) 35%); }
+    .ux-flow-top { display:flex; align-items:center; gap:9px; position:relative; z-index:1; }
+    .ux-flow-icon {
+      width:34px;
+      height:34px;
+      flex:0 0 34px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:50%;
+      border:1px solid var(--border);
+      background:var(--surface-2);
+      color:var(--muted);
+      font-size:15px;
+      font-weight:800;
+    }
+    .ux-flow-step.is-done .ux-flow-icon { background:rgba(34,197,94,.16); border-color:rgba(74,222,128,.55); color:#86efac; }
+    .ux-flow-step.is-current .ux-flow-icon { background:rgba(37,99,235,.20); border-color:rgba(96,165,250,.65); color:#bfdbfe; box-shadow:0 0 0 3px rgba(37,99,235,.10); }
+    .ux-flow-step.is-map .ux-flow-icon { background:rgba(37,99,235,.14); border-color:rgba(96,165,250,.42); color:#bfdbfe; }
+    .ux-flow-copy { margin-top:9px; padding-right:8px; }
+    .ux-flow-copy strong { display:block; font-size:13px; line-height:1.3; }
+    .ux-flow-copy p { margin:4px 0 0; color:var(--muted)!important; font-size:11px; line-height:1.45; }
+    .ux-flow-state { display:inline-flex; margin-top:7px; padding:3px 7px; border-radius:999px; background:var(--surface-3); color:var(--muted)!important; font-size:10px; font-weight:800; letter-spacing:.02em; }
+    .ux-flow-step.is-current .ux-flow-state { background:rgba(37,99,235,.18); color:#bfdbfe!important; }
+    .ux-flow-step.is-done .ux-flow-state { background:rgba(34,197,94,.12); color:#86efac!important; }
+    .ux-flow-count { display:inline-flex; margin-left:auto; padding:2px 7px; border-radius:999px; background:var(--surface-3); color:var(--text)!important; font-size:10px; font-weight:800; }
+    .ux-guide-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
+    .ux-guide-card { border:1px solid var(--border); border-radius:14px; background:var(--surface-2); padding:16px; }
+    .ux-guide-card .ux-flow-shell { margin:12px 0 0; box-shadow:none; background:var(--surface-2); padding:0; border:0; }
+    .ux-guide-card .ux-flow-copy p { min-height:48px; }
+    .ux-guide-card .actions { margin-top:14px; }
+    .ux-guide-rule { padding:14px 16px; border-left:4px solid var(--primary); border-radius:10px; background:rgba(37,99,235,.08); }
+    .ux-guide-rule strong { display:block; margin-bottom:4px; }
+    .ux-technical-details { margin-top:18px; }
+    .ux-technical-details > summary { cursor:pointer; font-weight:800; }
+    .ux-technical-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:14px; }
+    .ux-technical-item { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--surface-2); }
+    .ux-technical-item strong { display:block; margin-bottom:4px; }
+
+    @media (max-width: 900px) {
+      .ux-flow-stepper { grid-template-columns:1fr; gap:8px; }
+      .ux-flow-step { padding:0 0 8px 0; }
+      .ux-flow-step:not(:last-child)::after { top:34px; bottom:-8px; left:16px; right:auto; width:2px; height:auto; }
+      .ux-guide-grid, .ux-technical-grid { grid-template-columns:1fr; }
+      .ux-guide-card .ux-flow-copy p { min-height:0; }
+    }
+
     @media (max-width: 700px) {
       .audit-sheet { padding: 24px 18px; }
       .audit-meta { grid-template-columns: 1fr; }
@@ -1755,6 +1826,7 @@
       </section>
 
       <section id="page-formalizacoes" class="page">
+        <div id="formalFlowStepper" class="ux-flow-shell"></div>
         <div class="card">
           <div class="section-title">
             <div><h3>Reuniões da Agenda</h3><p>Confira o evento, a gravação e a transcrição. Quando a transcrição estiver disponível, use-a diretamente na formalização.</p></div>
@@ -1867,6 +1939,7 @@
       </section>
 
       <section id="page-tarefasFormalizacoes" class="page">
+        <div id="tarefasFlowStepper" class="ux-flow-shell"></div>
         <div class="grid cards" id="tarefasFormalizacoesResumo"></div>
         <div class="card" style="margin-top:18px">
           <div class="section-title">
@@ -1889,7 +1962,7 @@
               </select>
               <select id="tarefasFormalizacoesStatus" onchange="renderizarTarefasFormalizacoes()">
                 <option value="">Todas as situações</option>
-                <option value="PENDENTE">Pendente</option>
+                <option value="PENDENTE">Criada</option>
                 <option value="EM_ANDAMENTO">Em andamento</option>
                 <option value="CONCLUIDA">Concluída</option>
               </select>
@@ -1913,6 +1986,8 @@
           <button class="audit-space-tab" type="button" role="tab" data-audit-space="CLOSER" aria-selected="false" onclick="selecionarEspacoAuditoriaFront_('CLOSER')">Closer</button>
           <button class="audit-space-tab" type="button" role="tab" data-audit-space="PLANO" aria-selected="false" onclick="selecionarEspacoAuditoriaFront_('PLANO')">Plano de Otimização</button>
         </div>
+
+        <div id="auditFlowStepper" class="ux-flow-shell"></div>
 
         <div class="card">
           <div class="section-title">
@@ -2284,66 +2359,53 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Fluxo recomendado da operação</h3>
-              <p>Siga esta ordem para evitar análises sem contexto, arquivos duplicados e formalizações incompletas.</p>
+              <h3>Guia visual e roadmap funcional</h3>
+              <p>O que aparece aqui é exatamente o mesmo fluxo mostrado nas telas operacionais. Mesmos nomes, mesma ordem, mesmos ícones e mesmas etapas.</p>
             </div>
           </div>
-          <div class="guide-flow">
-            <div class="guide-step"><span class="guide-step-number">1</span><h4>Configurar</h4><p>Cadastre cliente, carteira, equipe, pitch, Comunidade, agendas e pastas.</p></div>
-            <div class="guide-step"><span class="guide-step-number">2</span><h4>Sincronizar</h4><p>Atualize reuniões e ligações. Confirme se a transcrição foi encontrada.</p></div>
-            <div class="guide-step"><span class="guide-step-number">3</span><h4>Auditar</h4><p>Compare a conversa com o pitch correto e revise as evidências.</p></div>
-            <div class="guide-step"><span class="guide-step-number">4</span><h4>Formalizar</h4><p>Use a aba Transcrição, revise os próximos passos e prepare o post.</p></div>
-            <div class="guide-step"><span class="guide-step-number">5</span><h4>Distribuir tarefas</h4><p>Confira responsáveis, prazos e andamento em Tarefas das formalizações.</p></div>
-            <div class="guide-step"><span class="guide-step-number">6</span><h4>Acompanhar</h4><p>Valide entregas e evolução na Área do cliente.</p></div>
+          <div class="ux-guide-rule">
+            <strong>Regra do Board</strong>
+            <span class="muted">Se o Guia mostra uma etapa, ela precisa existir na tela. Se a tela exige uma ação do usuário, ela precisa aparecer neste fluxo.</span>
           </div>
-        </div>
-
-        <div class="grid two" style="margin-top:18px">
-          <div class="card">
-            <div class="section-title"><div><h3>Como fazer uma auditoria</h3><p>Checklist para SDR, Closer ou Plano.</p></div></div>
-            <div class="guide-checklist">
-              <div class="guide-check"><span>✓</span><div><strong>Escolha o cliente e a função.</strong><div class="small muted">Isso define o modelo e os materiais que podem ser usados.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Selecione até três transcrições.</strong><div class="small muted">O Board processa uma por vez para proteger os limites da IA.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Confirme o pitch ou referência.</strong><div class="small muted">Use a versão que estava vigente na data da conversa.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Revise nome, lead e gravação.</strong><div class="small muted">Corrija o responsável antes de gerar a análise.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Valide cada evidência.</strong><div class="small muted">O feedback deve apontar o trecho, o impacto e a melhoria recomendada.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Aprove e publique.</strong><div class="small muted">Só aprove quando o relatório estiver fiel à transcrição e ao pitch.</div></div></div>
-            </div>
-            <div class="actions"><button class="btn success" type="button" onclick="abrirPagina('auditorias')">Ir para Audit</button></div>
-          </div>
-
-          <div class="card">
-            <div class="section-title"><div><h3>Como fazer uma formalização</h3><p>A transcrição é a fonte principal; as anotações servem apenas como apoio.</p></div></div>
-            <div class="guide-checklist">
-              <div class="guide-check"><span>✓</span><div><strong>Localize a reunião na Agenda.</strong><div class="small muted">Confira cliente, data, agenda de origem e tipo da reunião.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Abra a aba Transcrição.</strong><div class="small muted">A formalização deve usar o conteúdo integral da conversa.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Gravação ausente não bloqueia.</strong><div class="small muted">O Board alerta, mas permite continuar quando a transcrição existe.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Revise decisões e responsáveis.</strong><div class="small muted">Datas e próximos passos precisam estar explícitos.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Abra a prévia da Comunidade.</strong><div class="small muted">Escolha o espaço, confira a capa e copie ou publique o conteúdo.</div></div></div>
-              <div class="guide-check"><span>✓</span><div><strong>Confirme o status publicado.</strong><div class="small muted">O histórico deve mostrar a publicação e o link final.</div></div></div>
-            </div>
-            <div class="actions"><button class="btn success" type="button" onclick="abrirPagina('formalizacoes')">Ir para Formalizar</button><button class="btn secondary" type="button" onclick="abrirPagina('tarefasFormalizacoes')">Ver tarefas das formalizações</button></div>
-          </div>
+          <div id="guiaFluxosOperacionais" class="ux-guide-grid"></div>
         </div>
 
         <div class="card" style="margin-top:18px">
-          <div class="section-title"><div><h3>O que precisa estar pronto</h3><p>Use esta lista quando algum botão estiver indisponível ou nenhum arquivo for encontrado.</p></div></div>
+          <div class="section-title">
+            <div>
+              <h3>Como ler os fluxos</h3>
+              <p>O marcador azul mostra onde você está. Verde indica etapa concluída. Cinza indica o que ainda falta.</p>
+            </div>
+          </div>
           <div class="guide-checklist">
-            <div class="guide-check"><span>1</span><div><strong>Cliente:</strong> ativo, carteira definida, equipe e espaço da Comunidade vinculados.</div></div>
-            <div class="guide-check"><span>2</span><div><strong>Fontes:</strong> agenda e pasta cadastradas com a conta que possui acesso.</div></div>
-            <div class="guide-check"><span>3</span><div><strong>Auditoria:</strong> transcrição concluída, pitch vigente e modelo compatível com SDR ou Closer.</div></div>
-            <div class="guide-check"><span>4</span><div><strong>Formalização:</strong> documento com a aba Transcrição; a gravação é recomendada, mas não obrigatória.</div></div>
-            <div class="guide-check"><span>5</span><div><strong>Publicação:</strong> integração da Comunidade/Circle ativa e espaço de destino selecionado.</div></div>
+            <div class="guide-check"><span>1</span><div><strong>Comece sempre pela primeira etapa visível.</strong><div class="small muted">O Board destaca o próximo passo sem exigir conhecimento da automação interna.</div></div></div>
+            <div class="guide-check"><span>2</span><div><strong>Revise somente quando o conteúdo estiver pronto.</strong><div class="small muted">Geração e revisão são etapas diferentes e aparecem separadas no fluxo.</div></div></div>
+            <div class="guide-check"><span>3</span><div><strong>Integrações acontecem depois da aprovação.</strong><div class="small muted">RD, criação de tarefas e demais ações automáticas não viram etapas extras para o usuário.</div></div></div>
           </div>
         </div>
 
+        <details class="card ux-technical-details">
+          <summary>Detalhes técnicos e de diagnóstico</summary>
+          <p class="muted" style="margin-top:10px">Informações internas ficam nesta camada secundária e só precisam ser consultadas quando houver erro ou manutenção.</p>
+          <div class="ux-technical-grid">
+            <div class="ux-technical-item"><strong>Integridade</strong><span class="small muted">Hash, snapshots e versões de normalização protegem a fonte usada na auditoria.</span></div>
+            <div class="ux-technical-item"><strong>Integrações</strong><span class="small muted">RD CRM, API4COM, tl;dv, Google Meet e Circle continuam operando por trás do fluxo principal.</span></div>
+            <div class="ux-technical-item"><strong>Retentativas</strong><span class="small muted">Retry, fila e estados internos permanecem automáticos e aparecem ao usuário apenas quando exigem ação.</span></div>
+            <div class="ux-technical-item"><strong>IDs e vínculos</strong><span class="small muted">IDs técnicos são usados pelo sistema e ficam restritos às áreas de configuração, diagnóstico ou correção de vínculo.</span></div>
+          </div>
+        </details>
+
         <div class="card" style="margin-top:18px">
-          <div class="section-title"><div><h3>Roadmap do Board</h3><p>Prioridades operacionais e critérios para considerar cada etapa concluída.</p></div></div>
+          <div class="section-title">
+            <div>
+              <h3>Roadmap técnico</h3>
+              <p>Melhorias de infraestrutura que não mudam as etapas do fluxo do usuário.</p>
+            </div>
+          </div>
           <div class="roadmap-list">
-            <div class="roadmap-item"><span class="status success">DISPONÍVEL</span><div><strong>Operação centralizada</strong><div class="small muted">Audit, Formalizar, Área do cliente, materiais, agendas, pastas e Comunidade no mesmo fluxo.</div></div></div>
-            <div class="roadmap-item"><span class="status success">OTIMIZADO</span><div><strong>Desempenho e proteção contra cliques repetidos</strong><div class="small muted">Blocos pesados carregam apenas quando abertos e ações de gravação ignoram cliques duplicados.</div></div></div>
-            <div class="roadmap-item"><span class="status warning">EM VALIDAÇÃO</span><div><strong>Pré-formalizações automáticas</strong><div class="small muted">Executar às 13:00 e 18:30, usando a aba Transcrição e mantendo o resultado em revisão.</div></div></div>
-            <div class="roadmap-item"><span class="status warning">PRÓXIMO</span><div><strong>Monitoramento contínuo</strong><div class="small muted">Alertar fontes sem acesso, arquivos sem pareamento, falhas de publicação e possíveis duplicidades.</div></div></div>
+            <div class="roadmap-item"><span class="status success">DISPONÍVEL</span><div><strong>Fluxo único entre Guia e operação</strong><div class="small muted">Os módulos operacionais e o Guia usam a mesma definição de etapas, textos e ícones.</div></div></div>
+            <div class="roadmap-item"><span class="status success">OTIMIZADO</span><div><strong>Detalhes técnicos em camada secundária</strong><div class="small muted">A navegação principal prioriza ações do usuário; diagnóstico técnico fica separado.</div></div></div>
+            <div class="roadmap-item"><span class="status warning">EM EVOLUÇÃO</span><div><strong>Observabilidade silenciosa</strong><div class="small muted">Alertas de fontes, publicação e duplicidade devem aparecer somente quando houver ação necessária.</div></div></div>
           </div>
         </div>
       </section>
@@ -2980,18 +3042,186 @@
       rd: ['Tarefas RD', 'Resumo diário automático das tarefas.'],
       reunioes: ['Reuniões tl;dv', 'Reuniões e transcrições salvas.'],
       ligacoes: ['Ligações API4COM', 'Ligações comerciais e gravações.'],
-      auditorias: ['Audit', 'Auditorias, reuniões, transcrições, tarefas e ligações em um único fluxo.'],
-      formalizacoes: ['Formalizar', 'Transforme qualquer transcrição em uma formalização objetiva.'],
-      tarefasFormalizacoes: ['Tarefas das formalizações', 'Acompanhe os combinados das formalizações sem misturá-los com as auditorias.'],
+      auditorias: ['Audit', 'Encontre a ligação, gere a auditoria, revise e aprove para envio ao RD.'],
+      formalizacoes: ['Formalizar', 'Encontre a reunião, gere a formalização, revise e aprove para criar as tarefas.'],
+      tarefasFormalizacoes: ['Tarefas das formalizações', 'Acompanhe cada tarefa de criada até concluída.'],
       areaCliente: ['Área do cliente', 'Acompanhe a jornada, a saúde operacional e as entregas mensais por cliente.'],
       clientes: ['Clientes', 'Regras e integrações por cliente.'],
       pitches: ['Pitches', 'Scripts e prompts das auditorias.'],
       consumoIa: ['Consumo da IA', 'Acompanhe o uso diário estimado dos modelos pelo Board.'],
       integracoes: ['Configurações', 'Clientes VOLUMBERG, integrações e consumo da IA.'],
-      guia: ['Guia e roadmap', 'Use o Board na ordem correta e confira o que precisa estar configurado.']
+      guia: ['Guia e roadmap', 'O roadmap funcional é o mesmo fluxo que você executa nas telas.']
     };
 
     const OPCAO_TRANSCRICAO_MANUAL = '__MANUAL__';
+
+    const FLUXOS_UX_BOARD = Object.freeze({
+      AUDITORIA: Object.freeze({
+        titulo: 'Auditoria',
+        subtitulo: 'Do encontro da ligação ao registro final no CRM.',
+        pagina: 'auditorias',
+        etapas: Object.freeze([
+          Object.freeze({ icone: '☎', titulo: 'Ligação encontrada', descricao: 'Selecione a conversa que será analisada.' }),
+          Object.freeze({ icone: '✦', titulo: 'Auditoria gerada', descricao: 'O Board cruza a transcrição com a referência vigente.' }),
+          Object.freeze({ icone: '✓', titulo: 'Revisão', descricao: 'Confira evidências, score e recomendações antes de aprovar.' }),
+          Object.freeze({ icone: '↗', titulo: 'Aprovada e enviada ao RD', descricao: 'Depois da aprovação, o resultado é registrado no CRM.' })
+        ])
+      }),
+      FORMALIZACAO: Object.freeze({
+        titulo: 'Formalização',
+        subtitulo: 'Da reunião encontrada aos próximos passos distribuídos.',
+        pagina: 'formalizacoes',
+        etapas: Object.freeze([
+          Object.freeze({ icone: '◫', titulo: 'Reunião encontrada', descricao: 'Selecione a reunião ou transcrição que será formalizada.' }),
+          Object.freeze({ icone: '✦', titulo: 'Formalização gerada', descricao: 'O Board organiza resumo, decisões e próximos passos.' }),
+          Object.freeze({ icone: '✓', titulo: 'Revisão', descricao: 'Confira responsáveis, prazos e conteúdo antes de aprovar.' }),
+          Object.freeze({ icone: '☑', titulo: 'Aprovada e tarefas criadas', descricao: 'A aprovação alimenta automaticamente a fila de tarefas.' })
+        ])
+      }),
+      PLANO: Object.freeze({
+        titulo: 'Plano de Otimização',
+        subtitulo: 'Da fonte escolhida ao plano validado.',
+        pagina: 'auditorias',
+        etapas: Object.freeze([
+          Object.freeze({ icone: '◎', titulo: 'Fonte selecionada', descricao: 'Escolha a fonte que será usada para montar o plano.' }),
+          Object.freeze({ icone: '✦', titulo: 'Plano gerado', descricao: 'O Board consolida os pontos de melhoria e ações recomendadas.' }),
+          Object.freeze({ icone: '✓', titulo: 'Revisão', descricao: 'Confira o conteúdo antes de confirmar o plano.' }),
+          Object.freeze({ icone: '☑', titulo: 'Aprovado', descricao: 'O plano fica validado e pronto para uso e compartilhamento.' })
+        ])
+      }),
+      TAREFAS: Object.freeze({
+        titulo: 'Tarefas',
+        subtitulo: 'O mesmo ciclo usado em cada tarefa das formalizações.',
+        pagina: 'tarefasFormalizacoes',
+        etapas: Object.freeze([
+          Object.freeze({ icone: '+', titulo: 'Criada', descricao: 'A tarefa nasce de uma formalização aprovada.' }),
+          Object.freeze({ icone: '▶', titulo: 'Em andamento', descricao: 'O responsável executa o combinado e acompanha o prazo.' }),
+          Object.freeze({ icone: '✓', titulo: 'Concluída', descricao: 'O item é encerrado e permanece no histórico.' })
+        ])
+      })
+    });
+
+    function renderizarStepperFluxoFront_(hostId, chave, indiceAtual, concluidoFinal, opcoes) {
+      const host = document.getElementById(hostId);
+      const fluxo = FLUXOS_UX_BOARD[chave];
+      if (!host || !fluxo) return;
+      opcoes = opcoes || {};
+      const modoMapa = Boolean(opcoes.modoMapa);
+      const etiquetas = opcoes.etiquetas || [];
+      const total = fluxo.etapas.length;
+      const indice = Math.max(0, Math.min(total - 1, Number(indiceAtual || 0)));
+      const cabecalho = opcoes.ocultarCabecalho ? '' :
+        '<div class="ux-flow-header"><div><strong>' + escapeHtml(fluxo.titulo + ' · fluxo') + '</strong><small>' +
+        escapeHtml(fluxo.subtitulo) + '</small></div><span class="status">' + escapeHtml((indice + 1) + ' de ' + total) + '</span></div>';
+
+      host.style.setProperty('--ux-flow-count', String(total));
+      host.innerHTML = cabecalho + '<div class="ux-flow-stepper">' + fluxo.etapas.map(function(etapa, posicao) {
+        let classe = 'is-pending';
+        if (modoMapa) classe = 'is-map';
+        else if (concluidoFinal && posicao <= indice) classe = 'is-done';
+        else if (posicao < indice) classe = 'is-done';
+        else if (posicao === indice) classe = 'is-current';
+
+        const estadoVisual = modoMapa ? 'ETAPA ' + (posicao + 1) :
+          (classe === 'is-done' ? 'CONCLUÍDA' : (classe === 'is-current' ? 'AGORA' : 'DEPOIS'));
+        const etiqueta = etiquetas[posicao] !== undefined && etiquetas[posicao] !== null
+          ? '<span class="ux-flow-count">' + escapeHtml(etiquetas[posicao]) + '</span>'
+          : '';
+
+        return '<div class="ux-flow-step ' + classe + '">' +
+          '<div class="ux-flow-top"><span class="ux-flow-icon">' + escapeHtml(etapa.icone) + '</span>' + etiqueta + '</div>' +
+          '<div class="ux-flow-copy"><strong>' + escapeHtml(etapa.titulo) + '</strong><p>' + escapeHtml(etapa.descricao) + '</p>' +
+          '<span class="ux-flow-state">' + escapeHtml(estadoVisual) + '</span></div></div>';
+      }).join('') + '</div>';
+    }
+
+    function renderizarFluxoAuditoriaFront_() {
+      const tipo = String(estado.auditoriaEspaco || valor('audTipo') || 'SDR').toUpperCase();
+      const chave = tipo === 'PLANO' ? 'PLANO' : 'AUDITORIA';
+      let selecionadas = [];
+      try { selecionadas = typeof idsTranscricoesSelecionadasAuditoria_ === 'function' ? idsTranscricoesSelecionadasAuditoria_() : []; } catch (erro) { selecionadas = []; }
+      let atual = estado.auditoriaAtual || null;
+      if (atual && String(atual.tipoAuditoria || 'SDR').toUpperCase() !== tipo) atual = null;
+      if (atual && selecionadas.length && atual.idTranscricao && !selecionadas.map(String).includes(String(atual.idTranscricao))) atual = null;
+
+      const fonteSelecionada = selecionadas.length > 0;
+      const gerada = Boolean(atual && (atual.resultado || atual.resultadoCompleto || ['EM_REVISAO','APROVADA'].includes(String(atual.status || '').toUpperCase())));
+      const aprovada = Boolean(atual && String(atual.status || '').toUpperCase() === 'APROVADA');
+      const rdEnviado = Boolean(atual && String(atual.rdStatus || '').toUpperCase() === 'PUBLICADA');
+
+      let indice = 0;
+      let concluido = false;
+      if (fonteSelecionada) indice = 1;
+      if (gerada) indice = 2;
+      if (aprovada) {
+        indice = 3;
+        concluido = chave === 'PLANO' ? true : rdEnviado;
+      }
+      renderizarStepperFluxoFront_('auditFlowStepper', chave, indice, concluido);
+    }
+
+    function renderizarFluxoFormalizacaoFront_() {
+      const idSelecionado = String(valor('formalTranscricao') || '');
+      let atual = estado.formalizacaoAtual || null;
+      if (atual && idSelecionado && atual.idTranscricao && String(atual.idTranscricao) !== idSelecionado) atual = null;
+
+      const reuniaoEncontrada = Boolean(idSelecionado && idSelecionado !== OPCAO_TRANSCRICAO_MANUAL);
+      const gerada = Boolean(atual && atual.resultado);
+      const aprovada = Boolean(atual && String(atual.status || '').toUpperCase() === 'APROVADA');
+
+      let indice = 0;
+      let concluido = false;
+      if (reuniaoEncontrada) indice = 1;
+      if (gerada) indice = 2;
+      if (aprovada) { indice = 3; concluido = true; }
+      renderizarStepperFluxoFront_('formalFlowStepper', 'FORMALIZACAO', indice, concluido);
+    }
+
+    function renderizarFluxoTarefasFront_() {
+      const resumo = estado.resumoTarefasFormalizacoes || {};
+      const filtro = String(valor('tarefasFormalizacoesStatus') || '').toUpperCase();
+      const indice = filtro === 'CONCLUIDA' ? 2 : (filtro === 'EM_ANDAMENTO' ? 1 : 0);
+      renderizarStepperFluxoFront_(
+        'tarefasFlowStepper',
+        'TAREFAS',
+        indice,
+        false,
+        { etiquetas: [String(resumo.total || 0), String(resumo.emAndamento || 0), String(resumo.concluidas || 0)] }
+      );
+    }
+
+    function abrirFluxoGuiaFront_(chave) {
+      const fluxo = FLUXOS_UX_BOARD[chave];
+      if (!fluxo) return;
+      abrirPagina(fluxo.pagina);
+      if (fluxo.pagina === 'auditorias') {
+        selecionarEspacoAuditoriaFront_(chave === 'PLANO' ? 'PLANO' : 'SDR');
+      }
+    }
+
+    function renderizarGuiaFluxosFront_() {
+      const host = document.getElementById('guiaFluxosOperacionais');
+      if (!host) return;
+      const ordem = ['AUDITORIA','FORMALIZACAO','PLANO','TAREFAS'];
+      host.innerHTML = ordem.map(function(chave) {
+        const fluxo = FLUXOS_UX_BOARD[chave];
+        return '<article class="ux-guide-card"><div class="section-title"><div><h4>' + escapeHtml(fluxo.titulo) +
+          '</h4><p>' + escapeHtml(fluxo.subtitulo) + '</p></div></div><div id="guiaFluxo_' + chave +
+          '" class="ux-flow-shell"></div><div class="actions"><button class="btn secondary" type="button" onclick="abrirFluxoGuiaFront_(\'' +
+          chave + '\')">Abrir este fluxo</button></div></article>';
+      }).join('');
+      ordem.forEach(function(chave) {
+        renderizarStepperFluxoFront_('guiaFluxo_' + chave, chave, 0, false, { modoMapa:true, ocultarCabecalho:true });
+      });
+    }
+
+    function sincronizarFluxosOperacionaisFront_() {
+      renderizarFluxoAuditoriaFront_();
+      renderizarFluxoFormalizacaoFront_();
+      renderizarFluxoTarefasFront_();
+      renderizarGuiaFluxosFront_();
+    }
+
     const CACHE_FORMALIZACOES_FRONT = 'board_volum_formalizacoes_v1';
     const CACHE_FORMALIZACOES_TTL_MS = 10 * 60 * 1000;
 
@@ -3287,6 +3517,11 @@
       document.getElementById('tituloPagina').textContent = paginas[nome][0];
       document.getElementById('subtituloPagina').textContent = paginas[nome][1];
 
+      if (nome === 'guia') renderizarGuiaFluxosFront_();
+      if (nome === 'auditorias') renderizarFluxoAuditoriaFront_();
+      if (nome === 'formalizacoes') renderizarFluxoFormalizacaoFront_();
+      if (nome === 'tarefasFormalizacoes') renderizarFluxoTarefasFront_();
+
       if (nome === 'dashboard') {
         return;
       }
@@ -3507,6 +3742,7 @@
       }
 
       if (nome === 'guia') {
+        renderizarGuiaFluxosFront_();
         estado.carregado.guia = true;
         return;
       }
@@ -5925,6 +6161,7 @@
       const alvo = document.getElementById('resumoAuditoriaSelecionada');
       const botao = document.getElementById('btnExecutarAuditoria');
       if (!alvo || !botao) return;
+      renderizarFluxoAuditoriaFront_();
 
       const idCliente = valor('audCliente');
       const tipo = valor('audTipo');
@@ -6002,7 +6239,9 @@
       const reclassificacaoConfirmada = !clienteDiferente || Boolean(reclassificarCampo && reclassificarCampo.checked);
       const pronto = Boolean(cliente && (ehPlano || pitch) && (!ehPlano || equipePlano) && modelo && interacoes.length && interacoes.length <= 3 && reclassificacaoConfirmada && !manualSelecionada);
       botao.disabled = !pronto;
-      botao.textContent = interacoes.length > 1 ? 'Gerar ' + interacoes.length + ' auditorias' : 'Gerar auditoria';
+      botao.textContent = ehPlano
+        ? (interacoes.length > 1 ? 'Gerar ' + interacoes.length + ' planos' : 'Gerar plano')
+        : (interacoes.length > 1 ? 'Gerar ' + interacoes.length + ' auditorias' : 'Gerar auditoria');
 
       if (!idCliente) {
         alvo.innerHTML = '<div class="empty" style="padding:14px">1. Selecione ou cadastre um cliente.</div>';
@@ -7070,6 +7309,7 @@
     const r = auditoria.resultado || {};
     const metadados = r.metadados || {};
     const tipoAudit = String(auditoria.tipoAuditoria || 'SDR').toUpperCase();
+    renderizarFluxoAuditoriaFront_();
     
     let funcaoAuditada = 'SDR';
     if (tipoAudit === 'CLOSER') funcaoAuditada = 'Closer';
@@ -8748,9 +8988,16 @@
     if (volumeRd) volumeRd.style.display = 'none';
     const performance = document.getElementById('audPerformanceDetails');
     if (performance) performance.style.display = tipo === 'PLANO' ? 'none' : '';
+    const tituloNova = document.getElementById('audNovaTitulo');
+    const subtituloNova = document.getElementById('audNovaSubtitulo');
+    if (tituloNova) tituloNova.textContent = tipo === 'PLANO' ? 'Novo Plano de Otimização' : 'Nova auditoria';
+    if (subtituloNova) subtituloNova.textContent = tipo === 'PLANO'
+      ? 'Selecione a fonte, gere o plano, revise e aprove.'
+      : 'Encontre a ligação, gere a auditoria, revise e aprove para envio ao RD.';
     const resumoRd = document.getElementById('resumoEnviosRdAuditorias');
     if (resumoRd) resumoRd.style.display = tipo === 'PLANO' ? 'none' : '';
     sincronizarModoSimplificadoCloserFront_();
+    renderizarFluxoAuditoriaFront_();
   }
 
   function auditoriasOperacionaisFront_() {
@@ -10108,6 +10355,7 @@
         painelManual.style.display = manual ? 'block' : 'none';
       }
       const item = (estado.transcricoesFormalizacao || []).find(t => String(t.idTranscricao) === String(valor('formalTranscricao')));
+      renderizarFluxoFormalizacaoFront_();
       const botao = document.getElementById('btnGerarFormalizacao');
       const resumo = document.getElementById('formalResumoSelecao');
       if (manual) {
@@ -10261,6 +10509,7 @@
       const r = formalizacao.resultado;
       const m = r.metadados || {};
       estado.formalizacaoAtual = formalizacao;
+      renderizarFluxoFormalizacaoFront_();
       const alvo = document.getElementById('formalEditor');
       alvo.style.display = 'block';
       const resumoCircleComPontos = formalResumoCircleComPontos_(r);
@@ -10268,7 +10517,7 @@
       const resultadoReuniao = reuniaoAssociada ? reuniaoAssociada.resultadoReuniao : 'NAO_IDENTIFICADA';
       const tituloExibicao = formalTituloLimpo_(m.titulo || formalizacao.titulo || 'Formalização');
       alvo.innerHTML = `<div class="card">
-        <div class="section-title"><div><h3>${escapeHtml(tituloExibicao)}</h3><p>${escapeHtml([m.cliente || '', formalizacao.tipoReuniao || r.tipo_reuniao || '', formatarDataDia(formalizacao.dataReuniao)].filter(Boolean).join(' · '))}</p></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status warning">${escapeHtml(formalizacao.status || 'EM_REVISAO')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}</div></div>
+        <div class="section-title"><div><h3>${escapeHtml(tituloExibicao)}</h3><p>${escapeHtml([m.cliente || '', formalizacao.tipoReuniao || r.tipo_reuniao || '', formatarDataDia(formalizacao.dataReuniao)].filter(Boolean).join(' · '))}</p></div><div class="actions" style="margin:0;justify-content:flex-end"><span class="status ${String(formalizacao.status || '').toUpperCase() === 'APROVADA' ? 'success' : 'warning'}">${escapeHtml(String(formalizacao.status || 'EM_REVISAO').toUpperCase() === 'APROVADA' ? 'APROVADA' : 'REVISÃO')}</span>${formalBadgeResultadoReuniao_(resultadoReuniao)}</div></div>
         ${formalizacao.semGravacao ? '<div style="padding:12px 14px;margin-bottom:16px;border-radius:10px;background:#fffaeb;color:#934f00;border:1px solid #fedf89"><strong>Atenção:</strong> a gravação não foi encontrada. Esta formalização foi gerada somente a partir da transcrição disponível.</div>' : ''}
         <details name="formal-editor-section" class="formal-editor-section">
           <summary>Dados da reunião</summary>
@@ -10954,6 +11203,7 @@
     }
 
     function renderizarTarefasFormalizacoes() {
+      renderizarFluxoTarefasFront_();
       const tarefas = estado.tarefasFormalizacoes || [];
       const busca = normalizarComparacaoFront(valor('tarefasFormalizacoesBusca'));
       const cliente = valor('tarefasFormalizacoesCliente');
@@ -10984,7 +11234,7 @@
         <td><span class="status">${escapeHtml(rotuloEquipe[item.equipe] || item.equipe)}</span></td><td>${escapeHtml(item.responsavel || 'Não definido')}</td><td>${escapeHtml(item.prazo || 'Não definido')}</td>
         <td><span class="status ${classeStatus[item.status] || ''}">${escapeHtml(rotuloStatusTarefaFormalizacao_(item.status))}</span></td>
         <td><div>${escapeHtml(item.tituloReuniao || 'Formalização')}</div><div class="small muted">${item.origem === 'AJUSTE_OPERACIONAL' ? 'Ajuste operacional' : 'Próximo passo'}</div></td>
-        <td><div class="actions" style="margin:0;min-width:250px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Pendente</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
+        <td><div class="actions" style="margin:0;min-width:250px"><select aria-label="Situação da tarefa" onchange="atualizarStatusTarefaFormalizacaoFront('${escapeAtributo(item.idTarefa)}', this.value, this)" style="min-width:145px"><option value="PENDENTE" ${item.status === 'PENDENTE' ? 'selected' : ''}>Criada</option><option value="EM_ANDAMENTO" ${item.status === 'EM_ANDAMENTO' ? 'selected' : ''}>Em andamento</option><option value="CONCLUIDA" ${item.status === 'CONCLUIDA' ? 'selected' : ''}>Concluída</option></select><button class="btn secondary" type="button" onclick="abrirFormalizacaoExistenteDaJornada('${escapeAtributo(item.idFormalizacao)}')">Abrir</button>${item.linkCircle ? `<a class="btn secondary" href="${escapeAtributo(item.linkCircle)}" target="_blank" rel="noopener">Circle</a>` : ''}</div></td>
       </tr>`).join('')}</tbody></table></div>`;
       const porData = {};
       filtradas.forEach(item => {
@@ -11037,7 +11287,7 @@
     }
 
     function rotuloStatusTarefaFormalizacao_(status) {
-      return { PENDENTE: 'Pendente', EM_ANDAMENTO: 'Em andamento', CONCLUIDA: 'Concluída' }[String(status || '').toUpperCase()] || status;
+      return { PENDENTE: 'Criada', EM_ANDAMENTO: 'Em andamento', CONCLUIDA: 'Concluída' }[String(status || '').toUpperCase()] || status;
     }
 
     function atualizarStatusTarefaFormalizacaoFront(idTarefa, status, seletor) {
