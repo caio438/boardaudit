@@ -5133,75 +5133,143 @@ function testarConexaoTldv() {
 }
 
 /**
- * Mantém sete acionadores diários do tl;dv, um para cada horário operacional.
- * A reinstalação é idempotente: acionadores antigos são removidos antes da
- * criação da agenda oficial, evitando sincronizações duplicadas.
+ * Uma única agenda independente do tl;dv a cada 2 horas.
+ * A rotina central 19h continua compatível, mas não remove esta agenda.
+ * Reconciliar sem recriar o acionador em todas as execuções.
  */
 function instalarAutomacaoTldv() {
-  const nomeFuncao = 'SINCRONIZAR_TLDV_AGENDADO';
-  const horas = APP.tldvSyncHours.slice();
-  if (boardModoManual_()) {
-    ScriptApp.getProjectTriggers()
-      .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
-      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-    salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'NAO');
-    return boardRespostaManual_('instalarAutomacaoTldv');
+  const handler = 'SINCRONIZAR_TLDV_AGENDADO';
+  const existentes = ScriptApp.getProjectTriggers().filter(trigger =>
+    trigger.getHandlerFunction() === handler
+  );
+  if (boardModoManual_() || String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || 'NAO').toUpperCase() !== 'SIM') {
+    existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    if (boardModoManual_()) return boardRespostaManual_('instalarAutomacaoTldv');
+    return { sucesso: true, ativa: false, totalAcionadores: 0 };
   }
-
-  ScriptApp.getProjectTriggers()
-    .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
-    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-
-  horas.forEach(hora => {
-    ScriptApp.newTrigger(nomeFuncao)
-      .timeBased()
-      .everyDays(1)
-      .atHour(hora)
-      .nearMinute(0)
-      .inTimezone(APP.timezone)
-      .create();
-  });
-
-  const horarios = horas.map(hora => String(hora).padStart(2, '0') + ':00');
-  salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'SIM');
-  salvarConfiguracao_('TLDV_AUTOMACAO_HORARIOS', horarios.join(', '));
+  const modelo = 'INTERVALO_2H_V1';
+  const atual = String(obterConfiguracao_('TLDV_AUTOMACAO_MODELO') || '');
+  if (existentes.length !== 1 || atual !== modelo) {
+    existentes.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    ScriptApp.newTrigger(handler).timeBased().everyHours(2).create();
+    registrarLog_('TLDV', 'RECONCILIAR_ACIONADOR', 'Um acionador tl;dv independente a cada 2 horas; modelo ' + modelo + '.');
+  }
+  salvarConfiguracao_('TLDV_AUTOMACAO_MODELO', modelo);
+  salvarConfiguracao_('TLDV_AUTOMACAO_HORARIOS', 'A cada 2 horas');
   salvarConfiguracao_('TLDV_AUTOMACAO_ATUALIZADA_EM', new Date());
-  registrarLog_('TLDV', 'CRIAR_ACIONADORES', 'Agenda automática: ' + horarios.join(', ') + '.');
-
   return {
-    sucesso: true,
-    mensagem: 'Sincronização automática do tl;dv configurada em 7 horários diários.',
+    sucesso: true, ativa: true, totalAcionadores: 1, intervaloHoras: 2,
+    mensagem: 'Sincronização do tl;dv reconciliada: 1 acionador a cada 2 horas.',
     automacao: obterStatusAutomacaoTldv_()
   };
 }
 
 function obterStatusAutomacaoTldv_() {
-  const nomeFuncao = 'SINCRONIZAR_TLDV_AGENDADO';
+  const handler = 'SINCRONIZAR_TLDV_AGENDADO';
   let totalAcionadores = 0;
-
   try {
     totalAcionadores = ScriptApp.getProjectTriggers()
-      .filter(trigger => trigger.getHandlerFunction() === nomeFuncao)
-      .length;
+      .filter(trigger => trigger.getHandlerFunction() === handler).length;
   } catch (erro) {
     totalAcionadores = 0;
   }
-
-  const horarios = APP.tldvSyncHours.map(hora =>
-    String(hora).padStart(2, '0') + ':00'
-  );
-
+  const modelo = String(obterConfiguracao_('TLDV_AUTOMACAO_MODELO') || '');
   return {
-    ativa: String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM' &&
-      totalAcionadores === horarios.length,
+    ativa: !boardModoManual_() &&
+      String(obterConfiguracao_('TLDV_AUTOMACAO_ATIVA') || '').toUpperCase() === 'SIM' &&
+      modelo === 'INTERVALO_2H_V1' && totalAcionadores === 1,
     totalAcionadores: totalAcionadores,
     centralizada: false,
-    horarios: horarios,
+    intervaloHoras: 2,
+    modelo: modelo,
     timezone: APP.timezone,
     ultimaExecucao: serializarData_(obterConfiguracao_('TLDV_ULTIMA_EXECUCAO')),
     ultimoStatus: obterConfiguracao_('TLDV_ULTIMO_STATUS') || '',
     ultimoResultado: obterConfiguracao_('TLDV_ULTIMO_RESULTADO') || ''
   };
+}
+
+function tldvReuniaoOperacional_(titulo) {
+  const nome = String(titulo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /\b(volum|operacional|sales ops|executiva de performance|setup|alinhamento pitch|treinamento|reuniao interna)\b/.test(nome);
+}
+
+function tldvDataMs_(valor) {
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? 0 : valor.getTime();
+  const texto = String(valor || '').trim();
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]),
+    Number(br[4] || 0), Number(br[5] || 0), Number(br[6] || 0)).getTime();
+  const data = new Date(texto);
+  return isNaN(data.getTime()) ? 0 : data.getTime();
+}
+
+function tldvNormalizarPessoa_(texto) {
+  return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Atribui Closer somente a membro ATIVO com papel CLOSER na equipe do cliente.
+ * E-mail exato, nome completo de participante ou speaker explícito confirmado.
+ * Não deduz Closer a partir de 'VOLUM' nem do organizador genérico.
+ */
+function identificarCloserReuniaoTldv_(reuniao, idCliente, membros, textoTranscricao) {
+  reuniao = reuniao || {};
+  const equipe = (membros || []).filter(function(m) {
+    return String(m.ID_CLIENTE || '') === String(idCliente || '') &&
+      String(m.PAPEL || '').toUpperCase() === 'CLOSER' &&
+      String(m.ATIVO || 'SIM').toUpperCase() !== 'NAO' && String(m.NOME || '').trim();
+  });
+  if (!equipe.length || tldvReuniaoOperacional_(reuniao.name)) return '';
+  const participantes = [].concat(reuniao.invitees || [], reuniao.participants || [], [reuniao.organizer || {}]);
+  const emails = participantes.map(p => String((p || {}).email || (p || {}).mail || '').trim().toLowerCase()).filter(Boolean);
+  const nomes = participantes.map(p => tldvNormalizarPessoa_((p || {}).name || (p || {}).displayName || '')).filter(Boolean);
+  const speakers = String(textoTranscricao || '').split('\n').slice(0, 700).map(function(linha) {
+    const marca = linha.match(/^\s*(?:\[[^\]]{1,30}\]\s*)?([^:\n]{2,100})\s*:/);
+    return marca ? tldvNormalizarPessoa_(marca[1]) : '';
+  }).filter(Boolean);
+  const candidatos = equipe.map(function(membro) {
+    const nome = tldvNormalizarPessoa_(membro.NOME);
+    const email = String(membro.EMAIL || '').trim().toLowerCase();
+    const emailExato = Boolean(email && emails.indexOf(email) >= 0);
+    const nomeParticipante = Boolean(nome && nomes.indexOf(nome) >= 0);
+    const speakerExato = Boolean(nome && speakers.indexOf(nome) >= 0);
+    const primeiro = nome.split(' ')[0];
+    const primeiroUnico = primeiro.length >= 5 &&
+      equipe.filter(m => tldvNormalizarPessoa_(m.NOME).split(' ')[0] === primeiro).length === 1;
+    const speakerPrimeiro = primeiroUnico && speakers.indexOf(primeiro) >= 0;
+    return { nome: String(membro.NOME), score: emailExato ? 100 : nomeParticipante ? 90 : speakerExato ? 85 : speakerPrimeiro ? 65 : 0 };
+  }).filter(candidato => candidato.score >= 65).sort((a,b) => b.score - a.score);
+  return candidatos.length === 1 ? candidatos[0].nome : '';
+}
+
+function tldvReconciliarCloserTranscricoes_(cutoffMs) {
+  const equipe = lerObjetos_(APP.sheets.equipeCliente);
+  const transcricoes = lerObjetos_(APP.sheets.transcricoes);
+  const porInteracao = {};
+  transcricoes.forEach(t => { if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA') porInteracao[t.ID_INTERACAO] = t; });
+  let identificados = 0;
+  let naoIdentificados = 0;
+  lerObjetos_(APP.sheets.interacoes).forEach(function(item) {
+    if (String(item.FONTE || '').toUpperCase() !== 'TLDV' ||
+        !item.ID_CLIENTE || item.COLABORADOR ||
+        tldvDataMs_(item.DATA_INTERACAO) < cutoffMs ||
+        tldvReuniaoOperacional_(item.TITULO)) return;
+    const transcricao = porInteracao[item.ID_INTERACAO] || {};
+    if (!String(transcricao.CONTEUDO || '').trim()) return;
+    let convidados = [];
+    try { convidados = JSON.parse(String(item.PARTICIPANTES_JSON || '[]')); } catch (_) {}
+    const closer = identificarCloserReuniaoTldv_({
+      name: item.TITULO, organizer: {name: item.VENDEDOR}, invitees: convidados
+    }, item.ID_CLIENTE, equipe, transcricao.CONTEUDO);
+    if (!closer) { naoIdentificados++; return; }
+    atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', item.ID_INTERACAO, {
+      COLABORADOR: closer, FUNCAO: 'CLOSER', ATUALIZADO_EM: new Date()
+    });
+    identificados++;
+  });
+  return { identificados: identificados, semCloserConfirmado: naoIdentificados };
 }
 
 /**
@@ -5222,15 +5290,30 @@ function SINCRONIZAR_TLDV_AGENDADO() {
     salvarConfiguracao_('TLDV_ULTIMO_STATUS', 'EXECUTANDO');
 
     const sincronizacao = sincronizarReunioesTldv();
-    const pendentes = (sincronizacao.reunioes || [])
-      .filter(item => !item.possuiTranscricao)
-      .slice(0, 10)
-      .map(item => item.idInteracao);
+    const cutoffIso = String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '');
+    const cutoffMs = Date.parse(cutoffIso) || Date.now();
+    const pitches = typeof audV3Ler_ === 'function' ? audV3Ler_('PITCHES') : [];
+    const existentes = {};
+    lerObjetos_(APP.sheets.transcricoes).forEach(t => {
+      if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA' && String(t.CONTEUDO || '').trim()) existentes[t.ID_INTERACAO] = true;
+    });
+    // Somente novas reuniões com cliente e pitch Closer; nunca drenar histórico antigo.
+    const pendentes = lerObjetos_(APP.sheets.interacoes)
+      .filter(item => String(item.FONTE || '').toUpperCase() === 'TLDV' &&
+        String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' &&
+        item.ID_CLIENTE && !existentes[item.ID_INTERACAO] &&
+        tldvDataMs_(item.DATA_INTERACAO) >= cutoffMs &&
+        !tldvReuniaoOperacional_(item.TITULO) &&
+        Boolean(typeof audV3PitchAtualAutomatico_ === 'function' &&
+          audV3PitchAtualAutomatico_(item.ID_CLIENTE, 'CLOSER', pitches)))
+      .sort((a,b) => tldvDataMs_(b.DATA_INTERACAO) - tldvDataMs_(a.DATA_INTERACAO))
+      .slice(0, 10).map(item => item.ID_INTERACAO);
 
     let transcricoes = { importadas: 0, ignoradas: 0, erros: [] };
     if (pendentes.length) {
       transcricoes = importarTranscricoesTldv(pendentes);
     }
+    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(cutoffMs);
 
     const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
       ? agendarPipelineCloserTldv_()
@@ -5240,6 +5323,8 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       'Reuniões novas: ' + Number(sincronizacao.novas || 0),
       'atualizadas: ' + Number(sincronizacao.atualizadas || 0),
       'transcrições importadas: ' + Number(transcricoes.importadas || 0),
+      'closers identificados: ' + Number(identificacaoCloser.identificados || 0),
+      'sem closer confirmado: ' + Number(identificacaoCloser.semCloserConfirmado || 0),
       'pendências ainda indisponíveis: ' + Number((transcricoes.erros || []).length),
       'pipeline Closer: ' + (pipelineCloserAgendado ? 'agendado' : 'sem fila')
     ].join('; ');
@@ -5252,6 +5337,7 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       sucesso: true,
       sincronizacao: sincronizacao,
       transcricoes: transcricoes,
+      identificacaoCloser: identificacaoCloser,
       pipelineCloserAgendado: pipelineCloserAgendado,
       mensagem: resumo
     };
@@ -5294,6 +5380,10 @@ function sincronizarReunioesTldv() {
         String(item.ATIVO || 'SIM').toUpperCase() !== 'NAO' && item.ID_CLIENTE
       )
     : [];
+  const clientes = lerObjetos_(APP.sheets.clientes);
+  const equipe = lerObjetos_(APP.sheets.equipeCliente);
+  let closersIdentificados = 0;
+  const cutoffCloserMs = Date.parse(String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '')) || Date.now();
 
   reunioes.forEach(reuniao => {
     const idExterno = String(reuniao.id || '').trim();
@@ -5308,11 +5398,17 @@ function sincronizarReunioesTldv() {
     const organizador = reuniao.organizer || {};
     const candidatoCliente = existente && String(existente.ID_CLIENTE || '').trim()
       ? null
-      : identificarClienteReuniaoTldv_(reuniao, regrasClientes);
+      : identificarClienteReuniaoTldv_(reuniao, regrasClientes, clientes);
     const idCliente = existente && String(existente.ID_CLIENTE || '').trim()
       ? String(existente.ID_CLIENTE || '').trim()
       : String((candidatoCliente || {}).idCliente || '').trim();
     if (idCliente && (!existente || !String(existente.ID_CLIENTE || '').trim())) clientesIdentificados++;
+    const elegivelCloser = Boolean(idCliente) &&
+      tldvDataMs_(reuniao.happenedAt || '') >= cutoffCloserMs &&
+      !tldvReuniaoOperacional_(reuniao.name);
+    const closerIdentificado = elegivelCloser
+      ? identificarCloserReuniaoTldv_(reuniao, idCliente, equipe, '') : '';
+    if (closerIdentificado && !(existente && existente.COLABORADOR)) closersIdentificados++;
 
     const objeto = {
       ID_INTERACAO: idInteracao,
@@ -5321,6 +5417,8 @@ function sincronizarReunioesTldv() {
       TIPO_INTERACAO: 'REUNIAO',
       ID_CLIENTE: idCliente,
       VENDEDOR: String(organizador.name || organizador.email || ''),
+      COLABORADOR: String((existente || {}).COLABORADOR || closerIdentificado || ''),
+      FUNCAO: String((existente || {}).FUNCAO || (closerIdentificado ? 'CLOSER' : '')),
       LEAD: extrairConvidadosTldv_(reuniao),
       TITULO: String(reuniao.name || 'Reunião sem título'),
       DATA_INTERACAO: reuniao.happenedAt ? new Date(reuniao.happenedAt) : '',
@@ -5359,11 +5457,12 @@ function sincronizarReunioesTldv() {
     novas: novas,
     atualizadas: atualizadas,
     clientesIdentificados: clientesIdentificados,
+    closersIdentificados: closersIdentificados,
     reunioes: listarReunioes_()
   };
 }
 
-function identificarClienteReuniaoTldv_(reuniao, regras) {
+function identificarClienteReuniaoTldv_(reuniao, regras, clientes) {
   if (typeof jornadaIdentificarClienteEvento_ !== 'function') return null;
   reuniao = reuniao || {};
   const convidados = Array.isArray(reuniao.invitees) ? reuniao.invitees : [];
@@ -5384,7 +5483,21 @@ function identificarClienteReuniaoTldv_(reuniao, regras) {
     getCreators: function() { return emailOrganizador ? [emailOrganizador] : []; }
   };
   const candidato = jornadaIdentificarClienteEvento_(evento, regras);
-  return candidato && Number(candidato.pontos || 0) >= 50 ? candidato : null;
+  if (candidato && Number(candidato.pontos || 0) >= 50) return candidato;
+  // Fallback somente com nome completo explícito do cliente no título.
+  // Nunca usa VOLUM, nomes de grupos, nomes parciais ou domínios públicos.
+  const titulo = ' ' + String(reuniao.name || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  const candidatos = (Array.isArray(clientes) ? clientes : []).filter(function(cliente) {
+    const nome = String(cliente.NOME_CLIENTE || '').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const tipo = String(cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase();
+    return tipo !== 'GRUPO' && nome !== 'volum' && nome.length >= 5 &&
+      String(cliente.STATUS || 'ATIVO').toUpperCase() === 'ATIVO' &&
+      titulo.indexOf(' ' + nome + ' ') >= 0;
+  });
+  if (candidatos.length !== 1) return null;
+  return { idCliente: candidatos[0].ID_CLIENTE, pontos: 65, motivo: 'nome completo inequívoco no título tl;dv' };
 }
 
 function importarTranscricoesTldv(idsInteracoes) {
