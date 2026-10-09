@@ -954,6 +954,8 @@ function doGet(e) {
       throw new Error('Reparo da agenda tl;dv permitido apenas para a conta proprietária autenticada.');
     }
     if (boardModoManual_()) throw new Error('Board em modo manual. Agenda tl;dv não será reativada.');
+    // Reativar somente o motor Closer, sem redefinir o cutoff ou qualquer rotina SDR.
+    salvarConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA', 'SIM');
     const agenda = instalarAutomacaoTldv();
     const sincronizacao = SINCRONIZAR_TLDV_AGENDADO();
     const status = obterStatusAutomacaoReunioesCloserV3();
@@ -3769,6 +3771,7 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
   salvarConfiguracao_('BOARD_MODE', 'AUTOMATICO');
 
   salvarConfiguracao_('TLDV_AUTOMACAO_ATIVA', 'SIM');
+  salvarConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA', 'SIM');
   salvarConfiguracao_('RD_AUTOMACAO_ATIVA', 'SIM');
   salvarSegredo_('RD_AUTOMACAO_ATIVA', 'SIM');
   salvarConfiguracao_(RD_API4COM_AUTOMACAO.chaveIngestao, 'SIM');
