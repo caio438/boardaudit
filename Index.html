@@ -2158,7 +2158,7 @@
           </div>
           <div id="resultadoImportacaoManual" style="display:none;margin-top:12px"></div>
 
-          <div class="card" style="box-shadow:none;margin-top:18px;background:var(--surface-2)">
+          <div id="audLoteLigacoesManual" class="card" style="box-shadow:none;margin-top:18px;background:var(--surface-2)">
             <div class="section-title">
               <div><h4>Lote de ligações</h4><p>Use o cliente, a função, o pitch e o modelo selecionados acima. Cada slot será transcrito e analisado separadamente.</p></div>
               <span class="status">Até 3 gravações</span>
@@ -5522,7 +5522,8 @@
   function importarTranscricaoManualFrontV3() {
     const idCliente = valor('audCliente');
     const closerSimplificado = modoSimplificadoCloserFront_();
-    const titulo = closerSimplificado ? '' : valor('manualTitulo');
+    const ehPlano = String(valor('audTipo')).toUpperCase() === 'PLANO';
+    const titulo = closerSimplificado ? '' : (valor('manualTitulo') || (ehPlano ? 'Plano de Otimização' : ''));
     const transcricao = valor('manualTranscricao');
     if (!idCliente) return mostrarToast('Selecione o cliente da transcrição.', 'error');
     if (!closerSimplificado && !titulo) return mostrarToast('Informe um título para a transcrição.', 'error');
@@ -5568,7 +5569,7 @@
 
         botao.disabled = false;
         botao.textContent = 'Salvar e selecionar transcrição';
-        resultado.innerHTML = '<div class="status success">Transcrição importada e selecionada para auditoria.</div>';
+        resultado.innerHTML = '<div class="status success">Transcrição importada e selecionada para ' + (ehPlano ? 'o Plano de Otimização.' : 'auditoria.') + '</div>';
         document.getElementById('manualTranscricao').value = '';
         mostrarToast(resposta.mensagem, 'success');
       })
@@ -5791,7 +5792,7 @@
     select.innerHTML = '<option value="">Selecione o modelo</option>' + modelos.map(item =>
       `<option value="${escapeAtributo(item.idModelo)}">${escapeHtml(item.nomeModelo)} — v${escapeHtml(item.versaoModelo || '-')} ${item.global ? '— GLOBAL' : '— CLIENTE'}</option>`
     ).join('');
-    if (modoSimplificadoCloserFront_() && modelos.length) {
+    if ((modoSimplificadoCloserFront_() || String(tipo).toUpperCase() === 'PLANO') && modelos.length) {
       const especifico = modelos.find(function(item) { return String(item.idCliente || '') === String(idCliente); }) || modelos[0];
       select.value = especifico.idModelo;
     }
@@ -5853,9 +5854,7 @@
     const alvo = document.getElementById('audInteracoesLista');
     if (!select || !alvo) return;
     const ehPlano = String(valor('audTipo') || '').toUpperCase() === 'PLANO';
-    const opcoes = Array.from(select.options || []).filter(opcao =>
-      opcao.value && (!ehPlano || opcao.value !== OPCAO_TRANSCRICAO_MANUAL)
-    );
+    const opcoes = Array.from(select.options || []).filter(opcao => opcao.value);
     if (!opcoes.length) {
       alvo.innerHTML = '<div class="small muted" style="padding:10px 2px">Nenhuma transcrição disponível para os filtros atuais.</div>';
       return;
@@ -5877,7 +5876,7 @@
 
   function usarTranscricaoManualAuditoriaFront_() {
     const tipoEspaco = String(estado.auditoriaEspaco || valor('audTipo') || '').toUpperCase();
-    if (['CLOSER', 'PLANO'].includes(tipoEspaco)) return;
+    if (tipoEspaco === 'CLOSER' || !valor('audCliente')) return;
     const select = document.getElementById('audInteracao');
     if (!select) return;
     Array.from(select.options || []).forEach(function(opcao) {
@@ -5926,7 +5925,7 @@
     const painel = document.getElementById('audImportacaoManual');
     if (!painel) return false;
     const tipoEspaco = String(estado.auditoriaEspaco || valor('audTipo') || '').toUpperCase();
-    if (['CLOSER', 'PLANO'].includes(tipoEspaco)) {
+    if (tipoEspaco === 'CLOSER' || !valor('audCliente')) {
       painel.open = false;
       painel.style.display = 'none';
       return false;
@@ -6036,15 +6035,22 @@
         if (labelTranscricoes) labelTranscricoes.innerHTML = 'Transcrições <span class="muted">(selecione até 3)</span>';
         if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Marque até três transcrições. As auditorias serão executadas uma por vez.';
       }
-      if (acoesFontePlano) acoesFontePlano.style.display = 'none';
+      if (acoesFontePlano) acoesFontePlano.style.display = ehPlano && Boolean(valor('audCliente')) ? 'flex' : 'none';
 
       const manual = document.getElementById('audImportacaoManual');
-      if (manual) {
-        const ocultarImportacaoManual = ativo || ehPlano;
-        if (ocultarImportacaoManual) {
-          manual.open = false;
-          manual.style.display = 'none';
-        }
+      const lote = document.getElementById('audLoteLigacoesManual');
+      if (lote) lote.style.display = (ativo || ehPlano) ? 'none' : '';
+      const elementosSomenteSdr = ['manualUrlAudio','manualRdDealId','manualNomeArquivo'];
+      elementosSomenteSdr.forEach(function(id) {
+        const campo = document.getElementById(id);
+        const bloco = campo && campo.closest('.field');
+        if (bloco) bloco.style.display = ehPlano ? 'none' : '';
+      });
+      const botaoMp3 = document.getElementById('btnTranscreverAudioManual');
+      if (botaoMp3) botaoMp3.style.display = ehPlano ? 'none' : '';
+      if (manual && ativo) {
+        manual.open = false;
+        manual.style.display = 'none';
       }
     }
 
@@ -6091,6 +6097,7 @@
           return ['REUNIAO', 'LIGACAO'].includes(tipoInteracao);
         }
         if (ehPlano) {
+          if (tipoInteracao === 'PLANO') return fonteInteracao === 'MANUAL';
           if (!['REUNIAO', 'LIGACAO'].includes(tipoInteracao)) return false;
           if (equipePlano === 'SDR') return tipoInteracao === 'LIGACAO';
           if (equipePlano === 'CLOSER') return tipoInteracao === 'REUNIAO';
@@ -6111,7 +6118,9 @@
         return String(b.dataInteracao || '').localeCompare(String(a.dataInteracao || ''));
       }).slice(0, ehPlano ? 12 : 50);
 
-      const permitirImportacaoManual = !closerSimplificado && !ehPlano;
+      const permitirImportacaoManual = !closerSimplificado && Boolean(idCliente);
+      const fonteManual = document.getElementById('audPlanoFonteAcoes');
+      if (fonteManual) fonteManual.style.display = ehPlano && Boolean(idCliente) ? 'flex' : 'none';
       interacaoSelect.innerHTML = '<option value="">Selecione uma ou mais transcrições</option>' +
         (permitirImportacaoManual
           ? '<option value="' + OPCAO_TRANSCRICAO_MANUAL + '">+ Adicionar transcrição manualmente</option>'
@@ -6137,7 +6146,7 @@
         aviso.style.display = 'block';
       } else if (!interacoes.length) {
         aviso.textContent = ehPlano
-          ? 'Nenhuma interação concluída deste cliente foi encontrada para a equipe escolhida.'
+          ? 'Nenhuma interação concluída deste cliente foi encontrada. Adicione uma transcrição manual para gerar o plano.'
           : (closerSimplificado
             ? 'Nenhuma reunião ou ligação com transcrição está disponível para este cliente.'
             : (fonte === 'TLDV'
