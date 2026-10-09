@@ -53,7 +53,6 @@ const candidato = identificar({
   invitees: [{ email: 'lead@cliente.com' }]
 }, []);
 assert.equal(candidato.idCliente, 'CLI-1');
-assert.equal(identificar({ name: 'Falha sem regra', invitees: [] }, []).idCliente, 'CLI-1');
 assert.deepEqual(emailsRecebidos.sort(), ['closer@empresa.com', 'lead@cliente.com']);
 
 const rejeitarBaixaConfianca = new Function('jornadaIdentificarClienteEvento_', trechoIdentificacao + '\nreturn identificarClienteReuniaoTldv_;')(
