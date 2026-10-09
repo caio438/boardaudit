@@ -975,6 +975,33 @@ function doGet(e) {
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_closer_tldv_backfill || '') === '1') {
+    const usuario = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const proprietario = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!usuario || !proprietario || usuario !== proprietario) {
+      throw new Error('Recuperação de transcrições Closer restrita à conta proprietária.');
+    }
+    if (boardModoManual_()) throw new Error('Board em modo manual; recuperação Closer não iniciada.');
+    if (String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_ATIVA') || '').toUpperCase() !== 'SIM') {
+      throw new Error('Motor Closer desligado; recuperação não iniciada.');
+    }
+    const cutoffOriginal = String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '');
+    if (!cutoffOriginal) throw new Error('Cutoff Closer não definido.');
+    salvarConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO', 'SIM');
+    const identificacaoClientes = tldvReconciliarClientesHistoricos_();
+    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(0);
+    const agendado = agendarPipelineCloserTldv_();
+    const status = obterStatusAutomacaoReunioesCloserV3();
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: status.ativa === true && status.backfillAtivo === true &&
+        status.cutoffIso === new Date(cutoffOriginal).toISOString(),
+      recuperacao: { clientes: identificacaoClientes, closers: identificacaoCloser },
+      pipelineAgendado: agendado,
+      status: status,
+      envioRdCloser: 'BLOQUEADO'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_closer_tldv_status || '') === '1') {
     const ativoOpsCloserStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsCloserStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -5223,7 +5250,9 @@ function obterStatusAutomacaoTldv_() {
 
 function tldvReuniaoOperacional_(titulo) {
   const nome = String(titulo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return /\b(volum|operacional|sales ops|executiva de performance|setup|alinhamento pitch|treinamento|reuniao interna)\b/.test(nome);
+  // VOLUM como participante não define a reunião como operacional.
+  // Só termos explicitamente internos impedem auditoria de venda.
+  return /\b(operacional|operacionais|sales ops|executiva de performance|setup|alinhamento pitch|treinamento|reuniao interna|fup semanal|follow up semanal|follow semanal|alinhamentos closer|follow operacional)\b/.test(nome);
 }
 
 function tldvDataMs_(valor) {
@@ -5274,6 +5303,59 @@ function identificarCloserReuniaoTldv_(reuniao, idCliente, membros, textoTranscr
     return { nome: String(membro.NOME), score: emailExato ? 100 : nomeParticipante ? 90 : speakerExato ? 85 : speakerPrimeiro ? 65 : 0 };
   }).filter(candidato => candidato.score >= 65).sort((a,b) => b.score - a.score);
   return candidatos.length === 1 ? candidatos[0].nome : '';
+}
+
+/**
+ * Recuperação apenas de transcrições tl;dv prontas, sem cliente e sem auditoria.
+ * Nunca reclassifica cliente já atribuído e não tenta identificar títulos
+ * de grupos, reuniões operacionais ou casos ambíguos.
+ */
+function tldvReconciliarClientesHistoricos_() {
+  const transcricoes = lerObjetos_(APP.sheets.transcricoes);
+  const prontos = {};
+  transcricoes.forEach(t => {
+    if (String(t.STATUS || '').toUpperCase() === 'CONCLUIDA' &&
+        String(t.CONTEUDO || '').trim().length >= 20) prontos[String(t.ID_INTERACAO || '')] = true;
+  });
+  const jaAuditadas = {};
+  lerObjetos_(APP.sheets.auditorias).forEach(a => {
+    if (String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+        String(a.ID_AUDITORIA || '').trim()) jaAuditadas[String(a.ID_INTERACAO || '')] = true;
+  });
+  const regras = lerObjetos_(APP.sheets.identificadoresClientes)
+    .filter(r => String(r.ATIVO || 'SIM').toUpperCase() !== 'NAO' && r.ID_CLIENTE);
+  const clientes = lerObjetos_(APP.sheets.clientes);
+  let identificados = 0, ambiguos = 0;
+  lerObjetos_(APP.sheets.interacoes).forEach(item => {
+    const id = String(item.ID_INTERACAO || '');
+    if (String(item.FONTE || '').toUpperCase() !== 'TLDV' ||
+        String(item.TIPO_INTERACAO || '').toUpperCase() !== 'REUNIAO' ||
+        item.ID_CLIENTE || !prontos[id] || jaAuditadas[id] ||
+        tldvReuniaoOperacional_(item.TITULO)) return;
+    let convidados = [];
+    try { convidados = JSON.parse(String(item.PARTICIPANTES_JSON || '[]')); } catch (erro) {}
+    const candidato = identificarClienteReuniaoTldv_({
+      name: item.TITULO, organizer: { name: item.VENDEDOR }, invitees: convidados
+    }, regras, clientes);
+    if (!candidato || !candidato.idCliente ||
+        String(candidato.idCliente).indexOf('GRUPO') >= 0 ||
+        String(candidato.idCliente) === 'CLI-20260805095859-DFCB59F1') {
+      ambiguos++;
+      return;
+    }
+    const cliente = clientes.find(c => String(c.ID_CLIENTE) === String(candidato.idCliente));
+    if (!cliente || String(cliente.TIPO_CLIENTE || 'EMPRESA').toUpperCase() === 'GRUPO') {
+      ambiguos++;
+      return;
+    }
+    atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', id, {
+      ID_CLIENTE: candidato.idCliente,
+      DESCRICAO_ORIGEM: 'Cliente recuperado do tl;dv para auditoria Closer: ' + String(candidato.motivo || ''),
+      ATUALIZADO_EM: new Date()
+    });
+    identificados++;
+  });
+  return { identificados: identificados, semClienteConfiavel: ambiguos };
 }
 
 function tldvReconciliarCloserTranscricoes_(cutoffMs) {
@@ -5345,7 +5427,11 @@ function SINCRONIZAR_TLDV_AGENDADO() {
     if (pendentes.length) {
       transcricoes = importarTranscricoesTldv(pendentes);
     }
-    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(cutoffMs);
+    const backfillAtivo = String(obterConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO') || '').toUpperCase() === 'SIM';
+    const identificacaoClienteHistorico = backfillAtivo
+      ? tldvReconciliarClientesHistoricos_()
+      : { identificados: 0, semClienteConfiavel: 0 };
+    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(backfillAtivo ? 0 : cutoffMs);
 
     const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
       ? agendarPipelineCloserTldv_()
@@ -5356,6 +5442,7 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       'atualizadas: ' + Number(sincronizacao.atualizadas || 0),
       'transcrições importadas: ' + Number(transcricoes.importadas || 0),
       'closers identificados: ' + Number(identificacaoCloser.identificados || 0),
+      'clientes históricos identificados: ' + Number(identificacaoClienteHistorico.identificados || 0),
       'sem closer confirmado: ' + Number(identificacaoCloser.semCloserConfirmado || 0),
       'pendências ainda indisponíveis: ' + Number((transcricoes.erros || []).length),
       'pipeline Closer: ' + (pipelineCloserAgendado ? 'agendado' : 'sem fila')
@@ -5370,6 +5457,7 @@ function SINCRONIZAR_TLDV_AGENDADO() {
       sincronizacao: sincronizacao,
       transcricoes: transcricoes,
       identificacaoCloser: identificacaoCloser,
+      identificacaoClienteHistorico: identificacaoClienteHistorico,
       pipelineCloserAgendado: pipelineCloserAgendado,
       mensagem: resumo
     };

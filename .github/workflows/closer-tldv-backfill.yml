@@ -1,0 +1,111 @@
+name: Activate Closer transcript backfill
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  backfill-closer:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/closer-tldv-backfill' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: apps-script-production
+    steps:
+      - name: Checkout approved main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Authenticate clasp owner
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/backfill-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token = j?.tokens?.default?.access_token || j?.token?.access_token || j?.access_token || '';
+          if (!token) throw new Error('Token Apps Script ausente.');
+          fs.writeFileSync('/tmp/backfill-access-token', token, {mode:0o600});
+          NODE
+      - name: Activate and inspect idempotent Closer queue
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/backfill-access-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/backfill-result.txt -w '%{http_code}' "$BASE?ops_closer_tldv_backfill=1" || true)"
+          echo "CLOSER_BACKFILL_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/backfill-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,200))) throw new Error('Resposta inválida da recuperação.');
+          const first = raw.indexOf('{'), last=raw.lastIndexOf('}');
+          if(first<0 || last<first) throw new Error('JSON ausente.');
+          const data = JSON.parse(raw.slice(first,last+1));
+          const s = data.status || {}, p = data.recuperacao || {};
+          const ok = data.sucesso === true && s.ativa === true &&
+            s.backfillAtivo === true && s.backlogAnteriorAoCutoffIgnorado === true &&
+            /^\d{4}-\d{2}-\d{2}T/.test(String(s.cutoffIso || '')) &&
+            data.envioRdCloser === 'BLOQUEADO' &&
+            Number(s.backfillLimiteDiario) === 5;
+          const lines=[
+            '## Recuperação de transcrições Closer', '',
+            '- Ativada: '+String(s.backfillAtivo===true),
+            '- Cutoff original preservado: '+String(s.cutoffIso||''),
+            '- Fila antiga elegível: '+String(s.backfillPendentes||0),
+            '- Auditorias Closer já existentes (mantidas): '+String(s.backfillJaAuditadas||0),
+            '- Clientes históricos recuperados: '+String((p.clientes||{}).identificados||0),
+            '- Closers identificados: '+String((p.closers||{}).identificados||0),
+            '- Limite diário: '+String(s.backfillLimiteDiario||0),
+            '- Consumido hoje: '+String(s.backfillTentativasHoje||0),
+            '- Pipeline agendado: '+String(data.pipelineAgendado===true),
+            '- Envio Closer ao RD: '+String(data.envioRdCloser||''), '',
+            ok ? '**Backfill habilitado com idempotência e limite diário.**' : '**Backfill não confirmado.**'
+          ];
+          fs.writeFileSync('/tmp/backfill-report.md',lines.join('\n'));
+          console.log(lines.join('\n'));
+          if(!ok) process.exit(1);
+          NODE
+      - name: Publish backfill report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/backfill-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/backfill-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "A ativação do backfill Closer não concluiu a verificação."
+          fi
+      - name: Save backfill evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closer-backfill-${{ github.run_id }}
+          path: |
+            /tmp/backfill-result.txt
+            /tmp/backfill-report.md
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/backfill-access-token
