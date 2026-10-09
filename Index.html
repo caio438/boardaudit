@@ -3545,7 +3545,7 @@
       cliqueOperacaoBoard_ = acao;
       setTimeout(function() {
         if (cliqueOperacaoBoard_ === acao) cliqueOperacaoBoard_ = null;
-      }, 700);
+      }, 0);
       return acao;
     }
 
@@ -3677,8 +3677,8 @@
 
     // Preserva o runner original fora de cliques, sem interferir nas cargas em segundo plano.
     function runnerBoardComProgresso_() {
-      const acao = contextoOperacaoBoard_ ||
-        (cliqueOperacaoBoard_ && Date.now() - cliqueOperacaoBoard_.iniciadaEm < 700 ? cliqueOperacaoBoard_ : null);
+      // Confirmações do navegador bloqueiam o relógio, mas permanecem no mesmo clique.
+      const acao = contextoOperacaoBoard_ || cliqueOperacaoBoard_;
       if (!acao) return google.script.run;
       function acompanharRunner(runner) {
         return new Proxy(runner, {
