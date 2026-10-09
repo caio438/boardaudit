@@ -5876,6 +5876,8 @@
   }
 
   function usarTranscricaoManualAuditoriaFront_() {
+    const tipoEspaco = String(estado.auditoriaEspaco || valor('audTipo') || '').toUpperCase();
+    if (['CLOSER', 'PLANO'].includes(tipoEspaco)) return;
     const select = document.getElementById('audInteracao');
     if (!select) return;
     Array.from(select.options || []).forEach(function(opcao) {
@@ -5923,6 +5925,12 @@
   function atualizarPainelManualAuditoria_() {
     const painel = document.getElementById('audImportacaoManual');
     if (!painel) return false;
+    const tipoEspaco = String(estado.auditoriaEspaco || valor('audTipo') || '').toUpperCase();
+    if (['CLOSER', 'PLANO'].includes(tipoEspaco)) {
+      painel.open = false;
+      painel.style.display = 'none';
+      return false;
+    }
     const select = document.getElementById('audInteracao');
     const manual = Boolean(select && Array.from(select.selectedOptions || []).some(opcao => opcao.value === OPCAO_TRANSCRICAO_MANUAL));
     painel.open = manual;
@@ -6028,33 +6036,15 @@
         if (labelTranscricoes) labelTranscricoes.innerHTML = 'Transcrições <span class="muted">(selecione até 3)</span>';
         if (ajudaTranscricoes) ajudaTranscricoes.textContent = 'Marque até três transcrições. As auditorias serão executadas uma por vez.';
       }
-      if (acoesFontePlano) acoesFontePlano.style.display = ehPlano ? 'flex' : 'none';
+      if (acoesFontePlano) acoesFontePlano.style.display = 'none';
 
       const manual = document.getElementById('audImportacaoManual');
       if (manual) {
-        const idsOcultar = [
-          'manualDataInteracao','manualTitulo','manualColaborador','manualLead',
-          'manualNomeArquivo','manualRdDealId','manualUrlAudio'
-        ];
-        idsOcultar.forEach(function(id) {
-          const campo = document.getElementById(id);
-          const box = campo ? campo.closest('.field') : null;
-          if (box) box.style.display = ativo ? 'none' : '';
-        });
-        const audioBox = document.getElementById('manualAudioBox');
-        if (audioBox) audioBox.style.display = ativo ? 'none' : audioBox.style.display;
-        const btnAudio = document.getElementById('btnTranscreverAudioManual');
-        if (btnAudio) btnAudio.style.display = ativo ? 'none' : '';
-        const lote = Array.from(manual.querySelectorAll('.card')).find(function(card) {
-          return /Lote de ligações/i.test(String(card.textContent || ''));
-        });
-        if (lote) lote.style.display = ativo ? 'none' : '';
-        const textoAjuda = manual.querySelector('summary + p');
-        if (textoAjuda) textoAjuda.textContent = ativo
-          ? 'Cole a transcrição. Participantes, data e contexto serão detectados automaticamente.'
-          : 'Use o cliente, a função e o tipo de interação selecionados acima.';
-        const labelTexto = document.querySelector('label[for="manualTranscricao"]');
-        if (labelTexto && ativo) labelTexto.textContent = 'Transcrição';
+        const ocultarImportacaoManual = ativo || ehPlano;
+        if (ocultarImportacaoManual) {
+          manual.open = false;
+          manual.style.display = 'none';
+        }
       }
     }
 
@@ -6121,8 +6111,11 @@
         return String(b.dataInteracao || '').localeCompare(String(a.dataInteracao || ''));
       }).slice(0, ehPlano ? 12 : 50);
 
+      const permitirImportacaoManual = !closerSimplificado && !ehPlano;
       interacaoSelect.innerHTML = '<option value="">Selecione uma ou mais transcrições</option>' +
-        '<option value="' + OPCAO_TRANSCRICAO_MANUAL + '">+ Adicionar transcrição manualmente</option>' +
+        (permitirImportacaoManual
+          ? '<option value="' + OPCAO_TRANSCRICAO_MANUAL + '">+ Adicionar transcrição manualmente</option>'
+          : '') +
         interacoes.map(interacao => `<option value="${escapeAtributo(interacao.idInteracao)}">${escapeHtml(tituloInteracaoAuditoria_(interacao) + ' — ' + formatarData(interacao.dataInteracao) + ' — ' + (interacao.clienteVinculado || 'sem cliente') + ' — ' + (interacao.fonte || 'MANUAL'))}</option>`).join('');
       renderizarChecklistTranscricoesAuditoria_();
       atualizarPainelManualAuditoria_();
@@ -6144,10 +6137,12 @@
         aviso.style.display = 'block';
       } else if (!interacoes.length) {
         aviso.textContent = ehPlano
-          ? 'Nenhuma interação concluída deste cliente foi encontrada para a equipe escolhida. Você pode usar uma transcrição manual.'
-          : (fonte === 'TLDV'
-          ? 'Nenhuma reunião com transcrição está disponível. Sincronize pelo tl;dv ou escolha a importação manual no seletor de transcrição.'
-          : (fonte === 'PLANO' ? 'Nenhum plano com transcrição está disponível. Escolha a importação manual no seletor de transcrição.' : 'Nenhuma ligação com transcrição está disponível. Escolha a importação manual no seletor ou use a integração API4COM.'));
+          ? 'Nenhuma interação concluída deste cliente foi encontrada para a equipe escolhida.'
+          : (closerSimplificado
+            ? 'Nenhuma reunião ou ligação com transcrição está disponível para este cliente.'
+            : (fonte === 'TLDV'
+              ? 'Nenhuma reunião com transcrição está disponível. Sincronize pelo tl;dv ou escolha a importação manual no seletor de transcrição.'
+              : (fonte === 'PLANO' ? 'Nenhum plano com transcrição está disponível.' : 'Nenhuma ligação com transcrição está disponível. Escolha a importação manual no seletor ou use a integração API4COM.')));
         aviso.style.display = 'block';
       } else {
         aviso.style.display = 'none';
