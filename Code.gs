@@ -947,6 +947,32 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_closer_tldv_repair || '') === '1') {
+    const ativoOpsTldvRepair = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsTldvRepair = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsTldvRepair || !efetivoOpsTldvRepair || ativoOpsTldvRepair !== efetivoOpsTldvRepair) {
+      throw new Error('Reparo da agenda tl;dv permitido apenas para a conta proprietária autenticada.');
+    }
+    if (boardModoManual_()) throw new Error('Board em modo manual. Agenda tl;dv não será reativada.');
+    const agenda = instalarAutomacaoTldv();
+    const sincronizacao = SINCRONIZAR_TLDV_AGENDADO();
+    const status = obterStatusAutomacaoReunioesCloserV3();
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: agenda.ativa === true && Number(agenda.totalAcionadores) === 1 &&
+        sincronizacao.sucesso === true && status.ativa === true,
+      agenda: agenda,
+      sincronizacao: {
+        novas: Number((sincronizacao.sincronizacao || {}).novas || 0),
+        clientesIdentificados: Number((sincronizacao.sincronizacao || {}).clientesIdentificados || 0),
+        closersIdentificados: Number((sincronizacao.sincronizacao || {}).closersIdentificados || 0),
+        transcricoesImportadas: Number((sincronizacao.transcricoes || {}).importadas || 0),
+        revisaoCloser: sincronizacao.identificacaoCloser || {},
+        pipelineCloserAgendado: sincronizacao.pipelineCloserAgendado === true
+      },
+      statusCloser: status
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_closer_tldv_status || '') === '1') {
     const ativoOpsCloserStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsCloserStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
@@ -3718,6 +3744,7 @@ function snapshotAutomacaoBoardCompleto_() {
   return {
     todos: handlers,
     central19h: contar('EXECUTAR_AUTOMACAO_CENTRAL_19H'),
+    tldvDedicado: contar('SINCRONIZAR_TLDV_AGENDADO'),
     centralContinuacao: contar('EXECUTAR_AUTOMACAO_CENTRAL_CONTINUACAO'),
     ingestaoRdApi4com: contar('SINCRONIZAR_RD_DIARIO'),
     watchdogsSdr: contar(RD_API4COM_AUTOMACAO.handlerWatchdog),
@@ -3728,7 +3755,6 @@ function snapshotAutomacaoBoardCompleto_() {
     formalizacaoContinuacao: contar('EXECUTAR_FORMALIZACOES_NOTURNAS_CONTINUACAO'),
     legadosDuplicados: handlers.filter(function(handler) {
       return [
-        'SINCRONIZAR_TLDV_AGENDADO',
         'EXECUTAR_AUTOMACAO_LIGACOES_V3',
         'EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA',
         'SINCRONIZAR_JORNADA_CALENDARIO'
@@ -3774,6 +3800,7 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
     ? agendarPipelineCloserTldv_()
     : false;
   const central = instalarAutomacaoCentral19h_();
+  const agendaTldv = instalarAutomacaoTldv();
   const acionadores = snapshotAutomacaoBoardCompleto_();
   const cutoffIso = String(
     obterConfiguracao_(RD_API4COM_AUTOMACAO.chaveCutoff) || RD_API4COM_AUTOMACAO.cutoffPadraoIso
@@ -3785,6 +3812,7 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
   const sucesso = boardModoAtual_() === 'AUTOMATICO' &&
     central.ativa === true &&
     Number(acionadores.central19h || 0) === 1 &&
+    Number(acionadores.tldvDedicado || 0) === 1 && agendaTldv.ativa === true &&
     Number(acionadores.ingestaoRdApi4com || 0) === 1 &&
     Number(acionadores.watchdogsSdr || 0) === RD_API4COM_AUTOMACAO.watchdogHours.length &&
     Number(acionadores.jornadaPastas || 0) === 1 &&
@@ -3824,6 +3852,7 @@ function ATIVAR_BOARD_AUTOMATICO_COMPLETO() {
     ingestaoInicial: ingestaoInicial,
     jornada: jornada,
     central: central,
+    agendaTldv: agendaTldv,
     acionadores: acionadores
   };
 }
