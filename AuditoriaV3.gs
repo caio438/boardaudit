@@ -8257,6 +8257,33 @@ function PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV() {
   }
 }
 
+/**
+ * Só publica categorias fechadas. O texto bruto de erro pode conter nomes de
+ * clientes ou dados da transcrição, portanto não deve ir para a issue pública.
+ */
+function audV3CategoriaErroDocumentoCloser_(mensagem) {
+  const texto = String(mensagem || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/hash|snapshot|integridade|fonte persistida|nao corresponde/.test(texto)) return 'INTEGRIDADE_DA_FONTE';
+  if (/transcricao.*(nao|indisponivel|ausent)|transcricao original/.test(texto)) return 'TRANSCRICAO_INDISPONIVEL';
+  if (/cliente ou interacao|interacao.*nao encontrad|cliente.*nao encontrad/.test(texto)) return 'CLIENTE_OU_INTERACAO_AUSENTE';
+  if (/criterio|crit[eé]rio|resultado estruturado|json|formato|estrutura|validacao|nao contem/.test(texto)) return 'VALIDACAO_DO_RESULTADO';
+  if (/gate|revisao humana|publicavel|score|evidencia|coaching/.test(texto)) return 'GATE_DE_QUALIDADE';
+  if (/document|google|drive|quota|limite|servic|permiss|acesso|time.?out|exceeded/.test(texto)) return 'DOCUMENTO_OU_SERVICO_GOOGLE';
+  if (/registro nao ficou aprovado|aprovad|status/.test(texto)) return 'FINALIZACAO_INCOMPLETA';
+  return 'OUTRO_ERRO';
+}
+
+function audV3CategoriasBloqueioDocumentoCloser_(auditorias) {
+  const categorias = {};
+  (auditorias || []).forEach(function(a) {
+    if (String(a.TIPO_AUDITORIA || '').toUpperCase() !== 'CLOSER' ||
+        String(a.AUTOMACAO_STATUS || '').toUpperCase() !== 'REPARO_DOCUMENTO_CLOSER_BLOQUEADO') return;
+    const categoria = audV3CategoriaErroDocumentoCloser_(a.AUTOMACAO_ERRO || a.ERRO || '');
+    categorias[categoria] = (categorias[categoria] || 0) + 1;
+  });
+  return categorias;
+}
+
 function audV3ResumoAuditoriasCloser_(auditorias) {
   const resumo = {
     registradas: 0,
@@ -8336,6 +8363,7 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
     backfillJaAuditadas: resumoAuditorias.registradas,
     auditoriasResumo: resumoAuditorias,
     reparoDocumentosElegiveis: reparoDocumentosElegiveis,
+    reparoDocumentosMotivos: audV3CategoriasBloqueioDocumentoCloser_(auditorias),
     reparoDocumentosBloqueados: auditorias.filter(function(a) {
       return String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
         String(a.AUTOMACAO_STATUS || '').toUpperCase() === 'REPARO_DOCUMENTO_CLOSER_BLOQUEADO';
