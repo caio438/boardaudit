@@ -89,7 +89,11 @@ jobs:
             '- Aguardando vínculo Canônico: '+count(a.aguardandoCanonico),
             '- Em revisão: '+count(a.emRevisao),
             '- Com erro registrado: '+count(a.comErro),
-            '- Sem resultado estruturado ou completo: '+count(a.semResultado), '',
+            '- Sem resultado estruturado ou completo: '+count(a.semResultado),
+            '- Elegíveis para reparo seguro de documento: '+count(s.reparoDocumentosElegiveis),
+            '- Reparos de documento bloqueados: '+count(s.reparoDocumentosBloqueados),
+            '- Causas do bloqueio (sem nomes/dados sensíveis): '+Object.keys(s.reparoDocumentosMotivos || {}).sort()
+              .map(k=>k+': '+count(s.reparoDocumentosMotivos[k])).join('; '), '',
             '- Última execução do motor: '+String(s.ultimaExecucao||'sem registro'),
             '- Último resultado do motor: '+String(s.ultimoResultado||'sem registro'), '',
             ok ? '**Consulta de produção concluída. Nenhum processamento ou envio ao RD foi acionado.**'
