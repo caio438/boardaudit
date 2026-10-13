@@ -8163,6 +8163,100 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
  * significa que a análise foi validada ou que o Google Docs existe.
  * Retorna somente contagens, sem dados pessoais das reuniões.
  */
+/**
+ * Reparação sem IA: usa a mesma auditoria Closer já validada para produzir
+ * exclusivamente o documento ausente, sem criar outra auditoria.
+ */
+function audV3FilaReparoDocumentoCloser_(dados) {
+  dados = dados || {};
+  const auditorias = dados.auditorias || audV3Ler_('AUDITORIAS');
+  const interacoes = dados.interacoes || audV3Ler_('INTERACOES');
+  const transcricoes = dados.transcricoes || audV3Ler_('TRANSCRICOES');
+  const interacoesPorId = {};
+  const transcricoesPorId = {};
+  const documentosPorInteracao = {};
+  interacoes.forEach(function(item) {
+    interacoesPorId[String(item.ID_INTERACAO || '').trim()] = item;
+  });
+  transcricoes.forEach(function(item) {
+    const id = String(item.ID_INTERACAO || '').trim();
+    if (id && String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' &&
+        String(item.CONTEUDO || '').trim().length >= 20) transcricoesPorId[id] = true;
+  });
+  auditorias.forEach(function(a) {
+    const id = String(a.ID_INTERACAO || '').trim();
+    if (id && String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+        String(a.LINK_DOCUMENTO || '').trim()) documentosPorInteracao[id] = true;
+  });
+  return auditorias.filter(function(a) {
+    const id = String(a.ID_INTERACAO || '').trim();
+    const interacao = interacoesPorId[id] || {};
+    const status = String(a.STATUS || '').toUpperCase();
+    if (String(a.TIPO_AUDITORIA || '').toUpperCase() !== 'CLOSER' ||
+        !String(a.ID_AUDITORIA || '').trim() ||
+        !id || !String(a.ID_CLIENTE || '').trim() ||
+        String(interacao.FONTE || '').toUpperCase() !== 'TLDV' ||
+        String(interacao.TIPO_INTERACAO || '').toUpperCase() !== 'REUNIAO' ||
+        String(interacao.ID_CLIENTE || '').trim() !== String(a.ID_CLIENTE || '').trim() ||
+        (typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(interacao.TITULO)) ||
+        !transcricoesPorId[id] || documentosPorInteracao[id] ||
+        ['APROVADA', 'EM_REVISAO'].indexOf(status) < 0 ||
+        String(a.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
+        !String(a.HASH_FONTE || '').trim() ||
+        !String(a.CRITERIOS_SNAPSHOT_JSON || '').trim() ||
+        !String(a.RESULTADO_JSON || '').trim() ||
+        String(a.RD_STATUS || '').toUpperCase() === 'PUBLICADA' ||
+        String(a.AUTOMACAO_STATUS || '').toUpperCase() === 'REPARO_DOCUMENTO_CLOSER_BLOQUEADO') return false;
+    try {
+      const resultado = JSON.parse(String(a.RESULTADO_JSON || ''));
+      return resultado && typeof resultado === 'object' && !Array.isArray(resultado);
+    } catch (_) { return false; }
+  }).sort(function(a, b) {
+    return String(a.SOLICITADO_EM || '').localeCompare(String(b.SOLICITADO_EM || ''));
+  });
+}
+
+function PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV() {
+  if (boardModoManual_()) return boardRespostaManual_('PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV');
+  const config = audV3ConfigAutomacaoReunioesCloser_();
+  if (!config.ativa) return { sucesso: false, mensagem: 'Motor Closer inativo: reparo não executado.' };
+  const trava = LockService.getScriptLock();
+  if (!trava.tryLock(1000)) return { sucesso: false, mensagem: 'Existe outro processo usando o projeto; reparo não executado.' };
+  try {
+    const fila = audV3FilaReparoDocumentoCloser_();
+    if (!fila.length) return { sucesso: true, recuperadas: 0, pendentes: 0, mensagem: 'Nenhuma auditoria validada e segura para reparo sem IA.' };
+    const alvo = fila[0];
+    const atual = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA) || {};
+    // Confirma novamente a elegibilidade na fonte, inclusive link e estado de aprovação.
+    const filaAtual = audV3FilaReparoDocumentoCloser_();
+    if (!filaAtual.some(function(item) { return String(item.ID_AUDITORIA || '') === String(atual.ID_AUDITORIA || ''); })) return { sucesso: true, recuperadas: 0, pendentes: fila.length, mensagem: 'Alvo alterado; nenhum documento duplicado.' };
+    try {
+      audV3FinalizarAutomaticamente_(alvo.ID_AUDITORIA);
+      const recuperada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA) || {};
+      if (String(recuperada.STATUS || '').toUpperCase() !== 'APROVADA' ||
+          String(recuperada.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
+          !String(recuperada.LINK_DOCUMENTO || '').trim()) {
+        throw new Error('O registro não ficou aprovado, validado e documentado.');
+      }
+      return { sucesso: true, recuperadas: 1,
+        pendentes: Math.max(0, fila.length - 1),
+        mensagem: 'Documento Closer criado usando a auditoria existente; sem IA e sem RD.' };
+    } catch (erro) {
+      const motivo = String(erro && erro.message || erro || 'Falha no reparo').slice(0, 350);
+      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA, {
+        AUTOMACAO_STATUS: 'REPARO_DOCUMENTO_CLOSER_BLOQUEADO',
+        AUTOMACAO_ERRO: motivo,
+        AUTOMACAO_ATUALIZADO_EM: new Date()
+      });
+      return { sucesso: false, recuperadas: 0,
+        pendentes: Math.max(0, fila.length - 1), bloqueadas: 1,
+        mensagem: 'Uma auditoria não pôde ser reparada com segurança; motivo registrado no Board.' };
+    }
+  } finally {
+    trava.releaseLock();
+  }
+}
+
 function audV3ResumoAuditoriasCloser_(auditorias) {
   const resumo = {
     registradas: 0,
@@ -8212,6 +8306,7 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
   const transcricoes = dados.transcricoes || audV3Ler_('TRANSCRICOES');
   const auditorias = dados.auditorias || audV3Ler_('AUDITORIAS');
   const resumoAuditorias = audV3ResumoAuditoriasCloser_(auditorias);
+  const reparoDocumentosElegiveis = audV3FilaReparoDocumentoCloser_({ auditorias: auditorias, interacoes: interacoes, transcricoes: transcricoes }).length;
   const fila = audV3FilaAutomacaoReunioesCloser_(config, {
     pitches: pitches,
     interacoes: interacoes,
@@ -8240,6 +8335,11 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
     backfillPendentes: fila.filter(function(item) { return item.backfill; }).length,
     backfillJaAuditadas: resumoAuditorias.registradas,
     auditoriasResumo: resumoAuditorias,
+    reparoDocumentosElegiveis: reparoDocumentosElegiveis,
+    reparoDocumentosBloqueados: auditorias.filter(function(a) {
+      return String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+        String(a.AUTOMACAO_STATUS || '').toUpperCase() === 'REPARO_DOCUMENTO_CLOSER_BLOQUEADO';
+    }).length,
     backfillLimiteDiario: config.maxBackfillDia,
     backfillTentativasHoje: usoBackfill.tentativas,
     cutoffIso: config.cutoffIso,
