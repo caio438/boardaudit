@@ -8158,6 +8158,52 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
   });
 }
 
+/**
+ * Indicadores independentes de auditorias Closer. Uma auditoria registrada não
+ * significa que a análise foi validada ou que o Google Docs existe.
+ * Retorna somente contagens, sem dados pessoais das reuniões.
+ */
+function audV3ResumoAuditoriasCloser_(auditorias) {
+  const resumo = {
+    registradas: 0,
+    aprovadas: 0,
+    validadas: 0,
+    comLinkDocumento: 0,
+    concluidasComDocumento: 0,
+    aguardandoCanonico: 0,
+    emRevisao: 0,
+    comErro: 0,
+    semResultado: 0
+  };
+  (auditorias || []).forEach(function(a) {
+    if (String(a.TIPO_AUDITORIA || '').toUpperCase() !== 'CLOSER' ||
+        !String(a.ID_AUDITORIA || '').trim()) return;
+    resumo.registradas++;
+    const status = String(a.STATUS || '').trim().toUpperCase();
+    const validacao = String(a.VALIDACAO_STATUS || '').trim().toUpperCase();
+    const automacao = String(a.AUTOMACAO_STATUS || '').trim().toUpperCase();
+    const rd = String(a.RD_STATUS || '').trim().toUpperCase();
+    const temDocumento = Boolean(String(a.LINK_DOCUMENTO || '').trim());
+    if (status === 'APROVADA') resumo.aprovadas++;
+    if (validacao === 'VALIDADA') resumo.validadas++;
+    if (temDocumento) resumo.comLinkDocumento++;
+    if (status === 'APROVADA' && validacao === 'VALIDADA' && temDocumento) {
+      resumo.concluidasComDocumento++;
+    }
+    if (rd === 'AGUARDANDO_CANONICO' || automacao === 'CONCLUIDA_AGUARDANDO_CANONICO') {
+      resumo.aguardandoCanonico++;
+    }
+    if (['EM_REVISAO', 'PENDENTE_APROVACAO', 'EM_ANALISE'].indexOf(status) >= 0) {
+      resumo.emRevisao++;
+    }
+    if (status === 'ERRO' || /^ERRO/.test(automacao) ||
+        Boolean(String(a.AUTOMACAO_ERRO || '').trim())) resumo.comErro++;
+    if (!String(a.RESULTADO_JSON || '').trim() &&
+        !String(a.RESULTADO_COMPLETO || '').trim()) resumo.semResultado++;
+  });
+  return resumo;
+}
+
 function obterStatusAutomacaoReunioesCloserV3(dados) {
   dados = dados || {};
   const config = audV3ConfigAutomacaoReunioesCloser_();
@@ -8165,6 +8211,7 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
   const interacoes = dados.interacoes || audV3Ler_('INTERACOES');
   const transcricoes = dados.transcricoes || audV3Ler_('TRANSCRICOES');
   const auditorias = dados.auditorias || audV3Ler_('AUDITORIAS');
+  const resumoAuditorias = audV3ResumoAuditoriasCloser_(auditorias);
   const fila = audV3FilaAutomacaoReunioesCloser_(config, {
     pitches: pitches,
     interacoes: interacoes,
@@ -8191,10 +8238,8 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
     ativa: config.ativa,
     backfillAtivo: config.backfillAtivo,
     backfillPendentes: fila.filter(function(item) { return item.backfill; }).length,
-    backfillJaAuditadas: auditorias.filter(function(a) {
-      return String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
-        Boolean(String(a.ID_AUDITORIA || '').trim());
-    }).length,
+    backfillJaAuditadas: resumoAuditorias.registradas,
+    auditoriasResumo: resumoAuditorias,
     backfillLimiteDiario: config.maxBackfillDia,
     backfillTentativasHoje: usoBackfill.tentativas,
     cutoffIso: config.cutoffIso,
