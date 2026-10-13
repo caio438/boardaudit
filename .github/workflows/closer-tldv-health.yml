@@ -1,0 +1,124 @@
+name: Observe Closer tl;dv audit health
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  closer-health:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/closer-status' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: apps-script-production
+    steps:
+      - name: Checkout approved main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Authenticate owner
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/closer-health-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token = j?.tokens?.default?.access_token || j?.token?.access_token || j?.access_token || '';
+          if (!token) throw new Error('Token Apps Script ausente.');
+          fs.writeFileSync('/tmp/closer-health-token', token, {mode:0o600});
+          NODE
+      - name: Read Closer production status (no mutations)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/closer-health-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/closer-health-result.txt -w '%{http_code}' "$BASE?ops_closer_tldv_status=1" || true)"
+          echo "CLOSER_HEALTH_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/closer-health-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,200))) throw new Error('Resposta HTML/inválida.');
+          const start=raw.indexOf('{'), end=raw.lastIndexOf('}');
+          if(start < 0 || end < start) throw new Error('JSON ausente.');
+          const s=JSON.parse(raw.slice(start,end+1));
+          const a=s.auditoriasResumo || {};
+          const ok=s.sucesso === true && s.ativa === true &&
+            /^\d{4}-\d{2}-\d{2}T/.test(String(s.cutoffIso||'')) &&
+            Number.isFinite(Number(a.registradas)) &&
+            Number.isFinite(Number(a.concluidasComDocumento));
+          const count=x=>Number(x||0);
+          const lines=[
+            '## Saúde de auditorias Closer tl;dv', '',
+            '- Motor Closer ativo: '+String(s.ativa===true),
+            '- Backfill histórico ativo: '+String(s.backfillAtivo===true),
+            '- Cutoff preservado: '+String(s.cutoffIso||'não informado'),
+            '- Reuniões após cutoff: '+count(s.reunioesPosCutoff),
+            '- Sem cliente identificado: '+count(s.semCliente),
+            '- Sem Closer confirmado: '+count(s.semCloserConfirmado),
+            '- Sem pitch Closer: '+count(s.semPitchCloser),
+            '- Aguardando transcrição: '+count(s.aguardandoTranscricao),
+            '- Aguardando auditoria: '+count(s.aguardandoAuditoria),
+            '- Backfill antigo elegível: '+count(s.backfillPendentes), '',
+            '### Auditorias persistidas (indicadores independentes)', '',
+            '- Registradas: '+count(a.registradas),
+            '- Aprovadas: '+count(a.aprovadas),
+            '- Validadas: '+count(a.validadas),
+            '- Com link de Google Docs: '+count(a.comLinkDocumento),
+            '- **Aprovadas + validadas + com link: '+count(a.concluidasComDocumento)+'**',
+            '- Aguardando vínculo Canônico: '+count(a.aguardandoCanonico),
+            '- Em revisão: '+count(a.emRevisao),
+            '- Com erro registrado: '+count(a.comErro),
+            '- Sem resultado estruturado ou completo: '+count(a.semResultado), '',
+            '- Última execução do motor: '+String(s.ultimaExecucao||'sem registro'),
+            '- Último resultado do motor: '+String(s.ultimoResultado||'sem registro'), '',
+            ok ? '**Consulta de produção concluída. Nenhum processamento ou envio ao RD foi acionado.**'
+               : '**Status incompleto ou motor desligado: verificar antes de seguir.**'
+          ];
+          fs.writeFileSync('/tmp/closer-health-report.md',lines.join('\n'));
+          console.log(lines.join('\n'));
+          if(!ok) process.exit(1);
+          NODE
+      - name: Post health report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/closer-health-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/closer-health-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Saúde Closer tl;dv\n\nConsulta falhou antes da confirmação. Nenhuma alteração foi realizada."
+          fi
+      - name: Save health evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closer-health-${{ github.run_id }}
+          path: |
+            /tmp/closer-health-result.txt
+            /tmp/closer-health-report.md
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/closer-health-token
