@@ -1,0 +1,107 @@
+name: Recover one validated Closer document
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  closer-docs-repair:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/closer-docs-repair' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: apps-script-production
+    steps:
+      - name: Checkout approved main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Authenticate owner
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions > /tmp/closer-docs-repair-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json', 'utf8'));
+          const token = j?.tokens?.default?.access_token || j?.token?.access_token || j?.access_token || '';
+          if (!token) throw new Error('Token Apps Script ausente.');
+          fs.writeFileSync('/tmp/closer-docs-repair-token', token, {mode:0o600});
+          NODE
+      - name: Recover at most one document without AI or RD
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/closer-docs-repair-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/closer-docs-repair-result.txt -w '%{http_code}' "$BASE?ops_closer_docs_repair=1" || true)"
+          echo "CLOSER_HEALTH_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/closer-docs-repair-result.txt', 'utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,200))) throw new Error('Resposta HTML/inválida.');
+          const start=raw.indexOf('{'), end=raw.lastIndexOf('}');
+          if(start < 0 || end < start) throw new Error('JSON ausente.');
+          const s=JSON.parse(raw.slice(start,end+1));
+          const rep=s.reparo || {}, a=s.resumo || {};
+          const recovered=Number(rep.recuperadas||0), pending=Number(s.reparoDocumentosElegiveis||0);
+          const ok=s.sucesso===true && s.envioRdCloser==='BLOQUEADO' &&
+            (recovered===0 || recovered===1) && Number.isFinite(pending);
+          const lines=[
+            '## Reparo controlado de documentos Closer', '',
+            '- Auditorias recuperadas nesta execução: '+recovered,
+            '- Elegíveis restantes para reparo sem IA: '+pending,
+            '- Com reparo bloqueado e erro registrado: '+Number(s.reparoDocumentosBloqueados||0),
+            '- Auditorias Closer registradas: '+Number(a.registradas||0),
+            '- Concluídas (aprovadas, validadas e com Docs): '+Number(a.concluidasComDocumento||0),
+            '- Envio Closer ao RD: '+String(s.envioRdCloser||'não confirmado'), '',
+            String(rep.mensagem||''),
+            ok ? '**Reparo limitado e verificado. Nenhuma nova auditoria ou IA acionada.**'
+               : '**Reparo não confirmado. Verificar erro no Board.**'
+          ];
+          fs.writeFileSync('/tmp/closer-docs-repair-report.md',lines.join('\\n'));
+          console.log(lines.join('\\n'));
+          if(!ok) process.exit(1);
+          NODE
+      - name: Post health report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/closer-docs-repair-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/closer-docs-repair-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Saúde Closer tl;dv\n\nConsulta falhou antes da confirmação. Nenhuma alteração foi realizada."
+          fi
+      - name: Save health evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closer-docs-repair-${{ github.run_id }}
+          path: |
+            /tmp/closer-docs-repair-result.txt
+            /tmp/closer-docs-repair-report.md
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/closer-docs-repair-token
