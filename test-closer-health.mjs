@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 
 const codigo = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
-const inicio = codigo.indexOf('function audV3ResumoAuditoriasCloser_(');
+const inicio = codigo.indexOf('function audV3CategoriaErroDocumentoCloser_(');
 const fim = codigo.indexOf('function obterStatusAutomacaoReunioesCloserV3(', inicio);
 assert.ok(inicio > 0 && fim > inicio, 'Resumo Closer deve existir antes da rotina de status.');
 const contexto = { Object, String, Array, Boolean };
