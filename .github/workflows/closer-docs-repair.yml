@@ -78,8 +78,8 @@ jobs:
             ok ? '**Reparo limitado e verificado. Nenhuma nova auditoria ou IA acionada.**'
                : '**Reparo não confirmado. Verificar erro no Board.**'
           ];
-          fs.writeFileSync('/tmp/closer-docs-repair-report.md',lines.join('\\n'));
-          console.log(lines.join('\\n'));
+          fs.writeFileSync('/tmp/closer-docs-repair-report.md',lines.join('\n'));
+          console.log(lines.join('\n'));
           if(!ok) process.exit(1);
           NODE
       - name: Post health report
