@@ -8228,8 +8228,8 @@ function PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV() {
     const alvo = fila[0];
     const atual = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA) || {};
     // Confirma novamente a elegibilidade na fonte, inclusive link e estado de aprovação.
-    const filaAtual = audV3FilaReparoDocumentoCloser_({ auditorias: [atual] });
-    if (!filaAtual.length) return { sucesso: true, recuperadas: 0, pendentes: fila.length, mensagem: 'Alvo alterado; nenhum documento duplicado.' };
+    const filaAtual = audV3FilaReparoDocumentoCloser_();
+    if (!filaAtual.some(function(item) { return String(item.ID_AUDITORIA || '') === String(atual.ID_AUDITORIA || ''); })) return { sucesso: true, recuperadas: 0, pendentes: fila.length, mensagem: 'Alvo alterado; nenhum documento duplicado.' };
     try {
       audV3FinalizarAutomaticamente_(alvo.ID_AUDITORIA);
       const recuperada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA) || {};
