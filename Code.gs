@@ -1002,6 +1002,27 @@ function doGet(e) {
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_closer_docs_repair || '') === '1') {
+    const ativo = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivo = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativo || !efetivo || ativo !== efetivo) {
+      throw new Error('Reparo de documentos Closer restrito à conta proprietária.');
+    }
+    if (typeof PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV !== 'function') {
+      throw new Error('Reparo de documentos Closer indisponível nesta versão.');
+    }
+    const reparo = PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV();
+    const status = obterStatusAutomacaoReunioesCloserV3();
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: reparo.sucesso === true,
+      reparo: reparo,
+      resumo: status.auditoriasResumo || {},
+      reparoDocumentosElegiveis: Number(status.reparoDocumentosElegiveis || 0),
+      reparoDocumentosBloqueados: Number(status.reparoDocumentosBloqueados || 0),
+      envioRdCloser: 'BLOQUEADO'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_closer_tldv_status || '') === '1') {
     const ativoOpsCloserStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsCloserStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
