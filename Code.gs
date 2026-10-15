@@ -5323,7 +5323,11 @@ function identificarCloserReuniaoTldv_(reuniao, idCliente, membros, textoTranscr
     const speakerPrimeiro = primeiroUnico && speakers.indexOf(primeiro) >= 0;
     return { nome: String(membro.NOME), score: emailExato ? 100 : nomeParticipante ? 90 : speakerExato ? 85 : speakerPrimeiro ? 65 : 0 };
   }).filter(candidato => candidato.score >= 65).sort((a,b) => b.score - a.score);
-  return candidatos.length === 1 ? candidatos[0].nome : '';
+  if (!candidatos.length) return '';
+  // Evidência com maior confiança prevalece (e-mail exato > nome > speaker).
+  // Empate continua ambíguo: não atribuir Closer sem certeza.
+  return candidatos.length === 1 || candidatos[0].score > candidatos[1].score
+    ? candidatos[0].nome : '';
 }
 
 /**
@@ -5482,20 +5486,19 @@ function SINCRONIZAR_TLDV_AGENDADO() {
     const sincronizacao = sincronizarReunioesTldv();
     const cutoffIso = String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '');
     const cutoffMs = Date.parse(cutoffIso) || Date.now();
-    const pitches = typeof audV3Ler_ === 'function' ? audV3Ler_('PITCHES') : [];
     const existentes = {};
     lerObjetos_(APP.sheets.transcricoes).forEach(t => {
       if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA' && String(t.CONTEUDO || '').trim()) existentes[t.ID_INTERACAO] = true;
     });
-    // Somente novas reuniões com cliente e pitch Closer; nunca drenar histórico antigo.
+    // Transcrições gratuitas do tl;dv podem ser importadas antes do pitch ser cadastrado.
+    // A auditoria continua exigindo pitch Closer atual e profissional identificado.
+    // Mantemos cliente, cutoff e exclusão de reuniões operacionais.
     const pendentes = lerObjetos_(APP.sheets.interacoes)
       .filter(item => String(item.FONTE || '').toUpperCase() === 'TLDV' &&
         String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' &&
         item.ID_CLIENTE && !existentes[item.ID_INTERACAO] &&
         tldvDataMs_(item.DATA_INTERACAO) >= cutoffMs &&
-        !tldvReuniaoOperacional_(item.TITULO) &&
-        Boolean(typeof audV3PitchAtualAutomatico_ === 'function' &&
-          audV3PitchAtualAutomatico_(item.ID_CLIENTE, 'CLOSER', pitches)))
+        !tldvReuniaoOperacional_(item.TITULO))
       .sort((a,b) => tldvDataMs_(b.DATA_INTERACAO) - tldvDataMs_(a.DATA_INTERACAO))
       .slice(0, 10).map(item => item.ID_INTERACAO);
 
