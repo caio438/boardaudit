@@ -33,7 +33,7 @@ const callbacks = {
   Date,JSON,String,Boolean,Array
 };
 vm.createContext(callbacks);
-const triggerSection=section(code,'function instalarAutomacaoTldv()','/**\n * Função executada pelos acionadores.');
+const triggerSection=section(code,'function instalarAutomacaoTldv()','function SINCRONIZAR_TLDV_AGENDADO()');
 vm.runInContext(triggerSection,callbacks);
 const installed=callbacks.instalarAutomacaoTldv();
 assert.equal(installed.ativa,true);
@@ -68,6 +68,12 @@ assert.equal(closers({name:'INGEE - negociação Unimed',organizer:{name:'VOLUM'
 assert.equal(closers({name:'INGEE + VOLUM Operacional Closer',organizer:{email:'jessica@ingee.com.br'}},'INGEE',roster,''),'');
 assert.equal(closers({name:'INGEE apresentação',organizer:{name:'VOLUM'},invitees:[]},'INGEE',roster,''),'','Não atribuir Closer genérico.');
 assert.equal(closers({name:'INGEE apresentação',invitees:[{name:'Jéssica Paulo'},{name:'João Silva'}]},'INGEE',roster,''),'','Dois closers diferentes, identificação ambígua.');
+assert.equal(closers({name:'INGEE comercial',invitees:[{email:'jessica@ingee.com.br',name:'Jéssica Paulo'},{name:'João Silva'}]},'INGEE',roster,''),'Jéssica Paulo','E-mail exato deve prevalecer sobre mero nome de outro closer.');
+assert.equal(closers({name:'INGEE comercial',invitees:[{name:'Jéssica Paulo'},{name:'João Silva'}]},'INGEE',roster,'[00:02] Jéssica Paulo: Vou apresentar.'),'','Dois nomes completos de closers permanecem ambíguos.');
+const syncSource=section(code,'function SINCRONIZAR_TLDV_AGENDADO()','function sincronizarReunioesTldv()');
+assert.doesNotMatch(syncSource,/audV3PitchAtualAutomatico_\(item.ID_CLIENTE, 'CLOSER', pitches\)/,'Importação da transcrição tl;dv não deve exigir pitch antes de auditar.');
+assert.match(syncSource,/!tldvReuniaoOperacional_\(item.TITULO\)/,'Somente reuniões não operacionais devem ser importadas.');
+assert.match(syncSource,/tldvDataMs_\(item.DATA_INTERACAO\) >= cutoffMs/,'Cutoff de importação precisa continuar preservado.');
 
 const finder=section(code,'function identificarClienteReuniaoTldv_(reuniao, regras, clientes)','function importarTranscricoesTldv(');
 const context={jornadaIdentificarClienteEvento_:()=>null,Array,Number,String};
