@@ -1,0 +1,126 @@
+name: Formalizations production health
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  formalizations-health:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          (github.event.comment.body == '/formalizacoes-status' ||
+           github.event.comment.body == '/formalizacoes-smoke') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+    steps:
+      - name: Checkout approved main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Configure clasp owner authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions >/tmp/formalizations-clasp-versions.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const j = JSON.parse(fs.readFileSync(process.env.HOME + '/.clasprc.json','utf8'));
+          const token = j?.tokens?.default?.access_token || j?.token?.access_token || j?.access_token || '';
+          if (!token) throw new Error('Token de autenticacao do Apps Script ausente.');
+          fs.writeFileSync('/tmp/formalizations-token', token, {mode:0o600});
+          NODE
+      - name: Query or smoke formalizations
+        shell: bash
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/formalizations-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          PARAM="ops_formalizacoes_status=1"
+          if [ "$COMMAND" = "/formalizacoes-smoke" ]; then PARAM="ops_formalizacoes_smoke=1"; fi
+          code="$(curl -sS --max-time 420 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/formalizations-result.txt -w '%{http_code}' "$BASE?$PARAM" || true)"
+          echo "FORMALIZATIONS_HTTP=$code"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/formalizations-result.txt','utf8').trim();
+          if (!raw || /<!doctype html|<html/i.test(raw.slice(0,200))) throw new Error('Resposta invalida do Apps Script.');
+          const data = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+          const status = data.status || data;
+          const resumo = status.resumo || {};
+          const execucao = data.execucao || null;
+          const ok = data.sucesso === true && status.ativa === true && status.acionadorInstalado === true &&
+            Number(resumo.duplicadasPorInteracao || 0) === 0 && Number(resumo.duplicadasPorTranscricao || 0) === 0;
+          const lines = [
+            '## Formalizacoes — producao', '',
+            '- Automacao ativa: '+String(status.ativa === true),
+            '- Acionador instalado: '+String(status.acionadorInstalado === true),
+            '- Ultima execucao: '+String(status.ultimaExecucao || ''),
+            '- Registradas: '+String(resumo.total || 0),
+            '- Completas: '+String(resumo.completas || 0),
+            '- Parciais: '+String(resumo.parciais || 0),
+            '- Incompletas: '+String(resumo.incompletas || 0),
+            '- Aprovadas: '+String(resumo.aprovadas || 0),
+            '- Em revisao: '+String(resumo.emRevisao || 0),
+            '- Com erro: '+String(resumo.comErro || 0),
+            '- Com cliente canonico: '+String(resumo.comClienteCanonico || 0),
+            '- Sem cliente canonico: '+String(resumo.semClienteCanonico || 0),
+            '- Com reuniao rastreavel: '+String(resumo.comReuniaoRastreavel || 0),
+            '- Sem reuniao rastreavel: '+String(resumo.semReuniaoRastreavel || 0),
+            '- Com transcricao rastreavel: '+String(resumo.comTranscricaoRastreavel || 0),
+            '- Duplicidades por reuniao/transcricao: '+String(resumo.duplicadasPorInteracao || 0)+'/'+String(resumo.duplicadasPorTranscricao || 0)
+          ];
+          if (execucao) lines.push(
+            '- Smoke gerou: '+String(execucao.geradas || 0),
+            '- Fila restante: '+String(execucao.restantes || 0),
+            '- Erros no smoke: '+String((execucao.erros || []).length),
+            '- Publicacao RD/Circle: nao acionada'
+          );
+          lines.push('', ok ? '**Fluxo de formalizacoes online e sem duplicidade detectada.**' : '**Fluxo de formalizacoes requer intervencao.**');
+          fs.writeFileSync('/tmp/formalizations-report.md', lines.join('\n'));
+          fs.writeFileSync('/tmp/formalizations-summary.json', JSON.stringify(data,null,2));
+          console.log(lines.join('\n'));
+          if (!ok) process.exit(1);
+          NODE
+      - name: Report result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/formalizations-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/formalizations-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "## Formalizacoes — producao\n\nA verificacao falhou antes do relatorio."
+          fi
+      - name: Store evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formalizations-health-${{ github.run_id }}
+          path: |
+            /tmp/formalizations-result.txt
+            /tmp/formalizations-report.md
+            /tmp/formalizations-summary.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/formalizations-token

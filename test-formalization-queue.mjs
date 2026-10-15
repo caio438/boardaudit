@@ -6,6 +6,7 @@ const auditoria = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
 const formalWeekWorkflow = fs.readFileSync(new URL('./.github/workflows/formalizacoes-week-control.yml', import.meta.url), 'utf8');
+const formalHealthWorkflow = fs.readFileSync(new URL('./.github/workflows/formalizations-health.yml', import.meta.url), 'utf8');
 
 assert.match(jornada, /const transcricoesPorId = \{\};/);
 assert.match(jornada, /lerObjetos_\(APP\.sheets\.transcricoes\)\.forEach/);
@@ -32,6 +33,21 @@ assert.match(formalWeekWorkflow, /Number\(r\.maximoNominalPorMadrugada \|\| 0\) 
 assert.match(formalWeekWorkflow, /String\(r\.modoBoard \|\| ''\)\.toUpperCase\(\) === 'MANUAL'/);
 assert.match(formalWeekWorkflow, /r\.ingestaoRdApi4comAtiva === true/);
 assert.match(formalWeekWorkflow, /r\.pipelineRdApi4comAtivo === true/);
+
+// Observabilidade agregada e smoke unitário de produção, sem publicação.
+assert.match(jornada, /function OBSERVAR_FORMALIZACOES_V3\(\)/);
+assert.match(jornada, /duplicadasPorInteracao/);
+assert.match(jornada, /duplicadasPorTranscricao/);
+assert.match(jornada, /dadosSensiveisExpostos: false/);
+assert.match(code, /parametros\.ops_formalizacoes_status/);
+assert.match(code, /parametros\.ops_formalizacoes_smoke/);
+assert.match(code, /EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA\(\{ limite: 1, diasBusca: 90 \}\)/);
+assert.match(code, /publicacaoRd: 'NAO_ACIONADA'/);
+assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-status'/);
+assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-smoke'/);
+assert.match(formalHealthWorkflow, /ops_formalizacoes_status=1/);
+assert.match(formalHealthWorkflow, /ops_formalizacoes_smoke=1/);
+assert.doesNotMatch(formalHealthWorkflow, /ops_board_enable_full=1/);
 
 const trechoFila = jornada.slice(
   jornada.indexOf('const transcricoesPorId = {}'),
