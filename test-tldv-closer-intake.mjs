@@ -33,7 +33,7 @@ const callbacks = {
   Date,JSON,String,Boolean,Array
 };
 vm.createContext(callbacks);
-const triggerSection=section(code,'function instalarAutomacaoTldv()','/**\n * Função executada pelos acionadores.');
+const triggerSection=section(code,'function instalarAutomacaoTldv()','function SINCRONIZAR_TLDV_AGENDADO()');
 vm.runInContext(triggerSection,callbacks);
 const installed=callbacks.instalarAutomacaoTldv();
 assert.equal(installed.ativa,true);
