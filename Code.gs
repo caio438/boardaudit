@@ -919,6 +919,44 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_formalizacoes_status || '') === '1') {
+    const ativoOpsFormalStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsFormalStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsFormalStatus || !efetivoOpsFormalStatus || ativoOpsFormalStatus !== efetivoOpsFormalStatus) {
+      throw new Error('Observabilidade de formalizacoes permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof OBSERVAR_FORMALIZACOES_V3 !== 'function') {
+      throw new Error('Observabilidade de formalizacoes indisponivel nesta versao.');
+    }
+    return ContentService.createTextOutput(JSON.stringify(OBSERVAR_FORMALIZACOES_V3(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (String(parametros.ops_formalizacoes_smoke || '') === '1') {
+    const ativoOpsFormalSmoke = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsFormalSmoke = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsFormalSmoke || !efetivoOpsFormalSmoke || ativoOpsFormalSmoke !== efetivoOpsFormalSmoke) {
+      throw new Error('Smoke de formalizacoes permitido somente para a conta proprietaria autenticada.');
+    }
+    if (boardModoManual_()) throw new Error('Board em modo manual; smoke de formalizacoes nao executado.');
+    if (String(obterConfiguracao_('JORNADA_FORMALIZACAO_AUTOMATICA') || '').toUpperCase() !== 'SIM') {
+      throw new Error('Formalizacao automatica desligada; smoke nao executado.');
+    }
+    const execucaoFormalizacoes = EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA({ limite: 1, diasBusca: 90 });
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: execucaoFormalizacoes.sucesso !== false,
+      execucao: {
+        geradas: Number(execucaoFormalizacoes.geradas || 0),
+        restantes: Number(execucaoFormalizacoes.restantes || 0),
+        erros: (execucaoFormalizacoes.erros || []).slice(0, 3),
+        diagnostico: execucaoFormalizacoes.diagnostico || {}
+      },
+      status: OBSERVAR_FORMALIZACOES_V3(),
+      publicacaoRd: 'NAO_ACIONADA',
+      publicacaoCircle: 'NAO_ACIONADA'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_enable_isolated || '') === '1') {
     const ativoOpsEnableSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsEnableSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();

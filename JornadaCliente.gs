@@ -163,6 +163,100 @@ function jornadaStatusFontesReunioes_() {
   };
 }
 
+/**
+ * Snapshot somente leitura da fila de formalizações. Não expõe títulos,
+ * participantes, clientes ou conteúdo das reuniões: apenas contagens agregadas.
+ */
+function OBSERVAR_FORMALIZACOES_V3() {
+  formalGarantirEstrutura_();
+  const agenda = jornadaStatusFontesReunioes_();
+  const formalizacoes = audV3Ler_(FORMALIZACAO_REUNIAO.aba)
+    .filter(item => item.ID_FORMALIZACAO && String(item.STATUS || '').toUpperCase() !== 'DESCARTADA');
+  const clientes = {};
+  audV3Ler_('CLIENTES').forEach(item => {
+    if (item.ID_CLIENTE) clientes[String(item.ID_CLIENTE)] = true;
+  });
+  const interacoes = {};
+  audV3Ler_('INTERACOES').forEach(item => {
+    if (item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = true;
+  });
+  const transcricoes = {};
+  audV3Ler_('TRANSCRICOES').forEach(item => {
+    if (item.ID_TRANSCRICAO) transcricoes[String(item.ID_TRANSCRICAO)] = item;
+  });
+  const idsInteracao = {};
+  const idsTranscricao = {};
+  const resumo = {
+    total: formalizacoes.length,
+    completas: 0,
+    parciais: 0,
+    incompletas: 0,
+    aprovadas: 0,
+    emRevisao: 0,
+    comErro: 0,
+    comClienteCanonico: 0,
+    semClienteCanonico: 0,
+    comReuniaoRastreavel: 0,
+    semReuniaoRastreavel: 0,
+    comTranscricaoRastreavel: 0,
+    publicadasCircle: 0,
+    duplicadasPorInteracao: 0,
+    duplicadasPorTranscricao: 0
+  };
+  formalizacoes.forEach(item => {
+    const status = String(item.STATUS || '').toUpperCase();
+    if (status === 'APROVADA') resumo.aprovadas++;
+    if (status === 'EM_REVISAO' || status === 'RASCUNHO') resumo.emRevisao++;
+    if (status === 'ERRO' || String(item.ERRO || '').trim()) resumo.comErro++;
+    if (String(item.CIRCLE_POST_URL || '').trim()) resumo.publicadasCircle++;
+
+    const idCliente = String(item.ID_CLIENTE || '').trim();
+    const clienteCanonico = Boolean(idCliente && clientes[idCliente]);
+    resumo[clienteCanonico ? 'comClienteCanonico' : 'semClienteCanonico']++;
+
+    const idInteracao = String(item.ID_INTERACAO || '').trim();
+    const reuniaoRastreavel = Boolean(idInteracao && interacoes[idInteracao]);
+    resumo[reuniaoRastreavel ? 'comReuniaoRastreavel' : 'semReuniaoRastreavel']++;
+    if (idInteracao) idsInteracao[idInteracao] = Number(idsInteracao[idInteracao] || 0) + 1;
+
+    const idTranscricao = String(item.ID_TRANSCRICAO || '').trim();
+    const transcricao = transcricoes[idTranscricao] || {};
+    const transcricaoRastreavel = Boolean(idTranscricao && transcricoes[idTranscricao] &&
+      String(transcricao.STATUS || '').toUpperCase() === 'CONCLUIDA' && String(transcricao.CONTEUDO || '').trim());
+    if (transcricaoRastreavel) resumo.comTranscricaoRastreavel++;
+    if (idTranscricao) idsTranscricao[idTranscricao] = Number(idsTranscricao[idTranscricao] || 0) + 1;
+
+    let resultado = null;
+    try { resultado = JSON.parse(String(item.RESULTADO_JSON || '')); } catch (_) { resultado = null; }
+    const resultadoEstruturado = Boolean(resultado &&
+      String(resultado.tipo_documento || '') === 'FORMALIZACAO_REUNIAO' &&
+      String(resultado.resumo_reuniao || '').trim() &&
+      resultado.metadados && String(resultado.metadados.titulo || '').trim());
+    if (resultadoEstruturado && clienteCanonico && reuniaoRastreavel && transcricaoRastreavel && status !== 'ERRO') {
+      resumo.completas++;
+    } else if (resultadoEstruturado) {
+      resumo.parciais++;
+    } else {
+      resumo.incompletas++;
+    }
+  });
+  resumo.duplicadasPorInteracao = Object.keys(idsInteracao).filter(id => idsInteracao[id] > 1).length;
+  resumo.duplicadasPorTranscricao = Object.keys(idsTranscricao).filter(id => idsTranscricao[id] > 1).length;
+  let ultimoResultado = {};
+  try { ultimoResultado = JSON.parse(String(agenda.formalizacaoUltimoResultado || '{}')); } catch (_) { ultimoResultado = {}; }
+  return {
+    sucesso: true,
+    ativa: agenda.formalizacaoAutomatica === true,
+    acionadorInstalado: agenda.formalizacaoAutomaticaInstalada === true,
+    horarios: agenda.horariosFormalizacao || [],
+    ultimaExecucao: agenda.formalizacaoUltimaExecucao || '',
+    ultimoResultado: ultimoResultado,
+    resumo: resumo,
+    publicacaoRd: 'NAO_APLICAVEL',
+    dadosSensiveisExpostos: false
+  };
+}
+
 function jornadaGarantirFontesPadrao_() {
   let fontes = [];
   try { fontes = JSON.parse(String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.fontesReunioesChave) || '[]')); } catch (erro) { fontes = []; }
