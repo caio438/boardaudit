@@ -296,8 +296,11 @@ function REPARAR_DUPLICIDADES_FORMALIZACOES_SEGURO() {
     }
     const aprovadas = grupo.filter(item => String(item.STATUS || '').toUpperCase() === 'APROVADA');
     if (aprovadas.length > 1) {
-      bloquear('MULTIPLAS_APROVADAS');
-      return;
+      const resultadosAprovados = [...new Set(aprovadas.map(item => String(item.RESULTADO_JSON || '').trim()).filter(Boolean))];
+      if (resultadosAprovados.length !== 1) {
+        bloquear('MULTIPLAS_APROVADAS_DIVERGENTES');
+        return;
+      }
     }
     const publicacoes = [...new Set(grupo.map(item => String(item.CIRCLE_POST_URL || '').trim()).filter(Boolean))];
     if (publicacoes.length > 1) {
