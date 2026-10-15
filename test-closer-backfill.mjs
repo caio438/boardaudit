@@ -65,7 +65,7 @@ assert.equal(ctx.tldvDataMs_('12/08/2026 15:30:00')>0,true);
 assert.equal(ctx.tldvReuniaoOperacional_('[INGEE + VOLUM] Operacional Closer'),true);
 assert.equal(ctx.tldvReuniaoOperacional_('Buffet Mais + VOLUM demonstração para cliente'),false);
 
-const processor=section(audit,'function PROCESSAR_PIPELINE_CLOSER_TLDV()','/* =========================================================\n   AUTOMAÇÃO DE LIGAÇÕES');
+const processor=section(audit,'function PROCESSAR_PIPELINE_CLOSER_TLDV()','/* =========================================================');
 assert.match(processor,/audV3JaExisteAuditoriaCloserInteracao_\(idInteracao\)/);
 assert.match(processor,/if \(item\.backfill\) audV3RegistrarTentativaBackfillCloser_\(\)/);
 assert.match(processor,/saldoBackfill > 0/);
