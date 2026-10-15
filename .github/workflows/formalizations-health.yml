@@ -14,7 +14,8 @@ jobs:
       ${{ github.event.issue.number == 142 &&
           github.event.comment.user.login == 'caio438' &&
           (github.event.comment.body == '/formalizacoes-status' ||
-           github.event.comment.body == '/formalizacoes-smoke') }}
+           github.event.comment.body == '/formalizacoes-smoke' ||
+           github.event.comment.body == '/formalizacoes-dedup') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
@@ -56,6 +57,7 @@ jobs:
           BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
           PARAM="ops_formalizacoes_status=1"
           if [ "$COMMAND" = "/formalizacoes-smoke" ]; then PARAM="ops_formalizacoes_smoke=1"; fi
+          if [ "$COMMAND" = "/formalizacoes-dedup" ]; then PARAM="ops_formalizacoes_dedup=1"; fi
           code="$(curl -sS --max-time 420 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/formalizations-result.txt -w '%{http_code}' "$BASE?$PARAM" || true)"
           echo "FORMALIZATIONS_HTTP=$code"
           test "$code" = "200"
@@ -67,6 +69,7 @@ jobs:
           const status = data.status || data;
           const resumo = status.resumo || {};
           const execucao = data.execucao || null;
+          const reparo = data.reparo || null;
           const ok = data.sucesso === true && status.ativa === true && status.acionadorInstalado === true &&
             Number(resumo.duplicadasPorInteracao || 0) === 0 && Number(resumo.duplicadasPorTranscricao || 0) === 0;
           const lines = [
@@ -92,6 +95,12 @@ jobs:
             '- Smoke gerou: '+String(execucao.geradas || 0),
             '- Fila restante: '+String(execucao.restantes || 0),
             '- Erros no smoke: '+String((execucao.erros || []).length),
+            '- Publicacao RD/Circle: nao acionada'
+          );
+          if (reparo) lines.push(
+            '- Grupos reparados: '+String(reparo.gruposReparados || 0),
+            '- Registros descartados logicamente: '+String(reparo.registrosDescartados || 0),
+            '- Grupos bloqueados: '+String(reparo.gruposBloqueados || 0),
             '- Publicacao RD/Circle: nao acionada'
           );
           lines.push('', ok ? '**Fluxo de formalizacoes online e sem duplicidade detectada.**' : '**Fluxo de formalizacoes requer intervencao.**');
