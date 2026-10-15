@@ -257,6 +257,91 @@ function OBSERVAR_FORMALIZACOES_V3() {
   };
 }
 
+/**
+ * Remove duplicidades exatas de reunião/transcrição por descarte lógico.
+ * Conflitos de cliente, mais de uma aprovação ou publicações divergentes
+ * permanecem bloqueados para decisão humana.
+ */
+function REPARAR_DUPLICIDADES_FORMALIZACOES_SEGURO() {
+  formalGarantirEstrutura_();
+  const registros = audV3Ler_(FORMALIZACAO_REUNIAO.aba)
+    .filter(item => item.ID_FORMALIZACAO && String(item.STATUS || '').toUpperCase() !== 'DESCARTADA');
+  const porInteracao = {};
+  registros.forEach(item => {
+    const id = String(item.ID_INTERACAO || '').trim();
+    if (!id) return;
+    if (!porInteracao[id]) porInteracao[id] = [];
+    porInteracao[id].push(item);
+  });
+  let gruposReparados = 0;
+  let registrosDescartados = 0;
+  let gruposBloqueados = 0;
+  const motivosBloqueio = {};
+  const bloquear = motivo => {
+    gruposBloqueados++;
+    motivosBloqueio[motivo] = Number(motivosBloqueio[motivo] || 0) + 1;
+  };
+  Object.keys(porInteracao).forEach(idInteracao => {
+    const grupo = porInteracao[idInteracao];
+    if (grupo.length < 2) return;
+    const transcricoes = [...new Set(grupo.map(item => String(item.ID_TRANSCRICAO || '').trim()).filter(Boolean))];
+    if (transcricoes.length !== 1 || grupo.some(item => !String(item.ID_TRANSCRICAO || '').trim())) {
+      bloquear('TRANSCRICAO_DIVERGENTE');
+      return;
+    }
+    const clientes = [...new Set(grupo.map(item => String(item.ID_CLIENTE || '').trim()).filter(Boolean))];
+    if (clientes.length > 1) {
+      bloquear('CLIENTE_DIVERGENTE');
+      return;
+    }
+    const aprovadas = grupo.filter(item => String(item.STATUS || '').toUpperCase() === 'APROVADA');
+    if (aprovadas.length > 1) {
+      bloquear('MULTIPLAS_APROVADAS');
+      return;
+    }
+    const publicacoes = [...new Set(grupo.map(item => String(item.CIRCLE_POST_URL || '').trim()).filter(Boolean))];
+    if (publicacoes.length > 1) {
+      bloquear('PUBLICACOES_DIVERGENTES');
+      return;
+    }
+    const pontuar = item => {
+      let resultado = null;
+      try { resultado = JSON.parse(String(item.RESULTADO_JSON || '')); } catch (_) { resultado = null; }
+      const estruturado = Boolean(resultado && String(resultado.tipo_documento || '') === 'FORMALIZACAO_REUNIAO' &&
+        String(resultado.resumo_reuniao || '').trim());
+      const atualizado = new Date(item.ATUALIZADO_EM || item.SOLICITADO_EM || 0).getTime() || 0;
+      return (String(item.CIRCLE_POST_URL || '').trim() ? 10000000000000 : 0) +
+        (String(item.STATUS || '').toUpperCase() === 'APROVADA' ? 5000000000000 : 0) +
+        (estruturado ? 2000000000000 : 0) +
+        (String(item.ID_CLIENTE || '').trim() ? 1000000000000 : 0) + atualizado;
+    };
+    const ordenado = grupo.slice().sort((a, b) => pontuar(b) - pontuar(a));
+    const vencedor = ordenado[0];
+    if (!vencedor || !String(vencedor.ID_FORMALIZACAO || '').trim()) {
+      bloquear('SEM_VENCEDOR_CONFIAVEL');
+      return;
+    }
+    ordenado.slice(1).forEach(item => {
+      audV3Atualizar_(FORMALIZACAO_REUNIAO.aba, 'ID_FORMALIZACAO', item.ID_FORMALIZACAO, {
+        STATUS: 'DESCARTADA',
+        ERRO: 'DUPLICIDADE_EXATA_DESCARTADA; registro canônico preservado: ' + vencedor.ID_FORMALIZACAO,
+        ATUALIZADO_EM: new Date()
+      });
+      registrosDescartados++;
+    });
+    gruposReparados++;
+  });
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  return {
+    sucesso: gruposBloqueados === 0,
+    gruposReparados: gruposReparados,
+    registrosDescartados: registrosDescartados,
+    gruposBloqueados: gruposBloqueados,
+    motivosBloqueio: motivosBloqueio,
+    descarteLogico: true
+  };
+}
+
 function jornadaGarantirFontesPadrao_() {
   let fontes = [];
   try { fontes = JSON.parse(String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.fontesReunioesChave) || '[]')); } catch (erro) { fontes = []; }

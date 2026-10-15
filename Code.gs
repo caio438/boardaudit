@@ -957,6 +957,25 @@ function doGet(e) {
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_formalizacoes_dedup || '') === '1') {
+    const ativoOpsFormalDedup = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsFormalDedup = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsFormalDedup || !efetivoOpsFormalDedup || ativoOpsFormalDedup !== efetivoOpsFormalDedup) {
+      throw new Error('Reparo de formalizacoes permitido somente para a conta proprietaria autenticada.');
+    }
+    if (typeof REPARAR_DUPLICIDADES_FORMALIZACOES_SEGURO !== 'function') {
+      throw new Error('Reparo seguro de duplicidades indisponivel nesta versao.');
+    }
+    const reparoFormalizacoes = REPARAR_DUPLICIDADES_FORMALIZACOES_SEGURO();
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: reparoFormalizacoes.sucesso === true,
+      reparo: reparoFormalizacoes,
+      status: OBSERVAR_FORMALIZACOES_V3(),
+      publicacaoRd: 'NAO_ACIONADA',
+      publicacaoCircle: 'NAO_ACIONADA'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_sdr_enable_isolated || '') === '1') {
     const ativoOpsEnableSdr = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsEnableSdr = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();

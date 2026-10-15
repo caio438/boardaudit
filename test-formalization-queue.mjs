@@ -47,6 +47,13 @@ assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formaliza
 assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-smoke'/);
 assert.match(formalHealthWorkflow, /ops_formalizacoes_status=1/);
 assert.match(formalHealthWorkflow, /ops_formalizacoes_smoke=1/);
+assert.match(jornada, /function REPARAR_DUPLICIDADES_FORMALIZACOES_SEGURO\(\)/);
+assert.match(jornada, /MULTIPLAS_APROVADAS/);
+assert.match(jornada, /PUBLICACOES_DIVERGENTES/);
+assert.match(jornada, /STATUS: 'DESCARTADA'/);
+assert.match(code, /parametros\.ops_formalizacoes_dedup/);
+assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-dedup'/);
+assert.match(formalHealthWorkflow, /ops_formalizacoes_dedup=1/);
 assert.doesNotMatch(formalHealthWorkflow, /ops_board_enable_full=1/);
 
 const trechoFila = jornada.slice(
