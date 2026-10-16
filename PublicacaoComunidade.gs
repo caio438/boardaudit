@@ -11,6 +11,18 @@ const PUBLICACAO_COMUNIDADE = Object.freeze({
   prefixoEspaco: 'COMUNIDADE_ESPACO_'
 });
 
+const FORMALIZACAO_COMUNIDADE_AUTOMACAO = Object.freeze({
+  chaveAtiva: 'FORMALIZACAO_COMUNIDADE_AUTOMATICA',
+  handler: 'EXECUTAR_PUBLICACOES_FORMALIZACOES_COMUNIDADE',
+  intervaloMinutos: 5,
+  limitePorExecucao: 5,
+  maximoTentativasPorExecucao: 25,
+  esperaAposErroMs: 6 * 60 * 60 * 1000,
+  chaveFalhas: 'FORMALIZACAO_COMUNIDADE_FALHAS_V1',
+  chaveUltimaExecucao: 'FORMALIZACAO_COMUNIDADE_ULTIMA_EXECUCAO',
+  chaveUltimoResultado: 'FORMALIZACAO_COMUNIDADE_ULTIMO_RESULTADO'
+});
+
 const COMUNIDADE_GRUPO_INGEE = Object.freeze({
   espaco: 'Feed INGEE',
   clientes: ['ingee', 'sinergia', 'semeio cbi', 'semeio', 'cbi']
@@ -645,9 +657,10 @@ function prepararFormalizacaoComunidade(idFormalizacao) {
   };
 }
 
-function publicarFormalizacaoComunidade(idFormalizacao, capa, destinoEspaco) {
+function publicarFormalizacaoComunidade(idFormalizacao, capa, destinoEspaco, opcoes) {
   const id = String(idFormalizacao || '').trim();
   capa = capa || null;
+  opcoes = opcoes || {};
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error('Outra publicação está sendo processada. Aguarde alguns segundos.');
   try {
@@ -659,7 +672,7 @@ function publicarFormalizacaoComunidade(idFormalizacao, capa, destinoEspaco) {
         jaPublicado: true,
         mensagem: 'Esta formalização já foi compartilhada na Comunidade VOLUM.',
         formalizacao: formalSerializar_(formalizacao),
-        formalizacoes: formalListarFront_()
+        formalizacoes: opcoes.respostaCompacta ? [] : formalListarFront_()
       };
     }
     const token = String(audV3Segredo_(PUBLICACAO_COMUNIDADE.chaveToken) || '').trim();
@@ -721,7 +734,7 @@ function publicarFormalizacaoComunidade(idFormalizacao, capa, destinoEspaco) {
       sucesso: true,
       mensagem: resposta.jaPublicado ? 'A publicação já existia e foi vinculada ao Board.' : 'Formalização compartilhada na Comunidade VOLUM.',
       formalizacao: formalSerializar_(atualizada),
-      formalizacoes: formalListarFront_()
+      formalizacoes: opcoes.respostaCompacta ? [] : formalListarFront_()
     };
   } catch (erro) {
     if (id) audV3Atualizar_(FORMALIZACAO_REUNIAO.aba, 'ID_FORMALIZACAO', id, {
@@ -731,6 +744,230 @@ function publicarFormalizacaoComunidade(idFormalizacao, capa, destinoEspaco) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function formalizacaoComunidadeAutomacaoAtiva_() {
+  return String(audV3Configuracao_(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveAtiva) || 'NAO').toUpperCase() === 'SIM';
+}
+
+function formalizacaoComunidadeLerFalhas_() {
+  try {
+    const valor = JSON.parse(PropertiesService.getScriptProperties().getProperty(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveFalhas) || '{}');
+    return valor && typeof valor === 'object' && !Array.isArray(valor) ? valor : {};
+  } catch (erro) {
+    return {};
+  }
+}
+
+function formalizacaoComunidadeSalvarFalhas_(falhas) {
+  const limitado = {};
+  Object.keys(falhas || {})
+    .sort(function(a, b) { return Number((falhas[b] || {}).ultimaTentativa || 0) - Number((falhas[a] || {}).ultimaTentativa || 0); })
+    .slice(0, 40)
+    .forEach(function(id) { limitado[id] = falhas[id]; });
+  PropertiesService.getScriptProperties().setProperty(
+    FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveFalhas,
+    JSON.stringify(limitado)
+  );
+}
+
+function instalarAutomacaoPublicacaoFormalizacoesComunidade_() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(trigger) { return trigger.getHandlerFunction() === FORMALIZACAO_COMUNIDADE_AUTOMACAO.handler; })
+    .forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (!formalizacaoComunidadeAutomacaoAtiva_()) return false;
+  ScriptApp.newTrigger(FORMALIZACAO_COMUNIDADE_AUTOMACAO.handler)
+    .timeBased()
+    .everyMinutes(FORMALIZACAO_COMUNIDADE_AUTOMACAO.intervaloMinutos)
+    .create();
+  return true;
+}
+
+function formalizacaoComunidadeMapaDuplicidades_(formalizacoes) {
+  const interacoes = {};
+  const transcricoes = {};
+  (formalizacoes || []).forEach(function(item) {
+    const idInteracao = String(item.ID_INTERACAO || '').trim();
+    const idTranscricao = String(item.ID_TRANSCRICAO || '').trim();
+    if (idInteracao) interacoes[idInteracao] = Number(interacoes[idInteracao] || 0) + 1;
+    if (idTranscricao) transcricoes[idTranscricao] = Number(transcricoes[idTranscricao] || 0) + 1;
+  });
+  return { interacoes: interacoes, transcricoes: transcricoes };
+}
+
+function formalizacaoComunidadeJaPublicada_(formalizacao) {
+  return Boolean(
+    String(formalizacao.COMUNIDADE_POST_ID || '').trim() ||
+    String(formalizacao.COMUNIDADE_POST_URL || '').trim() ||
+    String(formalizacao.CIRCLE_POST_ID || '').trim() ||
+    String(formalizacao.CIRCLE_POST_URL || '').trim()
+  );
+}
+
+function formalizacaoComunidadePrepararAutomatica_(formalizacao, contexto) {
+  contexto = contexto || {};
+  const clientes = contexto.clientes || {};
+  const interacoes = contexto.interacoes || {};
+  const transcricoes = contexto.transcricoes || {};
+  const duplicidades = contexto.duplicidades || { interacoes: {}, transcricoes: {} };
+  const idCliente = String(formalizacao.ID_CLIENTE || '').trim();
+  const idInteracao = String(formalizacao.ID_INTERACAO || '').trim();
+  const idTranscricao = String(formalizacao.ID_TRANSCRICAO || '').trim();
+  if (!idCliente || !clientes[idCliente]) throw new Error('CLIENTE_CANONICO_AUSENTE');
+  if (!idInteracao || !interacoes[idInteracao]) throw new Error('REUNIAO_RASTREAVEL_AUSENTE');
+  const transcricao = transcricoes[idTranscricao] || null;
+  if (!idTranscricao || !transcricao || String(transcricao.STATUS || '').toUpperCase() !== 'CONCLUIDA' || !String(transcricao.CONTEUDO || '').trim()) {
+    throw new Error('TRANSCRICAO_RASTREAVEL_AUSENTE');
+  }
+  if (Number(duplicidades.interacoes[idInteracao] || 0) > 1 || Number(duplicidades.transcricoes[idTranscricao] || 0) > 1) {
+    throw new Error('DUPLICIDADE_BLOQUEADA');
+  }
+  const resultado = audV3ParseJson_(String(formalizacao.RESULTADO_JSON || ''), 'RESULTADO_JSON_INVALIDO');
+  if (String(resultado.tipo_documento || '') !== 'FORMALIZACAO_REUNIAO' ||
+      !String(resultado.resumo_reuniao || '').trim() ||
+      !resultado.metadados || !String(resultado.metadados.titulo || '').trim()) {
+    throw new Error('RESULTADO_ESTRUTURADO_INCOMPLETO');
+  }
+  const cliente = clientes[idCliente];
+  const espacos = contexto.espacos || [];
+  const espacoConfigurado = String(audV3Configuracao_(PUBLICACAO_COMUNIDADE.prefixoEspaco + idCliente) || '').trim() ||
+    ('Feed ' + String(cliente.NOME_CLIENTE || '').trim());
+  const espaco = comunidadeSugerirEspacoFormalizacao_({
+    formalizacao: formalizacao,
+    cliente: cliente,
+    resultado: resultado,
+    interacao: interacoes[idInteracao],
+    espaco: espacoConfigurado
+  }, espacos);
+  if (!espaco) throw new Error('ESPACO_COMUNIDADE_NAO_INEQUIVOCO');
+  return { resultado: resultado, espaco: espaco };
+}
+
+function formalizacaoComunidadeAprovarEPublicar_(formalizacao, contexto) {
+  const preparada = formalizacaoComunidadePrepararAutomatica_(formalizacao, contexto);
+  const status = String(formalizacao.STATUS || '').toUpperCase();
+  if (status !== 'APROVADA') {
+    const resultado = formalNormalizarResultado_(preparada.resultado, null, true);
+    audV3Atualizar_(FORMALIZACAO_REUNIAO.aba, 'ID_FORMALIZACAO', formalizacao.ID_FORMALIZACAO, {
+      TITULO: resultado.metadados.titulo,
+      TIPO_REUNIAO: resultado.tipo_reuniao || formalizacao.TIPO_REUNIAO || 'OPERACIONAL',
+      PARTICIPANTES_JSON: JSON.stringify(resultado.metadados.participantes || []),
+      STATUS: 'APROVADA',
+      RESULTADO_JSON: JSON.stringify(resultado),
+      ERRO: '',
+      APROVADO_EM: new Date(),
+      ATUALIZADO_EM: new Date()
+    });
+  }
+  const resposta = publicarFormalizacaoComunidade(
+    formalizacao.ID_FORMALIZACAO,
+    null,
+    preparada.espaco.valor,
+    { respostaCompacta: true }
+  );
+  return {
+    idFormalizacao: String(formalizacao.ID_FORMALIZACAO),
+    aprovadaAgora: status !== 'APROVADA',
+    publicada: resposta && resposta.sucesso === true,
+    jaPublicada: resposta && resposta.jaPublicado === true
+  };
+}
+
+function EXECUTAR_PUBLICACOES_FORMALIZACOES_COMUNIDADE(opcoes) {
+  opcoes = opcoes || {};
+  if (!formalizacaoComunidadeAutomacaoAtiva_()) {
+    return { sucesso: true, ignorada: true, mensagem: 'Aprovação e publicação automáticas desativadas.' };
+  }
+  formalGarantirEstrutura_();
+  const todas = audV3Ler_(FORMALIZACAO_REUNIAO.aba)
+    .filter(function(item) { return item.ID_FORMALIZACAO && String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'; });
+  const pendentes = todas.filter(function(item) {
+    const status = String(item.STATUS || '').toUpperCase();
+    return ['EM_REVISAO', 'RASCUNHO', 'APROVADA'].indexOf(status) >= 0 && !formalizacaoComunidadeJaPublicada_(item);
+  });
+  const clientes = {};
+  audV3Ler_('CLIENTES').forEach(function(item) { if (item.ID_CLIENTE) clientes[String(item.ID_CLIENTE)] = item; });
+  const interacoes = {};
+  audV3Ler_('INTERACOES').forEach(function(item) { if (item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item; });
+  const transcricoes = {};
+  audV3Ler_('TRANSCRICOES').forEach(function(item) { if (item.ID_TRANSCRICAO) transcricoes[String(item.ID_TRANSCRICAO)] = item; });
+  const contexto = {
+    clientes: clientes,
+    interacoes: interacoes,
+    transcricoes: transcricoes,
+    duplicidades: formalizacaoComunidadeMapaDuplicidades_(todas),
+    espacos: comunidadeListarEspacosAtivos_()
+  };
+  if (!contexto.espacos.length) throw new Error('Nenhum espaço ativo foi carregado da Comunidade VOLUM.');
+  const falhas = formalizacaoComunidadeLerFalhas_();
+  const agoraMs = Date.now();
+  const limite = Math.min(10, Math.max(1, Number(opcoes.limite || FORMALIZACAO_COMUNIDADE_AUTOMACAO.limitePorExecucao)));
+  const maximoTentativas = Math.max(limite, Number(FORMALIZACAO_COMUNIDADE_AUTOMACAO.maximoTentativasPorExecucao));
+  const resultados = [];
+  const erros = [];
+  let tentativas = 0;
+  pendentes.sort(function(a, b) {
+    return new Date(a.SOLICITADO_EM || a.ATUALIZADO_EM || 0) - new Date(b.SOLICITADO_EM || b.ATUALIZADO_EM || 0);
+  });
+  for (let indice = 0; indice < pendentes.length && resultados.length < limite && tentativas < maximoTentativas; indice += 1) {
+    const item = pendentes[indice];
+    const id = String(item.ID_FORMALIZACAO || '');
+    const falha = falhas[id] || null;
+    if (falha && agoraMs - Number(falha.ultimaTentativa || 0) < FORMALIZACAO_COMUNIDADE_AUTOMACAO.esperaAposErroMs) continue;
+    tentativas++;
+    try {
+      resultados.push(formalizacaoComunidadeAprovarEPublicar_(item, contexto));
+      delete falhas[id];
+    } catch (erro) {
+      const mensagem = String(erro && erro.message || erro).slice(0, 500);
+      erros.push({ idFormalizacao: id, erro: mensagem });
+      falhas[id] = {
+        ultimaTentativa: agoraMs,
+        tentativas: Number(falha && falha.tentativas || 0) + 1,
+        erro: mensagem
+      };
+    }
+  }
+  formalizacaoComunidadeSalvarFalhas_(falhas);
+  const props = PropertiesService.getScriptProperties();
+  const resumo = {
+    processadas: resultados.length,
+    aprovadasAgora: resultados.filter(function(item) { return item.aprovadaAgora; }).length,
+    publicadas: resultados.filter(function(item) { return item.publicada; }).length,
+    jaPublicadas: resultados.filter(function(item) { return item.jaPublicada; }).length,
+    erros: erros.slice(0, 10),
+    pendentesAntes: pendentes.length,
+    restantesEstimados: Math.max(0, pendentes.length - resultados.length),
+    tentativas: tentativas
+  };
+  props.setProperty(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveUltimaExecucao, new Date().toISOString());
+  props.setProperty(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveUltimoResultado, JSON.stringify(resumo));
+  if (typeof limparCachesDados_ === 'function') limparCachesDados_();
+  return Object.assign({ sucesso: erros.length === 0 || resultados.length > 0 }, resumo);
+}
+
+function ATIVAR_FORMALIZACOES_COMUNIDADE_AUTOMATICAS() {
+  if (boardModoManual_()) throw new Error('Board em modo manual; altere para automático antes de ativar as publicações.');
+  salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave, 'SIM');
+  salvarConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaInicioChave, Utilities.formatDate(new Date(), APP.timezone, 'yyyy-MM-dd'));
+  salvarConfiguracao_(FORMALIZACAO_NOTURNA_CONFIG.chaveLiberacaoTemporariaAte, '');
+  salvarConfiguracao_(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveAtiva, 'SIM');
+  const espacos = sincronizarEspacosComunidadeClientes_();
+  instalarAutomacaoFormalizacoesAgenda_();
+  const acionadorPublicacao = instalarAutomacaoPublicacaoFormalizacoesComunidade_();
+  const primeiraExecucao = EXECUTAR_PUBLICACOES_FORMALIZACOES_COMUNIDADE({ limite: FORMALIZACAO_COMUNIDADE_AUTOMACAO.limitePorExecucao });
+  return {
+    sucesso: acionadorPublicacao === true && primeiraExecucao.sucesso !== false,
+    geracaoAutomatica: true,
+    aprovacaoAutomatica: true,
+    publicacaoAutomatica: true,
+    intervaloMinutos: FORMALIZACAO_COMUNIDADE_AUTOMACAO.intervaloMinutos,
+    limitePorExecucao: FORMALIZACAO_COMUNIDADE_AUTOMACAO.limitePorExecucao,
+    acionadorPublicacao: acionadorPublicacao,
+    espacos: espacos,
+    primeiraExecucao: primeiraExecucao,
+    status: OBSERVAR_FORMALIZACOES_V3()
+  };
 }
 
 function comunidadeContextoFormalizacao_(idFormalizacao) {

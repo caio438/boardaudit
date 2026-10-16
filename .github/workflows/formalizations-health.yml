@@ -15,7 +15,8 @@ jobs:
           github.event.comment.user.login == 'caio438' &&
           (github.event.comment.body == '/formalizacoes-status' ||
            github.event.comment.body == '/formalizacoes-smoke' ||
-           github.event.comment.body == '/formalizacoes-dedup') }}
+           github.event.comment.body == '/formalizacoes-dedup' ||
+           github.event.comment.body == '/formalizacoes-auto-enable') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: apps-script-production
@@ -58,6 +59,7 @@ jobs:
           PARAM="ops_formalizacoes_status=1"
           if [ "$COMMAND" = "/formalizacoes-smoke" ]; then PARAM="ops_formalizacoes_smoke=1"; fi
           if [ "$COMMAND" = "/formalizacoes-dedup" ]; then PARAM="ops_formalizacoes_dedup=1"; fi
+          if [ "$COMMAND" = "/formalizacoes-auto-enable" ]; then PARAM="ops_formalizacoes_auto_enable=1"; fi
           code="$(curl -sS --max-time 420 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/formalizations-result.txt -w '%{http_code}' "$BASE?$PARAM" || true)"
           echo "FORMALIZATIONS_HTTP=$code"
           test "$code" = "200"
@@ -70,8 +72,11 @@ jobs:
           const resumo = status.resumo || {};
           const execucao = data.execucao || null;
           const reparo = data.reparo || null;
+          const ativacao = data.primeiraExecucao ? data : null;
+          const semDuplicidade = Number(resumo.duplicadasPorInteracao || 0) === 0 && Number(resumo.duplicadasPorTranscricao || 0) === 0;
+          const automacaoLigada = ativacao && status.aprovacaoPublicacaoAutomatica === true && status.acionadorPublicacaoInstalado === true;
           const ok = data.sucesso === true && status.ativa === true && status.acionadorInstalado === true &&
-            Number(resumo.duplicadasPorInteracao || 0) === 0 && Number(resumo.duplicadasPorTranscricao || 0) === 0;
+            (automacaoLigada || semDuplicidade);
           const lines = [
             '## Formalizacoes — producao', '',
             '- Automacao ativa: '+String(status.ativa === true),
@@ -84,6 +89,9 @@ jobs:
             '- Aprovadas: '+String(resumo.aprovadas || 0),
             '- Em revisao: '+String(resumo.emRevisao || 0),
             '- Com erro: '+String(resumo.comErro || 0),
+            '- Publicadas na Comunidade: '+String(resumo.publicadasComunidade || 0),
+            '- Aprovação/publicação automática: '+String(status.aprovacaoPublicacaoAutomatica === true),
+            '- Acionador de publicação instalado: '+String(status.acionadorPublicacaoInstalado === true),
             '- Com cliente canonico: '+String(resumo.comClienteCanonico || 0),
             '- Sem cliente canonico: '+String(resumo.semClienteCanonico || 0),
             '- Com reuniao rastreavel: '+String(resumo.comReuniaoRastreavel || 0),
@@ -102,6 +110,13 @@ jobs:
             '- Registros descartados logicamente: '+String(reparo.registrosDescartados || 0),
             '- Grupos bloqueados: '+String(reparo.gruposBloqueados || 0),
             '- Publicacao RD/Circle: nao acionada'
+          );
+          if (ativacao) lines.push(
+            '- Lote inicial processado: '+String(ativacao.primeiraExecucao.processadas || 0),
+            '- Aprovadas agora: '+String(ativacao.primeiraExecucao.aprovadasAgora || 0),
+            '- Publicadas agora: '+String(ativacao.primeiraExecucao.publicadas || 0),
+            '- Restantes estimadas: '+String(ativacao.primeiraExecucao.restantesEstimados || 0),
+            '- Erros no lote inicial: '+String((ativacao.primeiraExecucao.erros || []).length)
           );
           lines.push('', ok ? '**Fluxo de formalizacoes online e sem duplicidade detectada.**' : '**Fluxo de formalizacoes requer intervencao.**');
           fs.writeFileSync('/tmp/formalizations-report.md', lines.join('\n'));

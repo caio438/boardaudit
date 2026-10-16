@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const jornada = fs.readFileSync(new URL('./JornadaCliente.gs', import.meta.url), 'utf8');
 const auditoria = fs.readFileSync(new URL('./AuditoriaV3.gs', import.meta.url), 'utf8');
+const comunidade = fs.readFileSync(new URL('./PublicacaoComunidade.gs', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./Code.gs', import.meta.url), 'utf8');
 const front = fs.readFileSync(new URL('./Index.html', import.meta.url), 'utf8');
 const formalWeekWorkflow = fs.readFileSync(new URL('./.github/workflows/formalizacoes-week-control.yml', import.meta.url), 'utf8');
@@ -56,6 +57,25 @@ assert.match(code, /parametros\.ops_formalizacoes_dedup/);
 assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-dedup'/);
 assert.match(formalHealthWorkflow, /ops_formalizacoes_dedup=1/);
 assert.doesNotMatch(formalHealthWorkflow, /ops_board_enable_full=1/);
+
+// Aprovação e publicação automáticas na Comunidade, em lotes idempotentes.
+assert.match(comunidade, /const FORMALIZACAO_COMUNIDADE_AUTOMACAO = Object\.freeze/);
+assert.match(comunidade, /function ATIVAR_FORMALIZACOES_COMUNIDADE_AUTOMATICAS\(\)/);
+assert.match(comunidade, /function EXECUTAR_PUBLICACOES_FORMALIZACOES_COMUNIDADE\(opcoes\)/);
+assert.match(comunidade, /DUPLICIDADE_BLOQUEADA/);
+assert.match(comunidade, /ESPACO_COMUNIDADE_NAO_INEQUIVOCO/);
+assert.match(comunidade, /COMUNIDADE_POST_ID/);
+assert.match(comunidade, /function formalizacaoComunidadeJaPublicada_/);
+assert.match(comunidade, /CIRCLE_POST_ID/);
+assert.match(comunidade, /\.slice\(0, 40\)/);
+assert.match(comunidade, /STATUS: 'APROVADA'/);
+assert.match(comunidade, /publicarFormalizacaoComunidade\([\s\S]*?respostaCompacta: true/);
+assert.match(jornada, /instalarAutomacaoPublicacaoFormalizacoesComunidade_/);
+assert.match(jornada, /publicadasComunidade/);
+assert.match(jornada, /status === 'ERRO' && !String\(item\.RESULTADO_JSON \|\| ''\)\.trim\(\)/);
+assert.match(code, /parametros\.ops_formalizacoes_auto_enable/);
+assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-auto-enable'/);
+assert.match(formalHealthWorkflow, /ops_formalizacoes_auto_enable=1/);
 
 const trechoFila = jornada.slice(
   jornada.indexOf('const transcricoesPorId = {}'),

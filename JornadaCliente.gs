@@ -200,6 +200,7 @@ function OBSERVAR_FORMALIZACOES_V3() {
     semReuniaoRastreavel: 0,
     comTranscricaoRastreavel: 0,
     publicadasCircle: 0,
+    publicadasComunidade: 0,
     duplicadasPorInteracao: 0,
     duplicadasPorTranscricao: 0
   };
@@ -209,6 +210,7 @@ function OBSERVAR_FORMALIZACOES_V3() {
     if (status === 'EM_REVISAO' || status === 'RASCUNHO') resumo.emRevisao++;
     if (status === 'ERRO' || String(item.ERRO || '').trim()) resumo.comErro++;
     if (String(item.CIRCLE_POST_URL || '').trim()) resumo.publicadasCircle++;
+    if (String(item.COMUNIDADE_POST_ID || '').trim() || String(item.COMUNIDADE_POST_URL || '').trim()) resumo.publicadasComunidade++;
 
     const idCliente = String(item.ID_CLIENTE || '').trim();
     const clienteCanonico = Boolean(idCliente && clientes[idCliente]);
@@ -251,6 +253,10 @@ function OBSERVAR_FORMALIZACOES_V3() {
     horarios: agenda.horariosFormalizacao || [],
     ultimaExecucao: agenda.formalizacaoUltimaExecucao || '',
     ultimoResultado: ultimoResultado,
+    aprovacaoPublicacaoAutomatica: typeof formalizacaoComunidadeAutomacaoAtiva_ === 'function' && formalizacaoComunidadeAutomacaoAtiva_(),
+    acionadorPublicacaoInstalado: typeof FORMALIZACAO_COMUNIDADE_AUTOMACAO !== 'undefined' && ScriptApp.getProjectTriggers().some(function(trigger) {
+      return trigger.getHandlerFunction() === FORMALIZACAO_COMUNIDADE_AUTOMACAO.handler;
+    }),
     resumo: resumo,
     publicacaoRd: 'NAO_APLICAVEL',
     dadosSensiveisExpostos: false
@@ -687,6 +693,9 @@ function instalarAutomacaoJornadaCliente() {
   if (String(obterConfiguracao_(JORNADA_CLIENTE_CONFIG.formalizacaoAutomaticaChave) || 'NAO').toUpperCase() === 'SIM') {
     instalarAutomacaoFormalizacoesAgenda_();
   }
+  if (typeof instalarAutomacaoPublicacaoFormalizacoesComunidade_ === 'function') {
+    instalarAutomacaoPublicacaoFormalizacoesComunidade_();
+  }
   CacheService.getScriptCache().put('JORNADA_AUTOMACAO_ATIVA_V1', 'SIM', 21600);
   return {
     sucesso: true,
@@ -935,9 +944,12 @@ function EXECUTAR_FORMALIZACOES_AUTOMATICAS_AGENDA(opcoes) {
     const agora = new Date();
     const diasBusca = Math.min(90, Math.max(7, Number(opcoes.diasBusca || FORMALIZACAO_NOTURNA_CONFIG.diasBusca)));
     const limite = new Date(agora.getTime() - diasBusca * 86400000);
-    const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item =>
-      String(item.STATUS || '').toUpperCase() !== 'DESCARTADA'
-    );
+    const formalizacoes = lerObjetos_(APP.sheets.formalizacoes).filter(item => {
+      const status = String(item.STATUS || '').toUpperCase();
+      // ERRO sem resultado é uma tentativa reaproveitável pelo gerador; não pode
+      // bloquear para sempre a reunião que originou o registro.
+      return status !== 'DESCARTADA' && !(status === 'ERRO' && !String(item.RESULTADO_JSON || '').trim());
+    });
     const falhasFila = jornadaLerFalhasFilaFormalizacao_();
     const agoraMs = agora.getTime();
     const transcricoesPorId = {};

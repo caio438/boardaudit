@@ -932,6 +932,19 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_formalizacoes_auto_enable || '') === '1') {
+    const ativoOpsFormalAuto = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsFormalAuto = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsFormalAuto || !efetivoOpsFormalAuto || ativoOpsFormalAuto !== efetivoOpsFormalAuto) {
+      throw new Error('Ativacao automatica de formalizacoes permitida somente para a conta proprietaria autenticada.');
+    }
+    if (typeof ATIVAR_FORMALIZACOES_COMUNIDADE_AUTOMATICAS !== 'function') {
+      throw new Error('Ativador de aprovacao e publicacao automatica indisponivel nesta versao.');
+    }
+    return ContentService.createTextOutput(JSON.stringify(ATIVAR_FORMALIZACOES_COMUNIDADE_AUTOMATICAS(), null, 2))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_formalizacoes_smoke || '') === '1') {
     const ativoOpsFormalSmoke = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsFormalSmoke = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
