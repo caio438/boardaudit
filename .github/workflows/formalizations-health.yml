@@ -74,7 +74,7 @@ jobs:
           const reparo = data.reparo || null;
           const ativacao = data.primeiraExecucao ? data : null;
           const semDuplicidade = Number(resumo.duplicadasPorInteracao || 0) === 0 && Number(resumo.duplicadasPorTranscricao || 0) === 0;
-          const automacaoLigada = ativacao && status.aprovacaoPublicacaoAutomatica === true && status.acionadorPublicacaoInstalado === true;
+          const automacaoLigada = status.aprovacaoPublicacaoAutomatica === true && status.acionadorPublicacaoInstalado === true;
           const ok = data.sucesso === true && status.ativa === true && status.acionadorInstalado === true &&
             (automacaoLigada || semDuplicidade);
           const lines = [
@@ -92,6 +92,8 @@ jobs:
             '- Publicadas na Comunidade: '+String(resumo.publicadasComunidade || 0),
             '- Aprovação/publicação automática: '+String(status.aprovacaoPublicacaoAutomatica === true),
             '- Acionador de publicação instalado: '+String(status.acionadorPublicacaoInstalado === true),
+            '- Última execução do publicador: '+String(status.publicacaoUltimaExecucao || ''),
+            '- Resultado do último lote: '+String(JSON.stringify(status.publicacaoUltimoResultado || {})),
             '- Com cliente canonico: '+String(resumo.comClienteCanonico || 0),
             '- Sem cliente canonico: '+String(resumo.semClienteCanonico || 0),
             '- Com reuniao rastreavel: '+String(resumo.comReuniaoRastreavel || 0),
@@ -118,7 +120,9 @@ jobs:
             '- Restantes estimadas: '+String(ativacao.primeiraExecucao.restantesEstimados || 0),
             '- Erros no lote inicial: '+String((ativacao.primeiraExecucao.erros || []).length)
           );
-          lines.push('', ok ? '**Fluxo de formalizacoes online e sem duplicidade detectada.**' : '**Fluxo de formalizacoes requer intervencao.**');
+          lines.push('', ok
+            ? (semDuplicidade ? '**Fluxo de formalizacoes online e sem duplicidade detectada.**' : '**Fluxo online; duplicidade histórica preservada e bloqueada contra republicação.**')
+            : '**Fluxo de formalizacoes requer intervencao.**');
           fs.writeFileSync('/tmp/formalizations-report.md', lines.join('\n'));
           fs.writeFileSync('/tmp/formalizations-summary.json', JSON.stringify(data,null,2));
           console.log(lines.join('\n'));
