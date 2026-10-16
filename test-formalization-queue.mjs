@@ -72,10 +72,13 @@ assert.match(comunidade, /STATUS: 'APROVADA'/);
 assert.match(comunidade, /publicarFormalizacaoComunidade\([\s\S]*?respostaCompacta: true/);
 assert.match(jornada, /instalarAutomacaoPublicacaoFormalizacoesComunidade_/);
 assert.match(jornada, /publicadasComunidade/);
+assert.match(jornada, /publicacaoUltimaExecucao/);
+assert.match(jornada, /publicacaoUltimoResultado/);
 assert.match(jornada, /status === 'ERRO' && !String\(item\.RESULTADO_JSON \|\| ''\)\.trim\(\)/);
 assert.match(code, /parametros\.ops_formalizacoes_auto_enable/);
 assert.match(formalHealthWorkflow, /github\.event\.comment\.body == '\/formalizacoes-auto-enable'/);
 assert.match(formalHealthWorkflow, /ops_formalizacoes_auto_enable=1/);
+assert.match(formalHealthWorkflow, /duplicidade histórica preservada e bloqueada contra republicação/);
 
 const trechoFila = jornada.slice(
   jornada.indexOf('const transcricoesPorId = {}'),

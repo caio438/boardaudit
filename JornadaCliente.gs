@@ -246,6 +246,13 @@ function OBSERVAR_FORMALIZACOES_V3() {
   resumo.duplicadasPorTranscricao = Object.keys(idsTranscricao).filter(id => idsTranscricao[id] > 1).length;
   let ultimoResultado = {};
   try { ultimoResultado = JSON.parse(String(agenda.formalizacaoUltimoResultado || '{}')); } catch (_) { ultimoResultado = {}; }
+  const propsPublicacao = PropertiesService.getScriptProperties();
+  let publicacaoUltimoResultado = {};
+  try {
+    publicacaoUltimoResultado = JSON.parse(String(propsPublicacao.getProperty(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveUltimoResultado) || '{}'));
+  } catch (_) {
+    publicacaoUltimoResultado = {};
+  }
   return {
     sucesso: true,
     ativa: agenda.formalizacaoAutomatica === true,
@@ -257,6 +264,8 @@ function OBSERVAR_FORMALIZACOES_V3() {
     acionadorPublicacaoInstalado: typeof FORMALIZACAO_COMUNIDADE_AUTOMACAO !== 'undefined' && ScriptApp.getProjectTriggers().some(function(trigger) {
       return trigger.getHandlerFunction() === FORMALIZACAO_COMUNIDADE_AUTOMACAO.handler;
     }),
+    publicacaoUltimaExecucao: propsPublicacao.getProperty(FORMALIZACAO_COMUNIDADE_AUTOMACAO.chaveUltimaExecucao) || '',
+    publicacaoUltimoResultado: publicacaoUltimoResultado,
     resumo: resumo,
     publicacaoRd: 'NAO_APLICAVEL',
     dadosSensiveisExpostos: false
