@@ -2345,8 +2345,10 @@
               <input id="audHistoricoMes" type="month" aria-label="Filtrar auditorias por mês" onchange="renderizarAuditorias()">
               <select id="audHistoricoStatus" aria-label="Filtrar auditorias por situação" onchange="renderizarAuditorias()">
                 <option value="">Todas as situações</option>
+                <option value="RD_PUBLICADA">Publicadas no RD</option>
                 <option value="APROVADA">Aprovadas</option>
                 <option value="EM_REVISAO">Em revisão</option>
+                <option value="PROCESSANDO">Processando</option>
                 <option value="ERRO">Com erro</option>
               </select>
               <button class="btn secondary" type="button" onclick="limparFiltrosHistoricoAuditorias_()">Mostrar todas as datas</button>
@@ -5766,6 +5768,21 @@
         .sort((a, b) => String(a.nomeCliente || '').localeCompare(String(b.nomeCliente || ''), 'pt-BR'));
     }
 
+    function idsClientesEquivalentesAuditoriaFront_(idCliente) {
+      const selecionado = (estado.clientes || []).find(cliente => String(cliente.idCliente || '') === String(idCliente || ''));
+      if (!selecionado) return new Set([String(idCliente || '')]);
+      const chave = normalizarBuscaClienteFront_(selecionado.nomeCliente || '');
+      return new Set((estado.clientes || [])
+        .filter(cliente => chave && normalizarBuscaClienteFront_(cliente.nomeCliente || '') === chave)
+        .map(cliente => String(cliente.idCliente || ''))
+        .concat([String(idCliente || '')]));
+    }
+
+    function interacaoPertenceAoClienteAuditoriaFront_(interacao, idCliente) {
+      if (!interacao || !idCliente) return false;
+      return idsClientesEquivalentesAuditoriaFront_(idCliente).has(String(interacao.idCliente || ''));
+    }
+
     function normalizarBuscaClienteFront_(valor) {
       return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     }
@@ -6403,7 +6420,11 @@
       const interacoes = (!fonte || !idCliente) ? [] : estado.interacoesAuditoria.filter(interacao => {
         const fonteInteracao = String(interacao.fonte || '').toUpperCase();
         const tipoInteracao = String(interacao.tipoInteracao || '').toUpperCase();
-        const pertenceAoCliente = String(interacao.idCliente || '') === String(idCliente || '');
+        // O seletor mantém um único cadastro por nome, mas reuniões antigas
+        // podem apontar para outro ID duplicado do mesmo cliente. Consideramos
+        // somente nomes exatamente equivalentes e consolidamos o vínculo ao
+        // executar a auditoria.
+        const pertenceAoCliente = interacaoPertenceAoClienteAuditoriaFront_(interacao, idCliente);
         if (!pertenceAoCliente) return false;
         if (String(interacao.statusTranscricao || 'CONCLUIDA').toUpperCase() === 'ERRO') return false;
         if (closerSimplificado) {
@@ -7467,13 +7488,20 @@
           idModelo: closerSimplificado ? '' : valor('audModelo'),
           idInteracao: idInteracao,
           nomeSdr: closerSimplificado ? '' : (idsInteracoes.length === 1 ? valor('audNomeSdr') : ((interacao || {}).vendedor || valor('audNomeSdr'))),
-          reclassificarInteracao: Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
+          reclassificarInteracao: (interacaoPertenceAoClienteAuditoriaFront_(interacao, valor('audCliente')) &&
+            String((interacao || {}).idCliente || '') !== String(valor('audCliente') || '')) ||
+            Boolean(document.getElementById('audReclassificarInteracao') && document.getElementById('audReclassificarInteracao').checked),
           idProgresso: idProgresso,
           // No Board manual, cada clique gera uma auditoria nova e independente.
           // O histórico anterior é preservado, mas nunca bloqueia a operação atual.
           evitarDuplicidade: false
         });
         estado.auditorias = resposta.auditorias || [];
+        if (resposta.auditoria && resposta.auditoria.idAuditoria) {
+          estado.auditorias = [resposta.auditoria].concat((estado.auditorias || []).filter(item =>
+            String(item.idAuditoria || '') !== String(resposta.auditoria.idAuditoria || '')
+          ));
+        }
         ultimaAuditoria = resposta.auditoria || ultimaAuditoria;
         concluidas++;
         acompanhamento.concluir();
@@ -7487,6 +7515,14 @@
     }
 
     estado.auditoriaAtual = ultimaAuditoria;
+    if (concluidas) {
+      const filtroClienteHistorico = document.getElementById('audHistoricoCliente');
+      const filtroMesHistorico = document.getElementById('audHistoricoMes');
+      const filtroStatusHistorico = document.getElementById('audHistoricoStatus');
+      if (filtroClienteHistorico) filtroClienteHistorico.value = valor('audCliente');
+      if (filtroMesHistorico) filtroMesHistorico.value = '';
+      if (filtroStatusHistorico) filtroStatusHistorico.value = '';
+    }
     renderizarAuditorias();
     botao.disabled = false;
     botao.textContent = closerSimplificado ? 'Auditar' : (idsInteracoes.length > 1 ? 'Gerar ' + idsInteracoes.length + ' para revisão' : 'Gerar para revisão');
@@ -9334,7 +9370,7 @@
       item &&
       !item.auditoriaLegada &&
       !item.auditoriaSubstituida &&
-      Boolean(item.resultado || item.resultadoCompleto) &&
+      Boolean(item.resultado || item.resultadoCompleto || item.temResultado) &&
       String(item.tipoAuditoria || 'SDR').toUpperCase() === tipo
     );
     const realizadas = auditoriasDoEspaco.filter(item =>
@@ -9397,9 +9433,11 @@
       if (item.auditoriaLegada || item.auditoriaSubstituida) return false;
       const chave = chaveDataHistorico_(item.dataInteracao || item.concluidoEm || item.solicitadoEm);
       return String(item.tipoAuditoria || 'SDR').toUpperCase() === espaco &&
-        (!idCliente || String(item.idCliente || '') === idCliente) &&
+        (!idCliente || idsClientesEquivalentesAuditoriaFront_(idCliente).has(String(item.idCliente || ''))) &&
         (!mes || chave.slice(0, 7) === mes) &&
-        (!statusFiltro || String(item.status || '').toUpperCase() === statusFiltro);
+        (!statusFiltro || (statusFiltro === 'RD_PUBLICADA'
+          ? String(item.rdStatus || '').toUpperCase() === 'PUBLICADA'
+          : String(item.estadoOperacional || item.status || '').toUpperCase() === statusFiltro));
     });
     if (!auditorias.length) {
       const rotulo = rotuloEspacoAuditoria_(espaco);
@@ -9433,7 +9471,7 @@
       const crmGrupoSinergiaBloqueado = ['REANALISE_NECESSARIA', 'SUBSTITUIDA', 'DESCARTADA', 'PROCESSANDO'].includes(crmGrupoSinergiaStatus);
       const integridadeBloqueada = auditoriaLegada || auditoriaSubstituida || estadoOperacional === 'PROCESSANDO';
       const rdVinculoEditavel = !rdPublicado && !crmGrupoSinergiaBloqueado && !integridadeBloqueada;
-      const closerSemRd = String(item.tipoAuditoria || '').toUpperCase() === 'CLOSER' && !rdPublicado;
+      const closerManualRd = String(item.tipoAuditoria || '').toUpperCase() === 'CLOSER' && !rdPublicado;
       const sinalIntegridade = auditoriaLegada
         ? '<span class="status danger">Auditoria legada · regenerar</span>'
         : auditoriaSubstituida
@@ -9451,8 +9489,8 @@
         AGUARDANDO_REVISAO: '<span class="status warning">Grupo Sinergia · aguardando revisão</span>'
       })[crmGrupoSinergiaStatus] || '';
       const idRdAtual = extrairIdRdFront_(item.linkCrm || '');
-      const indicadorRd = closerSemRd
-        ? '<span class="status warning">Closer: aguardando Canônico · sem envio ao RD</span>'
+      const indicadorRd = closerManualRd && !item.linkCrm
+        ? '<span class="status warning">Closer: aguardando vínculo com o RD</span>'
         : estadoOperacional === 'PROCESSANDO' || crmGrupoSinergiaStatus === 'PROCESSANDO'
         ? '<span class="status warning">RD: aguarda conclusão da auditoria</span>'
         : auditoriaLegada || crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA'
@@ -9490,10 +9528,10 @@
             <div class="field"><label for="auditRdDealId_${escapeAtributo(item.idAuditoria)}">ID do lead/negociação no RD</label><input id="auditRdDealId_${escapeAtributo(item.idAuditoria)}" value="${escapeAtributo(idRdAtual)}" placeholder="24 caracteres ou link completo do RD" autocomplete="off" onclick="event.stopPropagation();this.focus()" onmousedown="event.stopPropagation()" onkeydown="event.stopPropagation()" ${rdVinculoEditavel ? '' : 'disabled'}></div>
             ${rdVinculoEditavel ? `<button id="btnAuditRdDealId_${escapeAtributo(item.idAuditoria)}" class="btn secondary" type="button" onclick="event.stopPropagation();salvarIdRdAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Salvar vínculo do RD</button>` : ''}
           </div>
-          <div class="small muted audit-board-link-help">${closerSemRd ? 'Closer: vincule o Canônico no Board quando estiver confirmado. Nenhum envio ao RD ocorrerá nesta fase.' : estadoOperacional === 'PROCESSANDO' ? 'A nova auditoria está sendo gerada. Aguarde a conclusão antes de vincular ou enviar ao RD.' : auditoriaLegada ? 'A gravação continua válida, mas esta auditoria foi criada antes das travas atuais. Gere uma nova auditoria sobre a mesma gravação; a versão antiga será preservada como substituída.' : auditoriaSubstituida ? 'Esta versão antiga foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser substituída por uma nova análise antes do envio ao RD.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação.' : crmGrupoSinergiaStatus === 'SUBSTITUIDA' ? 'Esta versão legada foi substituída. Use a nova auditoria sinalizada como “vincular RD”.' : String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div>
+          <div class="small muted audit-board-link-help">${closerManualRd ? 'Closer: vincule a negociação correta. Depois da aprovação, o envio manual ao RD ficará disponível com prévia do texto; nenhum envio automático será feito.' : estadoOperacional === 'PROCESSANDO' ? 'A nova auditoria está sendo gerada. Aguarde a conclusão antes de vincular ou enviar ao RD.' : auditoriaLegada ? 'A gravação continua válida, mas esta auditoria foi criada antes das travas atuais. Gere uma nova auditoria sobre a mesma gravação; a versão antiga será preservada como substituída.' : auditoriaSubstituida ? 'Esta versão antiga foi substituída. Use a auditoria atualizada correspondente.' : crmGrupoSinergiaStatus === 'REANALISE_NECESSARIA' ? 'Esta auditoria precisa ser substituída por uma nova análise antes do envio ao RD.' : crmGrupoSinergiaStatus === 'AGUARDANDO_REVISAO' ? 'Você pode vincular a negociação do RD agora. O vínculo será salvo, mas o envio só ocorrerá depois da sua aprovação.' : crmGrupoSinergiaStatus === 'SUBSTITUIDA' ? 'Esta versão legada foi substituída. Use a nova auditoria sinalizada como “vincular RD”.' : String(item.tipoInteracao || '').toUpperCase() === 'REUNIAO' ? 'Reuniões usam vínculo manual com a negociação do RD. Cole o ID ou link quando quiser publicar a auditoria no CRM.' : 'Em ligações, o vínculo é preenchido automaticamente quando o RD/API4COM envia a negociação. Se não vier, use este campo como fallback manual.'}</div>
         </div>
         <div class="actions">
-          ${item.resultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
+          ${item.resultado || item.temResultado ? `<button class="btn secondary" type="button" onclick="abrirAuditoriaHistoricoV3('${escapeAtributo(item.idAuditoria)}')">Ver auditoria</button>` : ''}
           ${estadoOperacional === 'LEGADA_REANALISE' ? `<button class="btn success" type="button" onclick="regenerarAuditoriaGrupoSinergiaParaCrmFront('${escapeAtributo(item.idAuditoria)}')">Gerar nova auditoria</button>` : ''}
           ${podeDescartar ? `<button class="btn danger" type="button" onclick="descartarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}')">Descartar auditoria</button>` : ''}
           ${estadoOperacional === 'EM_REVISAO' ? `<button class="btn success" type="button" onclick="aprovarAuditoriaV3Front('${escapeAtributo(item.idAuditoria)}', this)">Aprovar auditoria</button><span class="status warning">Aguardando revisão humana</span>` : ''}
@@ -9501,8 +9539,8 @@
           ${item.linkDocumento ? `<a class="btn secondary" href="${escapeAtributo(item.linkDocumento)}" target="_blank">Abrir Google Docs</a>` : ''}
           ${item.status === 'APROVADA' && !auditoriaLegada && !auditoriaSubstituida && !circlePublicado ? `<button class="btn success" type="button" onclick="abrirPlanoCircleManualFront('${escapeAtributo(item.idAuditoria)}')">Preparar para o Circle</button>` : ''}
           ${circlePublicado && item.circlePostUrl ? `<a class="btn success" href="${escapeAtributo(item.circlePostUrl)}" target="_blank" rel="noopener">Abrir publicação no Circle</a>` : ''}
-          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && !closerSemRd && String(item.rdStatus || '').toUpperCase() !== 'ERRO' && !auditoriaLegada && !auditoriaSubstituida ? `<button class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar ao RD</button>` : ''}
-          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && !closerSemRd && String(item.rdStatus || '').toUpperCase() === 'ERRO' ? `<button class="btn secondary" type="button" onclick="reprocessarAutomacaoAuditoriaFront('${escapeAtributo(item.idAuditoria)}')">Reprocessar RD</button>` : ''}
+          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO' && !auditoriaLegada && !auditoriaSubstituida ? `<button class="btn success" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Enviar ao RD</button>` : ''}
+          ${item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() === 'ERRO' ? `<button class="btn secondary" type="button" onclick="prepararEnvioAuditoriaRdFront('${escapeAtributo(item.idAuditoria)}', this)">Revisar e reenviar ao RD</button>` : ''}
           ${rdPublicado && item.linkCrm ? `<a class="btn secondary" href="${escapeAtributo(item.linkCrm)}" target="_blank" rel="noopener">Ver no RD</a>` : ''}
         </div>
       </div>`;

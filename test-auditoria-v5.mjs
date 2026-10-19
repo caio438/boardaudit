@@ -79,7 +79,7 @@ assert.ok(
   'Preview detalhado de SDR/Closer precisa separar Aprovar auditoria de Prévia do RD.'
 );
 assert.ok(
-  front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && !closerSemRd && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
+  front.includes("item.status === 'APROVADA' && item.linkCrm && !rdPublicado && String(item.rdStatus || '').toUpperCase() !== 'ERRO'") &&
   front.includes("prepararEnvioAuditoriaRdFront('") &&
   front.includes('>Enviar ao RD</button>'),
   'Auditoria aprovada e vinculada não exibe a ação manual Enviar ao RD.'
@@ -338,7 +338,7 @@ assert.ok(audit.includes("return 'AGUARDANDO_REVISAO'"), 'Auditoria atual em rev
 assert.ok(audit.includes('function audV3EhAuditoriaLegadaBase_'), 'Detector central de auditoria legada não foi implementado.');
 assert.ok(audit.includes('function audV3EhAuditoriaVisivelOperacao_'), 'Filtro operacional de auditorias não foi implementado.');
 assert.ok(audit.includes('function audV3FiltrarAuditoriasVisiveisOperacao_'), 'Filtro operacional central por coleção não foi implementado.');
-assert.ok(audit.includes("return audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))\n    .slice(-200)"), 'Lista do Board ainda pode consultar auditorias legadas.');
+assert.ok(audit.includes("return audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))\n    .slice(-1200)"), 'Lista do Board ainda pode consultar auditorias legadas.');
 assert.ok(audit.includes("audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS')).forEach(function(auditoria)"), 'Analytics/Docs ainda podem misturar auditorias legadas.');
 assert.ok(audit.includes("const auditorias = audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'));"), 'Contexto histórico da IA ainda pode consultar auditoria legada.');
 assert.match(audit, /audV3FiltrarAuditoriasVisiveisOperacao_\((?:dados\.auditorias \|\| )?audV3Ler_\('AUDITORIAS'\)\)\.forEach\(function\(item\)/, 'Auditoria legada ainda pode bloquear nova geração automática.');

@@ -32,7 +32,7 @@ const ctx={
   limparCachesDados_:()=>{},
   audV3AuditoriaFront_:()=>({}),
   audV3ListarAuditoriasFront_:()=>[],
-  audRdCtx_:()=>{ctx.calls.push('context');throw new Error('Não deveria chegar ao contexto RD.');}
+  audRdCtx_:()=>{ctx.calls.push('context');throw new Error('contexto manual alcançado');}
 };
 vm.createContext(ctx);
 vm.runInContext(sourceGuard+sourceFinalizar+sourcePublicar+sourceSalvar+sourceEnviar, ctx);
@@ -53,13 +53,14 @@ assert.equal(ctx.calls.includes('deal'),false,'Não pode ler negociação nem co
 assert.equal(naoPublicar.publicada,false);
 ctx.calls.length=0;
 
-assert.throws(()=>ctx.enviarAuditoriaParaRd({idAuditoria:'AUD-1'}),/bloqueada até o vínculo Canônico/);
-assert.deepEqual(ctx.calls,[], 'Envio manual não pode chegar ao contexto RD.');
+assert.throws(()=>ctx.enviarAuditoriaParaRd({idAuditoria:'AUD-1'}),/contexto manual alcançado/);
+assert.deepEqual(ctx.calls,['context'], 'Envio manual deve alcançar os gates completos do contexto RD.');
+ctx.calls.length=0;
 
 const salvo=ctx.salvarIdRdAuditoriaV3({idAuditoria:'AUD-1',rdDealId:'RD-1'});
 assert.equal(salvo.sucesso,true);
 assert.equal(salvo.publicacaoRd,null);
-assert.match(salvo.mensagem,/permanece sem envio ao RD/);
+assert.match(salvo.mensagem,/Envio ao RD|Enviar ao RD|envio manual ao RD/i);
 assert.equal(ctx.calls.includes('publication'),false,'Salvar vínculo Canônico não pode publicar Closer.');
 
 ctx.calls.length=0;ctx.updates.length=0;
@@ -76,10 +77,11 @@ assert.deepEqual(ctx.calls,['publication']);
 assert.equal(ctx.audRdBloqueioCanonicoCloser_(ctx.obj),false);
 
 assert.match(audit,/aguardandoCanonico/);
-assert.match(front,/const closerSemRd = String\(item\.tipoAuditoria \|\| ''\)\.toUpperCase\(\) === 'CLOSER' && !rdPublicado;/);
-assert.match(front,/!rdPublicado && !closerSemRd && String\(item\.rdStatus/);
-assert.match(front,/Closer: aguardando Canônico · sem envio ao RD/);
+assert.match(front,/const closerManualRd = String\(item\.tipoAuditoria \|\| ''\)\.toUpperCase\(\) === 'CLOSER' && !rdPublicado;/);
+assert.match(front,/Closer: aguardando vínculo com o RD/);
+assert.match(front,/nenhum envio automático será feito/);
 assert.match(audit,/tipo === 'CLOSER'[\s\S]{0,800}AGUARDANDO_CANONICO/);
 assert.match(rd,/AUDITORIA_CLOSER_RD_AUTORIZADA/);
-assert.match(rd,/if\(audRdBloqueioCanonicoCloser_\(registro\)\)throw/);
-console.log('OK: auditoria Closer automática concluída sem RD e bloqueio manual; SDR continua publicando.');
+assert.doesNotMatch(sourceEnviar,/audRdBloqueioCanonicoCloser_\(registro\)/);
+console.log('OK: Closer automático continua bloqueado; envio manual revisado chega aos gates do RD.');
+await import('./test-closer-history-links.mjs');
