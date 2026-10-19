@@ -9505,20 +9505,24 @@ function audV3EstadoCrmGrupoSinergia_(auditoria, interacao) {
   return 'PRONTA_ENVIO';
 }
 
-function audV3AuditoriaFront_(a, contexto) {
+function audV3AuditoriaFront_(a, contexto, opcoes) {
   if (!a) return null;
   contexto = contexto || {};
+  opcoes = opcoes || {};
   const cliente = contexto.clientes
     ? (contexto.clientes[String(a.ID_CLIENTE || '')] || {})
     : (audV3Localizar_('CLIENTES', 'ID_CLIENTE', a.ID_CLIENTE) || {});
   const interacao = contexto.interacoes
     ? (contexto.interacoes[String(a.ID_INTERACAO || '')] || {})
     : (audV3Localizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO) || {});
+  const temResultado = Boolean(String(a.RESULTADO_JSON || a.RESULTADO_COMPLETO || '').trim());
   let resultado = null;
-  try {
-    resultado = a.RESULTADO_JSON ? JSON.parse(String(a.RESULTADO_JSON)) : null;
-  } catch (erro) {
-    resultado = null;
+  if (!opcoes.omitirResultado) {
+    try {
+      resultado = a.RESULTADO_JSON ? JSON.parse(String(a.RESULTADO_JSON)) : null;
+    } catch (erro) {
+      resultado = null;
+    }
   }
   if (resultado && String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER') {
     audV3CompletarInteligenciaMercadoCloser_(resultado);
@@ -9538,8 +9542,9 @@ function audV3AuditoriaFront_(a, contexto) {
     score: a.SCORE,
     scorePercentual: a.SCORE_PERCENTUAL || '',
     semaforo: a.SEMAFORO || '',
-    resultadoCompleto: a.RESULTADO_COMPLETO || '',
+    resultadoCompleto: opcoes.omitirResultado ? '' : (a.RESULTADO_COMPLETO || ''),
     resultado: resultado,
+    temResultado: temResultado,
     linkDocumento: a.LINK_DOCUMENTO || '',
     cliente: cliente.NOME_CLIENTE || '',
     titulo: interacao.TITULO || '',
@@ -9643,9 +9648,13 @@ function audV3ListarAuditoriasFront_() {
     if (item.ID_INTERACAO) interacoes[String(item.ID_INTERACAO)] = item;
   });
   const contexto = { clientes: clientes, interacoes: interacoes };
+  // O corte antigo de 200 registros era global e acontecia antes dos filtros
+  // do navegador. Assim, clientes com auditorias mais antigas desapareciam do
+  // histórico. A janela maior permanece leve porque o resultado completo é
+  // carregado somente quando o operador abre uma auditoria específica.
   return audV3FiltrarAuditoriasVisiveisOperacao_(audV3Ler_('AUDITORIAS'))
-    .slice(-200)
-    .map(item => audV3AuditoriaFront_(item, contexto))
+    .slice(-1200)
+    .map(item => audV3AuditoriaFront_(item, contexto, { omitirResultado: true }))
     .reverse();
 }
 

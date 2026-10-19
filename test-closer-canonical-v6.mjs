@@ -80,7 +80,7 @@ context.api.completarMercado(mercadoSemFonte);
 assert.deepEqual(Array.from(mercadoSemFonte.inteligencia_mercado.desafios), [], 'Sem fonte não deve haver desafio inventado.');
 assert.deepEqual(Array.from(mercadoSemFonte.inteligencia_mercado.linguagem_do_lead), [], 'Sem fonte não deve haver fala inventada.');
 
-assert.match(source, /audV3AuditoriaFront_\(a, contexto\)[\s\S]*?audV3CompletarInteligenciaMercadoCloser_\(resultado\)/, 'Auditorias antigas precisam receber o fallback de inteligência de mercado ao serem abertas no Board.');
+assert.match(source, /audV3AuditoriaFront_\(a, contexto(?:, opcoes)?\)[\s\S]*?audV3CompletarInteligenciaMercadoCloser_\(resultado\)/, 'Auditorias antigas precisam receber o fallback de inteligência de mercado ao serem abertas no Board.');
 
 const schema = context.api.schema();
 assert.equal(schema.properties.subcriterios.minItems, 20);

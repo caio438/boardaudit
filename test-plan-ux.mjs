@@ -9,7 +9,7 @@ assert.match(html, /usarTranscricaoManualAuditoriaFront_/);
 assert.match(html, /const opcoes = Array\.from\(select\.options \|\| \[\]\)\.filter\(opcao => opcao\.value\);/);
 assert.match(html, /ehPlano && Boolean\(idCliente\) \? 'flex' : 'none'/);
 assert.match(html, /tipoInteracao === 'PLANO'/);
-assert.match(html, /const pertenceAoCliente = String\(interacao\.idCliente \|\| ''\) === String\(idCliente \|\| ''\);/);
+assert.match(html, /const pertenceAoCliente = interacaoPertenceAoClienteAuditoriaFront_\(interacao, idCliente\);/);
 assert.match(html, /if \(!pertenceAoCliente\) return false;/);
 assert.match(html, /if \(equipePlano === 'SDR'\) return tipoInteracao === 'LIGACAO';/);
 assert.match(html, /if \(equipePlano === 'CLOSER'\) return tipoInteracao === 'REUNIAO';/);

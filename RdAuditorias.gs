@@ -119,8 +119,10 @@ function salvarIdRdAuditoriaV3(d) {
     sucesso: true,
     mensagem: audRdBloqueioCanonicoCloser_(a)
       ? (deal
-          ? 'Vínculo da negociação salvo no Board. O Closer permanece sem envio ao RD até a liberação após o Canônico.'
-          : 'Vínculo removido. O Closer permanece sem envio ao RD até o Canônico.')
+          ? (statusAuditoria === 'APROVADA'
+              ? 'Vínculo da negociação salvo. Revise a prévia e use Enviar ao RD; o Closer não será publicado automaticamente.'
+              : 'Vínculo da negociação salvo. O envio manual ao RD ficará disponível depois da aprovação.')
+          : 'Vínculo com o RD removido. O Closer não será publicado automaticamente.')
       : deal
       ? (publicacao && publicacao.publicada
             ? 'Negociação vinculada e auditoria publicada automaticamente no RD CRM.'
@@ -175,7 +177,10 @@ function prepararEnvioAuditoriaRd(id){
     aviso:'Revise e edite o texto antes de aprovar. O RD registra a anotação no histórico da negociação.'
   };
 }
-function enviarAuditoriaParaRd(d){d=d||{};var registro=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',String(d.idAuditoria||'').trim());if(!registro)throw new Error('Auditoria não encontrada.');if(audRdBloqueioCanonicoCloser_(registro))throw new Error('Publicação de auditorias Closer no RD bloqueada até o vínculo Canônico ser validado por Sales Ops.');var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
+// O bloqueio de Closer vale para a publicação automática. O envio manual já
+// passa por revisão explícita e por todos os gates de audRdCtx_: aprovação,
+// validação, hash da fonte, Google Doc, vínculo da negociação e integração RD.
+function enviarAuditoriaParaRd(d){d=d||{};var registro=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',String(d.idAuditoria||'').trim());if(!registro)throw new Error('Auditoria não encontrada.');var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
 if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}
 var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,publicada:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
 function aprovarEEnviarAuditoriaRd(d){
