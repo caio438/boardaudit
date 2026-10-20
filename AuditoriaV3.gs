@@ -8131,6 +8131,18 @@ function audV3CloserCanonicoInteracao_(interacao, equipe) {
   });
 }
 
+/**
+ * Evita consumir IA e gerar auditoria para chamadas sem conversa comercial
+ * suficiente (por exemplo: no-show, teste de áudio ou simples remarcação).
+ * Uma reunião Closer auditável precisa ter material mínimo para sustentar
+ * evidências, perguntas, objeções e próximo passo.
+ */
+function audV3TranscricaoCloserElegivel_(transcricao) {
+  const conteudo = String((transcricao || {}).CONTEUDO || '').trim();
+  return String((transcricao || {}).STATUS || '').toUpperCase() === 'CONCLUIDA' &&
+    conteudo.length >= 1200;
+}
+
 function audV3AuditoriasCloserDaInteracao_(idInteracao, auditorias) {
   const id = String(idInteracao || '').trim();
   return (auditorias || audV3Ler_('AUDITORIAS')).filter(function(auditoria) {
@@ -8187,8 +8199,7 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
   const pitches = dados.pitches || audV3Ler_('PITCHES');
   const transcricoes = {};
   (dados.transcricoes || audV3Ler_('TRANSCRICOES')).forEach(function(item) {
-    if (String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' &&
-        String(item.CONTEUDO || '').trim().length >= 20) {
+    if (audV3TranscricaoCloserElegivel_(item)) {
       transcricoes[String(item.ID_INTERACAO || '')] = item;
     }
   });
@@ -8231,7 +8242,7 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
       Boolean(String(item.ID_CLIENTE || '').trim()) &&
       audV3CloserCanonicoInteracao_(item, equipe) &&
       !(typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(item.TITULO)) &&
-      Boolean(audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches)) &&
+      Boolean(audV3PitchAutomaticoInteracao_(item, 'CLOSER', pitches)) &&
       Boolean(transcricoes[id]) &&
       elegivelPorData && !auditoriasProtegidas[id] && retryLiberado;
   }).map(function(item) {
@@ -8444,7 +8455,7 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
   });
   const idsComTranscricao = {};
   transcricoes.forEach(function(item) {
-    if (String(item.STATUS || '').toUpperCase() === 'CONCLUIDA' && String(item.CONTEUDO || '').trim().length >= 20) {
+    if (audV3TranscricaoCloserElegivel_(item)) {
       idsComTranscricao[String(item.ID_INTERACAO || '')] = true;
     }
   });
@@ -8479,11 +8490,11 @@ function obterStatusAutomacaoReunioesCloserV3(dados) {
     }).length,
     semPitchCloser: posCutoff.filter(function(item) {
       return String(item.ID_CLIENTE || '').trim() &&
-        !audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches);
+        !audV3PitchAutomaticoInteracao_(item, 'CLOSER', pitches);
     }).length,
     aguardandoTranscricao: posCutoff.filter(function(item) {
       return String(item.ID_CLIENTE || '').trim() &&
-        audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches) &&
+        audV3PitchAutomaticoInteracao_(item, 'CLOSER', pitches) &&
         !idsComTranscricao[String(item.ID_INTERACAO || '')];
     }).length,
     aguardandoAuditoria: fila.length,
@@ -8547,7 +8558,7 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
           continue;
         }
         if (item.backfill) audV3RegistrarTentativaBackfillCloser_();
-        const pitch = audV3PitchAtualAutomatico_(String(interacao.ID_CLIENTE || ''), 'CLOSER', pitches);
+        const pitch = audV3PitchAutomaticoInteracao_(interacao, 'CLOSER', pitches);
         if (!pitch) continue;
         const pitchConferido = audV3AtualizarPitchDocumentoAutomatico_(pitch);
         audV3Atualizar_('INTERACOES', 'ID_INTERACAO', idInteracao, {
@@ -8797,6 +8808,45 @@ function audV3PitchAtualAutomatico_(idCliente, tipo, pitchesInformados) {
       String(item.CONTEUDO_PITCH || '').trim().length >= 20;
   });
   return candidatos.find(function(item) { return normalizarBooleano_(item.PITCH_ATUAL); }) || null;
+}
+
+/**
+ * Para retroativos, seleciona a versão do pitch vigente na data da reunião.
+ * Nunca aplica a uma reunião antiga um pitch que só começou depois dela.
+ * Registros sem vigência explícita continuam usando apenas o pitch atual.
+ */
+function audV3PitchAutomaticoInteracao_(interacao, tipo, pitchesInformados) {
+  const idCliente = String((interacao || {}).ID_CLIENTE || '').trim();
+  const origem = Array.isArray(pitchesInformados) ? pitchesInformados : audV3Ler_('PITCHES');
+  const candidatos = origem.filter(function(item) {
+    return String(item.ID_CLIENTE || '').trim() === idCliente &&
+      String(item.TIPO_PITCH || '').toUpperCase() === String(tipo || '').toUpperCase() &&
+      String(item.STATUS || 'ATIVO').toUpperCase() === 'ATIVO' &&
+      String(item.CONTEUDO_PITCH || '').trim().length >= 20;
+  });
+  const dataMs = typeof tldvDataMs_ === 'function'
+    ? tldvDataMs_((interacao || {}).DATA_INTERACAO)
+    : new Date((interacao || {}).DATA_INTERACAO || 0).getTime();
+  const atual = audV3PitchAtualAutomatico_(idCliente, tipo, origem);
+  if (!dataMs || !isFinite(dataMs)) return atual;
+
+  const diaMs = 24 * 60 * 60 * 1000;
+  const validos = candidatos.filter(function(item) {
+    const inicioMs = typeof tldvDataMs_ === 'function'
+      ? tldvDataMs_(item.DATA_VIGENCIA_INICIO)
+      : new Date(item.DATA_VIGENCIA_INICIO || 0).getTime();
+    const fimMs = typeof tldvDataMs_ === 'function'
+      ? tldvDataMs_(item.DATA_VIGENCIA_FIM)
+      : new Date(item.DATA_VIGENCIA_FIM || 0).getTime();
+    const semVigencia = !inicioMs && !fimMs;
+    if (semVigencia) return item === atual;
+    return (!inicioMs || dataMs >= inicioMs) && (!fimMs || dataMs < fimMs + diaMs);
+  }).sort(function(a, b) {
+    const inicioA = typeof tldvDataMs_ === 'function' ? tldvDataMs_(a.DATA_VIGENCIA_INICIO) : new Date(a.DATA_VIGENCIA_INICIO || 0).getTime();
+    const inicioB = typeof tldvDataMs_ === 'function' ? tldvDataMs_(b.DATA_VIGENCIA_INICIO) : new Date(b.DATA_VIGENCIA_INICIO || 0).getTime();
+    return Number(inicioB || 0) - Number(inicioA || 0);
+  });
+  return validos[0] || null;
 }
 
 function audV3AtualizarPitchDocumentoAutomatico_(pitch) {
