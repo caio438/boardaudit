@@ -58,6 +58,9 @@ assert.equal(ctx.audV3JaExisteAuditoriaCloserInteracao_('HIST',auditorias),false
 data.auditorias=[...auditorias,{ID_AUDITORIA:'AUD-DESC',ID_INTERACAO:'DUP',TIPO_AUDITORIA:'CLOSER',STATUS:'DESCARTADA',RD_STATUS:'DESCARTADA'}];
 queue=ctx.audV3FilaAutomacaoReunioesCloser_(opts,data);
 assert.deepEqual(Array.from(queue,x=>x.interacao.ID_INTERACAO),['NEW'],'Descartada nunca pode ser recriada, mesmo junto de registro incompleto.');
+data.auditorias=[{ID_AUDITORIA:'AUD-RD',ID_INTERACAO:'DUP',TIPO_AUDITORIA:'CLOSER',STATUS:'APROVADA',RD_STATUS:'PUBLICADA'}];
+queue=ctx.audV3FilaAutomacaoReunioesCloser_(opts,data);
+assert.deepEqual(Array.from(queue,x=>x.interacao.ID_INTERACAO),['NEW'],'Publicada no RD nunca pode ser recriada.');
 for(const state of ['ERRO','PROCESSANDO']) {
   data.auditorias=[{ID_AUDITORIA:'AUD-REC',ID_INTERACAO:'DUP',TIPO_AUDITORIA:'CLOSER',STATUS:state}];
   queue=ctx.audV3FilaAutomacaoReunioesCloser_(opts,data);
