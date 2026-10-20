@@ -12,6 +12,7 @@ function section(src,start,end) {
   return src.slice(i,j);
 }
 const source=section(audit,'const AUTOMACAO_REUNIOES_CLOSER_V3 = Object.freeze(','function obterStatusAutomacaoReunioesCloserV3(');
+const pitchSource=section(audit,'function audV3PitchAtualAutomatico_(','function audV3AtualizarPitchDocumentoAutomatico_(');
 const dateFns=section(code,'function tldvReuniaoOperacional_(','function tldvNormalizarPessoa_(');
 let props={};
 const ctx={
@@ -25,11 +26,11 @@ const ctx={
     deleteProperty:key=>{delete props[key];}
   })},
   audV3Ler_:()=>[],
-  audV3PitchAtualAutomatico_:(id,tipo,pitches)=>pitches.find(x=>x.ID_CLIENTE===id&&x.TIPO_PITCH===tipo)||null,
+  normalizarBooleano_:valor=>['SIM','TRUE','1'].includes(String(valor||'').toUpperCase()),
   audV3FiltrarAuditoriasVisiveisOperacao_:xs=>xs
 };
 vm.createContext(ctx);
-vm.runInContext(dateFns+source,ctx);
+vm.runInContext(dateFns+source+pitchSource,ctx);
 const cutoff=Date.parse('2026-10-09T17:21:33.642Z');
 const historico={ID_INTERACAO:'HIST', FONTE:'TLDV',TIPO_INTERACAO:'REUNIAO',
  ID_CLIENTE:'BUFFET',COLABORADOR:'Fabiana Fermino',FUNCAO:'CLOSER',
@@ -39,8 +40,9 @@ const dup={...historico,ID_INTERACAO:'DUP',DATA_INTERACAO:new Date('2026-10-05T1
 const operacional={...historico,ID_INTERACAO:'OPS',TITULO:'[Buffet Mais + VOLUM] Operacional Closer'};
 const incerta={...historico,ID_INTERACAO:'UNKNOWN',COLABORADOR:'',FUNCAO:''};
 const antigaSemData={...historico,ID_INTERACAO:'INVALID',DATA_INTERACAO:'inválida'};
-const tx=['HIST','NEW','DUP','OPS','UNKNOWN','INVALID'].map(ID_INTERACAO=>({ID_INTERACAO,STATUS:'CONCLUIDA',CONTEUDO:'Transcrição válida de reunião entre prospect e vendedor.'}));
-const pitches=[{ID_CLIENTE:'BUFFET',TIPO_PITCH:'CLOSER'}];
+const conversaValida='Closer: diagnóstico comercial com o prospect. Lead: contexto, dor, impacto e decisão. '.repeat(20);
+const tx=['HIST','NEW','DUP','OPS','UNKNOWN','INVALID'].map(ID_INTERACAO=>({ID_INTERACAO,STATUS:'CONCLUIDA',CONTEUDO:conversaValida}));
+const pitches=[{ID_CLIENTE:'BUFFET',TIPO_PITCH:'CLOSER',PITCH_ATUAL:'SIM',STATUS:'ATIVO',CONTEUDO_PITCH:'Pitch Closer oficial com conteúdo suficiente para auditoria.'}];
 const equipe=[{ID_MEMBRO:'MEM-1',ID_CLIENTE:'BUFFET',NOME:'Fabiana Fermino',PAPEL:'CLOSER',ATIVO:'SIM'}];
 const auditorias=[{ID_AUDITORIA:'AUD-OLD',ID_INTERACAO:'DUP',TIPO_AUDITORIA:'CLOSER',STATUS:'EM_REVISAO',RESULTADO_JSON:''}];
 const data={pitches,equipe,interacoes:[historico,nova,dup,operacional,incerta,antigaSemData],transcricoes:tx,auditorias};
@@ -75,6 +77,12 @@ assert.equal(ctx.audV3UsoDiarioBackfillCloser_().tentativas,2);
 assert.equal(ctx.tldvDataMs_('12/08/2026 15:30:00')>0,true);
 assert.equal(ctx.tldvReuniaoOperacional_('[INGEE + VOLUM] Operacional Closer'),true);
 assert.equal(ctx.tldvReuniaoOperacional_('Buffet Mais + VOLUM demonstração para cliente'),false);
+assert.equal(ctx.audV3TranscricaoCloserElegivel_({STATUS:'CONCLUIDA',CONTEUDO:'Closer e SDR combinaram uma remarcação.'}),false);
+assert.equal(ctx.audV3TranscricaoCloserElegivel_({STATUS:'CONCLUIDA',CONTEUDO:conversaValida}),true);
+const pitchHistorico={ID_PITCH:'PITCH-ANTIGO',ID_CLIENTE:'BUFFET',TIPO_PITCH:'CLOSER',PITCH_ATUAL:'NAO',STATUS:'ATIVO',CONTEUDO_PITCH:'Pitch histórico completo e válido para a reunião.',DATA_VIGENCIA_INICIO:'2026-09-01',DATA_VIGENCIA_FIM:'2026-09-29'};
+const pitchAtual={ID_PITCH:'PITCH-ATUAL',ID_CLIENTE:'BUFFET',TIPO_PITCH:'CLOSER',PITCH_ATUAL:'SIM',STATUS:'ATIVO',CONTEUDO_PITCH:'Pitch atual completo e válido para a reunião.',DATA_VIGENCIA_INICIO:'2026-09-30'};
+assert.equal(ctx.audV3PitchAutomaticoInteracao_({...nova,DATA_INTERACAO:'28/09/2026 14:00:00'},'CLOSER',[pitchHistorico,pitchAtual]).ID_PITCH,'PITCH-ANTIGO');
+assert.equal(ctx.audV3PitchAutomaticoInteracao_({...nova,DATA_INTERACAO:'06/10/2026 14:00:00'},'CLOSER',[pitchHistorico,pitchAtual]).ID_PITCH,'PITCH-ATUAL');
 for (const titulo of ['Reunião Executiva de Marketing','Materiais do Closer','Materiais de Pré-Vendas','FUP Robô','Reunião Alinhamento Comercial','Acessos e Plataformas','Kick Off']) {
   assert.equal(ctx.tldvReuniaoOperacional_(titulo),true,'Deve excluir operacional: '+titulo);
 }
