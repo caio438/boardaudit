@@ -1059,7 +1059,8 @@ function doGet(e) {
     if (!cutoffOriginal) throw new Error('Cutoff Closer não definido.');
     salvarConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO', 'SIM');
     const identificacaoClientes = tldvReconciliarClientesHistoricos_();
-    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(0);
+    const inicioJanelaBackfill = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(inicioJanelaBackfill);
     const agendado = agendarPipelineCloserTldv_();
     const status = obterStatusAutomacaoReunioesCloserV3();
     return ContentService.createTextOutput(JSON.stringify({
@@ -5578,7 +5579,8 @@ function SINCRONIZAR_TLDV_AGENDADO() {
     const identificacaoClienteHistorico = backfillAtivo
       ? tldvReconciliarClientesHistoricos_()
       : { identificados: 0, semClienteConfiavel: 0 };
-    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(backfillAtivo ? 0 : cutoffMs);
+    const inicioJanelaBackfill = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const identificacaoCloser = tldvReconciliarCloserTranscricoes_(backfillAtivo ? inicioJanelaBackfill : cutoffMs);
 
     const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
       ? agendarPipelineCloserTldv_()
