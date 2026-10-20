@@ -5340,10 +5340,11 @@ function obterStatusAutomacaoTldv_() {
 }
 
 function tldvReuniaoOperacional_(titulo) {
-  const nome = String(titulo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const nome = String(titulo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   // VOLUM como participante não define a reunião como operacional.
   // Só termos explicitamente internos impedem auditoria de venda.
-  return /\b(operacional|operacionais|sales ops|executiva de performance|setup|alinhamento pitch|treinamento|reuniao interna|fup semanal|follow up semanal|follow semanal|alinhamentos closer|follow operacional)\b/.test(nome);
+  return /\b(operacional|operacionais|sales ops|executiva de performance|reuniao executiva de marketing|setup|kick off|alinhamento pitch|alinhamento comercial|reuniao alinhamento comercial|treinamento|reuniao interna|fup semanal|fup robo|follow up semanal|follow semanal|alinhamentos closer|follow operacional|materiais do closer|materiais de pre vendas|acessos e plataformas)\b/.test(nome);
 }
 
 function tldvDataMs_(valor) {
@@ -5501,7 +5502,7 @@ function tldvReconciliarCloserTranscricoes_(cutoffMs) {
   transcricoes.forEach(t => { if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA') porInteracao[t.ID_INTERACAO] = t; });
   let identificados = 0;
   let naoIdentificados = 0;
-  let inferidosPelaTranscricao = 0;
+  const inferidosPelaTranscricao = 0;
   lerObjetos_(APP.sheets.interacoes).forEach(function(item) {
     // No máximo 8 gravações atualizadas por rodada do tl;dv para evitar timeout.
     if (identificados >= 8 ||
@@ -5518,19 +5519,16 @@ function tldvReconciliarCloserTranscricoes_(cutoffMs) {
     const closerDaEquipe = identificarCloserReuniaoTldv_({
       name: item.TITULO, organizer: {name: item.VENDEDOR}, invitees: convidados
     }, item.ID_CLIENTE, equipe, transcricao.CONTEUDO);
-    const inferencia = !closerDaEquipe && String(obterConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO') || '').toUpperCase() === 'SIM'
-      ? tldvInferirApresentadorComercial_(transcricao.CONTEUDO) : null;
-    const closer = closerDaEquipe || (inferencia && inferencia.nome) || '';
+    // A fala pode ajudar na triagem manual, mas não autoriza classificação automática.
+    // Somente um membro CLOSER ativo no Canônico pode entrar na fila de auditoria.
+    const closer = closerDaEquipe || '';
     if (!closer) { naoIdentificados++; return; }
     atualizarPorCampo_(APP.sheets.interacoes, 'ID_INTERACAO', item.ID_INTERACAO, {
       COLABORADOR: closer,
       FUNCAO: 'CLOSER',
-      DESCRICAO_ORIGEM: inferencia
-        ? String(item.DESCRICAO_ORIGEM || '') + '; Closer inferido da fala da reunião (' + inferencia.pontos + ' pontos). Validar vínculo no Canônico.'
-        : item.DESCRICAO_ORIGEM,
+      DESCRICAO_ORIGEM: item.DESCRICAO_ORIGEM,
       ATUALIZADO_EM: new Date()
     });
-    if (inferencia) inferidosPelaTranscricao++;
     identificados++;
   });
   return { identificados: identificados, inferidosPelaTranscricao: inferidosPelaTranscricao, semCloserConfirmado: naoIdentificados };

@@ -89,7 +89,7 @@ assert.equal(context.identificarClienteReuniaoTldv_({name:'INGEE - Apresentaçã
 assert.equal(context.identificarClienteReuniaoTldv_({name:'Grupo Sinergia - Operacional'},[],clients),null,'Grupo não deve cair em Sinergia.');
 assert.equal(context.identificarClienteReuniaoTldv_({name:'VOLUM reunião comercial'},[],clients),null);
 
-const queueSource=section(closer,'function audV3FilaAutomacaoReunioesCloser_(', 'function obterStatusAutomacaoReunioesCloserV3(');
+const queueSource=section(closer,'function audV3AuditoriaCloserConcluida_(', 'function obterStatusAutomacaoReunioesCloserV3(');
 const qCtx={
  Date,Number,String,Boolean,Object,Array,
  tldvReuniaoOperacional_:callbacks.tldvReuniaoOperacional_,
@@ -100,7 +100,7 @@ const qCtx={
 };
 vm.createContext(qCtx);vm.runInContext(queueSource,qCtx);
 const inter={ID_INTERACAO:'TLDV-1',ID_CLIENTE:'INGEE',TIPO_INTERACAO:'REUNIAO',FONTE:'TLDV',TITULO:'INGEE - proposta Unimed',DATA_INTERACAO:new Date('2026-10-10T13:00:00Z')};
-const args={interacoes:[inter],transcricoes:[{ID_INTERACAO:'TLDV-1',STATUS:'CONCLUIDA',CONTEUDO:'X'.repeat(40)}],pitches:[],auditorias:[]};
+const args={interacoes:[inter],transcricoes:[{ID_INTERACAO:'TLDV-1',STATUS:'CONCLUIDA',CONTEUDO:'X'.repeat(40)}],pitches:[],auditorias:[],equipe:[{ID_CLIENTE:'INGEE',NOME:'Jéssica Paulo',PAPEL:'CLOSER',ATIVO:'SIM'}]};
 const opts={cutoffMs:Date.parse('2026-10-09T17:21:33.642Z')};
 assert.equal(qCtx.audV3FilaAutomacaoReunioesCloser_(opts,args).length,0,'Sem closer confirmado deve ficar fora da fila.');
 args.interacoes=[{...inter,COLABORADOR:'Jéssica Paulo',FUNCAO:'CLOSER'}];

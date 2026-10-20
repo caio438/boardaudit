@@ -8021,6 +8021,7 @@ const AUTOMACAO_REUNIOES_CLOSER_V3 = Object.freeze({
   chaveBackfillDia: 'AUDITORIA_CLOSER_BACKFILL_DIA',
   chaveBackfillTentativas: 'AUDITORIA_CLOSER_BACKFILL_TENTATIVAS',
   maxBackfillDia: 5,
+  janelaBackfillDias: 30,
   chaveErros: 'AUDITORIA_AUTO_REUNIOES_CLOSER_ERROS_V1',
   chaveRodando: 'AUDITORIA_AUTO_REUNIOES_CLOSER_RODANDO_EM',
   chaveUltimaExecucao: 'AUDITORIA_AUTO_REUNIOES_CLOSER_ULTIMA_EXECUCAO',
@@ -8041,6 +8042,7 @@ function audV3ConfigAutomacaoReunioesCloser_() {
     cutoffMs: cutoff && !isNaN(cutoff.getTime()) ? cutoff.getTime() : 0,
     backfillAtivo: String(obterConfiguracao_(AUTOMACAO_REUNIOES_CLOSER_V3.chaveBackfill) || '').toUpperCase() === 'SIM',
     maxBackfillDia: AUTOMACAO_REUNIOES_CLOSER_V3.maxBackfillDia,
+    janelaBackfillDias: AUTOMACAO_REUNIOES_CLOSER_V3.janelaBackfillDias,
     maxPorExecucao: AUTOMACAO_REUNIOES_CLOSER_V3.maxPorExecucao
   };
 }
@@ -8068,8 +8070,8 @@ function audV3RegistrarTentativaBackfillCloser_() {
   );
 }
 
-// Qualquer auditoria Closer persistida para a mesma interação impede outra execução
-// automática, inclusive legado, DESCARTADA, EM_REVISAO e processamento incompleto.
+// Consulta de compatibilidade usada por telas e diagnósticos. A fila automática
+// aplica regras mais estritas: preserva estados finais e só recupera falhas incompletas.
 function audV3JaExisteAuditoriaCloserInteracao_(idInteracao, auditorias) {
   const id = String(idInteracao || '').trim();
   if (!id) return false;
@@ -8077,6 +8079,64 @@ function audV3JaExisteAuditoriaCloserInteracao_(idInteracao, auditorias) {
     return String(a.ID_INTERACAO || '').trim() === id &&
       String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
       Boolean(String(a.ID_AUDITORIA || '').trim());
+  });
+}
+
+function audV3AuditoriaCloserConcluida_(auditoria) {
+  auditoria = auditoria || {};
+  return String(auditoria.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+    ['EM_REVISAO', 'APROVADA'].includes(String(auditoria.STATUS || '').toUpperCase()) &&
+    String(auditoria.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
+    Boolean(String(auditoria.HASH_FONTE || '').trim()) &&
+    Boolean(String(auditoria.RESULTADO_JSON || '').trim());
+}
+
+function audV3AuditoriaCloserProtegida_(auditoria) {
+  auditoria = auditoria || {};
+  const status = String(auditoria.STATUS || '').toUpperCase();
+  const rdStatus = String(auditoria.RD_STATUS || '').toUpperCase();
+  const automacao = String(auditoria.AUTOMACAO_STATUS || '').toUpperCase();
+  return status === 'DESCARTADA' || rdStatus === 'DESCARTADA' ||
+    automacao === 'CONCLUIDA_DESCARTADA' || rdStatus === 'PUBLICADA' ||
+    status === 'PUBLICADA' || audV3AuditoriaCloserConcluida_(auditoria);
+}
+
+function audV3AuditoriaCloserRecuperavel_(auditoria) {
+  auditoria = auditoria || {};
+  if (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'CLOSER' ||
+      !String(auditoria.ID_AUDITORIA || '').trim() ||
+      audV3AuditoriaCloserProtegida_(auditoria)) return false;
+  const status = String(auditoria.STATUS || '').toUpperCase();
+  return ['ERRO', 'PROCESSANDO', 'EM_REVISAO'].includes(status) &&
+    (!String(auditoria.RESULTADO_JSON || '').trim() ||
+     String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA');
+}
+
+function audV3CloserCanonicoInteracao_(interacao, equipe) {
+  interacao = interacao || {};
+  const normalizar = typeof tldvNormalizarPessoa_ === 'function'
+    ? tldvNormalizarPessoa_
+    : function(valor) {
+      return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    };
+  const nome = normalizar(interacao.COLABORADOR);
+  const idCliente = String(interacao.ID_CLIENTE || '').trim();
+  if (!nome || !idCliente || String(interacao.FUNCAO || '').toUpperCase() !== 'CLOSER') return false;
+  return (equipe || []).some(function(membro) {
+    return String(membro.ID_CLIENTE || '').trim() === idCliente &&
+      String(membro.PAPEL || '').toUpperCase() === 'CLOSER' &&
+      String(membro.ATIVO || 'SIM').toUpperCase() !== 'NAO' &&
+      normalizar(membro.NOME) === nome;
+  });
+}
+
+function audV3AuditoriasCloserDaInteracao_(idInteracao, auditorias) {
+  const id = String(idInteracao || '').trim();
+  return (auditorias || audV3Ler_('AUDITORIAS')).filter(function(auditoria) {
+    return String(auditoria.ID_INTERACAO || '').trim() === id &&
+      String(auditoria.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+      Boolean(String(auditoria.ID_AUDITORIA || '').trim());
   });
 }
 
@@ -8134,14 +8194,21 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
   });
   const auditorias = dados.auditorias || audV3Ler_('AUDITORIAS');
   const auditoriasExistentes = {};
+  const auditoriasProtegidas = {};
+  const auditoriasRecuperaveis = {};
   auditorias.forEach(function(item) {
     if (String(item.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
         String(item.ID_AUDITORIA || '').trim()) {
       auditoriasExistentes[String(item.ID_INTERACAO || '')] = true;
+      if (audV3AuditoriaCloserProtegida_(item)) auditoriasProtegidas[String(item.ID_INTERACAO || '')] = true;
+      if (audV3AuditoriaCloserRecuperavel_(item)) auditoriasRecuperaveis[String(item.ID_INTERACAO || '')] = true;
     }
   });
+  const equipe = dados.equipe || ((typeof APP !== 'undefined' && APP.sheets && APP.sheets.equipeClientes)
+    ? audV3Ler_(APP.sheets.equipeClientes) : audV3Ler_('EQUIPE_CLIENTE'));
   const estadoErros = audV3EstadoErrosReunioesCloser_();
   const agora = Date.now();
+  const inicioJanelaBackfill = agora - Number(config.janelaBackfillDias || 30) * 24 * 60 * 60 * 1000;
 
   return (dados.interacoes || audV3Ler_('INTERACOES')).filter(function(item) {
     const id = String(item.ID_INTERACAO || '');
@@ -8155,16 +8222,18 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
       tentativas < AUTOMACAO_REUNIOES_CLOSER_V3.maxTentativas &&
       agora >= Number(erro.proximaTentativaEm || 0)
     );
+    const temAuditoriaIncompleta = Boolean(auditoriasRecuperaveis[id]) && !auditoriasProtegidas[id];
+    const elegivelPorData = !auditoriasExistentes[id]
+      ? (anteriorAoCorte ? config.backfillAtivo === true && dataMs >= inicioJanelaBackfill : dataMs >= Number(config.cutoffMs || 0))
+      : config.backfillAtivo === true && temAuditoriaIncompleta && dataMs >= inicioJanelaBackfill;
     return String(item.FONTE || '').toUpperCase() === 'TLDV' &&
       String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' &&
       Boolean(String(item.ID_CLIENTE || '').trim()) &&
-      String(item.FUNCAO || '').toUpperCase() === 'CLOSER' &&
-      Boolean(String(item.COLABORADOR || '').trim()) &&
+      audV3CloserCanonicoInteracao_(item, equipe) &&
       !(typeof tldvReuniaoOperacional_ === 'function' && tldvReuniaoOperacional_(item.TITULO)) &&
       Boolean(audV3PitchAtualAutomatico_(String(item.ID_CLIENTE || ''), 'CLOSER', pitches)) &&
       Boolean(transcricoes[id]) &&
-      (anteriorAoCorte ? config.backfillAtivo === true : (dataMs >= Number(config.cutoffMs || 0))) &&
-      !auditoriasExistentes[id] && retryLiberado;
+      elegivelPorData && !auditoriasProtegidas[id] && retryLiberado;
   }).map(function(item) {
     const dataMs = typeof tldvDataMs_ === 'function'
       ? tldvDataMs_(item.DATA_INTERACAO)
@@ -8172,7 +8241,8 @@ function audV3FilaAutomacaoReunioesCloser_(config, dados) {
     return {
       interacao: item,
       transcricao: transcricoes[String(item.ID_INTERACAO || '')],
-      backfill: dataMs < Number(config.cutoffMs || 0)
+      backfill: dataMs < Number(config.cutoffMs || 0) || Boolean(auditoriasExistentes[String(item.ID_INTERACAO || '')]),
+      recuperacao: Boolean(auditoriasExistentes[String(item.ID_INTERACAO || '')])
     };
   }).sort(function(a, b) {
     // Primeiro as reuniões novas; histórico pendente depois, do mais recente.
@@ -8470,7 +8540,8 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
       const idInteracao = String(interacao.ID_INTERACAO || '');
       try {
         // Rechecagem na fonte antes de qualquer chamada de IA: segurança de idempotência.
-        if (audV3JaExisteAuditoriaCloserInteracao_(idInteracao)) {
+        const auditoriasAnteriores = audV3AuditoriasCloserDaInteracao_(idInteracao);
+        if (auditoriasAnteriores.some(audV3AuditoriaCloserProtegida_)) {
           resultado.jaAuditadasIgnoradas++;
           audV3LimparErroReuniaoCloser_(idInteracao);
           continue;
@@ -8492,12 +8563,21 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
           idInteracao: idInteracao,
           nomeSdr: interacao.COLABORADOR,
           reclassificarInteracao: false,
-          evitarDuplicidade: true
+          evitarDuplicidade: auditoriasAnteriores.length === 0
         });
         const idAuditoria = String((((analisada || {}).auditoria || {}).idAuditoria) || '');
         const reutilizada = Boolean(analisada && analisada.reutilizada);
         if (!idAuditoria) throw new Error('A auditoria Closer foi gerada sem ID persistido.');
         const finalizada = audV3FinalizarAutomaticamente_(idAuditoria);
+        auditoriasAnteriores.filter(audV3AuditoriaCloserRecuperavel_).forEach(function(anterior) {
+          if (String(anterior.ID_AUDITORIA || '') && String(anterior.ID_AUDITORIA) !== idAuditoria) {
+            audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', anterior.ID_AUDITORIA, {
+              AUTOMACAO_STATUS: 'SUBSTITUIDA_PARA_ATUAL',
+              AUTOMACAO_ERRO: '',
+              AUTOMACAO_ATUALIZADO_EM: new Date()
+            });
+          }
+        });
         const rd = (finalizada || {}).rd || {};
         resultado.processadas++;
         if (item.backfill) resultado.backfillProcessadas++;
