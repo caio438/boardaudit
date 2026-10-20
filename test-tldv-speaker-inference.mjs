@@ -49,5 +49,6 @@ const duo=[
 assert.equal(ctx.tldvInferirApresentadorComercial_(duo),null,'Duas identidades comerciais plausíveis devem ser sinalizadas como ambíguas.');
 assert.match(code,/inferidosPelaTranscricao: inferidosPelaTranscricao/);
 assert.match(code,/if \(identificados >= 8/,'Limitar escritas para evitar timeout.');
-assert.match(code,/Validar vínculo no Canônico/);
-console.log('OK: apresentador recuperado por evidências; lead, no-show e palestrantes ambíguos rejeitados.');
+assert.match(code,/Somente um membro CLOSER ativo no Canônico pode entrar na fila/);
+assert.doesNotMatch(code,/const closer = closerDaEquipe \|\| \(inferencia && inferencia\.nome\)/);
+console.log('OK: inferência serve apenas para triagem; fila automática exige Closer canônico.');
