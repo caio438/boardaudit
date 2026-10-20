@@ -2182,34 +2182,53 @@ function audV3ExigirGatePublicavel_(resultado, tipo) {
 
 function audV3FinalizarAutomaticamente_(idAuditoria) {
   const id = String(idAuditoria || '').trim();
-  const aprovacao = aprovarAuditoriaV3(id);
-  let rd = { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'Publicação no RD não se aplica.' };
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
   if (tipo === 'CLOSER') {
-    // Closer: gerar/validar/aprovar/documentar no Board, mas nunca publicar no RD
-    // automaticamente. Sales Ops ainda precisa validar o vínculo Canônico.
-    rd = {
+    // A automação conclui e valida a análise. A aprovação e a criação do
+    // Google Docs continuam sendo decisões humanas, sem qualquer envio ao RD.
+    if (String(auditoria.STATUS || '').toUpperCase() !== 'EM_REVISAO' ||
+        String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
+        !String(auditoria.HASH_FONTE || '').trim() ||
+        !String(auditoria.RESULTADO_JSON || '').trim()) {
+      throw new Error('A auditoria Closer automática não ficou concluída e validada para revisão humana.');
+    }
+    const rd = {
       aplicavel: false,
       publicada: false,
-      status: 'AGUARDANDO_CANONICO',
-      mensagem: 'Auditoria Closer concluída no Board. Publicação no RD bloqueada até o vínculo Canônico.'
+      status: 'AGUARDANDO_APROVACAO',
+      mensagem: 'Auditoria Closer concluída e aguardando aprovação humana. Nenhum envio ao RD foi realizado.'
     };
     if (String(auditoria.RD_STATUS || '').toUpperCase() !== 'PUBLICADA') {
       audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-        RD_STATUS: 'AGUARDANDO_CANONICO',
+        RD_STATUS: 'AGUARDANDO_APROVACAO',
         RD_ERRO: '',
+        AUTOMACAO_STATUS: 'CONCLUIDA_AGUARDANDO_APROVACAO',
+        AUTOMACAO_ERRO: '',
+        CONCLUIDO_EM: auditoria.CONCLUIDO_EM || new Date(),
         AUTOMACAO_ATUALIZADO_EM: new Date()
       });
     }
-  } else if (tipo === 'SDR' && typeof audRdPublicarAutomaticamente_ === 'function') {
+    audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, {
+      STATUS_AUDITORIA: 'CONCLUIDA_AGUARDANDO_APROVACAO',
+      ATUALIZADO_EM: new Date()
+    });
+    return {
+      sucesso: true,
+      mensagem: 'Auditoria Closer concluída e validada. Revise e aprove antes de criar o Google Docs e enviar ao RD.',
+      aprovacao: null,
+      rd: rd
+    };
+  }
+
+  const aprovacao = aprovarAuditoriaV3(id);
+  let rd = { aplicavel: false, status: 'NAO_APLICAVEL', mensagem: 'Publicação no RD não se aplica.' };
+  if (tipo === 'SDR' && typeof audRdPublicarAutomaticamente_ === 'function') {
     rd = audRdPublicarAutomaticamente_(id);
   }
 
-  const statusAutomacao = tipo === 'CLOSER'
-    ? 'CONCLUIDA_AGUARDANDO_CANONICO'
-    : rd && rd.aplicavel && !rd.publicada
+  const statusAutomacao = rd && rd.aplicavel && !rd.publicada
     ? (String(rd.status || '').toUpperCase() === 'ERRO' ? 'CONCLUIDA_COM_ERRO_RD' : 'CONCLUIDA_AGUARDANDO_RD')
     : 'CONCLUIDA';
 
@@ -2220,7 +2239,6 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   });
 
   const partes = ['Auditoria validada, aprovada e Google Docs criado automaticamente.'];
-  if (tipo === 'CLOSER') partes.push('Sem envio ao RD: Sales Ops deve validar o vínculo Canônico.');
   if (rd && rd.aplicavel) {
     if (rd.publicada) partes.push('Resultado registrado automaticamente no RD CRM.');
     else if (rd.status === 'AGUARDANDO_VINCULO') partes.push('RD aguardando o vínculo da negociação.');
@@ -2510,13 +2528,20 @@ function aprovarAuditoriaV3(idAuditoria) {
     AUTOMACAO_ERRO: '',
     AUTOMACAO_ATUALIZADO_EM: new Date()
   });
+  if (tipoAuditoria === 'CLOSER' && String(auditoria.RD_STATUS || '').toUpperCase() !== 'PUBLICADA') {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      RD_STATUS: String(interacao.LINK_CRM || '').trim() ? 'PRONTA_ENVIO' : 'AGUARDANDO_VINCULO',
+      RD_ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+  }
 
   if (typeof limparCachesDados_ === 'function') limparCachesDados_();
   const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   return {
     sucesso: true,
     mensagem: tipoAuditoria === 'CLOSER'
-      ? 'Auditoria Closer aprovada e Google Docs criado. Sem envio ao RD até o vínculo Canônico de Sales Ops.'
+      ? 'Auditoria Closer aprovada e Google Docs criado. Informe ou confirme a negociação e use Enviar ao RD.'
       : (tipoAuditoria === 'SDR'
         ? 'Auditoria aprovada e Google Docs criado. Revise a prévia e envie ao RD quando estiver pronta.'
         : 'Auditoria aprovada e Google Docs criado.'),
@@ -8476,7 +8501,8 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
         const rd = (finalizada || {}).rd || {};
         resultado.processadas++;
         if (item.backfill) resultado.backfillProcessadas++;
-        if (rd.status === 'AGUARDANDO_CANONICO') resultado.aguardandoCanonico++;
+        if (rd.status === 'AGUARDANDO_APROVACAO') resultado.aguardandoRd++;
+        else if (rd.status === 'AGUARDANDO_CANONICO') resultado.aguardandoCanonico++;
         else if (rd.publicada === true) resultado.publicadasRd++;
         else if (rd.aplicavel) resultado.aguardandoRd++;
         if (reutilizada) resultado.reutilizadas++;
@@ -8494,7 +8520,8 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
     const mensagem = resultado.processadas + ' reunião(ões) Closer auditada(s) automaticamente · ' +
       resultado.backfillProcessadas + ' de transcrições antigas · ' +
       resultado.jaAuditadasIgnoradas + ' existentes ignoradas · ' +
-      resultado.publicadasRd + ' publicada(s) no RD · ' + resultado.aguardandoCanonico + ' aguardando Canônico (sem envio ao RD)' +
+      resultado.publicadasRd + ' publicada(s) no RD · ' + resultado.aguardandoRd + ' aguardando aprovação humana · ' +
+      resultado.aguardandoCanonico + ' aguardando Canônico (sem envio ao RD)' +
       (resultado.erros.length ? ' · ' + resultado.erros.length + ' erro(s)' : '');
     props.setProperty(AUTOMACAO_REUNIOES_CLOSER_V3.chaveUltimoResultado, mensagem);
     registrarLog_('AUDITORIA', 'AUTOMACAO_REUNIOES_CLOSER_TLDV', mensagem);

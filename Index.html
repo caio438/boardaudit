@@ -9448,7 +9448,9 @@
     alvo.innerHTML = historicoAgrupadoPorData_(auditorias, item => item.dataInteracao || item.concluidoEm || item.solicitadoEm, item => {
       const estadoVisual = String(item.estadoOperacional || item.status || '').toUpperCase();
       const classe = ['APROVADA', 'PUBLICADA'].includes(estadoVisual) ? 'status success' : ['ERRO', 'LEGADA_REANALISE'].includes(estadoVisual) ? 'status danger' : 'status warning';
-      const rotuloEstado = ({
+      const concluidaAguardandoAprovacao = estadoVisual === 'EM_REVISAO' &&
+        String(item.automacaoStatus || '').toUpperCase() === 'CONCLUIDA_AGUARDANDO_APROVACAO';
+      const rotuloEstado = concluidaAguardandoAprovacao ? 'CONCLUÍDA · AGUARDANDO APROVAÇÃO' : ({
         LEGADA_REANALISE: 'REANÁLISE NECESSÁRIA',
         EM_REVISAO: 'EM REVISÃO',
         PROCESSANDO: 'PROCESSANDO',

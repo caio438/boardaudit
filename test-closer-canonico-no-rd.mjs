@@ -17,7 +17,7 @@ const sourcePublicar = trecho(rd, 'function audRdPublicarAutomaticamente_(', 'fu
 const sourceSalvar = trecho(rd, 'function salvarIdRdAuditoriaV3(', 'function audRdPreviewCtx_(');
 const sourceEnviar = trecho(rd, 'function enviarAuditoriaParaRd(', 'function aprovarEEnviarAuditoriaRd(');
 const ctx={
-  updates:[], calls:[], obj:{ ID_AUDITORIA:'AUD-1', ID_INTERACAO:'INT-1', TIPO_AUDITORIA:'CLOSER', STATUS:'APROVADA', VALIDACAO_STATUS:'VALIDADA' },
+  updates:[], calls:[], obj:{ ID_AUDITORIA:'AUD-1', ID_INTERACAO:'INT-1', TIPO_AUDITORIA:'CLOSER', STATUS:'EM_REVISAO', VALIDACAO_STATUS:'VALIDADA', HASH_FONTE:'hash', RESULTADO_JSON:'{}' },
   Date, String,
   obterConfiguracao_:()=>'', 
   aprovarAuditoriaV3:()=>({sucesso:true}),
@@ -40,11 +40,12 @@ assert.equal(ctx.audRdPublicacaoCloserLiberada_(),false,'Modo Closer deve ser bl
 assert.equal(ctx.audRdBloqueioCanonicoCloser_(ctx.obj),true);
 
 const closer=ctx.audV3FinalizarAutomaticamente_('AUD-1');
-assert.equal(closer.rd.status,'AGUARDANDO_CANONICO');
+assert.equal(closer.rd.status,'AGUARDANDO_APROVACAO');
 assert.equal(closer.rd.publicada,false);
 assert.equal(ctx.calls.includes('publication'),false,'Closer não deve acionar envio.');
-assert.equal(ctx.updates.find(u=>u.payload?.RD_STATUS)?.payload.RD_STATUS,'AGUARDANDO_CANONICO');
-assert.equal(ctx.updates.find(u=>u.payload?.AUTOMACAO_STATUS)?.payload.AUTOMACAO_STATUS,'CONCLUIDA_AGUARDANDO_CANONICO');
+assert.equal(ctx.updates.find(u=>u.payload?.RD_STATUS)?.payload.RD_STATUS,'AGUARDANDO_APROVACAO');
+assert.equal(ctx.updates.find(u=>u.payload?.AUTOMACAO_STATUS)?.payload.AUTOMACAO_STATUS,'CONCLUIDA_AGUARDANDO_APROVACAO');
+assert.equal(closer.aprovacao,null,'Closer automático não pode aprovar a auditoria.');
 ctx.calls.length=0;ctx.updates.length=0;
 
 const naoPublicar=ctx.audRdPublicarAutomaticamente_('AUD-1');
@@ -80,7 +81,7 @@ assert.match(audit,/aguardandoCanonico/);
 assert.match(front,/const closerManualRd = String\(item\.tipoAuditoria \|\| ''\)\.toUpperCase\(\) === 'CLOSER' && !rdPublicado;/);
 assert.match(front,/Closer: aguardando vínculo com o RD/);
 assert.match(front,/nenhum envio automático será feito/);
-assert.match(audit,/tipo === 'CLOSER'[\s\S]{0,800}AGUARDANDO_CANONICO/);
+assert.match(audit,/tipo === 'CLOSER'[\s\S]{0,1600}AGUARDANDO_APROVACAO/);
 assert.match(rd,/AUDITORIA_CLOSER_RD_AUTORIZADA/);
 assert.doesNotMatch(sourceEnviar,/audRdBloqueioCanonicoCloser_\(registro\)/);
 console.log('OK: Closer automático continua bloqueado; envio manual revisado chega aos gates do RD.');
