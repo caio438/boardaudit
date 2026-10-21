@@ -21,6 +21,7 @@ const ctx={
   Date, String,
   obterConfiguracao_:()=>'', 
   aprovarAuditoriaV3:()=>({sucesso:true}),
+  audV3PersistirDocumentoAprovacao_:(id,opts)=>{assert.equal(opts.somenteDocumento,true);return {sucesso:true};},
   audV3Localizar_:()=>ctx.obj,
   audV3Atualizar_:(s,k,id,payload)=>ctx.updates.push({s,k,id,payload}),
   audRdPublicarAutomaticamente_:()=>{ctx.calls.push('publication');return{aplicavel:true,publicada:true,status:'PUBLICADA'};},

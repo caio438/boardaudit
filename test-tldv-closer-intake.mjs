@@ -53,7 +53,7 @@ assert.match(trechoReparo,/salvarConfiguracao_\('AUDITORIA_AUTO_REUNIOES_CLOSER_
 assert.doesNotMatch(trechoReparo,/salvarConfiguracao_\('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO'/);
 assert.match(workflow,/github\.event\.comment\.body == '\/closer-tldv-repair'/);
 assert.match(workflow,/ops_closer_tldv_repair=1/);
-assert.match(code,/tldvDataMs_\(item\.DATA_INTERACAO\) >= cutoffMs/);
+assert.match(code,/tldvDataMs_\(item\.DATA_INTERACAO\) >= inicioImportacao/);
 assert.match(code,/\.slice\(0, 10\)\.map\(item => item\.ID_INTERACAO\)/);
 
 const roster=[
@@ -73,7 +73,7 @@ assert.equal(closers({name:'INGEE comercial',invitees:[{name:'Jéssica Paulo'},{
 const syncSource=section(code,'function SINCRONIZAR_TLDV_AGENDADO()','function sincronizarReunioesTldv()');
 assert.doesNotMatch(syncSource,/audV3PitchAtualAutomatico_\(item.ID_CLIENTE, 'CLOSER', pitches\)/,'Importação da transcrição tl;dv não deve exigir pitch antes de auditar.');
 assert.match(syncSource,/!tldvReuniaoOperacional_\(item.TITULO\)/,'Somente reuniões não operacionais devem ser importadas.');
-assert.match(syncSource,/tldvDataMs_\(item.DATA_INTERACAO\) >= cutoffMs/,'Cutoff de importação precisa continuar preservado.');
+assert.match(syncSource,/tldvDataMs_\(item.DATA_INTERACAO\) >= inicioImportacao/,'Importação deve respeitar a janela definida pelo modo de backfill.');
 
 const finder=section(code,'function identificarClienteReuniaoTldv_(reuniao, regras, clientes)','function importarTranscricoesTldv(');
 const context={jornadaIdentificarClienteEvento_:()=>null,Array,Number,String};
@@ -112,3 +112,34 @@ args.interacoes=[{...inter,COLABORADOR:'Jéssica Paulo',FUNCAO:'CLOSER',DATA_INT
 assert.equal(qCtx.audV3FilaAutomacaoReunioesCloser_(opts,args).length,0,'Nunca reprocessar anteriores ao cutoff.');
 
 console.log('OK: acionador 2h idempotente, status, cliente/Closer confiáveis, fila segura, operacional e histórico ignorados.');
+
+
+// Integração local da sincronização: cutoff normal, 30 dias no backfill e rotação de erros.
+let imported=[],cfgBackfill='SIM';
+const now=new Date(),old=new Date(now.getTime()-20*86400000),cut=new Date(now.getTime()-10*86400000);
+const meetings=[
+ {ID_INTERACAO:'HISTORY',FONTE:'TLDV',TIPO_INTERACAO:'REUNIAO',DATA_INTERACAO:old,TITULO:'Demonstração'},
+ ...Array.from({length:10},(_,n)=>({ID_INTERACAO:'RETRY'+n,FONTE:'TLDV',TIPO_INTERACAO:'REUNIAO',ID_CLIENTE:'C',DATA_INTERACAO:now,TITULO:'Demonstração'})),
+ {ID_INTERACAO:'OPS',FONTE:'TLDV',TIPO_INTERACAO:'REUNIAO',DATA_INTERACAO:now,TITULO:'Operacional'}
+];
+const syncCtx={Date,String,Number,Math,Boolean,
+ APP:{sheets:{interacoes:'I',transcricoes:'T'}},
+ boardModoManual_:()=>false,
+ LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
+ salvarConfiguracao_:()=>{},registrarLog_:()=>{},
+ obterConfiguracao_:k=>k==='AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO'?cfgBackfill:cut.toISOString(),
+ sincronizarReunioesTldv:()=>({novas:0}),
+ lerObjetos_:t=>t==='I'?meetings:meetings.filter(m=>m.ID_INTERACAO.startsWith('RETRY')).map(m=>({ID_INTERACAO:m.ID_INTERACAO,STATUS:'ERRO',ATUALIZADO_EM:now})),
+ tldvDataMs_:v=>new Date(v||0).getTime(),tldvReuniaoOperacional_:s=>s==='Operacional',
+ importarTranscricoesTldv:ids=>{imported=Array.from(ids);return {importadas:1,erros:[]};},
+ tldvReconciliarClientesHistoricos_:()=>({identificados:0}),
+ tldvReconciliarCloserTranscricoes_:()=>({identificados:0}),
+ agendarPipelineCloserTldv_:()=>false
+};
+vm.createContext(syncCtx);vm.runInContext(syncSource,syncCtx);
+syncCtx.SINCRONIZAR_TLDV_AGENDADO();
+assert.equal(imported[0],'HISTORY','Antiga sem cliente pode recuperar transcrição antes de identificar.');
+assert.equal(imported.includes('OPS'),false);assert.equal(imported.length,10);
+cfgBackfill='NAO';syncCtx.SINCRONIZAR_TLDV_AGENDADO();
+assert.equal(imported.includes('HISTORY'),false,'Cutoff preservado quando backfill está desligado.');
+console.log('OK: backfill importa histórico pendente e rotaciona indisponíveis sem auditar casos ambíguos.');

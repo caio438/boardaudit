@@ -2186,14 +2186,14 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
   if (tipo === 'CLOSER') {
-    // A automação conclui e valida a análise. A aprovação e a criação do
-    // Google Docs continuam sendo decisões humanas, sem qualquer envio ao RD.
+    // Documento de revisão usa o snapshot validado; aprovação e RD permanecem humanos.
     if (String(auditoria.STATUS || '').toUpperCase() !== 'EM_REVISAO' ||
         String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
         !String(auditoria.HASH_FONTE || '').trim() ||
         !String(auditoria.RESULTADO_JSON || '').trim()) {
       throw new Error('A auditoria Closer automática não ficou concluída e validada para revisão humana.');
     }
+    audV3PersistirDocumentoAprovacao_(id, { somenteDocumento: true });
     const rd = {
       aplicavel: false,
       publicada: false,
@@ -2216,7 +2216,7 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
     });
     return {
       sucesso: true,
-      mensagem: 'Auditoria Closer concluída e validada. Revise e aprove antes de criar o Google Docs e enviar ao RD.',
+      mensagem: 'Auditoria Closer concluída e validada. Documento de revisão salvo. Revise e aprove antes do envio manual ao RD.',
       aprovacao: null,
       rd: rd
     };
@@ -2428,6 +2428,11 @@ function reprocessarAutomacaoAuditoriaV3(idAuditoria) {
 }
 
 function aprovarAuditoriaV3(idAuditoria) {
+  return audV3PersistirDocumentoAprovacao_(idAuditoria);
+}
+
+function audV3PersistirDocumentoAprovacao_(idAuditoria, opcoes) {
+  const somenteDocumento = Boolean(opcoes && opcoes.somenteDocumento === true);
   const id = String(idAuditoria || '').trim();
   const auditoria = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id);
   if (!auditoria) throw new Error('Auditoria não encontrada.');
@@ -2435,7 +2440,12 @@ function aprovarAuditoriaV3(idAuditoria) {
     throw new Error('A auditoria ainda não possui resultado estruturado para aprovação.');
   }
 
-  if (auditoria.LINK_DOCUMENTO) {
+  if (somenteDocumento && (String(auditoria.TIPO_AUDITORIA || '').toUpperCase() !== 'CLOSER' ||
+      !['EM_REVISAO', 'APROVADA'].includes(String(auditoria.STATUS || '').toUpperCase()) ||
+      String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA')) {
+    throw new Error('Documento de revisão exige auditoria Closer concluída e validada.');
+  }
+  if (auditoria.LINK_DOCUMENTO && (somenteDocumento || String(auditoria.STATUS || '').toUpperCase() === 'APROVADA')) {
     return {
       sucesso: true,
       mensagem: 'Esta auditoria já foi aprovada.',
@@ -2497,7 +2507,17 @@ function aprovarAuditoriaV3(idAuditoria) {
   const resultadoJsonAprovado = JSON.stringify(resultado);
   const hashResultadoAprovado = audV3HashResultado_(resultado);
   const resultadoCompletoAprovado = audV3ResultadoTexto_(resultado, auditoria.TIPO_AUDITORIA);
-  const documento = audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
+  const documento = auditoria.LINK_DOCUMENTO
+    ? { id: auditoria.ID_DOCUMENTO, url: auditoria.LINK_DOCUMENTO }
+    : audV3CriarDocumento_(cliente, interacao, pitch, modelo, resultado);
+
+  if (somenteDocumento) {
+    audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
+      ID_DOCUMENTO: documento.id, LINK_DOCUMENTO: documento.url, ERRO: '',
+      AUTOMACAO_ATUALIZADO_EM: new Date()
+    });
+    return { sucesso: true, documento: documento, aprovacao: null };
+  }
 
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     STATUS: 'APROVADA',
@@ -8337,12 +8357,12 @@ function PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV() {
     const filaAtual = audV3FilaReparoDocumentoCloser_();
     if (!filaAtual.some(function(item) { return String(item.ID_AUDITORIA || '') === String(atual.ID_AUDITORIA || ''); })) return { sucesso: true, recuperadas: 0, pendentes: fila.length, mensagem: 'Alvo alterado; nenhum documento duplicado.' };
     try {
-      audV3FinalizarAutomaticamente_(alvo.ID_AUDITORIA);
+      audV3PersistirDocumentoAprovacao_(alvo.ID_AUDITORIA, { somenteDocumento: true });
       const recuperada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', alvo.ID_AUDITORIA) || {};
-      if (String(recuperada.STATUS || '').toUpperCase() !== 'APROVADA' ||
+      if (String(recuperada.STATUS || '').toUpperCase() !== String(atual.STATUS || '').toUpperCase() ||
           String(recuperada.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
           !String(recuperada.LINK_DOCUMENTO || '').trim()) {
-        throw new Error('O registro não ficou aprovado, validado e documentado.');
+        throw new Error('O registro não preservou a aprovação original, a validação e o documento.');
       }
       return { sucesso: true, recuperadas: 1,
         pendentes: Math.max(0, fila.length - 1),
@@ -8560,7 +8580,8 @@ function PROCESSAR_PIPELINE_CLOSER_TLDV() {
         if (item.backfill) audV3RegistrarTentativaBackfillCloser_();
         const pitch = audV3PitchAutomaticoInteracao_(interacao, 'CLOSER', pitches);
         if (!pitch) continue;
-        const pitchConferido = audV3AtualizarPitchDocumentoAutomatico_(pitch);
+        // A versão por data é imutável: não trocar o conteúdo histórico pelo Docs de hoje.
+        const pitchConferido = { pitch: pitch };
         audV3Atualizar_('INTERACOES', 'ID_INTERACAO', idInteracao, {
           STATUS_AUDITORIA: 'PROCESSANDO_AUTOMATICO',
           FUNCAO: 'CLOSER',
