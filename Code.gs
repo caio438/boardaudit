@@ -5556,30 +5556,35 @@ function SINCRONIZAR_TLDV_AGENDADO() {
     const cutoffIso = String(obterConfiguracao_('AUDITORIA_AUTO_REUNIOES_CLOSER_CUTOFF_ISO') || '');
     const cutoffMs = Date.parse(cutoffIso) || Date.now();
     const existentes = {};
+    const tentadasEm = {};
     lerObjetos_(APP.sheets.transcricoes).forEach(t => {
       if (t.ID_INTERACAO && t.STATUS === 'CONCLUIDA' && String(t.CONTEUDO || '').trim()) existentes[t.ID_INTERACAO] = true;
+      if (t.ID_INTERACAO) tentadasEm[t.ID_INTERACAO] = tldvDataMs_(t.ATUALIZADO_EM);
     });
+    const backfillAtivo = String(obterConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO') || '').toUpperCase() === 'SIM';
+    const inicioJanelaBackfill = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const inicioImportacao = backfillAtivo ? Math.min(cutoffMs, inicioJanelaBackfill) : cutoffMs;
     // Transcrições gratuitas do tl;dv podem ser importadas antes do pitch ser cadastrado.
     // A auditoria continua exigindo pitch Closer atual e profissional identificado.
     // Mantemos cliente, cutoff e exclusão de reuniões operacionais.
     const pendentes = lerObjetos_(APP.sheets.interacoes)
       .filter(item => String(item.FONTE || '').toUpperCase() === 'TLDV' &&
         String(item.TIPO_INTERACAO || '').toUpperCase() === 'REUNIAO' &&
-        item.ID_CLIENTE && !existentes[item.ID_INTERACAO] &&
-        tldvDataMs_(item.DATA_INTERACAO) >= cutoffMs &&
+        !existentes[item.ID_INTERACAO] &&
+        tldvDataMs_(item.DATA_INTERACAO) >= inicioImportacao &&
         !tldvReuniaoOperacional_(item.TITULO))
-      .sort((a,b) => tldvDataMs_(b.DATA_INTERACAO) - tldvDataMs_(a.DATA_INTERACAO))
+      // Rotacionar erros: uma transcrição indisponível não bloqueia as demais.
+      .sort((a,b) => (tentadasEm[a.ID_INTERACAO] || 0) - (tentadasEm[b.ID_INTERACAO] || 0) ||
+        tldvDataMs_(b.DATA_INTERACAO) - tldvDataMs_(a.DATA_INTERACAO))
       .slice(0, 10).map(item => item.ID_INTERACAO);
 
     let transcricoes = { importadas: 0, ignoradas: 0, erros: [] };
     if (pendentes.length) {
       transcricoes = importarTranscricoesTldv(pendentes);
     }
-    const backfillAtivo = String(obterConfiguracao_('AUDITORIA_CLOSER_BACKFILL_TRANSCRITAS_ATIVO') || '').toUpperCase() === 'SIM';
     const identificacaoClienteHistorico = backfillAtivo
       ? tldvReconciliarClientesHistoricos_()
       : { identificados: 0, semClienteConfiavel: 0 };
-    const inicioJanelaBackfill = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const identificacaoCloser = tldvReconciliarCloserTranscricoes_(backfillAtivo ? inicioJanelaBackfill : cutoffMs);
 
     const pipelineCloserAgendado = typeof agendarPipelineCloserTldv_ === 'function'
