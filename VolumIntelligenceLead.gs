@@ -79,11 +79,11 @@ function viLeadPaginar_(token, caminho, campo, dealId) {
     const resposta = viLeadRdGet_(token, caminho, {
       deal_id: dealId, page: pagina, limit: VI_LEAD_PILOTO.tamanhoPagina
     });
-    const parte = Array.isArray(resposta[campo]) ? resposta[campo] : (Array.isArray(resposta) ? resposta : []);
+    const parte = Array.isArray(resposta[campo]) ? resposta[campo] : (Array.isArray(resposta.data) ? resposta.data : (Array.isArray(resposta) ? resposta : []));
     // Defesa contra filtros ignorados pelo provedor.
     parte.forEach(item => {
       const associado = String(item.deal_id || (item.deal || {}).id || (item.deal || {})._id || '');
-      if (!associado || associado.toLowerCase() === dealId) itens.push(item);
+      if (associado.toLowerCase() === dealId) itens.push(item);
     });
     const haMais = resposta.has_more !== undefined ? Boolean(resposta.has_more)
       : Boolean(resposta.next_page) || parte.length >= VI_LEAD_PILOTO.tamanhoPagina;
