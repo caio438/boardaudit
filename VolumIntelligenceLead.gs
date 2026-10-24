@@ -1,0 +1,298 @@
+/**
+ * VOLUM Intelligence - piloto de leitura sob demanda por negociacao RD.
+ * Nao cria tarefas, logs, auditorias ou caches; nao publica no CRM.
+ * Uso no editor autenticado do Apps Script:
+ * VOLUM_ANALISAR_LEAD('6acc888b98976f0023dc583f')
+ * VOLUM_ANALISAR_LEAD('6acc888b98976f0023dc583f', { incluirTextos: true })
+ */
+var VI_LEAD_PILOTO = Object.freeze({ limitePaginas: 10, tamanhoPagina: 200, limiteTexto: 4000 });
+
+function viLeadId_(entrada) {
+  const texto = String(entrada || '').trim();
+  const match = texto.match(/^(?:https:\/\/crm\.rdstation\.com\/app\/deals\/)?([0-9a-f]{24})(?:[/?#].*)?$/i);
+  if (!match) throw new Error('Informe um ID de negociacao RD valido (24 caracteres hexadecimais).');
+  return match[1].toLowerCase();
+}
+
+function viLeadDataMs_(valor) {
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : valor.getTime();
+  const texto = String(valor || '').trim();
+  if (!texto) return null;
+  const br = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  const data = br
+    ? new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]), Number(br[4] || 0), Number(br[5] || 0), Number(br[6] || 0))
+    : new Date(texto);
+  return isNaN(data.getTime()) ? null : data.getTime();
+}
+
+function viLeadDataIso_(valor) {
+  const ms = viLeadDataMs_(valor);
+  return ms === null ? '' : new Date(ms).toISOString();
+}
+
+function viLeadTextoSeguro_(valor, incluir) {
+  if (!incluir) return '';
+  const bruto = String(valor || '');
+  // URLs podem conter tokens de gravacao da API4COM; nao devolve links assinados.
+  return bruto.replace(/https?:\/\/[^\s<>"']+/gi, '[LINK_OMITIDO]').slice(0, VI_LEAD_PILOTO.limiteTexto);
+}
+
+function viLeadVinculoRd_(linha, dealId) {
+  const link = String((linha || {}).LINK_CRM || '');
+  return new RegExp('(?:^|/deals/)' + dealId + '(?:$|[/?#])', 'i').test(link);
+}
+
+function viLeadIntegracao_(dealId, interacoes) {
+  const ids = Array.from(new Set(interacoes.filter(item => viLeadVinculoRd_(item, dealId))
+    .map(item => String(item.ID_CLIENTE || '').trim()).filter(Boolean)));
+  if (!ids.length) throw new Error('Negociacao ainda sem vinculo de cliente no board. Nao e seguro escolher um token RD automaticamente.');
+  if (ids.length !== 1) throw new Error('Negociacao vinculada a mais de um cliente no board; resolver o vinculo antes de consultar.');
+  const integracao = obterIntegracaoCliente_(ids[0], 'RD_STATION');
+  if (!integracao || String(integracao.ATIVO || '').toUpperCase() !== 'SIM') {
+    throw new Error('Integracao RD nao esta ativa para o cliente vinculado.');
+  }
+  const token = obterSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO);
+  if (!token) throw new Error('Token RD nao configurado nas propriedades protegidas do projeto.');
+  return { idCliente: ids[0], token: token };
+}
+
+function viLeadRdGet_(token, caminho, filtros) {
+  const parametros = Object.assign({ token: token }, filtros || {});
+  const query = Object.keys(parametros)
+    .filter(chave => parametros[chave] !== null && parametros[chave] !== undefined && parametros[chave] !== '')
+    .map(chave => encodeURIComponent(chave) + '=' + encodeURIComponent(parametros[chave])).join('&');
+  try {
+    return requisicaoJson_(APP.rdBaseUrl + caminho + '?' + query, {
+      method: 'get', headers: { Accept: 'application/json' }
+    });
+  } catch (erro) {
+    // Nunca retorna URL completa (que possui token) nem corpo de erro remoto.
+    const status = String(erro && erro.message || '').match(/\bHTTP\s+(\d{3})\b/);
+    throw new Error('Falha em consulta somente leitura ao RD (' + (status ? 'HTTP ' + status[1] : 'rede/autorizacao') + ').');
+  }
+}
+
+function viLeadPaginar_(token, caminho, campo, dealId) {
+  const itens = [];
+  let completo = false;
+  for (let pagina = 1; pagina <= VI_LEAD_PILOTO.limitePaginas; pagina++) {
+    const resposta = viLeadRdGet_(token, caminho, {
+      deal_id: dealId, page: pagina, limit: VI_LEAD_PILOTO.tamanhoPagina
+    });
+    const parte = Array.isArray(resposta[campo]) ? resposta[campo] : (Array.isArray(resposta) ? resposta : []);
+    // Defesa contra filtros ignorados pelo provedor.
+    parte.forEach(item => {
+      const associado = String(item.deal_id || (item.deal || {}).id || (item.deal || {})._id || '');
+      if (!associado || associado.toLowerCase() === dealId) itens.push(item);
+    });
+    const haMais = resposta.has_more !== undefined ? Boolean(resposta.has_more)
+      : Boolean(resposta.next_page) || parte.length >= VI_LEAD_PILOTO.tamanhoPagina;
+    if (!haMais) { completo = true; break; }
+  }
+  return { itens: itens, completo: completo, truncado: !completo };
+}
+
+function viLeadNotas_(atividades, incluirTextos) {
+  return atividades.map(item => ({
+    id: String(item.id || item._id || ''),
+    data: viLeadDataIso_(item.date || item.created_at),
+    autorId: String(item.user_id || ''),
+    textoDisponivel: Boolean(String(item.text || item.content || '').trim()),
+    texto: viLeadTextoSeguro_(item.text || item.content || '', incluirTextos)
+  }));
+}
+
+function viLeadTarefas_(tarefas, incluirTextos) {
+  return tarefas.map(item => {
+    const notas = String(item.notes || item.description || '');
+    const id = String(item.id || item._id || '');
+    const concluiu = item.done === true || String(item.done).toLowerCase() === 'true';
+    const gravacao = /https:\/\/[^\s<>"']*api4com\.com\/[^\s<>"']+/i.test(notas);
+    return {
+      id: id,
+      tipo: String(item.type || '').toLowerCase(),
+      assunto: String(item.subject || '').slice(0, 200),
+      criadaEm: viLeadDataIso_(item.created_at),
+      previstaPara: viLeadDataIso_(item.date),
+      horaPrevista: String(item.hour || ''),
+      concluida: concluiu,
+      concluidaEm: viLeadDataIso_(item.done_date || item.done_at || item.completed_at),
+      temAnotacao: Boolean(notas.trim()),
+      temReferenciaGravacao: gravacao,
+      anotacao: viLeadTextoSeguro_(notas, incluirTextos)
+    };
+  });
+}
+
+function viLeadLigacoesBoard_(interacoes, dealId) {
+  return interacoes.filter(item => viLeadVinculoRd_(item, dealId) &&
+    String(item.TIPO_INTERACAO || '').toUpperCase() === 'LIGACAO')
+    .map(item => ({
+      id: String(item.ID_INTERACAO || ''),
+      tarefaId: String(item.ID_EXTERNO || '').replace(/^RD_TASK_/, ''),
+      data: viLeadDataIso_(item.DATA_INTERACAO),
+      duracaoSegundos: Number(item.DURACAO_SEGUNDOS) || 0,
+      temReferenciaGravacao: Boolean(item.URL_GRAVACAO),
+      transcricaoStatus: String(item.STATUS_TRANSCRICAO || ''),
+      auditoriaStatus: String(item.STATUS_AUDITORIA || '')
+    }));
+}
+
+function viLeadHistoricoEtapas_(negociacao) {
+  return (Array.isArray(negociacao.deal_stage_histories) ? negociacao.deal_stage_histories : [])
+    .map(item => {
+      const inicio = viLeadDataMs_(item.start_date);
+      const fim = viLeadDataMs_(item.end_date);
+      return {
+        etapaId: String(item.deal_stage_id || ''),
+        inicio: inicio === null ? '' : new Date(inicio).toISOString(),
+        fim: fim === null ? '' : new Date(fim).toISOString(),
+        duracaoMinutos: inicio !== null && fim !== null && fim >= inicio
+          ? Math.round((fim - inicio) / 60000) : null
+      };
+    }).sort((a, b) => a.inicio.localeCompare(b.inicio));
+}
+
+function viLeadLinhaTempo_(notas, tarefas, ligacoes, etapas) {
+  const eventos = [];
+  notas.forEach(n => { if (n.data) eventos.push({ data: n.data, fonte: 'RD_ANOTACAO', tipo: 'ANOTACAO', ref: n.id }); });
+  tarefas.forEach(t => {
+    if (t.criadaEm) eventos.push({ data: t.criadaEm, fonte: 'RD_TAREFA', tipo: 'CRIACAO_TAREFA', ref: t.id });
+    if (t.concluidaEm) eventos.push({ data: t.concluidaEm, fonte: 'RD_TAREFA', tipo: 'CONCLUSAO_TAREFA', ref: t.id });
+  });
+  ligacoes.forEach(l => { if (l.data) eventos.push({ data: l.data, fonte: 'BOARD_API4COM', tipo: 'LIGACAO_REGISTRADA', ref: l.tarefaId || l.id }); });
+  etapas.forEach(e => { if (e.inicio) eventos.push({ data: e.inicio, fonte: 'RD_NEGOCIACAO', tipo: 'ENTRADA_ETAPA', ref: e.etapaId }); });
+  return eventos.sort((a, b) => a.data.localeCompare(b.data));
+}
+
+function viCerebroLead_(ctx) {
+  const primeiro = ctx.timeline.find(e => e.tipo !== 'ENTRADA_ETAPA');
+  const criacao = viLeadDataMs_(ctx.criadaEm);
+  const primeiraData = primeiro ? viLeadDataMs_(primeiro.data) : null;
+  return {
+    agente: 'LEAD', estado: criacao !== null && primeiraData !== null ? 'MEDICAO_PARCIAL' : 'DADOS_INSUFICIENTES',
+    indicadores: {
+      criadaEm: ctx.criadaEm,
+      primeiraEvidenciaEm: primeiro ? primeiro.data : '',
+      minutosAtePrimeiroRegistro: criacao !== null && primeiraData !== null && primeiraData >= criacao
+        ? Math.round((primeiraData - criacao) / 60000) : null
+    },
+    limite: 'Nao equivale ao tempo ate primeiro contato: inclui anotacoes e criacao de tarefas.'
+  };
+}
+
+function viCerebroCadencia_(ctx) {
+  const idsGravados = new Set(ctx.ligacoes.map(l => l.tarefaId).filter(Boolean));
+  const chamadasSemBoard = ctx.tarefas.filter(t => t.tipo === 'call' && t.concluida && !idsGravados.has(t.id));
+  const dias = Array.from(new Set(ctx.ligacoes.map(l => l.data.slice(0, 10)).filter(Boolean))).sort();
+  return {
+    agente: 'CADENCIA', estado: ctx.ligacoes.length || chamadasSemBoard.length ? 'TENTATIVAS_OBSERVAVEIS' : 'DADOS_INSUFICIENTES',
+    indicadores: {
+      ligacoesNoBoard: ctx.ligacoes.length,
+      chamadasConcluidasNoRdSemCorrespondenciaNoBoard: chamadasSemBoard.length,
+      tentativasCandidatasSemDuplicacao: ctx.ligacoes.length + chamadasSemBoard.length,
+      diasComLigacoesNoBoard: dias,
+      ligacoesComReferenciaGravacao: ctx.ligacoes.filter(l => l.temReferenciaGravacao).length
+    },
+    limite: 'Nao atesta cumprimento da sequencia completa sem cadencia oficial e dados de WhatsApp/email.'
+  };
+}
+
+function viCerebroConexao_(ctx) {
+  return {
+    agente: 'CONEXAO', estado: 'REQUER_INTERPRETACAO',
+    indicadores: {
+      ligacoesComDuracaoInformada: ctx.ligacoes.filter(l => l.duracaoSegundos > 0).length,
+      transcricoesMarcadasConcluidas: ctx.ligacoes.filter(l => l.transcricaoStatus === 'CONCLUIDA').length,
+      anotacoesDoRd: ctx.notas.length
+    },
+    limite: 'Duracao ou anotacao nao comprova que houve dialogo, qualificacao ou compromisso.'
+  };
+}
+
+function viCerebroAgenda_(ctx) {
+  const reunioes = ctx.tarefas.filter(t => t.tipo === 'meeting');
+  return {
+    agente: 'AGENDA', estado: reunioes.length ? 'TAREFAS_OBSERVAVEIS' : 'DADOS_INSUFICIENTES',
+    indicadores: {
+      tarefasReuniao: reunioes.length,
+      tarefasReuniaoConcluidas: reunioes.filter(t => t.concluida).length
+    },
+    limite: 'Tarefa de reuniao nao comprova convite aceito, realizacao nem passagem de bastao.'
+  };
+}
+
+function viCerebroReuniao_(ctx) {
+  const reunioes = ctx.tarefas.filter(t => t.tipo === 'meeting');
+  return {
+    agente: 'REUNIAO', estado: reunioes.length ? 'REQUER_TRANSCRICAO_E_PLAYBOOK' : 'DADOS_INSUFICIENTES',
+    indicadores: { tarefasReuniao: reunioes.length, anotacoesDoRd: ctx.notas.length },
+    limite: 'Nao audita pitch, proposta, fechamento ou follow-up sem documentos e regras do cliente.'
+  };
+}
+
+/**
+ * Diagnostico read-only. A primeira versao mede disponibilidade e confiabilidade
+ * de evidencias; nunca atribui score de compliance nem cria jobs.
+ * Requer que o deal ja esteja vinculado a um unico cliente nas INTERACOES do board.
+ */
+function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
+  const dealId = viLeadId_(entrada);
+  const incluirTextos = Boolean(opcoes && opcoes.incluirTextos === true);
+  const interacoes = lerObjetos_(APP.sheets.interacoes);
+  const vinculo = viLeadIntegracao_(dealId, interacoes);
+
+  const bruto = viLeadRdGet_(vinculo.token, '/deals/' + dealId, {});
+  const negociacao = bruto && bruto.deal ? bruto.deal : bruto;
+  if (String((negociacao || {}).id || negociacao._id || '').toLowerCase() !== dealId) {
+    throw new Error('RD nao confirmou a identidade da negociacao solicitada.');
+  }
+
+  const fontes = {};
+  let tarefasBrutas = [], atividadesBrutas = [];
+  try {
+    const resposta = viLeadPaginar_(vinculo.token, '/tasks', 'tasks', dealId);
+    tarefasBrutas = resposta.itens;
+    fontes.tarefas = { acessivel: true, completo: resposta.completo, quantidade: tarefasBrutas.length };
+  } catch (e) {
+    fontes.tarefas = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
+  }
+  try {
+    const resposta = viLeadPaginar_(vinculo.token, '/activities', 'activities', dealId);
+    atividadesBrutas = resposta.itens;
+    fontes.anotacoes = { acessivel: true, completo: resposta.completo, quantidade: atividadesBrutas.length };
+  } catch (e) {
+    fontes.anotacoes = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
+  }
+
+  const notas = viLeadNotas_(atividadesBrutas, incluirTextos);
+  const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
+  const ligacoes = viLeadLigacoesBoard_(interacoes, dealId);
+  const etapas = viLeadHistoricoEtapas_(negociacao || {});
+  const timeline = viLeadLinhaTempo_(notas, tarefas, ligacoes, etapas);
+  const ctx = { notas: notas, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
+    criadaEm: viLeadDataIso_(negociacao.created_at) };
+
+  return {
+    modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V1', dealId: dealId, idCliente: vinculo.idCliente,
+    negociacao: {
+      nome: String(negociacao.name || ''), criadaEm: ctx.criadaEm,
+      etapaAtualId: String((negociacao.deal_stage || {}).id || negociacao.deal_stage_id || ''),
+      responsavel: String((negociacao.user || {}).name || ''), historicoEtapas: etapas
+    },
+    fontes: Object.assign(fontes, { board: { acessivel: true, ligacoesVinculadas: ligacoes.length } }),
+    cerebros: [
+      viCerebroLead_(ctx), viCerebroCadencia_(ctx), viCerebroConexao_(ctx),
+      viCerebroAgenda_(ctx), viCerebroReuniao_(ctx)
+    ],
+    eventos: timeline,
+    tarefas: tarefas,
+    anotacoes: notas,
+    ligacoesBoard: ligacoes,
+    advertencias: [
+      'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
+      'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
+      'Nao aplicar compliance de outros clientes: regras Wisetec ainda nao homologadas para este piloto.'
+    ]
+  };
+}
