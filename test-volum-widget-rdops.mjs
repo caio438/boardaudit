@@ -108,6 +108,61 @@ assert.equal(big.resumo.total,103);
 assert.equal(big.resumo.coberturaCompleta,true);
 
 // Must get actual DOM history into sandboxed Google HTML, not postMessage to wrapper.
+
+// Audit earlier SDR stage even when current stage is APRESENTACAO (Tgr scenario).
+const sdrUi=makeUi([
+ {kind:'TAREFA_CRIADA',stage:'Contato feito',dateText:'23/10/2026 09:00',dataLocal:'2026-10-23T09:00:00',
+  detail:'SDR criou tarefa primeira ligação CAD 1'},
+ {kind:'TAREFA_CONCLUIDA',stage:'Contato feito',dateText:'23/10/2026 09:13',dataLocal:'2026-10-23T09:13:00',
+  detail:'SDR concluiu a tarefa primeira ligação'},
+ {kind:'ANOTACAO',stage:'Contato feito',dateText:'23/10/2026 09:18',dataLocal:'2026-10-23T09:18:00',
+  detail:'SDR fez anotação: cliente não atendeu a ligação; retorno programado'},
+ {kind:'EMAIL_ENVIADO',stage:'Contato feito',dateText:'23/10/2026 10:00',dataLocal:'2026-10-23T10:00:00',
+  detail:'SDR enviou um e-mail de contato inicial'},
+ {kind:'WHATSAPP_ABERTO',stage:'Contato feito',dateText:'23/10/2026 11:00',dataLocal:'2026-10-23T11:00:00',
+  detail:'SDR abriu um WhatsApp Web'},
+ {kind:'ANOTACAO',stage:'Contato feito',dateText:'23/10/2026 11:40',dataLocal:'2026-10-23T11:40:00',
+  detail:'SDR fez anotação: faturamento declarado e necessidade de reduzir retrabalho'}
+]);
+const stageSdr=ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{});
+const recSdr=ctx.viRdConciliarHistoricoUi_(stageSdr,sdrUi,deal.id);
+assert.equal(recSdr.aceito,true);
+const inputSdr={negociacao:{etapaAtualNome:'Apresentação',criadaEm:'2026-10-23T08:00:00Z'},
+  historicoRdEtapas:recSdr.historico,tarefas:[],fontes:{}};
+const diagSdr=ctx.viWidgetDiagnosticoHistoricoRd_(inputSdr);
+assert.equal(diagSdr.ativo,true);
+const planoSdr=ctx.viWidgetPlanoSdrHistoricoRd_(inputSdr,diagSdr);
+assert.equal(planoSdr.itens.length,16);
+assert.equal(planoSdr.itens.filter(x=>x.pilar==='OFICIAL').length,7);
+assert.equal(planoSdr.itens.filter(x=>x.pilar==='COMPLEMENTAR').length,9);
+assert.ok(planoSdr.itens.every(x=>x.titulo&&x.detalhe&&x.fonte&&x.status),'No empty SDR cards');
+assert.equal(planoSdr.escopo.totalEventosSdr,6);
+assert.equal(planoSdr.escopo.passagensSdr.length,1);
+assert.equal(planoSdr.itens.find(x=>x.id==='cadencia').status,'INDICIO');
+assert.equal(planoSdr.itens.find(x=>x.id==='no_show').status,'NAO_APLICAVEL');
+assert.equal(planoSdr.itens.find(x=>x.id==='handoff').status,'SEM_EVIDENCIA');
+assert.equal(planoSdr.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
+assert.equal(planoSdr.itens.find(x=>x.id==='lmv').status,'INDICIO');
+assert.ok(planoSdr.itens.some(x=>/UI_[0-9]+/.test(x.evidencia)));
+const sdrStart=widget.indexOf('function sdr(d)');
+const sdrEnd=widget.indexOf('\nfunction closer(',sdrStart);
+assert.ok(sdrStart>=0&&sdrEnd>sdrStart,'SDR renderer must be present');
+const renderSdr=vm.runInNewContext('('+widget.slice(sdrStart,sdrEnd)+')',{
+  section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
+  esc:x=>String(x||''),
+  group:(title,items)=>'<section>'+title+items.map(x=>'<h3>'+x.titulo+'</h3><p>'+x.detalhe+'</p>').join('')+'</section>'
+});
+const output=renderSdr({diagnosticoRdOperacional:diagSdr,planoOtimizacaoSdr:planoSdr});
+assert.match(output,/7 pilares do Plano Wisetec/);
+assert.match(output,/9 verificações complementares/);
+assert.match(output,/LMV e faturamento validados no CRM/);
+assert.match(output,/Passagem de bastão SDR/);
+assert.doesNotMatch(output,/<h3><\/h3>/);
+assert.doesNotMatch(output,/14 não verificáveis/);
+const noVisualSdr=renderSdr({diagnosticoRdOperacional:{ativo:false,motivo:'PAGINACAO_INCOMPLETA'}});
+assert.match(noVisualSdr,/PAGINACAO_INCOMPLETA/);
+assert.doesNotMatch(noVisualSdr,/7 pilares do Plano Wisetec/);
+
 assert.match(chrome,/VOLUM_REQUEST_RD_UI_HISTORY/);
 assert.match(chrome,/INLINE_ID/);
 assert.match(chrome,/host.__volumHistoryCleanup/);
