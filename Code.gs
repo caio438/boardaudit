@@ -730,6 +730,13 @@ function audBuildAtual_() {
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
 
+  // Web App VOLUM no mesmo projeto do BoardAudit. A rota padrao continua no Index.
+  // A URL privada da extensao envia ?volum_widget=1&dealId=...
+  // O handler privado valida conta Google e ID antes de ler qualquer dado RD.
+  if (String(parametros.volum_widget || '') === '1') {
+    return viWidgetRenderizarWebApp_(e);
+  }
+
   if (String(parametros.ops_disable_all_automation || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOps = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
