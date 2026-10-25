@@ -99,11 +99,25 @@ button,input{font:inherit}button{cursor:pointer}
 .footer{padding:12px 0 18px;text-align:center;font:9px "Geist Mono",monospace;letter-spacing:.03em;color:#7d7d99}
 @media(max-width:380px){.shell{padding:0 11px 18px}.brand strong{font-size:13px}.private{font-size:8px}.tab{padding:10px 8px;font-size:10px}.kpi{padding:10px 7px}.kpi strong{font-size:21px}.chip{font-size:9px}}
 @media(prefers-reduced-motion:no-preference){.hero,.glass,.kpi,.action{transition:border-color .16s ease}.action:hover{border-color:#494061}.refresh{transition:background .16s ease}}
+
+/* A barra nativa do Chrome ja identifica o produto: no side panel, apenas conteudo. */
+.volum-embedded .topbar{display:none}
+.volum-embedded .shell{padding-top:10px}
+.volum-embedded .intro{padding-top:4px}
+.volum-embedded .footer{display:none}
+.operation-fact{padding:10px 0;border-top:1px solid var(--line)}
+.operation-fact:first-child{border-top:0}
+.operation-fact strong{font-size:10px;letter-spacing:.06em;color:var(--violet2)}
+.operation-fact p{margin:5px 0;color:var(--ink)}
+.operation-action{padding:12px;margin:9px 0;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.operation-action h3{font-size:13px;line-height:1.4;margin:7px 0}
+.operation-action p{color:var(--muted);margin:7px 0}
+.operation-action .done{color:var(--teal);font-size:11px}
 </style>
 </head>
 <body>
 <main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
-<header class="topbar">
+<header class="topbar" aria-label="Identidade VOLUM">
   <div class="logo" aria-hidden="true">V</div>
   <div class="brand"><strong>VOLUM</strong><small>INTELLIGENCE / SALES OPS</small></div>
   <span class="private"><i></i>PRIVADO</span>
@@ -112,6 +126,8 @@ button,input{font:inherit}button{cursor:pointer}
 </main>
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
+const embedMode=true;
+if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
 let activeTab='visao';
 let activeFilter='todos';
@@ -133,15 +149,34 @@ html+=section('Resumo executivo','Evidências da negociação');
 html+='<div class="glass"><ul class="stack">'+(d.resumoExecutivo||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
 html+=section('Ações priorizadas',rec.length+' recomendações');
 html+='<div class="action-list">'+rec.map(function(x,i){return '<article class="action"><span class="eyebrow">AÇÃO '+(i+1)+'</span> <span class="status-tag '+(x.prioridade==='ALTA'?'state-ATENCAO':'state-INDICIO')+'">'+esc(x.prioridade||'MÉDIA')+'</span><h3>'+esc(x.acao)+'</h3><p>'+esc(x.porQue)+'</p><p class="done"><b>Concluído quando:</b> '+esc(x.criterioConclusao)+'</p></article>'}).join('')+'</div>';
-if(d.mensagemSugerida)html+=section('Mensagem sugerida','Revisar antes de enviar')+'<div class="quote">'+esc(d.mensagemSugerida)+'</div>';
+if(d.operacional)html=operation(d)+'<details class="group"><summary><strong>Resumo consultivo e recomendações anteriores</strong></summary><div class="group-body">'+html+'</div></details>';if(d.mensagemSugerida)html+=section('Mensagem sugerida','Revisar antes de enviar')+'<div class="quote">'+esc(d.mensagemSugerida)+'</div>';
 return html;}
+function operation(d){
+const o=d.operacional||{};
+if(!o.tipo)return '';
+let html=section('O que importa agora',o.titulo||'Decisão operacional');
+html+='<p class="muted">'+esc(o.subtitulo||'')+'</p>';
+html+='<div class="glass">'+(o.fatos||[]).map(function(f){
+  return '<div class="operation-fact"><strong>'+esc(f.tipo)+' · '+esc(f.fonte)+'</strong><p>'+esc(f.texto)+'</p></div>';
+}).join('')+'</div>';
+html+=section('Próximas ações',String((o.acoes||[]).length)+' decisões');
+html+=(o.acoes||[]).map(function(a,i){
+  return '<article class="operation-action"><span class="eyebrow">'+esc(a.prioridade)+' · '+esc(a.origem)+'</span><h3>'+esc(a.acao)+'</h3><p>'+esc(a.porQue)+'</p><p class="done"><b>Concluído quando:</b> '+esc(a.criterioConclusao)+'</p></article>';
+}).join('')||'<p class="muted">Nenhuma ação operacional identificada.</p>';
+html+='<details class="group"><summary><strong>Limites da leitura e atribuição</strong></summary><div class="group-body">'+
+ (o.notasDeConfiabilidade||[]).map(function(x){return '<p class="muted">'+esc(x)+'</p>';}).join('')+'</div></details>';
+return html;
+}
 function counter(d){const c=(d.inteligenciaComercial||{}).contagem||{};const s=(d.planoOtimizacaoSdr||{}).contagem||{};return '<div class="kpis"><div class="kpi alert"><strong>'+Number(c.ATENCAO||0)+'</strong><small>Sinais de atenção</small><em>Inteligência</em></div><div class="kpi proof"><strong>'+Number(c.EVIDENCIADO||0)+'</strong><small>Dados evidenciados</small><em>Fontes consultadas</em></div><div class="kpi unknown"><strong>'+Number(s.NAO_VERIFICAVEL||0)+'</strong><small>SDR sem verificação</small><em>Plano de otimização</em></div></div>';}
-function intelligence(d){const intel=d.inteligenciaComercial||{itens:[],areas:[],contagem:{}};let items=intel.itens||[];let html=section('Inteligência comercial',items.length+' critérios de análise')+'<p class="muted">Cada item considera o histórico disponível. Indício não é prova de conversa; ausência de registro não comprova descumprimento.</p>';
+function intelligence(d){const intel=d.inteligenciaComercial||{itens:[],areas:[],contagem:{}};let items=intel.itens||[];let html=section('Inteligência comercial',items.length+' critérios de apoio')+'<p class="muted">Cada item considera o histórico disponível. Indício não é prova de conversa; ausência de registro não comprova descumprimento.</p>';
 const filters=[['todos','Todos'],['ATENCAO','Atenção'],['SEM_EVIDENCIA','Sem evidência'],['INDICIO','Indícios'],['NAO_VERIFICAVEL','Não verificável']];
 html+='<div class="filters" role="group" aria-label="Filtrar critérios">'+filters.map(function(x){return '<button type="button" class="filter '+(activeFilter===x[0]?'selected':'')+'" onclick="changeFilter(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</div>';
 items=items.filter(function(x){return activeFilter==='todos'||x.status===activeFilter});
 const areas=intel.areas||[];
-html+=areas.map(function(area,i){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,i===0):''}).join('');
+const prioritized=(intel.relevantes||[]).filter(function(x){return items.some(function(y){return y.id===x.id})});
+if(prioritized.length)html+=group('Prioridades da etapa atual',prioritized,true);
+html+='<details class="group"><summary><strong>Todos os critérios técnicos</strong><small>'+items.length+' itens</small></summary><div class="group-body">'+
+areas.map(function(area){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,false):''}).join('')+'</div></details>';
 if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
 return html;}
 function sdr(d){const s=d.planoOtimizacaoSdr||{};const itens=s.itens||[];const oficiais=itens.filter(x=>x.pilar==='OFICIAL');const extras=itens.filter(x=>x.pilar!=='OFICIAL');
@@ -158,7 +193,7 @@ const evidence=d.evidencias||[];
 html+=section('Últimas evidências','Anotações acessíveis')+'<div class="glass"><ul class="stack">'+(evidence.map(function(x){return '<li class="evidence"><time>'+humanDate(x.data)+' · '+esc(x.fonte)+'</time>'+esc(x.texto)+'</li>'}).join('')||'<li class="muted">Nenhuma evidência textual disponível.</li>')+'</ul></div>';
 html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><ul class="stack">'+(d.limites||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
 return html;}
-function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">LEITURA SALES OPS / '+esc(currentData.versao||'V3')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
+function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">LEITURA SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
 const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
 let body=activeTab==='visao'?overview(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}

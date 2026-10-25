@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.3.0'
+  versao: '0.4.0'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -20,7 +20,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
-  const parecer = viWidgetParecerDeterministico_(leitura);
+  const parecer = viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
@@ -714,4 +714,275 @@ function viWidgetInterpretarGemini_(contexto, dealId) {
     const partes = (((json.candidates || [])[0] || {}).content || {}).parts || [];
     return JSON.parse(partes.map(p => p.text || '').join(''));
   } catch (e) { return { disponivel: false, motivo: 'RESPOSTA_IA_INVALIDA' }; }
+}
+
+
+/**
+ * V4 - leitura operacional por etapa e por evidência.
+ * Não transforma volume total do lead em execução de SDR/Closer.
+ * Critérios sem fonte continuam consultivos, nunca falhas automáticas.
+ */
+function viWidgetDiaBrasil_(valor) {
+  const texto=String(valor||'').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const data=new Date(texto);
+  if (!texto || !Number.isFinite(data.getTime())) return '';
+  const partes=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(data);
+  const valores={}; partes.forEach(p=>{valores[p.type]=p.value;});
+  return valores.year+'-'+valores.month+'-'+valores.day;
+}
+function viWidgetDiaExibicao_(valor) {
+  const dia=viWidgetDiaBrasil_(valor);
+  return dia ? dia.slice(8,10)+'/'+dia.slice(5,7)+'/'+dia.slice(0,4) : 'data não confirmada';
+}
+function viWidgetResumoTarefa_(tarefa) {
+  const nome=String(tarefa.assunto||'Ação comercial').slice(0,90);
+  const responsaveis=Array.isArray(tarefa.responsaveis)?tarefa.responsaveis:[];
+  return {id:String(tarefa.id||''),assunto:nome,
+    data:viWidgetDiaBrasil_(tarefa.dataOriginal||tarefa.previstaPara),
+    responsavel:responsaveis.filter(Boolean).slice(0,2).join(', ')||'não confirmado',
+    tipo:String(tarefa.tipo||'tarefa'),status:tarefa.concluida?'CONCLUÍDA':'ABERTA'};
+}
+function viWidgetRefinarParecerV4_(parecer,leitura) {
+  const negociacao=leitura.negociacao||{};
+  const fontes=leitura.fontes||{};
+  const tarefas=Array.isArray(leitura.tarefas)?leitura.tarefas:[];
+  const chamadas=Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[];
+  const atividades=Array.isArray(leitura.atividades)?leitura.atividades:[];
+  const etapa=viWidgetEtapa_(negociacao.etapaAtualNome);
+  const encerrada=etapa.indice===6 ||
+    negociacao.estadoFechamento==='GANHA'||negociacao.estadoFechamento==='PERDIDA';
+  const emProposta=!encerrada&&/proposta|negociacao|follow|recovery|recuperacao/.test(viWidgetNormalizar_(negociacao.etapaAtualNome));
+  const noCloser=!encerrada&&etapa.indice>=4&&etapa.indice<=5;
+  const hoje=viWidgetDiaBrasil_(new Date());
+  const abertas=tarefas.filter(t=>t&&t.concluida!==true)
+    .map(viWidgetResumoTarefa_).filter(t=>t.data)
+    .sort((a,b)=>a.data.localeCompare(b.data));
+  const vencidas=abertas.filter(t=>t.data<hoje);
+  const futuras=abertas.filter(t=>t.data>=hoje);
+  const proxima=abertas[0]||null;
+  const ultimas=chamadas.filter(c=>c&&c.data&&Number.isFinite(Date.parse(c.data)))
+    .sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const ultCall=ultimas[0]||null;
+  const notas=atividades.filter(a=>a&&a.textoDisponivel&&a.texto &&
+    ['note','response','messenger','whatsapp_transcription','email'].includes(String(a.tipo||'').toLowerCase()))
+    .sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+  const ultimaNota=notas[0]||null;
+  const notasNormal=notas.map(a=>viWidgetNormalizar_(a.texto));
+  const promessaRecebida=notas.find(a=>
+    /(?:cliente|comprador|lead)\s+(?:confirmou|acusou)\s+(?:o\s+)?recebimento\s+(?:da\s+)?proposta|proposta\s+recebida\s+e\s+confirmada/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const propostaRegistrada=atividades.some(a=>a.tipo==='proposal')||
+    notasNormal.some(t=>/(?:proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado)/.test(t));
+  const comValor=negociacao.valorInformado!==null && negociacao.valorInformado!==undefined &&
+    Number.isFinite(Number(negociacao.valorInformado)) && Number(negociacao.valorInformado)>0;
+  const dataFechamento=viWidgetDiaBrasil_(negociacao.previsaoFechamento);
+  const coberturaRd=Boolean(fontes.tarefas&&fontes.tarefas.acessivel&&fontes.tarefas.completo&&
+    fontes.atividades&&fontes.atividades.acessivel&&fontes.atividades.completo);
+  const fatos=[];
+  function fato(tipo,texto,fonte,confianca) {
+    fatos.push({tipo:tipo,texto:texto,fonte:fonte,confianca:confianca||'DADO_RD'});
+  }
+  if (negociacao.etapaAtualNome) fato('ETAPA',
+    'Etapa atual: '+negociacao.etapaAtualNome+'.','RD · negociação');
+  if (negociacao.responsavel) fato('RESPONSAVEL',
+    'Responsável atual: '+String(negociacao.responsavel).slice(0,70)+'.','RD · negociação');
+  if (comValor) fato('VALOR',
+    'Valor cadastrado na negociação: '+Number(negociacao.valorInformado).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})+
+    '. Não equivale ao valor do PDF aprovado.','RD · negociação');
+  if (dataFechamento) fato('FORECAST',
+    'Previsão de fechamento no CRM: '+viWidgetDiaExibicao_(dataFechamento)+'.','RD · negociação');
+  if (proxima) fato('PROXIMA_TAREFA',
+    'Tarefa aberta: '+proxima.assunto+' · '+viWidgetDiaExibicao_(proxima.data)+
+    ' · Responsável: '+proxima.responsavel+'.','RD · tarefas');
+  if (ultCall) fato('ULTIMA_CHAMADA',
+    'Último registro de ligação: '+viWidgetDiaExibicao_(ultCall.data)+
+    ' (duração informada: '+(Number(ultCall.duracaoSegundos)||0)+'s). Não prova diálogo.','Board · ligações','REGISTRO_TECNICO');
+  if (ultimaNota) fato('ULTIMA_ANOTACAO',
+    'Última anotação acessível: '+viWidgetDiaExibicao_(ultimaNota.data)+
+    '. Conteúdo sujeito à conferência.','RD · atividades','INDICIO');
+  const avisos=[];
+  const tarefasComAutoria=tarefas.filter(t=>Array.isArray(t.responsaveis)&&t.responsaveis.length>0).length;
+  if (tarefas.length>0 && tarefasComAutoria<tarefas.length) avisos.push(
+    (tarefas.length-tarefasComAutoria)+' tarefa(s) sem responsável identificado na resposta; não atribuir a SDR ou closer.');
+  avisos.push('Nenhuma ligação do board é atribuída ao papel SDR sem vínculo de operador e função confirmado.');
+  if (!coberturaRd) avisos.push('Consultas RD incompletas: ausência de registros não deve ser interpretada como falha.');
+  if (emProposta) avisos.push('Etapa “Proposta enviada” não comprova anexo PDF, entrega nem aceite do comprador.');
+  const acoes=[];
+  const ids=new Set();
+  function acao(id,prioridade,titulo,motivo,conclusao,fonte) {
+    if (ids.has(id)) return;
+    ids.add(id);
+    acoes.push({id:id,prioridade:prioridade,acao:titulo,porQue:motivo,
+      criterioConclusao:conclusao,origem:fonte,evidencia:fonte});
+  }
+  if (encerrada) {
+    acao('reconciliar-encerramento','BAIXA','Conferir o motivo e o histórico da negociação encerrada.',
+      'O CRM indica encerramento; não iniciar cadência automaticamente.',
+      'Resultado final e documentação revisados.','RD · negociação');
+  } else {
+    if (vencidas.length) acao('prazo','ALTA',
+      'Revisar '+vencidas.length+' tarefa(s) em data passada; começar por “'+vencidas[0].assunto+'”.',
+      'A primeira está datada de '+viWidgetDiaExibicao_(vencidas[0].data)+
+      '. O registro sozinho não prova que a ação deixou de acontecer.',
+      'Resultado real conferido e novo compromisso acertado, quando necessário.','RD · tarefas');
+    if (emProposta) {
+      if (!propostaRegistrada) acao('proposta','ALTA',
+        'Verificar o envio efetivo da proposta e o PDF correspondente.',
+        'O CRM está em “'+(negociacao.etapaAtualNome||'proposta')+
+        '”, mas o leitor não confirma envio, destinatário ou anexo. Não é uma falha comprovada.',
+        'Documento, valor, destinatário e data de envio verificados.','RD · etapa / anexos ainda não integrados');
+      if (!promessaRecebida) acao('recebimento','MÉDIA',
+        'Confirmar se o comprador recebeu e avaliou a proposta.',
+        'Não há confirmação explícita identificável no texto recuperado; e-mail e WhatsApp não estão validados.',
+        'Recebimento e percepção do comprador registrados com data.','RD · anotações / canais não integrados');
+      if (!comValor) acao('valor','MÉDIA',
+        'Conferir o valor da proposta e o valor da negociação no CRM.',
+        'O leitor não recuperou valor positivo do registro da negociação.',
+        'Valor registrado e conciliado com a proposta válida.','RD · negociação');
+      if (!dataFechamento||dataFechamento<hoje) acao('forecast','MÉDIA',
+        'Atualizar a previsão de fechamento a partir do acordo com o comprador.',
+        dataFechamento?'A data prevista no RD já passou.':'O campo de previsão não foi recuperado.',
+        'Data realista registrada, com fundamento no compromisso do lead.','RD · negociação');
+    }
+    if (proxima) acao('proximo-passo','MÉDIA',
+      'Executar ou revisar “'+proxima.assunto+'” ('+viWidgetDiaExibicao_(proxima.data)+').',
+      'É a próxima tarefa datada no CRM. Responsável atribuído: '+proxima.responsavel+
+      '. A tarefa não prova que o cliente aceitou esse compromisso.',
+      'Resultado documentado e próximo acordo confirmado.','RD · tarefas');
+    else if (fontes.tarefas&&fontes.tarefas.acessivel&&fontes.tarefas.completo)
+      acao('proximo-passo','ALTA','Definir próximo passo com data e responsável.',
+        'Nenhuma tarefa aberta datada foi encontrada na consulta completa de tarefas.',
+        'Próximo compromisso definido e registrado no CRM.','RD · tarefas');
+    else acao('fonte-tarefas','MÉDIA','Verificar o acesso às tarefas antes de concluir ausência de follow-up.',
+      'A consulta às tarefas está incompleta ou inacessível.',
+      'Acesso e paginação da fonte validados.','RD · tarefas');
+    if (etapa.indice===3||etapa.indice===4) acao('reuniao','MÉDIA',
+      'Confirmar o resultado da reunião e quem conduzirá a continuidade.',
+      'A etapa no funil não prova a realização da reunião ou a passagem de bastão.',
+      'Realização, responsável e próximo passo confirmados.','RD · etapa / reunião não verificada');
+    if (etapa.indice<0) acao('mapa','MÉDIA',
+      'Mapear a etapa à regra correta antes de emitir parecer de compliance.',
+      'O nome da etapa não corresponde ao mapeamento operacional vigente.',
+      'Etapa e regra homologadas.','RD · etapa');
+  }
+  if (!coberturaRd) acao('cobertura','MÉDIA','Completar a coleta de tarefas e atividades do RD.',
+    'Há fonte incompleta; ela limita as conclusões.',
+    'Consulta paginada e vínculo da negociação confirmados.','RD · integração');
+
+  const ordem={ALTA:0,MÉDIA:1,BAIXA:2};
+  acoes.sort((a,b)=>ordem[a.prioridade]-ordem[b.prioridade]);
+  const chaveAtual=emProposta?['proposta','recebimento','proximo-passo','prazo','valor','previsao','decisor','objecoes','inatividade']:
+    noCloser?['reuniao','proximopasso','decisor','dor','objecoes','previsao']:
+    ['retorno','proximopasso','vencidas','reuniao','dor','lmv','responsavel','etapa'];
+  const prioridadePos={};chaveAtual.forEach((id,i)=>prioridadePos[id]=i);
+  const intel=parecer.inteligenciaComercial||{};
+  const detalhados=Array.isArray(intel.itens)?intel.itens:[];
+  const relevantes=detalhados.filter(x=>chaveAtual.includes(x.id)&&x.status!=='NAO_APLICAVEL')
+    .sort((a,b)=>prioridadePos[a.id]-prioridadePos[b.id]);
+  intel.relevantes=relevantes;
+  intel.secundarios=detalhados.filter(x=>!relevantes.includes(x));
+  intel.aviso='Critérios prioritários da etapa atual primeiro; os 27 critérios técnicos permanecem disponíveis para conferência. Sem fonte, não há falha presumida.';
+  if (emProposta) {
+    const meta=detalhados.find(x=>x.id==='proposta');
+    if (meta) {
+      meta.detalhe=propostaRegistrada?
+        'Há menção ou atividade de proposta no RD; documento e entrega precisam ser verificados.':
+        'A etapa do funil informa “Proposta enviada”; o leitor não consegue confirmar PDF, destinatário e envio.';
+      meta.acao='Conferir o PDF, a data de envio e a confirmação no canal.';
+      meta.status='NAO_VERIFICAVEL';
+    }
+    const forecast=detalhados.find(x=>x.id==='previsao');
+    if (forecast && dataFechamento) forecast.detalhe=
+      'Previsão informada no CRM: '+viWidgetDiaExibicao_(dataFechamento)+
+      (dataFechamento<hoje?' (data já passou; revisar acordo).':' (ainda exige validação com comprador).');
+  }
+  if (intel.contagem) {
+    const cont={ATENCAO:0,INDICIO:0,EVIDENCIADO:0,SEM_EVIDENCIA:0,
+      NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
+    detalhados.forEach(x=>{cont[x.status]=(cont[x.status]||0)+1;});
+    intel.contagem=cont;
+  }
+  const planoSdr=parecer.planoOtimizacaoSdr||{};
+  if (Array.isArray(planoSdr.itens)) {
+    const contas={EVIDENCIADO:0,INDICIO:0,ATENCAO:0,SEM_EVIDENCIA:0,
+      NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
+    const diagnosticoSdr=new Set(['cadencia','voip','pitch','no_show','handoff','registros','tarefas',
+      'segmento','lmv','qualificacao','agenda','confirmacao','valor_reuniao','horarios','primeiro_registro','resultado_ligacao']);
+    planoSdr.itens.forEach(item=>{
+      if (diagnosticoSdr.has(item.id) && item.status!=='NAO_APLICAVEL') {
+        const anterior=item.status;
+        item.status='NAO_VERIFICAVEL';
+        if (item.id==='voip') item.detalhe=chamadas.length+
+          ' chamada(s) vinculada(s) à negociação como um todo. O board não comprova quem atuou como SDR.';
+        else if (item.id==='tarefas') item.detalhe=tarefas.length+
+          ' tarefa(s) no histórico da negociação, sem separação confiável por SDR/closer. Não inferir SLA do SDR.';
+        else if (item.id==='cadencia') item.detalhe=
+          'Há tarefas com títulos de cadência, porém criá-las (inclusive automaticamente) não comprova execução pelo SDR.';
+        else if (anterior==='ATENCAO') item.detalhe=
+          'Sinal no histórico da negociação: '+item.detalhe+' Não atribuível ao SDR sem identificador de função.';
+        else if (anterior==='INDICIO'||anterior==='EVIDENCIADO') item.detalhe=
+          'Indício no lead, sem autoria/etapa SDR confirmada: '+item.detalhe;
+      }
+      contas[item.status]=(contas[item.status]||0)+1;
+    });
+    planoSdr.contagem=contas;
+    planoSdr.atributoPapel='NAO_COMPROVADO';
+    planoSdr.aviso='Sem mapeamento autenticado de usuários para o papel SDR, esta aba apresenta referência histórica do lead, não uma auditoria individual do SDR.';
+  }
+  const closer=parecer.criteriosPlanoWisetec||[];
+  if (noCloser&&closer.length) {
+    const valor=closer.find(x=>/Valores da proposta/.test(x.titulo||''));
+    if (valor) {
+      valor.status=comValor?'INDICIO':'NAO_VERIFICAVEL';
+      valor.detalhe=comValor?'Valor positivo consta no campo da negociação; o PDF não foi conferido.':
+        'Valor da proposta não pôde ser confirmado nas fontes disponíveis.';
+    }
+    const recebimento=closer.find(x=>/Confirmação de recebimento/.test(x.titulo||''));
+    if (recebimento&&promessaRecebida) {
+      recebimento.status='INDICIO';recebimento.detalhe=
+        'Anotação '+viWidgetDiaExibicao_(promessaRecebida.data)+
+        ' menciona recebimento, mas ainda exige verificação do canal.';
+    }
+    const tarefasProximas=closer.find(x=>/Tarefa com data e acordo/.test(x.titulo||''));
+    if (tarefasProximas) {
+      tarefasProximas.status=abertas.length?'INDICIO':'NAO_VERIFICAVEL';
+      tarefasProximas.detalhe=abertas.length?
+        'Próxima tarefa: '+proxima.assunto+' em '+viWidgetDiaExibicao_(proxima.data)+
+        '. O aceite do comprador não está comprovado.':
+        'Não há tarefa aberta datada confirmada nesta consulta; verificar acordo e acesso à fonte.';
+    }
+  }
+  const foco=acoes[0]||null;
+  parecer.versao='0.4.0';
+  parecer.operacional={
+    tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
+      noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
+    titulo:encerrada?'Negociação encerrada':emProposta?'Proposta em acompanhamento':
+      noCloser?'Reunião e continuidade':'Conexão e qualificação',
+    subtitulo:encerrada?'Consultar e reconciliar o resultado.':
+      'Priorize apenas o que influencia a próxima decisão, sem supor execução.',
+    fatos:fatos.slice(0,7),acoes:acoes.slice(0,5),
+    proximaTarefa:proxima, tarefasEmDataPassada:vencidas.length,
+    chamadasNoLead:chamadas.length,tarefasNoLead:tarefas.length,
+    responsaveisEmTarefas:tarefasComAutoria,
+    fonteRdCompleta:coberturaRd,notasDeConfiabilidade:avisos,
+    criterioPrincipal:foco?foco.origem:'Sem fonte priorizável',
+    papelSdrConfirmado:false
+  };
+  parecer.status=parecer.operacional.titulo.toUpperCase();
+  parecer.risco=encerrada?'NÃO CLASSIFICADO':
+    vencidas.length?'ALTO':(!coberturaRd?'MÉDIO':'NÃO CLASSIFICADO');
+  parecer.confianca=coberturaRd?'PARCIAL (CANAIS EXTERNOS PENDENTES)':'BAIXA (COLETA INCOMPLETA)';
+  parecer.resumoExecutivo=fatos.slice(0,4).map(x=>x.texto)
+    .concat(avisos.slice(0,2));
+  parecer.recomendacoes=acoes.slice(0,5);
+  if (foco) {
+    parecer.proximaAcao=foco.acao;
+    parecer.regraDeDecisao=foco.criterioConclusao;
+  }
+  parecer.contextoIa={etapa:parecer.agenteAtual,
+    status:parecer.status,
+    recomendacoes:acoes.slice(0,3).map(a=>({acao:a.acao,porQue:a.porQue}))};
+  return parecer;
 }

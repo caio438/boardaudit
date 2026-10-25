@@ -225,7 +225,13 @@ function viLeadTarefas_(tarefas, incluirTextos) {
       concluidaEm: viLeadDataIso_(item.done_date || item.done_at || item.completed_at),
       temAnotacao: Boolean(notas.trim()),
       temReferenciaGravacao: gravacao,
-      anotacao: viLeadTextoSeguro_(notas, incluirTextos)
+      anotacao: viLeadTextoSeguro_(notas, incluirTextos),
+      // O RD pode devolver IDs de usuario sem indicar papel comercial.
+      // Preservamos apenas atribuicao explicita e NUNCA inferimos SDR/Closer do assunto.
+      responsaveis: [item.user && item.user.name, item.assigned_to && item.assigned_to.name,
+        item.responsible && item.responsible.name].filter(Boolean)
+        .map(nome=>String(nome).slice(0,80)).filter((nome,i,arr)=>arr.indexOf(nome)===i),
+      dataOriginal: String(item.date || '').trim().slice(0,10)
     };
   });
 }
