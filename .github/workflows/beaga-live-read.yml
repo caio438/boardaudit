@@ -1,15 +1,14 @@
-name: Beaga RD live read (single lead, no writes)
+name: Read Beaga RD live (owner command, read only)
 on:
-  push:
-    branches:
-      - ops/beaga-live-read-20261025
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
 
 jobs:
   beaga-read:
-    if: ${{ github.ref == 'refs/heads/ops/beaga-live-read-20261025' }}
+    if: ${{ github.event.issue.number == 142 && github.event.comment.user.login == 'caio438' && github.event.comment.body == '/volum-beaga-refresh' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: apps-script-production
@@ -70,7 +69,7 @@ jobs:
           console.log('LIVE_READ_ACTIVITIES_COMPLETE='+String(f.atividades?.completo===true));
           console.log('LIVE_READ_ACTIVITY_TYPE_CONFLICTS='+clean(f.atividades?.conflitosDeTipo));
           console.log('LIVE_READ_TASKS_COMPLETE='+String(f.tarefas?.completo===true));
-          console.log('LIVE_READ_RESCHEUDULE_NOTE_COUNT='+((s.anotacaoCancelamentoOuReagendamento||[]).length));
+          console.log('LIVE_READ_RESCHEDULE_NOTE_COUNT='+((s.anotacaoCancelamentoOuReagendamento||[]).length));
           console.log('LIVE_READ_NO_ANSWER_NOTE_COUNT='+((s.anotacaoNaoAtendeu||[]).length));
           console.log('LIVE_READ_RECOVERY_3RD_CALL_TASK_COUNT='+((s.tarefaRecoveryDia1Ligacao3||[]).length));
           console.log('LIVE_READ_ACTIVITY_TYPES='+JSON.stringify(r.tiposAtividade||{}));
