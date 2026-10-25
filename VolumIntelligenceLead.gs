@@ -92,11 +92,16 @@ function viLeadPaginar_(token, caminho, campo, dealId) {
   return { itens: itens, completo: completo, truncado: !completo };
 }
 
-function viLeadNotas_(atividades, incluirTextos) {
-  return atividades.map(item => ({
+function viLeadAtividades_(registros, incluirTextos) {
+  return registros.map(item => ({
     id: String(item.id || item._id || ''),
+    dealId: String(item.deal_id || (item.deal || {}).id || ''),
     data: viLeadDataIso_(item.date || item.created_at),
+    // A listagem v1 nem sempre documenta o campo type na resposta.
+    // Sem type explicito, nao assumir que o registro e uma anotacao.
+    tipo: String(item.type || 'nao_informado').toLowerCase(),
     autorId: String(item.user_id || ''),
+    etapaId: String(item.deal_stage_id || ''),
     textoDisponivel: Boolean(String(item.text || item.content || '').trim()),
     texto: viLeadTextoSeguro_(item.text || item.content || '', incluirTextos)
   }));
@@ -153,9 +158,14 @@ function viLeadHistoricoEtapas_(negociacao) {
     }).sort((a, b) => a.inicio.localeCompare(b.inicio));
 }
 
-function viLeadLinhaTempo_(notas, tarefas, ligacoes, etapas) {
+function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas) {
   const eventos = [];
-  notas.forEach(n => { if (n.data) eventos.push({ data: n.data, fonte: 'RD_ANOTACAO', tipo: 'ANOTACAO', ref: n.id }); });
+  atividades.forEach(a => {
+    if (!a.data) return;
+    const tipo = a.tipo === 'note' ? 'ANOTACAO' :
+      (a.tipo === 'nao_informado' ? 'ATIVIDADE_SEM_TIPO' : 'ATIVIDADE_' + a.tipo.toUpperCase());
+    eventos.push({ data: a.data, fonte: 'RD_ATIVIDADES', tipo: tipo, ref: a.id });
+  });
   tarefas.forEach(t => {
     if (t.criadaEm) eventos.push({ data: t.criadaEm, fonte: 'RD_TAREFA', tipo: 'CRIACAO_TAREFA', ref: t.id });
     if (t.concluidaEm) eventos.push({ data: t.concluidaEm, fonte: 'RD_TAREFA', tipo: 'CONCLUSAO_TAREFA', ref: t.id });
@@ -204,7 +214,9 @@ function viCerebroConexao_(ctx) {
     indicadores: {
       ligacoesComDuracaoInformada: ctx.ligacoes.filter(l => l.duracaoSegundos > 0).length,
       transcricoesMarcadasConcluidas: ctx.ligacoes.filter(l => l.transcricaoStatus === 'CONCLUIDA').length,
-      anotacoesDoRd: ctx.notas.length
+      atividadesDoRd: ctx.atividades.length,
+      anotacoesComTipoConfirmado: ctx.atividades.filter(a => a.tipo === 'note').length,
+      atividadesSemTipoInformado: ctx.atividades.filter(a => a.tipo === 'nao_informado').length
     },
     limite: 'Duracao ou anotacao nao comprova que houve dialogo, qualificacao ou compromisso.'
   };
@@ -226,7 +238,7 @@ function viCerebroReuniao_(ctx) {
   const reunioes = ctx.tarefas.filter(t => t.tipo === 'meeting');
   return {
     agente: 'REUNIAO', estado: reunioes.length ? 'REQUER_TRANSCRICAO_E_PLAYBOOK' : 'DADOS_INSUFICIENTES',
-    indicadores: { tarefasReuniao: reunioes.length, anotacoesDoRd: ctx.notas.length },
+    indicadores: { tarefasReuniao: reunioes.length, atividadesDoRd: ctx.atividades.length },
     limite: 'Nao audita pitch, proposta, fechamento ou follow-up sem documentos e regras do cliente.'
   };
 }
@@ -260,17 +272,17 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   try {
     const resposta = viLeadPaginar_(vinculo.token, '/activities', 'activities', dealId);
     atividadesBrutas = resposta.itens;
-    fontes.anotacoes = { acessivel: true, completo: resposta.completo, quantidade: atividadesBrutas.length };
+    fontes.atividades = { acessivel: true, completo: resposta.completo, quantidade: atividadesBrutas.length };
   } catch (e) {
-    fontes.anotacoes = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
+    fontes.atividades = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
   }
 
-  const notas = viLeadNotas_(atividadesBrutas, incluirTextos);
+  const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
   const ligacoes = viLeadLigacoesBoard_(interacoes, dealId);
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
-  const timeline = viLeadLinhaTempo_(notas, tarefas, ligacoes, etapas);
-  const ctx = { notas: notas, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
+  const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas);
+  const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at) };
 
   return {
@@ -287,7 +299,8 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     ],
     eventos: timeline,
     tarefas: tarefas,
-    anotacoes: notas,
+    atividades: atividades,
+    anotacoes: atividades.filter(a => a.tipo === 'note'),
     ligacoesBoard: ligacoes,
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
