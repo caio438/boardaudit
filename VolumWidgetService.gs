@@ -23,7 +23,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
-  parecer.agentesDetalhados = (leitura.cerebros || []).map(function(a) { return {agente:a.agente,estado:a.estado,indicadores:a.indicadores||{},criterios:a.criterios||[],limite:a.limite||''}; });
+  parecer.agentesDetalhados = (leitura.cerebros || []).map(function(a) { return {agente:a.agente,estado:a.estado,indicadores:a.indicadores||{},criterios:a.criterios||[],calendario:a.calendario||[],intervalos:a.intervalos||[],limite:a.limite||''}; });
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
