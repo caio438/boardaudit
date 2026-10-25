@@ -307,6 +307,8 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const emails=tipe(sdr,'EMAIL_ENVIADO');
   const whatsapp=tipe(sdr,'WHATSAPP_ABERTO');
   const ligacoes=combinar(sdr,/(?:atendimento para|ligac(?:ao|oes)|telefonema|chamada telefonica|discagem|voip)/);
+  const chamadaVoipRegistrada=ligacoes.find(e=>e.acao==='OUTRO_VISUAL_RD'&&
+    /atendimento para|ligacao realizada|chamada efetuada/.test(texto(e)))||null;
   const tentativas=[...ligacoes,...emails,...whatsapp].filter((e,i,arr)=>
     arr.findIndex(x=>x.id===e.id)===i);
   const notasResultado=combinar(anotacoes,
@@ -392,7 +394,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
         /(?:segmento|setor|ramo)(?: de atuacao)?\s*[:=-]\s*[\w\s-]{3,45}/.test(t))
         conformidade='CONFORME';
       if(id==='lmv'&&e.acao==='ANOTACAO'&&
-        /(?:lmv|faturamento|receita mensal)(?: validado| confirmado)?\s*[:=-]\s*(?:r\$ ?\d|positivo|negativo|acima|abaixo|entre \d)/.test(t))
+        /(?:lmv|faturamento|receita mensal) (?:validado|confirmado|conferido)\s*[:=-]\s*(?:r\$ ?\d|positivo|negativo|acima|abaixo|entre \d)|(?:cliente|lead) (?:confirmou|validou) (?:o |seu )?(?:lmv|faturamento|receita mensal).{0,45}(?:r\$ ?\d|positivo|negativo|acima|abaixo)/.test(t))
         conformidade='CONFORME';
     }
     itens.push({id,titulo,status,conformidade,detalhe:msg,evidencia:e?
@@ -417,7 +419,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   reg('voip','Uso de ligação nas tentativas',
     ligacoes.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
     ligacoes.length+' registro(s) mencionam ligação ou atendimento no Histórico RD. Tarefa ou duração não comprova conversa; analisar seu resultado documentado.',
-    ultimo(ligacoes),'Relacionar cada ligação registrada ao resultado da tentativa no CRM.','OFICIAL');
+    chamadaVoipRegistrada||ultimo(ligacoes),'Relacionar cada ligação registrada ao resultado da tentativa no CRM.','OFICIAL');
   reg('pitch','Aplicação do pitch de qualificação','NAO_VERIFICAVEL',
     'O Histórico RD permite ler anotações e resultados, mas não comprova palavra por palavra a aplicação do pitch SDR.',
     ultimo(questoes),'Conferir o pitch apenas quando existir gravação ou transcrição atribuída ao SDR.','OFICIAL');
@@ -569,7 +571,8 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
   const follow=tarefas.filter(t=>/(?:follow|retorno|proposta|recovery|acompanhar|pr[oó]xim)/i.test(
     String(t.assunto||'')+' '+String(t.anotacao||'')));
   const acordo=notas.find(e=>
-    /(?:combinamos|acordamos|ficou combinado|proxima reuniao|follow.?up)/.test(normal(e.texto)))||null;
+    /(?:combinamos|acordamos|ficou combinado|proxima reuniao|follow.?up)/.test(normal(e.texto))&&
+    /(?:dia \d{1,2}|(?:^|\s)\d{1,2}[\/-]\d{1,2}|as \d{1,2}(?:h|:)|\d{1,2}:\d{2})/.test(normal(e.texto)))||null;
   const proximo=follow.find(t=>t.previstaPara&&t.responsaveis?.filter(Boolean).length)||null;
   const formal=emails.find(e=>/proposta|formaliz|orcamento|condicoes comerciais/.test(normal(e.texto)))||null;
   const mencaoGravacao=eventos.find(e=>(e.acao==='ANOTACAO'||e.acao==='EMAIL_ENVIADO')&&
