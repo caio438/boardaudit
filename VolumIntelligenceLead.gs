@@ -623,9 +623,14 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   // Resolver pelo endpoint oficial GET /deal_stages/{id} somente se necessário.
   const etapaIdRd = String((negociacao.deal_stage || {}).id ||
     (negociacao.deal_stage || {})._id || negociacao.deal_stage_id || '').trim();
-  let nomeEtapaRd = String((negociacao.deal_stage || {}).name ||
+  // O catalogo do funil resolve todas as etapas com uma consulta paginada,
+  // evitando uma consulta individual adicional para a etapa atual.
+  const catalogoEtapasRd = viRdCatalogoEtapas_(vinculo.token, negociacao);
+  const nomeEtapaPayload=String((negociacao.deal_stage || {}).name ||
     negociacao.deal_stage_name || '').trim();
-  let origemEtapa = nomeEtapaRd ? 'DADOS_NEGOCIACAO_RD' : 'SEM_NOME';
+  let nomeEtapaRd=nomeEtapaPayload||catalogoEtapasRd.nomes[etapaIdRd]||'';
+  let origemEtapa=nomeEtapaPayload?'DADOS_NEGOCIACAO_RD':
+    nomeEtapaRd?'CATALOGO_ETAPAS_RD':'SEM_NOME';
   if (!nomeEtapaRd && /^[0-9a-f]{24}$/i.test(etapaIdRd)) {
     try {
       const etapaRetorno = viLeadRdGet_(vinculo.token, '/deal_stages/' + etapaIdRd, {});
@@ -645,8 +650,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
 
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
-  // Consulta de etapas e agrupamento RD sao independentes do Board/API4COM.
-  const catalogoEtapasRd = viRdCatalogoEtapas_(vinculo.token,negociacao);
+  // A leitura agrupada utiliza somente registros do RD (sem atribuir chamadas do Board).
   if (etapaIdRd && nomeEtapaRd) catalogoEtapasRd.nomes[etapaIdRd]=nomeEtapaRd;
   const historicoRdEtapas = viRdAuditoriaJanelas_(negociacao,atividades,tarefas,catalogoEtapasRd,{
     fontesParciais: fontes.atividades.completo !== true || fontes.tarefas.completo !== true
