@@ -112,7 +112,7 @@ function viRdCamposNegociacao_(negociacao) {
     const v=item.value;
     const valor=Array.isArray(v)?v.map(x=>viRdNomeSeguro_(x,240)).slice(0,15):
       viRdNomeSeguro_(v,240);
-    return {id,nome:viRdNomeSeguro_(campo.name||campo.title||'',120),
+    return {id,nome:viRdNomeSeguro_(campo.label||campo.name||campo.title||item.label||'',120),
       valorAtual:valor,criadoEm:viLeadDataIso_(item.created_at),
       atualizadoEm:viLeadDataIso_(item.updated_at),
       natureza:'ESTADO_ATUAL_NAO_HISTORICO'};

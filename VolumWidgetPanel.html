@@ -232,7 +232,68 @@ function criterionSection(title,items){
     '<div class="criteria-list">'+list.map(criterionCard).join('')+'</div></div>';
 }
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
-function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
+  d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}
+function agentReadiness(d,key){
+  const r=(d.prontidaoAgentes||{})[key]||{};
+  if(!r.totalCriterios)return '';
+  const b=Array.isArray(r.bloqueios)?r.bloqueios:[];
+  return '<div class="glass"><div class="eyebrow">CAPACIDADE DE AUDITORIA</div>'+
+    '<p><b>'+Number(r.registrosEIndicios||0)+' de '+Number(r.totalCriterios||0)+
+    '</b> critérios possuem algum registro ou indício. Isso não é uma nota de compliance.</p>'+
+    '<p class="small">Histórico visual: '+(r.historicoVisualCompleto?'completo':'parcial/indisponível')+
+    ' · Tarefas API: '+(r.tarefasApiCompletas?'completas':'parciais/indisponíveis')+
+    ' · Resultado: sem pontuação final até homologar regras e evidências.</p>'+
+    (b.length?'<details class="group"><summary><strong>Limites para validar compliance</strong><small>'+
+      b.length+' pontos</small></summary><div class="group-body">'+b.map(x=>'<p class="small">'+
+      esc(x)+'</p>').join('')+'</div></details>':'')+'</div>';
+}
+function leadAgent(d){const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='LEAD');if(!agente)return section('Agente LEAD','Entrada e classificacao provisoria')+'<p class="muted">Leitura ainda não disponível.</p>';
+let html=section('Agente LEAD','Cadastro, LMV provisório e encaminhamento');
+html+='<div class="notice">O LMV informado no formulário é provisório. A validação com o cliente durante a ligação pertence ao Agente CONEXÃO. Registro automático não prova contato.</div>';
+html+=agentReadiness(d,'lead');
+const met=agente.indicadores||{};
+html+='<div class="glass"><p><b>Chegada:</b> '+esc(rdMomento(met.criadaEm))+
+  ' · <b>Primeiro registro:</b> '+esc(rdMomento(met.primeiraEvidenciaEm))+
+  '</p><p><b>Primeiro WhatsApp registrado:</b> '+esc(met.minutosAtePrimeiroWhatsApp===null?'não verificável':met.minutosAtePrimeiroWhatsApp+' min')+
+  ' · <b>Primeiro e-mail registrado:</b> '+esc(met.minutosAtePrimeiroEmail===null?'não verificável':met.minutosAtePrimeiroEmail+' min')+
+  ' · <b>Primeira ligação técnica:</b> '+esc(met.minutosAtePrimeiraLigacao===null?'não verificável':met.minutosAtePrimeiraLigacao+' min')+
+  '</p><p class="small">Intervalos desde a criação, não comprovação de entrega ou conversa.</p></div>';
+html+=criterionSection('Auditoria da entrada do lead',agente.criterios||[],true);
+html+='<p class="small">'+esc(agente.limite||'')+'</p>';
+return html;}
+function cadenceAgent(d){
+  const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='CADENCIA');
+  if(!agente)return section('Agente CADÊNCIA','Reconstrução das tentativas')+'<p class="muted">Leitura indisponível para esta negociação.</p>';
+  const met=agente.indicadores||{};
+  let html=section('Agente CADÊNCIA','Execução real, dias úteis e intervalos');
+  html+='<div class="notice">O Agente CADÊNCIA lê o histórico mesmo sem nomes CAD. O padrão manual é a Estrutura da Cadência; o Método VOLUM com robô só se aplica a operações automatizadas confirmadas. Tarefa concluída não prova tentativa de contato.</div>';
+html+=agentReadiness(d,'cadencia');
+  html+='<div class="glass"><div class="eyebrow">CONTEXTO DA AUDITORIA</div><p>Modo SDR: <b>'+esc(display(met.modoSdr||'Não identificado'))+'</b> · Fluxo: <b>'+esc(display(met.fluxo||'Não identificado'))+'</b> · LMV: <b>'+esc(display(met.lmv||'Não confirmado'))+'</b></p><p>Dias úteis com registros: <b>'+Number(met.diasUteisComRegistro||0)+'</b> · Lacunas observadas: <b>'+Number(met.diasComLacuna||0)+'</b></p>'+(met.paradaEm?'<p><b>Fim da prospecção inicial:</b> '+rdMomento(met.paradaEm)+' · '+esc(display(met.paradaMotivo||'CONEXÃO'))+'. <b>'+Number(met.ligacoesAposParada||0)+'</b> ligação(ões) posteriores excluídas da cadência inicial.</p>':'')+'<p class="muted">Feriados locais: '+(met.calendarioFeriadosLocaisConfirmado?'configurados':'pendentes de validação')+'. Sem regras completas, não há reprovação automática.</p></div>';
+  html+=criterionSection('Verificações de compliance',agente.criterios||[],true);
+  const dias=agente.calendario||[];
+  if(dias.length){
+    const itens=dias.map(function(x){
+      const esperado=x.esperado?Object.keys(x.esperado).map(function(k){return display(k)+' '+x.esperado[k]}).join(' · '):'Regra diária ainda não aplicável';
+      const encontrado=x.observado||{};
+      return {titulo:'Dia útil '+Number(x.numero)+' · '+agentDia(x.dia)+' · ciclo '+Number(x.ciclo),
+        status:x.estado,detalhe:'Previsto: '+esperado+'. Registros: '+Number(encontrado.ligacoes||0)+' ligação(ões), '+Number(encontrado.whatsapp||0)+' WhatsApp, '+Number(encontrado.email||0)+' e-mail(s).',
+        fonte:'RD Station / Board · horário de Brasília',
+        acao:'Abrir evidências da negociação para conferir autoria, horário e execução.'};
+    });
+    html+=criterionSection('Reconstrução diária ('+dias.length+' dias úteis)',itens,false);
+  }
+  const gaps=agente.intervalos||[];
+  if(gaps.length)html+=criterionSection('Intervalos sem registro',gaps.map(function(x){
+    return {titulo:agentDia(x.de)+' → '+agentDia(x.ate),status:'INDICIO',
+      detalhe:x.diasUteisSemRegistro+' dia(s) útil(eis) sem registro de tentativa entre as datas.',
+      fonte:'Calendário Brasil / fontes RD e Board',
+      acao:'Confirmar cobertura e motivo da pausa; não é desvio automático.'};
+  }),false);
+  html+='<p class="small">'+esc(agente.limite||'')+'</p>';
+  return html;
+}
 function rdMomento(x){
   if(!x)return 'Em andamento';
   const date=new Date(x);
@@ -538,7 +599,7 @@ const notice=currentData.diagnosticoRdOperacional?
  'Leitura de execução do Histórico RD, com origem, autor e etapa. Não confunda abertura de WhatsApp, tarefa concluída ou convite com conversa realizada.':
  'Aguardando História visual completa do RD para evitar recomendações sem contexto.')+'</div>':
 '<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
-let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
+let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='cadencia'?cadenceAgent(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}

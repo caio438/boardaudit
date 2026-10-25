@@ -10,6 +10,131 @@ const VOLUM_WIDGET = Object.freeze({
   versao: '0.4.7'
 });
 
+/**
+ * Reconstroi LEAD/CADENCIA com historico visual RD aceito e completo.
+ * A abertura de WhatsApp nao vira mensagem enviada; o evento de email
+ * enviado e diferente de resposta, nota ou tarefa.
+ */
+/**
+ * Campos de origem/campanha e faturamento sao observados no estado ATUAL.
+ * Sem snapshot de criacao ou alteracao historica nao rotular como declaracao
+ * original do formulario e nao habilitar regra de LMV automaticamente.
+ */
+function viWidgetCadastroLeadApi_(cadastro) {
+  const c=cadastro||{};
+  const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const campos=Array.isArray(c.camposPersonalizados)?c.camposPersonalizados:[];
+  const campo=campos.find(f=>/(^|\W)(lmv|faturamento|receita\s+mensal)(\W|$)/.test(normal(f.nome||'')));
+  const bruto=campo?.valorAtual;
+  return {
+    origem:String(c.origem||''),campanha:String(c.campanha||''),
+    lmvAtual:campo?String(Array.isArray(bruto)?bruto.join(' / '):bruto||'').slice(0,160):'',
+    lmvCampo:campo?String(campo.nome||'').slice(0,100):'',
+    lmvAtualizadoEm:campo?String(campo.atualizadoEm||''):'',
+    lmvDeclarado:''
+  };
+}
+
+function viWidgetProntidaoAgentes_(leitura,agentes) {
+  const lista=Array.isArray(agentes)?agentes:[];
+  const origem=leitura||{};
+  const f=origem.fontes||{};
+  const c=(origem.historicoRdEtapas||{}).linhaDoTempo?.cobertura||{};
+  const visualCompleto=c.acessivel===true&&c.completo===true&&!(c.lacunas||[]).length;
+  const tarefasCompletas=f.tarefas?.completo===true;
+  const dados=viWidgetCadastroLeadApi_(origem.cadastroRd||{});
+  const d=lista.find(x=>x.agente==='CADENCIA')||{};
+  const perfil=d.indicadores||{};
+  const regraAplicavel=['POSITIVO','NEGATIVO'].includes(String(perfil.lmv||''))&&
+    String(perfil.fluxo||'')==='INBOUND'&&
+    String(perfil.modoSdr||'')==='HUMANO';
+  function resumo(nome,bloqueios){
+    const a=lista.find(x=>x.agente===nome)||{};
+    const criterios=Array.isArray(a.criterios)?a.criterios:[];
+    return {agente:nome,estado:'AUDITORIA_PARCIAL_SEM_NOTA',totalCriterios:criterios.length,
+      registrosEIndicios:criterios.filter(x=>['EVIDENCIADO','INDICIO'].includes(x.status)).length,
+      indisponiveis:criterios.filter(x=>!['EVIDENCIADO','INDICIO'].includes(x.status)).length,
+      historicoVisualCompleto:visualCompleto,tarefasApiCompletas:tarefasCompletas,
+      bloqueios,bloqueadoParaPontuacao:true,
+      observacao:'Quantidade de evidencias nao equivale a percentual de compliance.'};
+  }
+  const bLead=[];
+  if(!visualCompleto)bLead.push('Historico visual nao validado integralmente; nao concluir ausencias.');
+  if(!origem.negociacao?.criadaEm)bLead.push('Horario de criacao indisponivel.');
+  if(!dados.lmvAtual)bLead.push('Campo atual de faturamento/LMV nao localizado.');
+  bLead.push('LMV ORIGINAL e origem no momento da entrada ainda precisam de comprovacao historica.');
+  bLead.push('SLA de entrada e obrigatoriedade dos campos ainda precisam de regra homologada.');
+  const bCad=[];
+  if(!visualCompleto)bCad.push('Historico visual RD incompleto; sem prova de ausencia de contatos.');
+  if(!tarefasCompletas)bCad.push('Coleta de tarefas RD incompleta.');
+  if(!regraAplicavel)bCad.push('Faixa LMV, fluxo inbound e modo SDR humano nao foram confirmados para aplicar a regua.');
+  if(perfil.calendarioFeriadosLocaisConfirmado!==true)bCad.push('Calendario local e excecoes operacionais ainda nao homologados.');
+  bCad.push('Abertura do WhatsApp e tarefa concluida nao comprovam envio nem conversa; confirmar em fonte de mensagens/telefonia.');
+  return {lead:resumo('LEAD',bLead),cadencia:resumo('CADENCIA',bCad),
+    fontes:{historicoVisualCompleto:visualCompleto,apiTarefasCompletas:tarefasCompletas,
+      apiAtividadesCompletas:f.atividades?.completo===true,
+      boardTelefoniaDisponivel:f.board?.acessivel===true},
+    politica:'SEM_PONTUACAO_AUTOMATICA_SEM_EVIDENCIA_E_REGRA'};
+}
+
+function viWidgetAgentesDetalhados_(leitura) {
+  const base=Array.isArray(leitura.cerebros)?leitura.cerebros:[];
+  const historico=leitura.historicoRdEtapas||{};
+  const visual=historico.linhaDoTempo||{};
+  const cobertura=visual.cobertura||{};
+  const eventos=Array.isArray(visual.eventos)?visual.eventos:[];
+  const completo=cobertura.acessivel===true&&cobertura.completo===true&&
+    eventos.length===Number(cobertura.totalVisual)&&
+    !(cobertura.lacunas||[]).length;
+  if(!completo)return base;
+  const tipoPorAcao={
+    EMAIL_ENVIADO:'email',EMAIL_RESPONDIDO:'response',
+    ANOTACAO:'note',WHATSAPP_ABERTO:'whatsapp_open'
+  };
+  const atividades=eventos.filter(e=>e&&e.data&&tipoPorAcao[e.acao]).map(e=>({
+    id:String(e.id||''),data:e.data,texto:String(e.texto||''),
+    tipo:tipoPorAcao[e.acao],origemClassificacao:'RD_UI_HISTORY',
+    autor:String(e.autor||''),acaoVisual:e.acao
+  }));
+  // WhatsApp aberto nunca fornece prova de envio. Nao se inventa ligacao a
+  // partir de tarefa visual; chamadas tecnicas seguem rastreaveis no Board.
+  const timeline=eventos.filter(e=>e&&e.data).map(e=>({
+    tipo:String(e.acao||'EVENTO_VISUAL'),data:e.data,id:String(e.id||''),
+    fonte:'RD_UI_HISTORY'
+  }));
+  const negociacao=leitura.negociacao||{};
+  const anterior=base.find(a=>a.agente==='CADENCIA')||{};
+  const perfil=anterior.indicadores||{};
+  const ctx={
+    criadaEm:negociacao.criadaEm||'',
+    inicioCadenciaEm:(Array.isArray(historico.janelas)?historico.janelas:[])
+      .find(x=>/cad[eê]ncia/i.test(String(x.etapaNome||'')))?.inicio||perfil.inicioReferencia||'',
+    negociacao:{responsavel:negociacao.responsavel||''},
+    cadastro:viWidgetCadastroLeadApi_(leitura.cadastroRd||{}),
+    regraLead:{},idCliente:leitura.idCliente||'',
+    regraCadencia:{
+      modoSdr:perfil.modoSdr||'NAO_DEFINIDO',fluxo:perfil.fluxo||'NAO_CONFIRMADO',
+      lmv:perfil.lmv||'NAO_CONFIRMADO',feriadosExtras:[],
+      calendarioLocalConfirmado:false
+    },
+    fontes:Object.assign({},leitura.fontes||{},{
+      atividades:{acessivel:true,completo:true,origem:'RD_UI_HISTORY'}
+    }),
+    atividades,tarefas:Array.isArray(leitura.tarefas)?leitura.tarefas:[],
+    ligacoes:Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[],
+    etapas:Array.isArray(historico.janelas)&&historico.janelas.length?
+      historico.janelas.map(x=>({etapaId:x.etapaId,inicio:x.inicio,nome:x.etapaNome})):
+      (Array.isArray(negociacao.historicoEtapas)?negociacao.historicoEtapas:[]),
+    timeline
+  };
+  const substitutos={LEAD:viCerebroLead_(ctx),CADENCIA:viCerebroCadencia_(ctx)};
+  substitutos.LEAD.indicadores.fontePrincipal='RD_UI_HISTORY';
+  substitutos.CADENCIA.indicadores.fontePrincipal='RD_UI_HISTORY + BOARD_API4COM';
+  substitutos.LEAD.limite+=' A origem em cadastro atual nao comprova o campo na data de entrada. Abertura WhatsApp nao comprova envio.';
+  substitutos.CADENCIA.limite+=' Os cartoes do RD sao a fonte principal de e-mails e notas; WhatsApp aberto nao equivale a envio.';
+  return base.map(a=>substitutos[a.agente]||a);
+}
+
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const email = viWidgetEmailSessao_();
   const emailSolicitado = String(identidade || '').trim().toLowerCase();
@@ -27,6 +152,12 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
+  parecer.agentesDetalhados=viWidgetAgentesDetalhados_(leitura).map(function(a){
+    return {agente:a.agente,estado:a.estado,indicadores:a.indicadores||{},
+      criterios:a.criterios||[],calendario:a.calendario||[],
+      intervalos:a.intervalos||[],limite:a.limite||''};
+  });
+  parecer.prontidaoAgentes=viWidgetProntidaoAgentes_(leitura,parecer.agentesDetalhados);
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
 
   // Uma captura visual completa substitui os palpites de funil e os totais do
