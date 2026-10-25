@@ -86,12 +86,13 @@ assert.match(ext,/searchParams\.set\('volum_widget','1'\)/);
 assert.match(ext,/searchParams\.set\('dealId',id\)/);
 assert.match(extCss,/color-scheme:dark/);
 assert.doesNotMatch(extHtml,/<footer|<header/);
-assert.equal(manifest.version,'0.3.4');
+assert.equal(manifest.version,'0.3.5');
 assert.ok(manifest.permissions.includes('sidePanel'),'O painel nativo reserva espaço para o RD de forma confiável.');
 assert.equal(manifest.side_panel.default_path,'sidebar.html');
 assert.ok(!manifest.permissions.includes('windows'),'O painel lateral não deve abrir uma janela separada.');
 assert.match(worker,/chrome\.sidePanel\.open/);
 assert.match(worker,/chrome\.sidePanel\.setOptions/);
+assert.match(worker,/openPanelOnActionClick: true/);
 assert.match(ext,/DEFAULT_VOLUM_ENDPOINT/);
 assert.match(worker,/DEFAULT_VOLUM_ENDPOINT/);
 
