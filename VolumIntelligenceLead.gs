@@ -664,7 +664,7 @@ function viCadenciaCanaisTexto_(atividade) {
   const temVerbo=/\b(enviei|enviado|enviada|envio realizado|mandei|disparei|disparo realizado|liguei|ligacao realizada|chamada realizada|tentei ligar|tentativa de ligacao|realizamos contato|encaminhei|contactei|fizemos contato)\b/i.test(n);
   const futuro=/\b(vou enviar|vamos enviar|irei enviar|preciso enviar|a enviar|vou ligar|vamos ligar|preciso ligar|devera enviar|pretendo enviar)\b/i.test(n);
   const negado=/\b(nao enviei|nao foi enviado|nao mandei|nao liguei|sem envio|sem ligacao|nao houve contato)\b/i.test(n);
-  if((futuro||negado)&&!tipoConfiavel)return [];
+  if(futuro||negado)return [];
   // Alguns registros agregam WhatsApp 0 e email 0 na mesma atividade.
   const channels=[];
   if(tipoConfiavel&&tipo==='email')channels.push('EMAIL');
