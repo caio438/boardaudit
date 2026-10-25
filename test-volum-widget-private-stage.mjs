@@ -32,6 +32,17 @@ try {
  assert.equal(fs.readFileSync(path.join(stage,'VolumWidgetPanel.html'),'utf8'),'V2');
  assert.equal(JSON.parse(fs.readFileSync(path.join(stage,'appsscript.json'),'utf8')).webapp.executeAs,'USER_ACCESSING');
  assert.equal(JSON.parse(fs.readFileSync(meta,'utf8')).widgetId,widgetId);
+ const lateBoard="function doGet(e){return 'BOARD_INTACTO';}\nfunction widgetOldRouter(){return 'volum_widget';}";
+ fs.writeFileSync(path.join(live,'Code.js'),lateBoard);
+ const second=path.join(base,'patched');
+ const result2=prepareWidgetPrivateStage(repo,live,second,deployments,path.join(base,'meta3.json'));
+ assert.equal(result2.boardRouteOnlyPatch,true);
+ assert.equal(result2.boardSourceUnchanged,false);
+ const injected=fs.readFileSync(path.join(second,'Code.gs'),'utf8');
+ assert.match(injected,/if \(e && e\.parameter && String\(e\.parameter\.volum_widget/);
+ assert.ok(injected.includes("return viWidgetRenderizarWebApp_(e);"));
+ assert.ok(injected.endsWith(lateBoard.slice("function doGet(e){".length)));
+ 
  assert.throws(()=>prepareWidgetPrivateStage(repo,live,path.join(base,'invalid'),
     'Found 2 deployments.\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - Other\n',path.join(base,'meta2.json')),/nao identificada/);
  console.log('Release privado: fonte do board preservada, implantacao 433 unica e manifesto protegido');
