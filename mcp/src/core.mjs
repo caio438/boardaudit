@@ -190,7 +190,12 @@ export function buildHistory(raw,{dealId,clientKey,roleMap={},boardSnapshot=null
     const k=event.source+'|'+event.id+'|'+event.kind;
     if(known.has(k))return;
     known.add(k);
-    events.push({...event,role:event.userId?roleOf(event.userId):'NAO_COMPROVADO'});
+    const declarada=event.roleOrigin==='BOARD_FUNCAO' &&
+      ['SDR','CLOSER'].includes(event.boardRole)?event.boardRole:'';
+    const role=declarada||(event.userId?roleOf(event.userId):'NAO_COMPROVADO');
+    events.push({...event,role,
+      roleEvidence:declarada?'CAMPO_FUNCAO_BOARD':
+        role!=='NAO_COMPROVADO'?'MAPA_DE_USUARIOS_HOMOLOGADO':'NAO_COMPROVADO'});
   }
   const dealCreated=normalizeDate(deal.created_at);
   add({id:'created',source:'RD_NEGOCIACAO',kind:'DEAL_CREATED',at:dealCreated,
@@ -221,22 +226,56 @@ export function buildHistory(raw,{dealId,clientKey,roleMap={},boardSnapshot=null
       dueAt:scheduled,done:true,taskType:String(t.type||'')});
   });
   const coverage={...raw.coverage};
-  let board=[];
-  if(boardSnapshot && boardSnapshot.clientKey===clientKey &&
+  let board=[],meetings=[];
+  const verified=boardSnapshot &&
+    boardSnapshot.clientKey===clientKey &&
     String(boardSnapshot.dealId||'').toLowerCase()===id &&
-    Array.isArray(boardSnapshot.calls)){
+    Array.isArray(boardSnapshot.calls);
+  if(verified){
     board=boardSnapshot.calls.filter(c=>String(c.dealId||'').toLowerCase()===id);
+    meetings=(Array.isArray(boardSnapshot.meetings)?boardSnapshot.meetings:[])
+      .filter(m=>String(m.dealId||'').toLowerCase()===id);
     coverage.board={accessible:true,complete:boardSnapshot.complete===true,
-      records:board.length,origin:'SNAPSHOT_LOCAL_VALIDADO'};
-    board.forEach((c,i)=>{
-      const idCall=String(c.id||digest([c.at,c.taskId,i].join('|')));
-      add({id:idCall,source:'BOARD_LIGACAO',kind:'CALL_RECORDED',
-        at:normalizeDate(c.at),label:'Ligacao registrada no board',
-        userId:String(c.userId||''),
-        text:'Duracao registrada: '+Math.max(0,Number(c.durationSeconds)||0)+'s. Nao comprova conversa.',
-        taskId:String(c.taskId||''),hasRecording:Boolean(c.hasRecording),
-        transcriptionStatus:String(c.transcriptionStatus||'DESCONHECIDA')});
-    });
+      records:board.length+meetings.length,calls:board.length,meetings:meetings.length,
+      origin:boardSnapshot.origin||'SNAPSHOT_LOCAL_VALIDADO',
+      sourceCoverage:boardSnapshot.coverage||null};
+    const transcriptRecords=board.concat(meetings).filter(e=>e.transcriptExcerpt);
+    coverage.transcripts={
+      accessible:transcriptRecords.length>0,complete:false,
+      metadataAccessible:Boolean(boardSnapshot.coverage?.transcripts?.metadataAccessible),
+      records:boardSnapshot.coverage?.transcripts?.records||0,
+      excerptsRead:transcriptRecords.length,
+      reason:transcriptRecords.length?'EXCERTO_PARCIAL':'AUDIO_OU_TEXTO_NAO_LIDO'
+    };
+    const register=(e,kind,source,i)=>{
+      const eventId=String(e.id||digest([e.at,e.taskId,i].join('|')));
+      const declared=e.roleOrigin==='BOARD_FUNCAO' &&
+        ['SDR','CLOSER'].includes(e.role)?e.role:'';
+      const at=normalizeDate(e.at);
+      const duration=Math.max(0,Number(e.durationSeconds)||0);
+      add({id:eventId,source,kind,at,
+        label:kind==='CALL_RECORDED'?'Ligacao registrada no board':'Reuniao registrada no board',
+        userId:String(e.userId||''),boardRole:declared,roleOrigin:e.roleOrigin,
+        responsibleLabel:redact(e.responsibleLabel||'',90),
+        text:kind==='CALL_RECORDED'?
+          'Duracao registrada: '+duration+'s. Nao comprova conversa.':
+          'Registro de reuniao nao comprova realizacao ou pitch.',
+        durationSeconds:kind==='CALL_RECORDED'?duration:null,
+        taskId:String(e.taskId||''),hasRecording:Boolean(e.hasRecording),
+        transcriptionStatus:String(e.transcriptionStatus||'DESCONHECIDA'),
+        hasTranscript:Boolean(e.hasTranscript),auditStatus:String(e.auditStatus||'NAO_INFORMADO')});
+      if(e.transcriptExcerpt){
+        add({id:eventId,source:'BOARD_TRANSCRICAO',kind:'TRANSCRIPT_EXCERPT',
+          at,label:'Excerto de transcricao no board',
+          userId:String(e.userId||''),boardRole:declared,roleOrigin:e.roleOrigin,
+          parentEvidenceId:source+'/'+kind+'/'+eventId,
+          text:redact(e.transcriptExcerpt,4000),
+          partial:true,classification:'TEXTO_TRANSCRICAO_NAO_VALIDADO',
+          interpretation:'Transcricao exige conferencia de falantes, contexto e qualidade.'});
+      }
+    };
+    board.forEach((c,i)=>register(c,'CALL_RECORDED','BOARD_LIGACAO',i));
+    meetings.forEach((m,i)=>register(m,'MEETING_RECORDED','BOARD_REUNIAO',i));
   }
   events.sort((a,b)=>a.at.localeCompare(b.at)||
     a.source.localeCompare(b.source)||a.id.localeCompare(b.id));
@@ -245,6 +284,7 @@ export function buildHistory(raw,{dealId,clientKey,roleMap={},boardSnapshot=null
   if(!coverage.activities?.complete)warnings.push('Atividades RD incompletas, conflitantes ou parcialmente paginadas.');
   if(!coverage.board?.accessible)warnings.push('Ligacoes do board nao integradas nesta execucao.');
   if(!coverage.transcripts?.accessible)warnings.push('Audios e transcricoes nao lidos; nao validar pitch ou conversa.');
+  else warnings.push('Excertos de transcricoes sao parciais: revisar conteudo integral e identificacao dos falantes.');
   if(!coverage.proposals?.accessible)warnings.push('PDF e comprovante de envio/recebimento nao coletados.');
   return {
     mode:'READ_ONLY',clientKey,dealId:id,generatedAt:normalizeDate(now),
@@ -261,6 +301,10 @@ export function auditSalesOps(history,{now=new Date()}={}) {
   const stage=String(d.stageName||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const closed=d.closureState==='GANHA'||d.closureState==='PERDIDA'||/perdid|ganh|encerrad/.test(stage);
   const proposal=/proposta|negociacao|follow|recovery|recuperacao/.test(stage);
+  const boardCalls=events.filter(e=>e.kind==='CALL_RECORDED');
+  const callsSdr=boardCalls.filter(e=>e.role==='SDR'&&e.roleEvidence==='CAMPO_FUNCAO_BOARD');
+  const callsCloser=boardCalls.filter(e=>e.role==='CLOSER'&&e.roleEvidence==='CAMPO_FUNCAO_BOARD');
+  const pendentes=boardCalls.filter(e=>e.transcriptionStatus==='PENDENTE');
   const notes=events.filter(e=>e.source==='RD_ATIVIDADE'&&e.text);
   const tasks=events.filter(e=>e.kind==='TASK_CREATED'&&e.dueAt);
   const completed=new Set(events.filter(e=>e.kind==='TASK_COMPLETED').map(e=>e.id));
@@ -312,6 +356,22 @@ export function auditSalesOps(history,{now=new Date()}={}) {
     if(!stage)action('stage','MEDIA','Validar a etapa da negociacao.',
       'A API nao retornou nome de etapa confiavel.',[],'Etapa identificada no RD.');
   }
+
+  if(callsSdr.length>=3 && callsSdr.every(e=>Number(e.durationSeconds)>=0&&Number(e.durationSeconds)<=20)) {
+    const tempos=callsSdr.map(e=>Number(e.durationSeconds));
+    action('short-sdr-calls','MEDIA','Conferir resultado efetivo das ligacoes SDR e outros canais antes de contar conexoes.',
+      callsSdr.length+' ligacoes atribuidas ao papel SDR no board entre '+
+      Math.min(...tempos)+' e '+Math.max(...tempos)+
+      ' segundos. Este limiar de 20s e triagem, nao SLA de compliance.',
+      callsSdr.slice(0,3).map(e=>e.id),
+      'Atendimento real identificado com evidencia do canal, sem presumir conversa.');
+  }
+  if(pendentes.length>0&&pendentes.length===boardCalls.length)
+    action('transcripts-pending','BAIXA','Revisar disponibilidade das transcricoes antes de auditar pitch.',
+      pendentes.length+' chamadas do board com status PENDENTE; nao comprova falha do SDR.',
+      pendentes.slice(0,3).map(e=>e.id),
+      'Status tecnico conferido e gravacoes elegiveis identificadas.');
+
   if(!c.tasks?.complete||!c.activities?.complete)action('source-coverage','MEDIA',
     'Verificar cobertura das fontes antes de concluir compliance.',
     'Consulta incompleta impede declarar ausencia de acao.',[],
@@ -323,7 +383,8 @@ export function auditSalesOps(history,{now=new Date()}={}) {
     dealStatus:d.closureState,actions:actions.slice(0,6),
     nextTask:next?{id:next.id,label:next.label,dueAt:next.dueAt,role:next.role}:null,
     evidenceSummary:{totalEvents:events.length,
-      calls:events.filter(e=>e.kind==='CALL_RECORDED').length,
+      calls:boardCalls.length,sdrCallsDeclared:callsSdr.length,closerCallsDeclared:callsCloser.length,
+      transcriptsPending:pendentes.length,meetings:events.filter(e=>e.kind==='MEETING_RECORDED').length,
       notes:notes.length,missingRole:events.filter(e=>e.role==='NAO_COMPROVADO').length},
     dataCoverage:{rdComplete:Boolean(c.tasks?.complete&&c.activities?.complete),
       boardAvailable:Boolean(c.board?.accessible),transcriptsAvailable:Boolean(c.transcripts?.accessible),

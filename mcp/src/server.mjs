@@ -7,6 +7,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import fs from 'node:fs/promises';
+import { GoogleAuth } from 'google-auth-library';
+import { readBoardForDeal } from './board-sheets.mjs';
 import {readRdHistory,buildHistory,auditSalesOps,validateDealId} from './core.mjs';
 
 const token=process.env.VOLUM_RD_TOKEN||'';
@@ -35,6 +37,20 @@ if(process.env.VOLUM_BOARD_SNAPSHOT_FILE){
   }catch{throw new Error('Snapshot local do board invalido ou fora do cliente autorizado.');}
 }
 
+
+const boardConfig={
+  spreadsheetId:String(process.env.VOLUM_BOARD_SPREADSHEET_ID||'').trim(),
+  clientId:String(process.env.VOLUM_BOARD_CLIENT_ID||'').trim(),
+  includeTranscriptExcerpts:process.env.VOLUM_BOARD_TRANSCRIPT_EXCERPTS==='SIM'
+};
+const liveBoard=Boolean(boardConfig.spreadsheetId&&boardConfig.clientId);
+if(Boolean(boardConfig.spreadsheetId)!==Boolean(boardConfig.clientId))
+  throw new Error('VOLUM_BOARD_SPREADSHEET_ID e VOLUM_BOARD_CLIENT_ID devem estar juntos.');
+// O ambiente local de testes continua sem Google ADC por padrao.
+const googleAuth=liveBoard?new GoogleAuth({
+  scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']
+}):null;
+
 const cache=new Map(),CACHE_TTL_MS=60000;
 async function history(clientKey,dealId){
   if(clientKey!==allowedClient)throw new Error('Cliente sem autorizacao neste servidor privado.');
@@ -44,7 +60,17 @@ async function history(clientKey,dealId){
   if(existing && existing.expires>Date.now())return existing.promise;
   const promise=(async()=>{
     const raw=await readRdHistory({dealId:id,token});
-    return buildHistory(raw,{dealId:id,clientKey,roleMap,boardSnapshot:snapshot});
+    let boardSnapshot=snapshot;
+    if(liveBoard){
+      const googleToken=await googleAuth.getAccessToken();
+      if(!googleToken)throw new Error('Credencial Google Sheets read-only indisponivel.');
+      boardSnapshot=await readBoardForDeal({
+        dealId:id,clientKey,boardClientId:boardConfig.clientId,
+        spreadsheetId:boardConfig.spreadsheetId,accessToken:googleToken,
+        includeTranscriptExcerpts:boardConfig.includeTranscriptExcerpts
+      });
+    }
+    return buildHistory(raw,{dealId:id,clientKey,roleMap,boardSnapshot});
   })();
   cache.set(key,{expires:Date.now()+CACHE_TTL_MS,promise});
   try{return await promise;}catch(e){cache.delete(key);throw e;}
