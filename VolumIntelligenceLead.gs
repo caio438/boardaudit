@@ -88,6 +88,30 @@ function viLeadRdGet_(token, caminho, filtros) {
   }
 }
 
+
+/**
+ * Anexos são consultados na API v2, que exige Bearer. Retornamos apenas
+ * metadados necessários à auditoria; URL temporária e conteúdo ficam fora.
+ */
+function viLeadArquivosRd_(token, dealId) {
+  const vazio={itens:[],fonte:{acessivel:false,completo:false,quantidade:0,motivo:'NAO_CONSULTADO'}};
+  try {
+    const resposta=requisicaoJson_('https://api.rd.services/crm/v2/deals/'+encodeURIComponent(dealId)+'/files', {
+      method:'get',headers:{Accept:'application/json',Authorization:'Bearer '+token}
+    });
+    const lista=Array.isArray(resposta&&resposta.data)?resposta.data:(Array.isArray(resposta)?resposta:null);
+    if (!lista) throw new Error('Formato inesperado');
+    const itens=lista.map(function(item) {
+      const nome=String(item.name||'').trim().slice(0,240);
+      return {id:String(item.id||''),nome:nome,extensao:(nome.match(/\.([a-z0-9]{1,8})$/i)||[])[1]||'',
+        tamanhoBytes:Math.max(0,Number(item.size)||0),data:viLeadDataIso_(item.created_at)};
+    });
+    return {itens:itens,fonte:{acessivel:true,completo:true,quantidade:itens.length,origem:'RD_V2_DEAL_FILES'}};
+  } catch (erro) {
+    return Object.assign({},vazio,{fonte:{acessivel:false,completo:false,quantidade:0,motivo:'FALHA_CONSULTA_RD_V2'}});
+  }
+}
+
 function viLeadPaginar_(token, caminho, campo, dealId, filtrosExtra, maxPaginas) {
   const itens = [];
   let completo = false;
@@ -540,6 +564,8 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
 
   const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
+  const arquivosRd = viLeadArquivosRd_(vinculo.token, dealId);
+  fontes.arquivosRd = arquivosRd.fonte;
   const boardVinculado = viLeadInteracoesBoard_(interacoes, dealId, vinculo.idCliente);
   const metadadosTranscricoes = viLeadMetadadosTranscricoesBoard_(
     boardVinculado.map(function(item) { return item.id; })
@@ -618,6 +644,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     eventos: timeline,
     tarefas: tarefas,
     atividades: atividades,
+    arquivosRd: arquivosRd.itens,
     anotacoes: atividades.filter(a => a.tipo === 'note'),
     ligacoesBoard: ligacoes,
     reunioesBoard: reunioesBoard,
