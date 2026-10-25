@@ -232,3 +232,63 @@ function viRdAuditoriaJanelas_(negociacao,atividades,tarefas,catalogo,opcoes) {
     limite:'A API da negociacao informa o historico de etapas. Alteracoes de campo sao historicas apenas se o evento de changelog vier identificado. Campo atual, tarefa concluida e texto nao provam contato ou valor antigo. Compliance exige regra do cliente.'
   };
 }
+
+
+/**
+ * Coleta isolada do RD, SEM consultar INTERACOES/Board, API4COM ou tl;dv.
+ * A identidade do cliente é definida no contexto autorizado (não por nome de
+ * contato). Nunca devolve segredo ou URL de consulta contendo token.
+ */
+function viRdLerEtapasPorCliente_(entrada,idCliente,opcoes) {
+  const dealId=viLeadId_(entrada);
+  const cliente=String(idCliente||'').trim();
+  if(!/^CLI-[A-Za-z0-9_-]{10,70}$/.test(cliente))
+    throw new Error('Informe um ID de cliente canonico para a integracao RD.');
+  const integracao=obterIntegracaoCliente_(cliente,'RD_STATION');
+  if(!integracao||String(integracao.ATIVO||'').toUpperCase()!=='SIM')
+    throw new Error('Integracao RD nao ativa para o cliente autorizado.');
+  const token=obterSegredo_('INTEGRACAO_TOKEN_'+integracao.ID_INTEGRACAO);
+  if(!token)throw new Error('Token RD nao configurado na aplicacao.');
+  const retorno=viLeadRdGet_(token,'/deals/'+dealId,{});
+  const deal=retorno&&retorno.deal?retorno.deal:retorno;
+  if(String(deal&&(deal.id||deal._id)||'').toLowerCase()!==dealId)
+    throw new Error('Negociacao nao confirmada para a integracao selecionada.');
+  let tarefas=[],tarefasCompletas=false;
+  try {
+    const pagina=viLeadPaginar_(token,'/tasks','tasks',dealId);
+    tarefas=viLeadTarefas_(pagina.itens,!!(opcoes&&opcoes.incluirTextos));
+    tarefasCompletas=pagina.completo===true;
+  } catch(e) {tarefasCompletas=false;}
+  const lidas=viLeadColetarAtividades_(token,dealId);
+  const atividades=viLeadAtividades_(lidas.itens,!!(opcoes&&opcoes.incluirTextos));
+  const catalogo=viRdCatalogoEtapas_(token,deal);
+  const historico=viRdAuditoriaJanelas_(deal,atividades,tarefas,catalogo,{
+    fontesParciais:!lidas.completo||!tarefasCompletas
+  });
+  historico.cobertura.tarefas={acessivel:tarefasCompletas||tarefas.length>0,
+    completo:tarefasCompletas,quantidade:tarefas.length};
+  historico.cobertura.atividades={acessivel:Object.values(lidas.porTipo||{}).some(x=>x.acessivel),
+    completo:lidas.completo===true,quantidade:atividades.length,
+    conflitosDeTipo:lidas.divergencias.length};
+  return historico;
+}
+
+/**
+ * Checagem manual somente leitura no editor Apps Script, restrita a um lead.
+ * Retorna apenas datas e contagens: nao loga anotacoes, telefones ou tokens.
+ */
+function VOLUM_RD_VALIDAR_ETAPAS_BEAGA() {
+  const r=viRdLerEtapasPorCliente_(
+    '6acc888b98976f0023dc583f','CLI-20260803131300-C4455D17',
+    {incluirTextos:false}
+  );
+  return {sucesso:true,modo:'PREVIEW_SOMENTE_RD',
+    passagens:r.resumo.passagensConsolidadas,
+    entradasDuplicadas:r.resumo.duplicatasConciliadas,
+    eventos:r.resumo.quantidadeEventosRd,
+    cobertura:r.cobertura,
+    etapas:r.janelas.map(x=>({etapaId:x.etapaId,nome:x.etapaNome,
+      inicio:x.inicio,fim:x.fim,status:x.status,contagens:x.contagens})),
+    inconsistencias:r.inconsistencias
+  };
+}
