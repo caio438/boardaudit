@@ -127,7 +127,7 @@ button,input{font:inherit}button{cursor:pointer}
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
 const embedMode=true;
-if(embedMode)document.documentElement.classList.add('volum-embedded');
+if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
 let activeTab='visao';
 let activeFilter='todos';
