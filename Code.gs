@@ -729,6 +729,12 @@ function audBuildAtual_() {
 
 function doGet(e) {
   const parametros = e && e.parameter ? e.parameter : {};
+  // Rota da widget do Chrome: somente leitura, autenticacao privada no handler.
+  // A extensao instalada usa ?dealId=<id>; a pagina normal do board permanece intacta.
+  if (Object.prototype.hasOwnProperty.call(parametros, 'dealId') ||
+      String(parametros.volum_widget || '') === '1') {
+    return viWidgetRenderizarWebApp_(e);
+  }
 
   if (String(parametros.ops_disable_all_automation || '') === '1') {
     const ativoOps = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
