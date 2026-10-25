@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.1'
+  versao: '0.4.2'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -1074,11 +1074,11 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   // O resumo nao deve inferir que nao ha autoria, quando o board possui FUNCAO=SDR.
   if(atribuicao.length && Array.isArray(operativo.notasDeConfiabilidade)){
     operativo.notasDeConfiabilidade=operativo.notasDeConfiabilidade.filter(function(texto){
-      return !/Nenhuma ligacao do board e atribuida ao papel SDR/.test(viWidgetNormalizar_(texto));
+      return !/nenhuma ligacao do board e atribuida ao papel sdr/.test(viWidgetNormalizar_(texto));
     });
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.1';
+  parecer.versao='0.4.2';
   return parecer;
 }
