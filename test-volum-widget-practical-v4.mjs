@@ -24,7 +24,7 @@ function fixture(changes={}){
  eventos:[],cerebros:[],...changes};}
 const input=fixture();
 const out=ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(input),input);
-assert.equal(out.versao,'0.4.3');
+assert.equal(out.versao,'0.4.4');
 assert.equal(out.operacional.tipo,'PROPOSTA_E_FOLLOWUP');
 assert.ok(out.operacional.fatos.some(x=>x.texto.includes('29/10/2026')));
 assert.equal(out.planoOtimizacaoSdr.itens.find(x=>x.id==='voip').status,'NAO_VERIFICAVEL');
