@@ -86,6 +86,80 @@ function viWidgetProntidaoAgentes_(leitura,agentes) {
     politica:'SEM_PONTUACAO_AUTOMATICA_SEM_EVIDENCIA_E_REGRA'};
 }
 
+/**
+ * Roteamento controlado RD_UI_HISTORY -> RD API. Completa o texto/metadata
+ * SOMENTE quando um unico evento do mesmo deal e do mesmo canal coincide
+ * temporalmente. Sem match: manter o visual, nunca completar por semelhanca.
+ */
+function viWidgetConciliarAtividadesAgentes_(leitura,eventos) {
+  const deal=String(leitura.dealId||'').toLowerCase();
+  const api=(Array.isArray(leitura.atividades)?leitura.atividades:[])
+    .filter(a=>a&&a.data&&String(a.dealId||'').toLowerCase()===deal&&
+      ['email','note'].includes(String(a.tipo||'').toLowerCase()));
+  const usados=new Set();
+  let correspondencias=0,ambiguos=0,visuaisSemMatch=0;
+  const mapeadas=(Array.isArray(eventos)?eventos:[]).map(e=>{
+    const visual={id:String(e.id||''),data:e.data,texto:String(e.texto||'').slice(0,950),
+      tipo:e.tipo,origemClassificacao:'RD_UI_HISTORY',autor:String(e.autor||''),
+      acaoVisual:e.acao,passagemId:String(e.passagemId||''),
+      fontesConciliadas:['RD_UI_HISTORY']};
+    const tipo=e.acao==='EMAIL_ENVIADO'?'email':e.acao==='ANOTACAO'?'note':'';
+    if(!tipo||!e.data)return visual;
+    const hora=Date.parse(e.data);
+    if(!Number.isFinite(hora))return visual;
+    const matches=api.filter(a=>String(a.tipo).toLowerCase()===tipo&&
+      !usados.has(String(a.id))&&Math.abs(Date.parse(a.data)-hora)<=90000&&
+      (tipo!=='note'||!a.texto||String(e.texto||'').toLowerCase().includes(
+        String(a.texto||'').toLowerCase().slice(0,Math.min(32,String(a.texto).length)))));
+    if(matches.length!==1){if(matches.length>1)ambiguos++;
+      else visuaisSemMatch++;return visual;}
+    const achado=matches[0];
+    usados.add(String(achado.id));correspondencias++;
+    visual.idAtividadeApi=String(achado.id||'');
+    visual.fontesConciliadas.push('RD_API_ATIVIDADES');
+    visual.temLinkGravacao=achado.temLinkGravacao===true;
+    if(achado.texto&&tipo==='email')visual.texto=(
+      String(e.texto||'').slice(0,250)+' · '+String(achado.texto||'').slice(0,700)).slice(0,950);
+    return visual;
+  });
+  return {atividades:mapeadas,rastreio:{
+    modo:'CORRELACAO_UNICA_DEAL_CANAL_90_SEGUNDOS',eventosVisuais:mapeadas.length,
+    atividadesApiElegiveis:api.length,eventosConciliados:correspondencias,
+    pareamentosAmbiguos:ambiguos,eventosSemPareamento:visuaisSemMatch,
+    politica:'Sem identidade unica, o detalhe da API nao substitui o evento visual.'}};
+}
+function viWidgetRastrearDadosAgentes_(leitura,parecer,solicitouIa){
+  const h=leitura.historicoRdEtapas?.linhaDoTempo||{},c=h.cobertura||{};
+  const aud=leitura.auditoriasBoard||{},meta=aud.cobertura||{};
+  const agentes=parecer.agentesDetalhados||[];
+  const ia=parecer.interpretacao||{};
+  return {
+    versao:'TRILHA_DE_EVIDENCIAS_V1',
+    negociacaoIdConfirmado:leitura.dealId||'',
+    historicoRd:{eventos:(h.eventos||[]).length,completo:c.completo===true,
+      paginas:Number(c.paginasCarregadas||0),lacunas:(c.lacunas||[]).slice(0,5)},
+    rdApi:{atividades:(leitura.atividades||[]).length,
+      atividadesCompletas:leitura.fontes?.atividades?.completo===true,
+      tarefas:(leitura.tarefas||[]).length,
+      tarefasCompletas:leitura.fontes?.tarefas?.completo===true,
+      arquivos:(leitura.arquivosRd||[]).length,
+      arquivosCompletos:leitura.fontes?.arquivosRd?.completo===true},
+    correlacaoRd:leitura.rastreioAtividades||{motivo:'HISTORICO_VISUAL_NAO_CONCILIADO'},
+    board:{interacoes:(leitura.ligacoesBoard||[]).length+(leitura.reunioesBoard||[]).length,
+      auditoriasValidadas:(aud.itens||[]).length,
+      auditoriasSdr:(aud.itens||[]).filter(x=>x.tipo==='SDR').length,
+      auditoriasCloser:(aud.itens||[]).filter(x=>x.tipo==='CLOSER').length,
+      cobertura:meta.completo===true},
+    ia:{solicitada:solicitouIa===true,disponivel:ia.disponivel===true,
+      fatosComReferenciaAceita:(ia.fatos||[]).length,
+      fatosRejeitados:Number(ia.referenciasDescartadas||0),
+      politica:'IA sugere interpretacoes; nao substitui prova ou valida compliance.'},
+    agentes:agentes.map(a=>({agente:a.agente,criterios:(a.criterios||[]).length,
+      comRegistro:(a.criterios||[]).filter(x=>['EVIDENCIADO','INDICIO'].includes(x.status)).length,
+      semConclusao:(a.criterios||[]).filter(x=>!['EVIDENCIADO','INDICIO','NAO_APLICAVEL'].includes(x.status)).length}))
+  };
+}
+
 function viWidgetAgentesDetalhados_(leitura) {
   const base=Array.isArray(leitura.cerebros)?leitura.cerebros:[];
   const historico=leitura.historicoRdEtapas||{};
@@ -100,12 +174,11 @@ function viWidgetAgentesDetalhados_(leitura) {
     EMAIL_ENVIADO:'email',EMAIL_RESPONDIDO:'response',
     ANOTACAO:'note',WHATSAPP_ABERTO:'whatsapp_open'
   };
-  const atividades=eventos.filter(e=>e&&e.data&&tipoPorAcao[e.acao]).map(e=>({
-    id:String(e.id||''),data:e.data,texto:String(e.texto||''),
-    tipo:tipoPorAcao[e.acao],origemClassificacao:'RD_UI_HISTORY',
-    autor:String(e.autor||''),acaoVisual:e.acao,
-    passagemId:String(e.passagemId||'')
-  }));
+  const conciliados=viWidgetConciliarAtividadesAgentes_(leitura,
+    eventos.filter(e=>e&&e.data&&tipoPorAcao[e.acao]).map(e=>
+      Object.assign({},e,{tipo:tipoPorAcao[e.acao]})));
+  const atividades=conciliados.atividades;
+  leitura.rastreioAtividades=conciliados.rastreio;
   // WhatsApp aberto nunca fornece prova de envio. Nao se inventa ligacao a
   // partir de tarefa visual; chamadas tecnicas seguem rastreaveis no Board.
   const timeline=eventos.filter(e=>e&&e.data).map(e=>({
@@ -279,9 +352,18 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   if(inteligenciaRd.ativo && parecer.interpretacao)
     parecer.interpretacao=viWidgetValidarInterpretacaoRd_(parecer.interpretacao,leitura);
+  // A interpretacao por IA permanece INDICIO, mas agora chega as abas corretas.
+  if(parecer.planosIntegradosWisetec?.ativo&&parecer.interpretacao?.fatos?.length){
+    const fatos=parecer.interpretacao.fatos;
+    parecer.planosIntegradosWisetec.sdr.insightsIa=fatos.filter(x=>
+      ['LEAD','CADENCIA','CONEXAO','AGENDA'].includes(x.agente));
+    parecer.planosIntegradosWisetec.closer.insightsIa=fatos.filter(x=>
+      ['REUNIAO'].includes(x.agente));
+  }
+  parecer.trilhaDadosAgentes=viWidgetRastrearDadosAgentes_(leitura,parecer,usarGemini);
   delete parecer.contextoIa;
   // Versionar a resposta inteira para identificar o backend realmente implantado.
-  parecer.versao='0.5.0-RD';
+  parecer.versao='0.5.1-RD';
   return parecer;
 }
 

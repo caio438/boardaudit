@@ -253,21 +253,65 @@ function viWidgetContextoHistoricoRd_(leitura,diagnostico) {
   };
 }
 
-function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
-  if(!interpretacao || interpretacao.disponivel===false)return {disponivel:false,motivo:'IA_INDISPONIVEL'};
-  const ids=new Set((((leitura.historicoRdEtapas||{}).linhaDoTempo||{}).eventos||[])
-    .map(e=>String(e.id||'')));
-  const refs=Array.isArray(interpretacao.fatos)?interpretacao.fatos:[];
-  const fatos=refs.filter(f=>ids.has(String(f.referencia||f.ref||'')) &&
-      String(f.conclusao||'').trim())
-    .slice(0,7).map(f=>({criterio:String(f.criterio||'').slice(0,90),
-      conclusao:viWidgetSanitizar_(f.conclusao).slice(0,500),
-      referencia:String(f.referencia||f.ref),fonte:'RD_UI_HISTORY',
-      confianca:'ANALISE_IA_SOBRE_EVENTO_VERIFICADO'}));
-  return {disponivel:fatos.length>0,fatos,
-    limite:'Análise interpretativa: o vínculo da referência com o registro existe, mas a conclusão ainda exige crítica do Sales Ops.'};
+function viWidgetAgenteEventoIa_(e,leitura){
+  const stage=String(e.etapaNome||(leitura.historicoRdEtapas?.janelas||[])
+    .find(j=>j.passagemId===e.passagemId)?.etapaNome||'');
+  const normal=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const t=normal(e.texto),s=normal(stage);
+  if(/(?:no.?show|agendad|convite|confirmou presenca|reagend|lembrete)/.test(t))
+    return 'AGENDA';
+  if(/proposta|follow.?up|recovery|recebimento|negociac|reuniao realizada/.test(t)
+      &&/apresenta|reuniao|proposta|negociac|follow/.test(s))return 'REUNIAO';
+  if(/apresenta|reuniao|proposta|negociac|follow|closer/.test(s))return 'REUNIAO';
+  if(/cadencia|prospecc|tentativa|primeir/.test(s))return 'CADENCIA';
+  if(/qualific|conex|interesse/.test(s))return 'CONEXAO';
+  return e.acao==='NEGOCIACAO_CRIADA'?'LEAD':'CADENCIA';
 }
-
+function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
+  if(!interpretacao || interpretacao.disponivel===false)
+    return {disponivel:false,motivo:'IA_INDISPONIVEL',fatos:[],referenciasDescartadas:0};
+  const eventos=((leitura.historicoRdEtapas||{}).linhaDoTempo||{}).eventos||[];
+  const porId=new Map(eventos.map(e=>[String(e.id||''),e]));
+  const normal=x=>String(x||'').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const origem=Array.isArray(interpretacao.fatos)?interpretacao.fatos:[];
+  const validos=[];
+  let descartadas=0;
+  for(const f of origem){
+    if(validos.length>=7)break;
+    const ref=String(f?.referencia||f?.ref||'');
+    const e=porId.get(ref);
+    const conclusao=String(f?.conclusao||'').trim();
+    if(!e||!conclusao){descartadas++;continue;}
+    const texto=normal(conclusao);
+    const eventoTipo=String(e.acao||'OUTRO_VISUAL_RD');
+    const fonteTexto=normal(e.texto||'');
+    // Uma referencia existente nao autoriza afirmacoes incompatíveis com o
+    // tipo do cartao. Estas regras so rejeitam; nunca elevam a conforme.
+    const origemFraca=['WHATSAPP_ABERTO','TAREFA_CRIADA','TAREFA_ATUALIZADA',
+      'ETAPA_ALTERADA','NEGOCIACAO_CRIADA'].includes(eventoTipo);
+    const afirmaConversa=/cliente (?:respondeu|conversou|atendeu)|conversa (?:realizada|confirmada)|ligacao atendida/.test(texto);
+    const afirmaEnvioWhats=/whats(?:app)?[^.]{0,60}(?:foi enviado|foi enviada|mensagem enviada|mensagem enviada|enviou)|(?:enviou|enviado)[^.]{0,40}whats/.test(texto);
+    const afirmaReuniao=/reuniao (?:foi )?realizada|reuniao aconteceu|cliente compareceu/.test(texto);
+    const afirmaRecebimento=/cliente (?:confirmou|acusou) (?:o )?recebimento|proposta (?:foi )?recebida/.test(texto);
+    if((origemFraca&&(afirmaConversa||afirmaReuniao||afirmaRecebimento))||
+       (eventoTipo==='WHATSAPP_ABERTO'&&afirmaEnvioWhats)||
+       (eventoTipo==='EMAIL_ENVIADO'&&(afirmaConversa||afirmaRecebimento))||
+       (eventoTipo==='ANOTACAO'&&afirmaReuniao&&
+         /(?:nao foi realizada|reuniao cancelada|reuniao desmarcada)/.test(fonteTexto))){
+      descartadas++;continue;
+    }
+    validos.push({criterio:String(f.criterio||'').slice(0,90),
+      conclusao:viWidgetSanitizar_(conclusao).slice(0,500),
+      referencia:ref,fonte:'RD_UI_HISTORY',tipoEvento:eventoTipo,
+      data:String(e.data||''),etapa:String(e.etapaNome||'').slice(0,100),
+      agente:viWidgetAgenteEventoIa_(e,leitura),
+      confianca:'INDICIO_INTERPRETATIVO_COM_REFERENCIA_RD'});
+  }
+  return {disponivel:validos.length>0,fatos:validos,
+    referenciasDescartadas:descartadas,
+    limite:'A IA so interpreta cartoes RD com referencia existente e tipo compativel. Indicio de IA nao e prova, auditoria ou nota de compliance.'};
+}
 
 /**
  * Plano SDR por registros documentados da negociacao, nao por todos os

@@ -86,7 +86,7 @@ assert.match(ext,/searchParams\.set\('volum_widget','1'\)/);
 assert.match(ext,/searchParams\.set\('dealId',id\)/);
 assert.match(extCss,/color-scheme:dark/);
 assert.doesNotMatch(extHtml,/<footer|<header/);
-assert.equal(manifest.version,'0.3.1');
+assert.equal(manifest.version,'0.3.2');
 assert.ok(!manifest.permissions.includes('sidePanel'),'Painel nativo cria a tarja cinza que não pode ser estilizada.');
 assert.equal(Object.hasOwn(manifest,'side_panel'),false);
 assert.match(content,/VOLUM_OPEN_INLINE_WIDGET/);
@@ -97,14 +97,22 @@ assert.match(content,/Minimizar VOLUM/);
 assert.match(content,/Fechar VOLUM/);
 
 const card={textContent:'',innerHTML:''};
-const doc={getElementById:id=>id==='volum-root'?{dataset:{dealId:'6acc888b98976f0023dc583f'}}:id==='card'?card:null};
+const doc={getElementById:id=>id==='volum-root'?{dataset:{dealId:'6acc888b98976f0023dc583f'}}:id==='card'?card:null,
+ querySelector:sel=>sel.includes('volum-history-nonce')?{content:'b'.repeat(32)}:
+   sel.includes('volum-cache-scope')?{content:'a'.repeat(32)}:null,
+ documentElement:{classList:{add(){}}}};
 const runner={withSuccessHandler(fn){this.success=fn;return this;},withFailureHandler(fn){this.failure=fn;return this;},
   VOLUM_WIDGET_AUDITAR_SESSAO(id,useIa){this.args=[id,useIa];}};
-const app=vm.createContext({document:doc,google:{script:{run:runner}},Intl,Date,Array,Number,Math,RegExp,Set,String,Object});
+const win={top:{postMessage(){}},addEventListener(){},
+  localStorage:{getItem:()=>null,removeItem(){},setItem(){}}};
+const app=vm.createContext({document:doc,window:win,google:{script:{run:runner}},
+  setTimeout:()=>1,clearTimeout:()=>{},
+  Intl,Date,Array,Number,Math,RegExp,Set,String,Object});
 vm.runInContext(script,app,{timeout:3000});
+app.runAudit(); // Teste da RPC isolada, apos a etapa de cache/historico.
 assert.equal(runner.args[0],'6acc888b98976f0023dc583f');
 assert.equal(runner.args[1],true);
-assert.equal(card.textContent,'Atualizando…');
+assert.match(card.textContent,/Lendo a negociação|Atualizando/);
 runner.success(parecer);
 assert.match(card.innerHTML,/Visão geral/);
 assert.match(card.innerHTML,/Inteligência/);

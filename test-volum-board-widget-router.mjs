@@ -11,6 +11,8 @@ new Function(main);
 new Function(bridge);
 const mock={
   Session:{getActiveUser:()=>({getEmail:()=> 'crm@govolum.com'})},
+  Utilities:{DigestAlgorithm:{SHA_256:'SHA_256'},computeDigest:(_,email)=>
+    Array.from({length:32},(_,i)=>String(email||'').charCodeAt(i%String(email).length)||0)},
   viLeadId_:value=> {
     if(!/^[0-9a-f]{24}$/.test(String(value)))throw new Error('ID invalido');
     return value;
