@@ -45,7 +45,7 @@ jobs:
           console.log('WIDGET_VERSION_433_MATCHES='+privateRows.filter(d=>d.version==='433').length);
           console.log('WIDGET_NAME_MATCHES='+privateRows.filter(d=>/VOLUM|INTELLIGENCE|WIDGET/i.test(d.description)).length);
           console.log('BOARD_VERSION='+(board[0] ? board[0].version : 'MISSING'));
-          const v2=privateRows.filter(d=>/VOLUM Intelligence Sales Ops V2/i.test(d.description));
+          const v2=privateRows.filter(d=>/VOLUM Intelligence Sales Ops V[23]/i.test(d.description));
           console.log('PRIVATE_WIDGET_V2_DEPLOYMENTS='+v2.length);
           console.log('PRIVATE_WIDGET_V2_VERSIONS='+v2.map(d=>d.version).join(','));
           if(board.length!==1)process.exitCode=2;
