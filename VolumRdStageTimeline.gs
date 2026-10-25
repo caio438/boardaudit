@@ -263,7 +263,7 @@ function viRdConciliarHistoricoUi_(historico, ui, dealId) {
     const k=chave(item); if(vistos[k])return; vistos[k]=true; eventos.push(item);
   });
   eventos.sort(function(a,b){return String(a.data||a.dataTexto).localeCompare(String(b.data||b.dataTexto))||a.id.localeCompare(b.id);});
-  base.linhaDoTempo={origem:'RD_UI_HISTORY+RD_V1',eventos:eventos,
+  base.linhaDoTempo={origem:'RD_UI_HISTORY',eventos:eventos,
     cobertura:{acessivel:recebido.coverage&&recebido.coverage.available===true,
       completo:recebido.coverage&&recebido.coverage.complete===true,
       totalVisual:Number(recebido.coverage&&recebido.coverage.totalVisual||eventos.length),
