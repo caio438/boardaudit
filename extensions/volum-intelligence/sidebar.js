@@ -17,6 +17,8 @@ async function audit(){
     if(url.protocol!=='https:'||url.hostname!=='script.google.com')throw new Error('URL de Web App inválida.');
     url.searchParams.set('volum_widget','1');
     url.searchParams.set('dealId',id);
+    const historyNonce=crypto.randomUUID().replace(/-/g,'');
+    url.searchParams.set('volum_history_nonce',historyNonce);
     if(activeDealId===id && $('summary').querySelector('iframe'))return;
     activeDealId=id;
     const frame=document.createElement('iframe');
@@ -30,12 +32,12 @@ async function audit(){
     const pendingReceivers=new Set();
     const relayTo=(target,origin)=>{
       if(!historyFromRd||!target||!origin)return;
-      try {target.postMessage({type:'VOLUM_RD_UI_HISTORY',dealId:id,history:historyFromRd},origin);}
+      try {target.postMessage({type:'VOLUM_RD_UI_HISTORY',dealId:id,history:historyFromRd,nonce:historyNonce},origin);}
       catch(_ignore) {}
     };
     const onHistoryRequest=(event)=>{
       const msg=event&&event.data||{};
-      if(msg.type!=='VOLUM_REQUEST_RD_UI_HISTORY'||msg.dealId!==id||!event.source)return;
+      if(msg.type!=='VOLUM_REQUEST_RD_UI_HISTORY'||msg.dealId!==id||msg.nonce!==historyNonce||!event.source)return;
       // Apenas o HTMLService autenticado hospedado no dominio Google.
       if(!/^https:\/\/(?:[a-z0-9-]+\.)?(?:googleusercontent\.com|script\.google\.com)$/i.test(event.origin||''))return;
       pendingReceivers.add({target:event.source,origin:event.origin});
