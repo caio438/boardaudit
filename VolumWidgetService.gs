@@ -577,7 +577,7 @@ function viWidgetPlanoSdr_(leitura) {
     'Conferir o no-show, ativar retomada prevista e confirmar novo horario com o lead.',
     'Anotacoes e tarefas RD','ALTA',detalhe(noShow),'OFICIAL');
   item('handoff','Passagem de bastao SDR para closer',
-    passagem?'INDICIO':encontroComData.length?'NAO_VERIFICAVEL':cT,
+    passagem?'INDICIO':'NAO_VERIFICAVEL',
     passagem?'Anotacao menciona o repasse; aceite, contexto e responsavel ainda devem ser conferidos.':
       encontroComData.length?'A reuniao foi marcada mas o repasse efetivo ao closer nao foi confirmado.':
       'Nao ha evidencia clara de repasse nas fontes disponibilizadas.',
