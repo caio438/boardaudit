@@ -704,10 +704,10 @@ function viCerebroCadencia_(ctx) {
     escopo==='INBOUND'&&['POSITIVO','NEGATIVO'].includes(lmv);
   const canais={};
   const registros=[];
-  const linksBoard=new Set();
+  const linksBoard=new Set(ligacoes.map(x=>String(x.tarefaId||'')).filter(Boolean));
   const closerIgnoradas=ligacoes.filter(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER').length;
   ligacoes.filter(x=>x.data&&String(x.funcaoDeclarada||'').toUpperCase()!=='CLOSER').forEach(l=>{
-    if(l.tarefaId)linksBoard.add(String(l.tarefaId));
+    // O ID de tarefa ja foi vinculado aos registros do board, inclusive closer.
     registros.push({dia:viCadenciaDiaBrasil_(l.data),data:l.data,canal:'LIGACAO',
       grau:'REGISTRO_TECNICO',fonte:'BOARD_API4COM',id:String(l.id||''),
       papel:String(l.funcaoDeclarada||'NAO_COMPROVADO'),descricao:'Tentativa no sistema de telefonia; nao comprova conversa.'});
@@ -739,7 +739,10 @@ function viCerebroCadencia_(ctx) {
   // nao vira violacao automatica quando falta LMV/versao/feriados locais.
   const entrada=viCadenciaDiaBrasil_(ctx.inicioCadenciaEm||ctx.criadaEm);
   const hoje=viCadenciaDiaBrasil_(ctx.agora||new Date());
-  const dias=viCadenciaDiasUteis_(entrada,modeloAplicavel?(lmv==='POSITIVO'?18:6):18,feriados);
+  const ultimoRegistro=registros.length?registros[registros.length-1].dia:'';
+  const limiteDias=modeloAplicavel?(lmv==='POSITIVO'?18:6):
+    (ultimoRegistro?Math.min(18,Math.max(1,viCadenciaIntervaloDiasUteis_(entrada,ultimoRegistro,feriados)+1)):0);
+  const dias=viCadenciaDiasUteis_(entrada,limiteDias,feriados);
   const porDia={};
   registros.forEach(r=>{
     if(!r.dia)return;
@@ -825,7 +828,8 @@ function viCerebroCadencia_(ctx) {
       ligacoesNoBoard:ligacoes.length-closerIgnoradas,ligacoesCloserExcluidas:closerIgnoradas,
       chamadasConcluidasNoRdSemCorrespondenciaNoBoard:candidatosTarefa.length,
       tentativasCandidatasSemDuplicacao:ligacoes.length-closerIgnoradas+candidatosTarefa.length,
-      diasComLigacoesNoBoard:Array.from(new Set(ligacoes.map(l=>viCadenciaDiaBrasil_(l.data)).filter(Boolean))).sort(),
+      diasComLigacoesNoBoard:Array.from(new Set(ligacoes.filter(l=>String(l.funcaoDeclarada||'')!=='CLOSER')
+        .map(l=>viCadenciaDiaBrasil_(l.data)).filter(Boolean))).sort(),
       ligacoesComReferenciaGravacao:ligacoes.filter(l=>l.temReferenciaGravacao&&String(l.funcaoDeclarada||'')!=='CLOSER').length},
     criterios,calendario,intervalos:gaps,
     limite:'Sem regua e LMV aplicaveis, registro de canal e feriados locais, a auditoria informa evidencias mas nao certifica compliance. Dias de feriado e fim de semana sao excluidos da contagem.'};
