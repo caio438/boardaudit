@@ -1,6 +1,6 @@
 {
   "name": "@volum/salesops-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Servidor MCP privado e somente leitura do historico comercial VOLUM",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "zod": "4.1.12"
+    "zod": "4.1.12",
+    "google-auth-library": "^10.4.0"
   }
 }
