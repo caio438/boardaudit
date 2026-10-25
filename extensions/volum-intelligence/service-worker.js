@@ -11,6 +11,10 @@ async function syncPanel(tabId, url) {
   if (id) await chrome.storage.session.set({ ['deal:' + tabId]: id });
 }
 
+chrome.runtime.onInstalled.addListener(() =>
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+);
+
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === 'complete') syncPanel(tabId, change.url || tab.url).catch(console.warn);
 });
@@ -19,8 +23,14 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   syncPanel(tabId, tab.url).catch(console.warn);
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type !== 'VOLUM_DEAL_ID') return;
-  const id = dealId(message.url);
-  if (sender.tab && id) chrome.storage.session.set({ ['deal:' + sender.tab.id]: id });
-  sendResponse({ dealId: id });
+  if (message.type === 'VOLUM_DEAL_ID') {
+    const id = dealId(message.url);
+    if (sender.tab && id) chrome.storage.session.set({ ['deal:' + sender.tab.id]: id });
+    sendResponse({ dealId: id });
+    return;
+  }
+  if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
+    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => sendResponse({ opened: true })).catch(() => sendResponse({ opened: false }));
+    return true;
+  }
 });
