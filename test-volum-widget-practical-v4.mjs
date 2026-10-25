@@ -33,6 +33,10 @@ assert.equal(out.inteligenciaComercial.itens.find(x=>x.id==='proposta').status,'
 assert.ok(out.operacional.acoes.some(x=>x.id==='recebimento'));
 assert.equal(out.operacional.papelSdrConfirmado,false);
 assert.equal(out.notaCompliance,null);
+const playbook=ctx.viWidgetPlaybookSalesOps_(input,out);
+assert.equal(playbook.compliance,'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA');
+assert.equal(playbook.etapas.find(x=>x.id==='tentativa').status,'NAO_VERIFICAVEL');
+assert.equal(playbook.etapas.find(x=>x.id==='proposta').status,'NAO_VERIFICAVEL');
 const empty=fixture({atividades:[],tarefas:[],ligacoesBoard:[],
  fontes:{tarefas:{acessivel:false,completo:false},atividades:{acessivel:false,completo:false}}});
 const weak=ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(empty),empty);
@@ -42,6 +46,8 @@ assert.ok(!weak.operacional.acoes.some(x=>x.id==='proximo-passo'));
 assert.match(panel,/\.volum-embedded \.topbar\{display:none\}/);
 assert.match(panel,/\.refresh-wrap\{position:static/);
 assert.match(panel,/function operation\(d\)/);
+assert.match(panel,/function playbook\(d\)/);
+assert.match(panel,/Playbook VOLUM/);
 assert.match(panel,/Todos os critérios técnicos/);
 const script=(panel.match(/<script>([\s\S]*?)<\/script>/)||[])[1];
 assert.ok(script);new Function(script);
