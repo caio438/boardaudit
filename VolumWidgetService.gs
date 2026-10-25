@@ -198,6 +198,14 @@ function viWidgetParecerDeterministico_(leitura) {
 
   const inteligencia = viWidgetInteligenciaComercial_(leitura);
   const planoSdr = viWidgetPlanoSdr_(leitura);
+  const alertasSdr = planoSdr.itens.filter(x=>x.status==='ATENCAO');
+  const novoAlertaSdr = alertasSdr.find(x=>x.id!=='tarefas');
+  if(novoAlertaSdr) recomendar('ALTA','SDR · '+novoAlertaSdr.acao,
+    novoAlertaSdr.detalhe,'Resultado de acompanhamento e evidencia registrados.',
+    'Plano SDR Wisetec');
+  if(alertasSdr.length) {
+    resumo.push('Plano SDR: '+alertasSdr.length+' situacao(oes) exigem revisao de evidencias.');
+  }
   // Acrescentar no maximo 2 alertas comerciais com fonte, sem criar acoes duplicadas.
   const focos = inteligencia.itens.filter(x => x.status==='ATENCAO' &&
     x.prioridade==='ALTA' && x.id!=='vencidas');
