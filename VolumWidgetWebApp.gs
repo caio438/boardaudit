@@ -8,6 +8,8 @@ function viWidgetRenderizarWebApp_(e) {
   const dealId = viLeadId_((e && e.parameter && e.parameter.dealId) || '');
   const template = HtmlService.createTemplateFromFile('VolumWidgetPanel');
   template.dealId = dealId;
+  template.historyNonce = /^[a-f0-9]{32}$/i.test(String((e && e.parameter && e.parameter.volum_history_nonce)||''))?
+    String(e.parameter.volum_history_nonce):'';
   return template.evaluate().setTitle('VOLUM Intelligence').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 function VOLUM_WIDGET_AUDITAR_SESSAO(dealId, usarGemini) {

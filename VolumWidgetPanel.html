@@ -116,7 +116,37 @@ button,input{font:inherit}button{cursor:pointer}
 .operation-action h3{font-size:13px;line-height:1.4;margin:7px 0}
 .operation-action p{color:var(--muted);margin:7px 0}
 .operation-action .done{color:var(--teal);font-size:11px}
+.state-SEM_REGISTRO{background:#3b2532;color:#ffafbf;border-color:#62384b}
+
+/* Plano de Otimização: uma linha recolhida por critério, sem cartões empilhados. */
+.criteria-section{margin:14px 0}
+.criteria-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:15px 0 9px}
+.criteria-section-head h3{font:600 13px "Space Grotesk",sans-serif;margin:0}
+.criteria-section-head small{font:10px "Geist Mono",monospace;color:var(--muted)}
+.criteria-list{display:grid;gap:7px}
+.criteria-tile{border:1px solid #343349;background:#151522;border-radius:9px;overflow:hidden}
+.criteria-tile[open]{border-color:#514467;background:#191729}
+.criteria-tile summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:11px;padding:12px;min-height:46px}
+.criteria-tile summary::-webkit-details-marker{display:none}
+.criteria-tile summary:focus-visible{outline:2px solid var(--violet2);outline-offset:-2px}
+.criteria-tile summary .criterion-name{flex:1;min-width:0;color:#f2ecfb;font:600 12px/1.35 "Space Grotesk",sans-serif;overflow-wrap:anywhere}
+.criteria-tile summary .criterion-chevron{font-size:16px;line-height:1;color:#9f95b4;transition:transform .15s}
+.criteria-tile[open] summary .criterion-chevron{transform:rotate(90deg)}
+.criteria-light{display:inline-grid;place-items:center;flex-shrink:0;border:1px solid;border-radius:50%;width:17px;height:17px;font:700 11px/1 "Geist Mono",monospace}
+.criteria-light.green{color:#64dcb9;background:#153e30;border-color:#327f68}
+.criteria-light.red{color:#ffa09d;background:#43232b;border-color:#95545c}
+.criteria-light.yellow{color:#f4c67f;background:#41341c;border-color:#927643}
+.criteria-light.na{color:#828198;background:#252637;border-color:#444557}
+.criteria-detail{padding:0 13px 13px;border-top:1px solid #343349;font-size:11px;line-height:1.5}
+.criteria-detail p{margin:8px 0;color:#c7c3da;overflow-wrap:anywhere}
+.criteria-detail .criterion-rule{padding:9px 10px;background:#202035;border-radius:6px;color:#e8dcf7}
+.criteria-detail .criterion-proof{padding:9px 10px;background:#13251f;border:1px solid #35594a;border-radius:7px;color:#c2ebd7}
+.criteria-detail .criterion-gap{padding:9px 10px;background:#2a2027;border-left:2px solid #e5a09b;border-radius:0 6px 6px 0;color:#e9c3c1}
+.criteria-detail .criterion-note{color:#9b9ab2;font-size:10px}
+.criteria-legend{font-size:10px;color:#9998ae;line-height:1.5;margin-top:9px}
+
 </style>
+<meta name="volum-history-nonce" content="<?= historyNonce ?>">
 </head>
 <body>
 <main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
@@ -124,6 +154,8 @@ button,input{font:inherit}button{cursor:pointer}
 </main>
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
+const historyNonce=typeof document.querySelector==='function'?
+  (document.querySelector('meta[name="volum-history-nonce"]')?.content||''):'';
 const embedMode=true;
 if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
@@ -136,8 +168,69 @@ function display(x){return val(x).replace(/_/g,' ').replace(/NAO /g,'NÃO ').rep
 function status(s){return '<span class="status-tag state-'+safeClass(s)+'">'+esc(display(s||'PENDENTE'))+'</span>';}
 function humanDate(x){if(!x)return 'Sem data';const date=new Date(x);return Number.isNaN(date.getTime())?esc(x):new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(date);}
 function section(title,extra){return '<div class="section-head"><h2>'+esc(title)+'</h2><small>'+esc(extra||'')+'</small></div>';}
-function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo)+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe)+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
+function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo||x.title||x.id||'Critério sem título')+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe||'Sem explicação disponível para este critério.')+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
+// Critérios oficiais: CONFORME só quando a prova satisfaz a regra inteira.
+// Um indicio de atividade continua amarelo, mesmo que o banco marque
+// "EVIDENCIADO" apenas porque um registro existe.
+const CRITERIOS_VERDE={
+  cadencia:'Sequência de tentativas efetivamente registradas por dia útil, canal e resultado, respeitando a versão da régua e a pausa após resposta/agendamento.',
+  voip:'Registro efetivo de ligação pela telefonia/VoIP associado ao negócio e ao SDR, não somente tarefa de ligação criada ou concluída.',
+  pitch:'Transcrição ou gravação atribuída ao SDR demonstrando as perguntas obrigatórias e a condução do pitch vigente.',
+  no_show:'No-show registrado e tentativas de reagendamento realizadas nos prazos e canais da cadência correspondente; caso não exista no-show, não se aplica.',
+  handoff:'Nota de passagem com SDR, Closer, LMV validado, segmento, dor, resumo, responsável e data/link do compromisso.',
+  registros:'Cada tentativa concluída tem resultado documentado, canal, data e próximo passo ou motivo de encerramento.',
+  tarefas:'Tarefas com responsável, vencimento e desfecho; nenhuma tarefa vencida sem justificativa e execução dentro do prazo estabelecido.',
+  segmento:'Segmento preenchido com valor específico antes da passagem para agenda.',
+  lmv:'LMV/faturamento validado com o comprador e valor ou faixa registrados antes do avanço.',
+  qualificacao:'Necessidade, motivação e contexto da dor documentados e úteis ao Closer.',
+  agenda:'Data, horário, participantes, Closer e acesso da reunião registrados, com compromisso aceito.',
+  confirmacao:'Resposta positiva do comprador ou aceite do convite com data; apenas enviar o convite não comprova confirmação.',
+  valor_reuniao:'A gravação/transcrição demonstra que o SDR explicou concretamente o valor da reunião.',
+  horarios:'A gravação/transcrição comprova a oferta das duas opções de horário previstas no pitch.',
+  primeiro_registro:'A primeira tentativa real está identificada e dentro do SLA aprovado, com calendário e feriados corretos; criar tarefa não basta.',
+  resultado_ligacao:'Para cada ligação realizada, existe resultado ou outcome registrado na negociação.',
+  gravacao:'Link de gravação real, recuperável e relacionado à reunião efetiva, registrado na anotação ou formalização.',
+  anotacao:'Anotação estruturada da reunião com diagnóstico, entendimento, fechamento, compromissos, gravação e próximo follow-up.',
+  proposta_pdf:'PDF da proposta comercial anexado ao negócio na aba Arquivos, identificável e correspondente à negociação.',
+  proximo_passo:'Tarefa posterior à reunião com responsável, data/hora e próximo passo explicitamente acordado com o comprador.',
+  valores:'Valores da proposta preenchidos na negociação e consistentes com os valores documentados no PDF enviado.',
+  recebimento:'Confirmação positiva registrada pelo comprador após envio da proposta; pergunta “chegou?” não é confirmação.',
+  followup:'Todos os passos aplicáveis e já vencidos da cadência de follow-up têm evento de execução, com canal, horário, resultado e próximo compromisso.'
+};
+function criterionLight(item){
+  const raw=String(item.conformidade||item.complianceEstado||'').toUpperCase();
+  if(raw==='CONFORME')return {cls:'green',label:'Conforme',glyph:'✓'};
+  if(raw==='NAO_CONFORME'||raw==='DESVIO_CONFIRMADO')return {cls:'red',label:'Desvio confirmado',glyph:'!'};
+  if(raw==='NAO_APLICAVEL'||String(item.status||'').toUpperCase()==='NAO_APLICAVEL')
+    return {cls:'na',label:'Não aplicável',glyph:'—'};
+  // Nunca converter EVIDENCIADO em aprovação integral: fonte pode provar
+  // apenas uma parte do checklist.
+  return {cls:'yellow',label:'Verificação parcial ou pendente',glyph:'?'};
+}
+function criterionCard(item){
+  const x=item||{},light=criterionLight(x),titulo=x.titulo||x.title||x.id||'Critério sem título';
+  const required=x.paraFicarVerde||CRITERIOS_VERDE[x.id]||x.regraComprovacao||'Cumprir a obrigação aplicável, dentro do prazo, com evidência no CRM.';
+  const detail=String(x.detalhe||x.explicacao||'Sem explicação disponível para este critério.');
+  const evidence=String(x.evidencia||'');
+  const action=String(x.acao||x.proximaValidacao||'');
+  const origin=String(x.fonte||x.referencia||'Histórico do RD');
+  return '<details class="criteria-tile"><summary>'+
+    '<span class="criteria-light '+light.cls+'" role="img" aria-label="'+esc(light.label)+'" title="'+esc(light.label)+'">'+esc(light.glyph)+'</span>'+
+    '<span class="criterion-name">'+esc(titulo)+'</span><span class="criterion-chevron" aria-hidden="true">›</span></summary>'+
+    '<div class="criteria-detail"><p class="criterion-rule"><b>Para ficar verde:</b> '+esc(required)+'</p>'+
+    '<p><b>Diagnóstico atual:</b> '+esc(detail)+'</p>'+
+    (evidence?'<p class="criterion-proof"><b>Evidência:</b> '+esc(evidence)+'</p>':'')+
+    (action?'<p class="criterion-gap"><b>O que falta / próximo ajuste:</b> '+esc(action)+'</p>':'')+
+    '<p class="criterion-note">Fonte: '+esc(origin)+
+      ' · Resultado: '+esc(light.label)+'</p></div></details>';
+}
+function criterionSection(title,items){
+  const list=Array.isArray(items)?items:[];
+  return '<div class="criteria-section"><div class="criteria-section-head"><h3>'+
+    esc(title)+'</h3><small>'+list.length+' critérios</small></div>'+
+    '<div class="criteria-list">'+list.map(criterionCard).join('')+'</div></div>';
+}
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function rdMomento(x){
@@ -221,7 +314,54 @@ function rdWindows(d){
   return html;
 }
 function playbook(d){const p=d.playbookSalesOps||{};if(!p.etapas)return '';const atual=p.decisaoAtual||{};let html=section('Playbook VOLUM','Leitura por etapa e evidência');html+='<div class="glass"><div class="eyebrow">DECISÃO ATUAL</div><h3 style="margin:7px 0;font-size:14px">'+esc(atual.titulo||'Etapa não confirmada')+'</h3>'+status(atual.status)+'<p class="muted">'+esc(atual.detalhe||'')+'</p><div class="to-do"><b>Validar agora:</b> '+esc(atual.acao||'Confirmar dados da etapa')+'</div></div>';html+=group('Jornada e provas disponíveis',p.etapas,true);html+='<p class="small">Compliance: '+esc(display(p.compliance||'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA'))+'.</p>';return html;}
-function overview(d){const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
+function rdDiagnosticoView(d){
+  const o=d.diagnosticoRdOperacional||{},r=o.resumo||{};
+  if(!o.ativo) {
+    return section('Histórico do RD ainda não chegou à Inteligência','Leitura não concluída')+
+      '<div class="notice">'+esc(o.motivo||'Precisamos carregar a aba Histórico da negociação para auditar a execução.')+
+      '</div><div class="glass"><p>Sem o Histórico visual completo, não vamos apresentar a terceira ligação, uma ligação do Board ou uma tarefa aberta como se fossem a melhor ação comercial.</p>'+
+      '<p class="muted">Abra a negociação no RD autenticado e use “Atualizar auditoria”. O coletor deve ler os cartões da aba Histórico e reconciliar as passagens pelas etapas.</p></div>';
+  }
+  let html=section('O que aconteceu no CRM',o.titulo||'Leitura operacional');
+  html+='<div class="glass"><p><b>Etapa atual:</b> '+esc(o.etapaAtual||'Não informada')+
+    '</p><p><b>Entrada nessa passagem:</b> '+esc(rdMomento(r.janelaAtualInicio))+
+    ' · <b>'+Number(r.registrosNaEtapaAtual||0)+'</b> eventos nesta passagem.</p>'+
+    '<p><b>'+Number(r.total||0)+'</b> eventos visuais reconciliados · '+
+    Number(r.etapas||0)+' passagem(ns) de etapa.</p></div>';
+  html+='<div class="glass"><ul class="stack">'+(o.sumario||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
+  const semantica=d.interpretacao||{};
+  if(semantica.disponivel===true&&Array.isArray(semantica.fatos)&&semantica.fatos.length)
+    html+=group('Leitura contextual das anotações e conversas registradas',
+      semantica.fatos.map(x=>({titulo:x.criterio||'Contexto comercial',status:'INDICIO',
+        detalhe:x.conclusao,fonte:'RD · Histórico · '+x.referencia,
+        acao:'Conferir o registro de origem antes de tomar decisão comercial.'})),true);
+  const c=o.criterios||[];
+  const pendentes=c.filter(x=>x.estado==='SEM_REGISTRO'||x.estado==='ATENCAO');
+  const identificados=c.filter(x=>x.estado==='EVIDENCIADO'||x.estado==='INDICIO');
+  const incompletos=c.filter(x=>x.estado==='NAO_VERIFICAVEL');
+  if(pendentes.length)html+=group('O que precisa de correção ou registro ('+pendentes.length+')',
+    pendentes.map(x=>({titulo:x.titulo,status:x.estado,detalhe:x.evidencia,
+      fonte:x.fonte+(x.data?' · '+humanDate(x.data):''),acao:x.acao})),true);
+  if(identificados.length)html+=group('O que foi registrado ('+identificados.length+')',
+    identificados.map(x=>({titulo:x.titulo,status:x.estado,detalhe:x.evidencia,
+      fonte:x.fonte+(x.data?' · '+humanDate(x.data):''),acao:x.acao})),true);
+  if(incompletos.length)html+=group('O que ainda não pode ser concluído ('+incompletos.length+')',
+    incompletos.map(x=>({titulo:x.titulo,status:x.estado,detalhe:x.evidencia,
+      fonte:x.fonte,acao:x.acao})),false);
+  if((o.acoes||[]).length){
+    html+=section('Decisões recomendadas','Baseadas no Histórico desta negociação');
+    html+=(o.acoes||[]).map((a,i)=>'<article class="operation-action"><span class="eyebrow">'+
+      esc(a.prioridade)+' · RD · HISTÓRICO</span><h3>'+esc(a.acao)+
+      '</h3><p>'+esc(a.porQue)+'</p><p class="done"><b>Concluído quando:</b> '+
+      esc(a.criterioConclusao)+'</p></article>').join('');
+  }else html+='<div class="glass"><p>Não foi identificada pendência crítica pelos critérios básicos. Para homologar o compliance, é necessário aplicar a versão correta do playbook da operação.</p></div>';
+  html+='<details class="group"><summary><strong>Eventos e responsáveis que sustentam a leitura</strong></summary><div class="group-body">'+
+    (o.fatos||[]).map(x=>'<div class="operation-fact"><strong>'+esc(x.tipo)+'</strong>'+
+      '<p>'+esc(x.texto)+'</p><p class="small">'+esc(x.fonte)+'</p></div>').join('')+'</div></details>';
+  html+='<p class="small">'+esc(o.limite||'')+'</p>';
+  return html;
+}
+function overview(d){if(d.diagnosticoRdOperacional)return rdDiagnosticoView(d);const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
 html+=playbook(d);
 html+=section('Próxima melhor ação','Sales Ops');
 html+='<div class="glass"><div class="eyebrow">AÇÃO RECOMENDADA</div><p style="margin:9px 0;font-size:13px;font-weight:600">'+esc(d.proximaAcao||'Validar contexto do lead')+'</p><p class="muted">Como confirmar: '+esc(d.regraDeDecisao||'Obter evidência do resultado')+'</p></div>';
@@ -234,7 +374,7 @@ return html;}
 function operationalAudit(d){const a=d.auditoriaOperacional||{};const criterios=a.criterios||[];if(!criterios.length)return '';
 let html=section('Checklist operacional CRM','Evidências por fonte e data');
 html+='<p class="muted">Indício, ausência de registro e falha de acesso são situações diferentes. Cada verificação mostra como concluir.</p>';
-html+=group('Formalização, reunião, proposta e follow-up',criterios.map(function(x){return {titulo:x.titulo,status:x.estado,detalhe:x.evidencia,fonte:x.fonte+(x.data?' · '+humanDate(x.data):''),acao:x.acao};}),true);
+html+=group(a.grupo||'Verificações de execução da etapa',criterios.map(function(x){return {titulo:x.titulo,status:x.estado,detalhe:x.evidencia,fonte:x.fonte+(x.data?' · '+humanDate(x.data):''),acao:x.acao};}),true);
 return html;}
 function operation(d){
 const o=d.operacional||{};
@@ -252,8 +392,16 @@ html+='<details class="group"><summary><strong>Limites da leitura e atribuição
  (o.notasDeConfiabilidade||[]).map(function(x){return '<p class="muted">'+esc(x)+'</p>';}).join('')+'</div></details>';
 return html;
 }
-function counter(d){const c=(d.inteligenciaComercial||{}).contagem||{};const s=(d.planoOtimizacaoSdr||{}).contagem||{};return '<div class="kpis"><div class="kpi alert"><strong>'+Number(c.ATENCAO||0)+'</strong><small>Sinais de atenção</small><em>Inteligência</em></div><div class="kpi proof"><strong>'+Number(c.EVIDENCIADO||0)+'</strong><small>Dados evidenciados</small><em>Fontes consultadas</em></div><div class="kpi unknown"><strong>'+Number(s.NAO_VERIFICAVEL||0)+'</strong><small>SDR sem verificação</small><em>Plano de otimização</em></div></div>';}
-function intelligence(d){const intel=d.inteligenciaComercial||{itens:[],areas:[],contagem:{}};let items=intel.itens||[];let html=section('Inteligência comercial',items.length+' critérios de apoio')+'<p class="muted">Cada item considera o histórico disponível. Indício não é prova de conversa; ausência de registro não comprova descumprimento.</p>';
+function counter(d){if(d.diagnosticoRdOperacional){
+ const o=d.diagnosticoRdOperacional||{},r=o.resumo||{};
+ return '<div class="kpis"><div class="kpi alert"><strong>'+
+  Number(o.semRegistro||0)+'</strong><small>Registros a corrigir</small><em>Etapa atual</em></div>'+
+  '<div class="kpi proof"><strong>'+Number(r.total||0)+
+  '</strong><small>Eventos no Histórico</small><em>RD · leitura visual</em></div>'+
+  '<div class="kpi unknown"><strong>'+Number(r.registrosNaEtapaAtual||0)+
+  '</strong><small>Eventos nesta etapa</small><em>Janela RD</em></div></div>';
+ }const c=(d.inteligenciaComercial||{}).contagem||{};const s=(d.planoOtimizacaoSdr||{}).contagem||{};return '<div class="kpis"><div class="kpi alert"><strong>'+Number(c.ATENCAO||0)+'</strong><small>Sinais de atenção</small><em>Inteligência</em></div><div class="kpi proof"><strong>'+Number(c.EVIDENCIADO||0)+'</strong><small>Dados evidenciados</small><em>Fontes consultadas</em></div><div class="kpi unknown"><strong>'+Number(s.NAO_VERIFICAVEL||0)+'</strong><small>SDR sem verificação</small><em>Plano de otimização</em></div></div>';}
+function intelligence(d){if(d.diagnosticoRdOperacional)return rdDiagnosticoView(d);const intel=d.inteligenciaComercial||{itens:[],areas:[],contagem:{}};let items=intel.itens||[];let html=section('Inteligência comercial',items.length+' critérios de apoio')+'<p class="muted">Cada item considera o histórico disponível. Indício não é prova de conversa; ausência de registro não comprova descumprimento.</p>';
 const filters=[['todos','Todos'],['ATENCAO','Atenção'],['SEM_EVIDENCIA','Sem evidência'],['INDICIO','Indícios'],['NAO_VERIFICAVEL','Não verificável']];
 html+='<div class="filters" role="group" aria-label="Filtrar critérios">'+filters.map(function(x){return '<button type="button" class="filter '+(activeFilter===x[0]?'selected':'')+'" onclick="changeFilter(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</div>';
 items=items.filter(function(x){return activeFilter==='todos'||x.status===activeFilter});
@@ -264,13 +412,88 @@ html+='<details class="group"><summary><strong>Todos os critérios técnicos</st
 areas.map(function(area){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,false):''}).join('')+'</div></details>';
 if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
 return html;}
-function sdr(d){const s=d.planoOtimizacaoSdr||{};const itens=s.itens||[];const oficiais=itens.filter(x=>x.pilar==='OFICIAL');const extras=itens.filter(x=>x.pilar!=='OFICIAL');
-let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares')+'<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
-html+='<div class="countbar">'+Number((s.contagem||{}).ATENCAO||0)+' atenção · '+Number((s.contagem||{}).INDICIO||0)+' indícios · '+Number((s.contagem||{}).NAO_VERIFICAVEL||0)+' não verificáveis</div>';
-html+=group('7 pilares do Plano Wisetec',oficiais,true);
-html+=group('9 verificações complementares',extras,false);
-return html;}
-function closer(d){const c=d.criteriosPlanoWisetec||[];let html=operationalAudit(d)+section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">A análise usa atividades de e-mail do RD quando existirem. E-mail de formalização ou link de gravação é indício: não confirma anexo, recebimento, reunião realizada ou qualidade da conversa.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
+function sdr(d){
+  const rd=d.diagnosticoRdOperacional||null;
+  // Compatibilidade com clientes legados ou mocks antigos que nao trazem
+  // diagnosticoRdOperacional; a API atual sempre entrega esse campo.
+  if(!rd){
+    const p=d.planoOtimizacaoSdr||{},itens=p.itens||[];
+    const oficiais=itens.filter(x=>x.pilar==='OFICIAL');
+    const extras=itens.filter(x=>x.pilar!=='OFICIAL');
+    let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares');
+    html+='<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
+    html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
+    html+=criterionSection('7 pilares do Plano Wisetec',oficiais);
+    html+=criterionSection('9 verificações complementares',extras);
+    return html;
+  }
+  if(rd&&!rd.ativo){
+    return section('Plano SDR — coleta incompleta','Aguardando Histórico RD')+
+      '<div class="notice">'+esc(rd.motivo||'O Histórico do RD ainda não foi recebido por completo.')+
+      '</div><p class="muted">Não exibir 14 verificações vazias nem atribuir desvios à equipe enquanto a coleta estiver incompleta. Atualize a auditoria para reler o Histórico da negociação.</p>';
+  }
+  const plano=d.planoOtimizacaoSdr||{},itens=plano.itens||[];
+  if(rd&&rd.ativo&&plano.fonte==='RD_UI_HISTORY'){
+    const oficiais=itens.filter(x=>x.pilar==='OFICIAL');
+    const extras=itens.filter(x=>x.pilar!=='OFICIAL');
+    const escopo=plano.escopo||{};
+    const counts=plano.contagem||{};
+    const garantir=item=>({
+      titulo:item.titulo||item.id||'Critério sem título',
+      status:item.status==='SEM_EVIDENCIA'?'SEM_REGISTRO':item.status,
+      conformidade:item.conformidade||'PENDENTE',
+      detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
+      evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
+    });
+    let html=section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
+    html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
+      ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
+    html+='<p class="small">Régua de cadência: '+esc(
+      escopo.regraCadenciaAplicavel==='VERSAO_CLIENTE_NAO_CONFIRMADA'?
+        'versão em validação':escopo.regraCadenciaAplicavel||'não informada')+
+      '. Sem régua vigente não aprovar cadência integral.</p>';
+    html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
+    html+=criterionSection('7 pilares do Plano Wisetec',oficiais.map(garantir));
+    // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
+    // em conteúdo vazio na leitura/cópia da interface.
+    html+=criterionSection('9 verificações complementares',extras.map(garantir));
+    html+='<p class="small">'+esc(plano.aviso||'')+'</p>';
+    return html;
+  }
+  // Sem o histórico completo, mostrar causa técnica em vez de score fictício.
+  const fonte=rd?rd.motivo:'Histórico visual do RD não recebido pelo motor';
+  return section('Plano SDR indisponível','Fonte incompleta')+
+    '<div class="notice">'+esc(fonte||'Não foi possível completar a reconstrução do Histórico do RD.')+'</div>';
+}
+function closer(d){
+  const rd=d.diagnosticoRdOperacional||null;
+  if(rd&&!rd.ativo){
+    return section('Plano Closer — coleta incompleta','Aguardando Histórico RD')+
+      '<div class="notice">'+esc(rd.motivo||'Precisamos do Histórico completo da negociação.')+
+      '</div><p class="muted">Sem a coleta completa, nenhum critério é reprovado automaticamente.</p>';
+  }
+  const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
+  if(rd&&rd.ativo&&items.length){
+    let html=section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
+    html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
+    html+=criterionSection('7 critérios do Plano Closer',items);
+    html+='<p class="small">'+esc(p.aviso||'')+'</p>';
+    return html;
+  }
+  // Compatibilidade com respostas antigas: não converter INDICIO em verde.
+  const legacy=(d.criteriosPlanoWisetec||[]).map((c,i)=>({
+    id:['gravacao','anotacao','proposta_pdf','proximo_passo','valores','recebimento','followup'][i]||'',
+    titulo:c.titulo||'Critério de Closer',
+    status:c.status||'NAO_VERIFICAVEL',
+    conformidade:'PENDENTE',detalhe:c.detalhe||'Sem descrição disponível.',
+    evidencia:c.evidencia||'',fonte:c.fonte||'RD',acao:c.acao||'Conferir o registro no Histórico do RD.'
+  }));
+  let html=section('Plano de Otimização Closer','7 pilares · leitura preliminar');
+  if(!legacy.length)return html+'<p class="muted">Não há critérios aplicáveis nesta fase da negociação.</p>';
+  html+='<div class="criteria-legend">? Amarelo: há informação parcial, mas a conformidade ainda não foi validada.</div>';
+  return html+criterionSection('7 critérios do Plano Closer',legacy);
+}
 function boardEvidence(d) {
   const resumo=d.evidenciasBoardResumo||{};
   const rows=d.evidenciasBoard||[];
@@ -310,15 +533,31 @@ html+=section('Últimas evidências','Anotações acessíveis')+'<div class="gla
 html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><ul class="stack">'+(d.limites||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
 return html;}
 function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
-const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
+const notice=currentData.diagnosticoRdOperacional?
+'<div class="notice">'+esc(currentData.diagnosticoRdOperacional.ativo?
+ 'Leitura de execução do Histórico RD, com origem, autor e etapa. Não confunda abertura de WhatsApp, tarefa concluída ou convite com conversa realizada.':
+ 'Aguardando História visual completa do RD para evitar recomendações sem contexto.')+'</div>':
+'<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
 let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
 let historyFromRd=null;
 function runAudit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';const rpc=google.script.run.withSuccessHandler(render).withFailureHandler(function(e){document.getElementById('card').innerHTML='<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+esc(e&&e.message||'Falha temporária na auditoria.')+'</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';});if(historyFromRd)rpc.VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId,historyFromRd,true);else rpc.VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
-function audit(){runAudit();}
-if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){const m=event&&event.data||{};if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||!m.history)return;historyFromRd=m.history;runAudit();});
+function audit(){requestRdHistory(true);runAudit();}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){
+  const m=event&&event.data||{};
+  if(!(/^(?:chrome-extension:\/\/[a-z0-9]+|https:\/\/crm\.rdstation\.com)$/i.test(String(event.origin||'')))||event.source!==window.top)return;
+  if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||m.nonce!==historyNonce||!m.history)return;
+  historyFromRd=m.history;runAudit();
+});
+function requestRdHistory(refresh){
+  try {
+    if(window.top&&window.top!==window)window.top.postMessage({
+      type:'VOLUM_REQUEST_RD_UI_HISTORY',dealId:dealId,refresh:refresh===true,nonce:historyNonce
+    },'*');
+  } catch(_ignore) {}
+}
 audit();
 </script>
 </body>

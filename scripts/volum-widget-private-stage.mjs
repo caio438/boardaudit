@@ -4,8 +4,13 @@ import {fileURLToPath} from 'node:url';
 
 const BOARD_DEPLOYMENT_ID='AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA';
 const LEGACY_WIDGET_VERSION='433';
+// Toda funcao referenciada pelo service precisa estar presente no script
+// publicado. Os dois motores abaixo nao fazem parte do projeto legado em
+// producao e, sem este overlay, o CI verde nao evita erro "is not defined".
 const OVERLAY=[
   'VolumIntelligenceLead.gs',
+  'VolumRdStageTimeline.gs',
+  'VolumWidgetRdOps.gs',
   'VolumWidgetService.gs',
   'VolumWidgetWebApp.gs',
   'VolumWidgetPanel.html'
