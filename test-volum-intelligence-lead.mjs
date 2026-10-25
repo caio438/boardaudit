@@ -65,3 +65,7 @@ assert.ok(!JSON.stringify(jornada).includes('privado'));
 assert.ok(!JSON.stringify(jornada).includes('segredo'));
 assert.equal(ctx.viLeadLinhaTempo_([],[],[],[],[],jornada.reunioes,jornada.formalizacoes).some(x=>x.tipo==='REUNIAO_CALENDARIO_REGISTRADA'),true);
 console.log('Metadados de jornada vinculados sem expor URL, conteúdo ou resultado textual.');
+
+assert.equal(ctx.viLeadArquivosRd_('token-invalido',deal).fonte.acessivel,false);
+assert.doesNotMatch(source,/return \{[^}]*url:/,'Leitura de arquivos não deve devolver URL temporária.');
+console.log('Anexos RD: falha segura e sem URL temporária.');

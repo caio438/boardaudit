@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.5'
+  versao: '0.4.6'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -70,6 +70,7 @@ function viWidgetParecerDeterministico_(leitura) {
   const ats = Array.isArray(leitura.atividades) ? leitura.atividades : [];
   const tarefas = Array.isArray(leitura.tarefas) ? leitura.tarefas : [];
   const chamadas = Array.isArray(leitura.ligacoesBoard) ? leitura.ligacoesBoard : [];
+  const arquivosRd = Array.isArray(leitura.arquivosRd) ? leitura.arquivosRd : [];
   const fontes = leitura.fontes || {};
   const fonteAtividades = fontes.atividades || {};
   const fonteTarefas = fontes.tarefas || {};
@@ -106,6 +107,16 @@ function viWidgetParecerDeterministico_(leitura) {
   const comPrazo = pendentes.filter(x => x.previstaPara && Number.isFinite(Date.parse(x.previstaPara)))
     .sort((a,b) => Date.parse(a.previstaPara)-Date.parse(b.previstaPara));
   const vencidas = comPrazo.filter(x => Date.parse(x.previstaPara) < Date.now());
+  const referenciasReuniao = (Array.isArray(leitura.reunioesCalendarioBoard)?leitura.reunioesCalendarioBoard:[])
+    .map(x=>Date.parse(x.data||'')).filter(Number.isFinite)
+    .concat(tarefaDeReuniao.map(x=>Date.parse(x.concluidaEm||x.previstaPara||'')).filter(Number.isFinite));
+  const ultimaReuniaoMs = referenciasReuniao.length ? Math.max.apply(null,referenciasReuniao) : null;
+  const tarefasFollowup = comPrazo.filter(x => /follow|recovery|retomada|retorno|proposta|pos.reuniao/i.test(String(x.assunto||'')) &&
+    (ultimaReuniaoMs===null || Date.parse(x.previstaPara)>ultimaReuniaoMs));
+  const textosEmailOuWhatsApp = ats.filter(x=>['email','messenger','whatsapp_audio','whatsapp_transcription','response','note'].includes(String(x.tipo||'').toLowerCase())&&x.textoDisponivel).map(x=>viWidgetNormalizar_(x.texto)).join('\n');
+  const gravacaoReferenciada = /(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/.test(textosEmailOuWhatsApp);
+  const recebimentoConfirmado = /(?:(?:proposta|orcamento).{0,90}(?:recebi|recebemos|recebimento|confirmad)|(?:recebi|recebemos|recebimento|confirmad).{0,90}(?:proposta|orcamento))/.test(textosEmailOuWhatsApp);
+  const propostaPdf = arquivosRd.filter(x=>String(x.extensao||'').toLowerCase()==='pdf'&&/(?:proposta|orcamento|apresentacao|comercial)/i.test(String(x.nome||'')));
   const lote = {};
   tarefas.filter(x => x.concluida && x.concluidaEm).forEach(x => {
     const minuto=String(x.concluidaEm).slice(0,16);
@@ -139,16 +150,16 @@ function viWidgetParecerDeterministico_(leitura) {
       'Tarefas RD')
   ];
   const criterioCloser = [
-    criterio('Link da gravação da reunião','NAO_VERIFICAVEL','A coleta de ligações do board não prova a gravação de reunião do closer.','Plano Wisetec · closer'),
+    criterio('Link da gravação da reunião',gravacaoReferenciada?'INDICIO':'NAO_VERIFICAVEL',gravacaoReferenciada?'Há referência contextual de gravação em e-mail/anotação; validar acesso, reunião e conteúdo.':'Nenhum link de gravação foi identificado em e-mail ou anotação acessível.','RD · e-mail / anotações'),
     criterio('Anotação privada do vendedor',ats.some(x=>x.tipo==='note' && x.textoDisponivel)?'INDICIO':'NAO_VERIFICAVEL',
       ats.some(x=>x.tipo==='note' && x.textoDisponivel)?'Há anotação RD, mas não é possível confirmar se é a anotação privada de reunião.':'O tipo e a privacidade da anotação de reunião não estão confirmados.','Plano Wisetec · closer'),
-    criterio('Proposta comercial anexada em PDF','NAO_VERIFICAVEL','Anexos PDF não são coletados por este leitor. Não inferir falta de proposta.','Plano Wisetec · closer'),
-    criterio('Tarefa com data e acordo de próximo passo',comPrazo.length?'INDICIO':'NAO_VERIFICAVEL',
-      comPrazo.length?'Há '+comPrazo.length+' tarefa(s) abertas com data. O acordo com o lead não está comprovado.':'Nenhuma tarefa aberta com data recuperada; coleta e acordo precisam de verificação.','Plano Wisetec · closer'),
+    criterio('Proposta comercial anexada em PDF',propostaPdf.length?'INDICIO':'NAO_VERIFICAVEL',propostaPdf.length?'Há '+propostaPdf.length+' PDF(s) com nome compatível com proposta; validar conteúdo, envio e versão.':'Nenhum PDF com nome compatível foi identificado nos arquivos acessíveis.','RD · arquivos'),
+    criterio('Tarefa de follow-up/recovery após reunião',tarefasFollowup.length?'INDICIO':'NAO_VERIFICAVEL',
+       tarefasFollowup.length?'Há '+tarefasFollowup.length+' tarefa(s) de follow-up/recovery datada(s) após a reunião conhecida. O acordo com o lead não está comprovado.':'Nenhuma tarefa posterior de follow-up/recovery foi identificada com os dados disponíveis.','RD · tarefas / reuniões'),
     criterio('Valores da proposta','NAO_VERIFICAVEL','Valor e coerência da proposta não estão disponíveis nesta coleta.','Plano Wisetec · closer'),
-    criterio('Confirmação de recebimento da proposta','NAO_VERIFICAVEL','E-mail enviado não equivale a recebimento confirmado; falta verificação do canal.','Plano Wisetec · closer'),
-    criterio('Cadência de follow-up do closer',comPrazo.length?'INDICIO':'NAO_VERIFICAVEL',
-      comPrazo.length?'Há follow-ups/tarefas datados; não há régua homologada para afirmar aderência.':'A sequência de follow-up depende de régua e histórico completos.','Plano Wisetec · closer')
+    criterio('Confirmação de recebimento da proposta',recebimentoConfirmado?'INDICIO':'NAO_VERIFICAVEL',recebimentoConfirmado?'Há texto com sinal de confirmação de recebimento em e-mail/WhatsApp; validar autoria e contexto.':'Nenhuma confirmação explícita de recebimento foi identificada em e-mail ou WhatsApp acessível.','RD · e-mail / WhatsApp'),
+    criterio('Cadência de follow-up do closer',tarefasFollowup.length?'INDICIO':'NAO_VERIFICAVEL',
+       tarefasFollowup.length?'Há follow-up/recovery posterior à reunião; não há régua homologada para afirmar aderência.':'A sequência de follow-up depende de régua e histórico completos.','RD · tarefas / reuniões')
   ];
 
   const recomendacoes=[];
@@ -752,6 +763,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   const fontes=leitura.fontes||{};
   const tarefas=Array.isArray(leitura.tarefas)?leitura.tarefas:[];
   const chamadas=Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[];
+  const arquivosRd=Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[];
   const atividades=Array.isArray(leitura.atividades)?leitura.atividades:[];
   const etapa=viWidgetEtapa_(negociacao.etapaAtualNome);
   const encerrada=etapa.indice===6 ||
@@ -775,7 +787,10 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   const notasNormal=notas.map(a=>viWidgetNormalizar_(a.texto));
   const emails=atividades.filter(a=>a&&String(a.tipo||'').toLowerCase()==='email'&&a.textoDisponivel&&a.texto);
   const emailFormalizacao=emails.find(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/i.test(viWidgetNormalizar_(a.texto)))||null;
-  const emailGravacao=emails.find(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|meet\.google|teams\.microsoft)/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const emailGravacao=emails.find(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|teams\.microsoft|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const emailProximaReuniao=emails.find(a=>/(?:proxima\s+reuniao|meet\.google)/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const pdfs=arquivosRd.filter(a=>String(a.extensao||'').toLowerCase()==='pdf');
+  const propostaPdf=pdfs.filter(a=>/(?:proposta|orcamento|apresentacao|comercial)/i.test(String(a.nome||'')));
   const promessaRecebida=notas.find(a=>
     /(?:cliente|comprador|lead)\s+(?:confirmou|acusou)\s+(?:o\s+)?recebimento\s+(?:da\s+)?proposta|proposta\s+recebida\s+e\s+confirmada/i.test(viWidgetNormalizar_(a.texto)))||null;
   const propostaRegistrada=atividades.some(a=>a.tipo==='proposal')||Boolean(emailFormalizacao)||
@@ -811,8 +826,14 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     'E-mail com sinal de formalização/proposta em '+viWidgetDiaExibicao_(emailFormalizacao.data)+
     '. O conteúdo não comprova anexo, entrega ou aceite.','RD · e-mail','INDICIO');
   if (emailGravacao) fato('EMAIL_GRAVACAO',
-    'E-mail com referência de gravação de reunião em '+viWidgetDiaExibicao_(emailGravacao.data)+
-    '. A presença da referência não comprova a realização ou o conteúdo da reunião.','RD · e-mail','INDICIO');
+    'E-mail com referência contextual a gravação/reunião realizada em '+viWidgetDiaExibicao_(emailGravacao.data)+
+    '. A referência não comprova realização ou conteúdo da reunião.','RD · e-mail','INDICIO');
+  if (emailProximaReuniao) fato('PROXIMA_REUNIAO_EMAIL',
+    'E-mail contém sinal de próxima reunião/convite. Confirmar aceite e realização no calendário.','RD · e-mail','INDICIO');
+  if (propostaPdf.length) fato('PDF_PROPOSTA',
+    propostaPdf.length+' PDF(s) com nome compatível com proposta/apresentação foram encontrados. O arquivo não comprova envio, leitura ou aceite.','RD · arquivos','INDICIO');
+  else if (pdfs.length) fato('PDF_ANEXADO',
+    pdfs.length+' PDF(s) anexado(s) à negociação; nome sem confirmação automática de proposta.','RD · arquivos','INDICIO');
   const avisos=[];
   const tarefasComAutoria=tarefas.filter(t=>Array.isArray(t.responsaveis)&&t.responsaveis.length>0).length;
   if (tarefas.length>0 && tarefasComAutoria<tarefas.length) avisos.push(
@@ -979,7 +1000,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     }
   }
   const foco=acoes[0]||null;
-  parecer.versao='0.4.5';
+  parecer.versao='0.4.6';
   parecer.operacional={
     tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
       noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
@@ -1035,7 +1056,8 @@ function viWidgetPlaybookSalesOps_(leitura,parecer) {
   const gravacaoBoard=reunioesCalendario.some(r=>r&&(r.gravacaoReferenciada||r.transcricaoReferenciada));
   const reuniaoRegistrada=reunioesCalendario.length>0;
   const gravacao=gravacaoEmail||gravacaoBoard;
-  const formalizacao=emails.some(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/.test(viWidgetNormalizar_(a.texto)))||atividades.some(a=>String((a||{}).tipo||'').toLowerCase()==='proposal')||formalizacoesBoard.length>0;
+  const pdfProposta=(Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[]).some(a=>String(a.extensao||'').toLowerCase()==='pdf'&&/(?:proposta|orcamento|apresentacao|comercial)/i.test(String(a.nome||'')));
+  const formalizacao=emails.some(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/.test(viWidgetNormalizar_(a.texto)))||atividades.some(a=>String((a||{}).tipo||'').toLowerCase()==='proposal')||formalizacoesBoard.length>0||pdfProposta;
   const item=(id,titulo,status,detalhe,acao,referencia)=>({id,titulo,status,detalhe,acao,referencia});
   const etapas=[
     item('contexto','1. Contexto e responsável',etapa.indice>=0?'EVIDENCIADO':'NAO_VERIFICAVEL',etapa.indice>=0?'Etapa do CRM identificada.':'Etapa ou funil não confirmados.','Confirmar etapa, responsável e regra aplicável.','RD · negociação'),
@@ -1044,7 +1066,7 @@ function viWidgetPlaybookSalesOps_(leitura,parecer) {
     item('qualificacao','4. Qualificação para avanço',qual>=2?'INDICIO':'NAO_VERIFICAVEL',qual>=2?qual+' campo(s) de qualificação possuem indício textual.':'Contexto insuficiente para afirmar qualificação ou desqualificação.','Registrar dor, capacidade, decisor e critério de avanço.','RD · anotações'),
     item('continuidade','5. Acordo e próximo passo',proxima?'INDICIO':'NAO_VERIFICAVEL',proxima?'Existe tarefa futura datada; o aceite do cliente não está comprovado.':'Não foi recuperado próximo passo aberto e datado.','Confirmar responsável, data, canal e resultado esperado.','RD · tarefas'),
     item('reuniao','6. Reunião e passagem de bastão',etapa.indice<4?'NAO_APLICAVEL':gravacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<4?'Ainda não é etapa de reunião/closer.':gravacao?(gravacaoBoard?'Há metadado de reunião com gravação/transcrição referenciada; validar realização e conteúdo.':'Há referência de gravação em e-mail; validar reunião e conteúdo.'):reuniaoRegistrada?'Há reunião vinculada no board; sem evidência de conteúdo, handoff ou pitch.':'Não há prova suficiente de reunião, handoff ou pitch.','Validar realização, resumo da qualificação, closer e próximo acordo.','RD · e-mail / transcrição'),
-    item('proposta','7. Formalização, proposta e recovery',etapa.indice<5?'NAO_APLICAVEL':formalizacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<5?'Ainda não é etapa de proposta/follow-up.':formalizacao?(formalizacoesBoard.length?'Há registro de formalização associado; não confirma entrega, recebimento ou aceite.':'Há sinal de formalização; não confirma entrega, recebimento ou aceite.'):'Não foi localizada evidência de formalização.','Conferir documento, destinatário, recebimento, feedback e cadência.','RD · e-mail / propostas')
+    item('proposta','7. Formalização, proposta e recovery',etapa.indice<5?'NAO_APLICAVEL':formalizacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<5?'Ainda não é etapa de proposta/follow-up.':formalizacao?(pdfProposta?'Há PDF de proposta identificado e/ou sinal de formalização; não confirma entrega, recebimento ou aceite.':formalizacoesBoard.length?'Há registro de formalização associado; não confirma entrega, recebimento ou aceite.':'Há sinal de formalização; não confirma entrega, recebimento ou aceite.'):'Não foi localizada evidência de formalização.','Conferir documento, destinatário, recebimento, feedback e cadência.','RD · e-mail / propostas')
   ];
   const atual=etapa.indice>=5?etapas[6]:etapa.indice>=4?etapas[5]:etapa.indice>=3?etapas[4]:etapa.indice>=2?etapas[3]:etapa.indice>=1?etapas[2]:etapas[0];
   return {versao:'VOLUM_SALES_OPS_PLAYBOOK_V1',modelo:'EVIDENCIA_POR_ETAPA',compliance:'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA',
@@ -1144,6 +1166,6 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.5';
+  parecer.versao='0.4.6';
   return parecer;
 }
