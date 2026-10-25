@@ -143,6 +143,24 @@ assert.equal(planoSdr.itens.find(x=>x.id==='no_show').status,'NAO_APLICAVEL');
 assert.equal(planoSdr.itens.find(x=>x.id==='handoff').status,'SEM_EVIDENCIA');
 assert.equal(planoSdr.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
 assert.equal(planoSdr.itens.find(x=>x.id==='lmv').status,'INDICIO');
+
+assert.equal(planoSdr.itens.find(x=>x.id==='agenda').status,'SEM_EVIDENCIA',
+ 'The name of the stage Apresentacao must not prove an appointment');
+const onlyStage=makeUi([
+ {kind:'ANOTACAO',stage:'Apresentação',dateText:'25/10/2026 11:00',
+  dataLocal:'2026-10-25T11:00:00',detail:'Nota genérica na etapa Apresentação do funil'},
+ {kind:'ANOTACAO',stage:'Apresentação',dateText:'25/10/2026 11:10',
+  dataLocal:'2026-10-25T11:10:00',detail:'Reunião não foi agendada, aguardando confirmação'}
+]);
+const onlyHist=ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{});
+const linkedStage=ctx.viRdConciliarHistoricoUi_(onlyHist,onlyStage,deal.id);
+const onlyInput={negociacao:{etapaAtualNome:'Apresentação'},historicoRdEtapas:linkedStage.historico,
+  tarefas:[],fontes:{}};
+const onlyDiag=ctx.viWidgetDiagnosticoHistoricoRd_(onlyInput);
+const onlyPlan=ctx.viWidgetPlanoSdrHistoricoRd_(onlyInput,onlyDiag);
+assert.equal(onlyPlan.itens.find(x=>x.id==='agenda').status,'SEM_EVIDENCIA');
+assert.equal(onlyPlan.itens.find(x=>x.id==='confirmacao').status,'NAO_APLICAVEL');
+
 assert.ok(planoSdr.itens.some(x=>/UI_[0-9]+/.test(x.evidencia)));
 const sdrStart=widget.indexOf('function sdr(d)');
 const sdrEnd=widget.indexOf('\nfunction closer(',sdrStart);
