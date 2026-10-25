@@ -8,6 +8,7 @@ permissions:
 jobs:
   inspect:
     if: ${{ github.actor == 'caio438' }}
+    environment: apps-script-production
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
