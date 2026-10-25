@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.0'
+  versao: '0.4.1'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -20,7 +20,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
-  const parecer = viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura);
+  const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
@@ -984,5 +984,101 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   parecer.contextoIa={etapa:parecer.agenteAtual,
     status:parecer.status,
     recomendacoes:acoes.slice(0,3).map(a=>({acao:a.acao,porQue:a.porQue}))};
+  return parecer;
+}
+
+
+/**
+ * Consolida provas de origem sem inventar conversa ou autoria.
+ * FUNCAO no Board = atribuicao declarada pela fonte, nao validacao de audio.
+ * TRANSCRICOES.STATUS pendente = material nao interpretado, nao falta do vendedor.
+ */
+function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
+  const chamadas = Array.isArray(leitura.ligacoesBoard) ? leitura.ligacoesBoard : [];
+  const reunioes = Array.isArray(leitura.reunioesBoard) ? leitura.reunioesBoard : [];
+  const linhas = chamadas.concat(reunioes).filter(function(x) {return x && x.data;})
+    .sort(function(a,b) {return String(b.data).localeCompare(String(a.data));});
+  const atribuicao = chamadas.filter(function(x) {
+    return x.funcaoDeclarada==='SDR' && x.origemFuncao==='CAMPO_FUNCAO_BOARD';
+  });
+  const closer = chamadas.filter(function(x) {
+    return x.funcaoDeclarada==='CLOSER' && x.origemFuncao==='CAMPO_FUNCAO_BOARD';
+  });
+  const pendentes = linhas.filter(function(x) {
+    return x.transcricaoBoardStatus==='PENDENTE' || x.transcricaoStatus==='PENDENTE';
+  });
+  const transcritas = linhas.filter(function(x) {return x.transcricaoDisponivel===true;});
+  const duracoes = atribuicao.map(function(x){return Number(x.duracaoSegundos);})
+    .filter(function(x){return Number.isFinite(x) && x>=0;});
+  const menor = duracoes.length ? Math.min.apply(null,duracoes) : null;
+  const maior = duracoes.length ? Math.max.apply(null,duracoes) : null;
+  const resumo = {
+    interacoes:linhas.length,ligacoes:chamadas.length,
+    sdrDeclaradas:atribuicao.length,closerDeclaradas:closer.length,
+    semPapel:chamadas.length-atribuicao.length-closer.length,
+    transcricoesPendentes:pendentes.length,transcricoesLegiveis:transcritas.length,
+    duracaoSdrMinima:menor,duracaoSdrMaxima:maior,
+    metadadosTranscricoes:(leitura.fontes||{}).transcricoesBoard||{acessivel:false}
+  };
+  parecer.evidenciasBoard=linhas.slice(0,15).map(function(x) {
+    return {
+      id:String(x.id||'').slice(0,80),data:x.data,
+      fonte:x.fonte||'BOARD',tipo:x.tipo||'INTERACAO',
+      funcao:x.funcaoDeclarada||'NAO_COMPROVADO',
+      origemFuncao:x.origemFuncao||'NAO_INFORMADA',
+      responsavelRegistrado:viWidgetSanitizar_(String(x.responsavelRegistrado||'')).slice(0,80),
+      duracaoSegundos:Number(x.duracaoSegundos)||0,
+      gravacaoReferencia:Boolean(x.temReferenciaGravacao),
+      statusTranscricao:x.transcricaoBoardStatus||x.transcricaoStatus||'NAO_INFORMADO',
+      transcricaoDisponivel:Boolean(x.transcricaoDisponivel),
+      tipoEvidencia:'REGISTRO_TECNICO_NAO_PROVA_DIALOGO'
+    };
+  });
+  parecer.evidenciasBoardResumo=resumo;
+  const operativo=parecer.operacional||{};
+  operativo.evidenciasBoardResumo=resumo;
+  const fatos=Array.isArray(operativo.fatos)?operativo.fatos:[];
+  if(atribuicao.length){
+    const duracao=menor!==null ?
+      ' ('+menor+' a '+maior+' segundos no registro)' : '';
+    const aviso=atribuicao.length+' chamada(s) com FUNCAO=SDR no board'+duracao+
+      '; comprovam registros de tentativas, nao conversa ou qualificacao.';
+    fatos.unshift({tipo:'TENTATIVAS SDR',texto:aviso,fonte:'Board · API4COM',
+      confianca:'AUTORIA_DECLARADA_BOARD'});
+    if(Array.isArray(parecer.resumoExecutivo))parecer.resumoExecutivo.unshift(aviso);
+    const plano=parecer.planoOtimizacaoSdr||{};
+    const voip=(plano.itens||[]).find(function(x){return x.id==='voip';});
+    if(voip){
+      voip.status='EVIDENCIADO';
+      voip.detalhe='O board registra '+atribuicao.length+
+        ' chamada(s) com FUNCAO=SDR e vinculo direto com a negociacao'+duracao+
+        '. Evidencia de tentativa por VoIP; nao comprova atendimento, pitch ou dialogo.';
+      voip.fonte='INTERACOES · FUNCAO, LINK_CRM e API4COM';
+      voip.evidencia='Papel declarado no campo FUNCAO do board; audio ainda nao auditado.';
+    }
+    if(plano.contagem){
+      const tally={EVIDENCIADO:0,INDICIO:0,ATENCAO:0,SEM_EVIDENCIA:0,
+        NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
+      (plano.itens||[]).forEach(function(x){tally[x.status]=(tally[x.status]||0)+1;});
+      plano.contagem=tally;
+      plano.atributoPapel='FUNCAO_DECLARADA_BOARD';
+      plano.aviso='As tentativas VoIP com FUNCAO=SDR podem ser atribuidas ao papel SDR no board. Demais tarefas, pitch e conversas exigem provas proprias.';
+    }
+  }
+  if(pendentes.length){
+    const msg=pendentes.length+' interacao(oes) com transcricao ainda pendente,'
+      +' sem base para auditar conteudo de conversa ou pitch.';
+    if(Array.isArray(operativo.notasDeConfiabilidade))
+      operativo.notasDeConfiabilidade.unshift(msg);
+  }
+  // O resumo nao deve inferir que nao ha autoria, quando o board possui FUNCAO=SDR.
+  if(atribuicao.length && Array.isArray(operativo.notasDeConfiabilidade)){
+    operativo.notasDeConfiabilidade=operativo.notasDeConfiabilidade.filter(function(texto){
+      return !/Nenhuma ligacao do board e atribuida ao papel SDR/.test(viWidgetNormalizar_(texto));
+    });
+  }
+  operativo.fatos=fatos.slice(0,7);
+  parecer.operacional=operativo;
+  parecer.versao='0.4.1';
   return parecer;
 }

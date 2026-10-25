@@ -236,18 +236,95 @@ function viLeadTarefas_(tarefas, incluirTextos) {
   });
 }
 
-function viLeadLigacoesBoard_(interacoes, dealId) {
-  return interacoes.filter(item => viLeadVinculoRd_(item, dealId) &&
-    String(item.TIPO_INTERACAO || '').toUpperCase() === 'LIGACAO')
-    .map(item => ({
+function viLeadInteracoesBoard_(interacoes, dealId, idCliente) {
+  return (Array.isArray(interacoes) ? interacoes : []).filter(function(item) {
+    return viLeadVinculoRd_(item, dealId) &&
+      (!idCliente || String(item.ID_CLIENTE || '') === String(idCliente));
+  }).map(function(item) {
+    const funcao = String(item.FUNCAO || '').trim().toUpperCase();
+    const papel = ['SDR','CLOSER'].indexOf(funcao) >= 0 ? funcao : 'NAO_COMPROVADO';
+    const tipo = String(item.TIPO_INTERACAO || '').trim().toUpperCase();
+    const fonte = String(item.FONTE || '').trim().toUpperCase();
+    return {
       id: String(item.ID_INTERACAO || ''),
-      tarefaId: String(item.ID_EXTERNO || '').replace(/^RD_TASK_/, ''),
+      idCliente: String(item.ID_CLIENTE || ''),
+      tipo: tipo,
+      fonte: fonte,
+      tarefaId: String(item.ID_EXTERNO || '').replace(/^RD_TASK_/i, ''),
       data: viLeadDataIso_(item.DATA_INTERACAO),
-      duracaoSegundos: Number(item.DURACAO_SEGUNDOS) || 0,
-      temReferenciaGravacao: Boolean(item.URL_GRAVACAO),
-      transcricaoStatus: String(item.STATUS_TRANSCRICAO || ''),
-      auditoriaStatus: String(item.STATUS_AUDITORIA || '')
-    }));
+      duracaoSegundos: Math.max(0, Number(item.DURACAO_SEGUNDOS) || 0),
+      temReferenciaGravacao: Boolean(String(item.URL_GRAVACAO || '').trim()),
+      funcaoDeclarada: papel,
+      origemFuncao: papel === 'NAO_COMPROVADO' ? 'NAO_INFORMADA' : 'CAMPO_FUNCAO_BOARD',
+      colaboradorInformado: Boolean(String(item.COLABORADOR || item.VENDEDOR || '').trim()),
+      responsavelRegistrado: String(item.COLABORADOR || item.VENDEDOR || '').trim().slice(0, 90),
+      transcricaoStatus: String(item.STATUS_TRANSCRICAO || '').trim().toUpperCase(),
+      auditoriaStatus: String(item.STATUS_AUDITORIA || '').trim().toUpperCase(),
+      textoDisponivel: false
+    };
+  });
+}
+
+function viLeadLigacoesBoard_(interacoes, dealId, idCliente) {
+  return viLeadInteracoesBoard_(interacoes, dealId, idCliente)
+    .filter(function(item) { return item.tipo === 'LIGACAO'; });
+}
+
+/**
+ * Metadados da TRANSCRICOES em leitura de colunas seletivas.
+ * Nao percorre CONTEUDO / CONTEUDO_NORMALIZADO: textos sensiveis e volumosos
+ * ficam fora da consulta automatica do painel.
+ */
+function viLeadMetadadosTranscricoesBoard_(idsInteracoes) {
+  const conjunto = new Set((idsInteracoes || []).map(String).filter(Boolean));
+  const vazio = {porInteracao:{},fonte:{acessivel:false,completo:false,
+    vinculadas:0,concluidas:0,pendentes:0,conflitos:0,origem:'TRANSCRICOES'}};
+  if (!conjunto.size) return {porInteracao:{},fonte:Object.assign({},vazio.fonte,
+    {acessivel:true,completo:true,origem:'SEM_INTERACOES_VINCULADAS'})};
+  try {
+    const aba = abrirPlanilha_().getSheetByName(APP.sheets.transcricoes);
+    if (!aba) return vazio;
+    const linhas = aba.getLastRow();
+    if (linhas < 1) return vazio;
+    const titulos = aba.getRange(1,1,1,aba.getLastColumn()).getDisplayValues()[0];
+    const indice = function(nome) { return titulos.indexOf(nome) + 1; };
+    if (!indice('ID_INTERACAO') || !indice('STATUS') || !indice('ID_TRANSCRICAO')) return vazio;
+    const n = Math.max(0, linhas-1);
+    const nomes = ['ID_INTERACAO','ID_TRANSCRICAO','STATUS','TAMANHO_CARACTERES'];
+    const colunas = {};
+    nomes.forEach(function(nome) {
+      const pos = indice(nome);
+      colunas[nome] = n && pos ?
+        aba.getRange(2,pos,n,1).getDisplayValues().map(function(row) { return String(row[0] || ''); }) : [];
+    });
+    const retorno = {},repetidas = new Set();
+    for (let i=0; i<n; i++) {
+      const id = String(colunas.ID_INTERACAO[i] || '').trim();
+      if (!conjunto.has(id)) continue;
+      if (retorno[id]) {
+        repetidas.add(id);
+        retorno[id] = {status:'CONFLITO',temConteudo:false,referenciaConfirmada:false};
+        continue;
+      }
+      const status = String(colunas.STATUS[i] || '').toUpperCase();
+      const chars = Number(colunas.TAMANHO_CARACTERES[i]) || 0;
+      retorno[id] = {
+        status:status || 'NAO_INFORMADO',
+        temConteudo:status === 'CONCLUIDA' && chars > 0,
+        referenciaConfirmada:Boolean(colunas.ID_TRANSCRICAO[i]),
+        tamanhoCaracteres:Math.max(0,chars)
+      };
+    }
+    const valores = Object.values(retorno);
+    return {porInteracao:retorno,fonte:{
+      acessivel:true,completo:true,vinculadas:valores.length,
+      concluidas:valores.filter(function(x) {return x.temConteudo;}).length,
+      pendentes:valores.filter(function(x) {return x.status==='PENDENTE';}).length,
+      conflitos:repetidas.size,origem:'METADADOS_TRANSCRICOES'
+    }};
+  } catch (erro) {
+    return {porInteracao:{},fonte:Object.assign({},vazio.fonte,{motivo:'FALHA_LEITURA'})};
+  }
 }
 
 function viLeadHistoricoEtapas_(negociacao) {
@@ -265,7 +342,7 @@ function viLeadHistoricoEtapas_(negociacao) {
     }).sort((a, b) => a.inicio.localeCompare(b.inicio));
 }
 
-function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas) {
+function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard) {
   const eventos = [];
   atividades.forEach(a => {
     if (!a.data) return;
@@ -279,6 +356,9 @@ function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas) {
     if (t.concluidaEm) eventos.push({ data: t.concluidaEm, fonte: 'RD_TAREFA', tipo: 'CONCLUSAO_TAREFA', ref: t.id });
   });
   ligacoes.forEach(l => { if (l.data) eventos.push({ data: l.data, fonte: 'BOARD_API4COM', tipo: 'LIGACAO_REGISTRADA', ref: l.tarefaId || l.id }); });
+  (Array.isArray(reunioesBoard) ? reunioesBoard : []).forEach(r => {
+    if(r.data) eventos.push({data:r.data,fonte:'BOARD_REUNIAO',tipo:'REUNIAO_REGISTRADA',ref:r.id});
+  });
   etapas.forEach(e => { if (e.inicio) eventos.push({ data: e.inicio, fonte: 'RD_NEGOCIACAO', tipo: 'ENTRADA_ETAPA', ref: e.etapaId }); });
   return eventos.sort((a, b) => a.data.localeCompare(b.data));
 }
@@ -391,7 +471,21 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
 
   const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
-  const ligacoes = viLeadLigacoesBoard_(interacoes, dealId);
+  const boardVinculado = viLeadInteracoesBoard_(interacoes, dealId, vinculo.idCliente);
+  const metadadosTranscricoes = viLeadMetadadosTranscricoesBoard_(
+    boardVinculado.map(function(item) { return item.id; })
+  );
+  const comMetadados = boardVinculado.map(function(item) {
+    const transcricao = metadadosTranscricoes.porInteracao[item.id] || {};
+    return Object.assign({}, item, {
+      transcricaoBoardStatus:transcricao.status || 'SEM_REGISTRO',
+      transcricaoDisponivel:transcricao.temConteudo === true,
+      transcricaoReferenciaConfirmada:transcricao.referenciaConfirmada === true
+    });
+  });
+  const ligacoes = comMetadados.filter(function(x) {return x.tipo==='LIGACAO';});
+  const reunioesBoard = comMetadados.filter(function(x) {return x.tipo==='REUNIAO' || x.tipo==='MEETING';});
+  fontes.transcricoesBoard = metadadosTranscricoes.fonte;
 
   // A API v1 pode devolver a negociação apenas com o ID da etapa.
   // Resolver pelo endpoint oficial GET /deal_stages/{id} somente se necessário.
@@ -419,7 +513,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
 
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
-  const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas);
+  const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at) };
 
@@ -435,7 +529,9 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
       estadoFechamento: negociacao.win === true ? 'GANHA' : negociacao.win === false ? 'PERDIDA' : 'EM_ABERTO',
       responsavel: String((negociacao.user || {}).name || ''), historicoEtapas: etapas
     },
-    fontes: Object.assign(fontes, { board: { acessivel: true, ligacoesVinculadas: ligacoes.length } }),
+    fontes: Object.assign(fontes, { board: { acessivel: true,
+      completo: true, interacoesVinculadas:comMetadados.length,
+      ligacoesVinculadas: ligacoes.length, reunioesVinculadas:reunioesBoard.length } }),
     cerebros: [
       viCerebroLead_(ctx), viCerebroCadencia_(ctx), viCerebroConexao_(ctx),
       viCerebroAgenda_(ctx), viCerebroReuniao_(ctx)
@@ -445,6 +541,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     atividades: atividades,
     anotacoes: atividades.filter(a => a.tipo === 'note'),
     ligacoesBoard: ligacoes,
+    reunioesBoard: reunioesBoard,
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
       'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
