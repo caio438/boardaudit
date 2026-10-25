@@ -165,7 +165,7 @@ export async function readRdHistory({dealId,token,fetcher,maxActivityPages=3,max
     coverage:{
       deal:{accessible:true,complete:true,records:1},
       tasks:{accessible:!taskRes.errors.length,complete:taskRes.complete,
-        records:taskRes.rows.length,unlinked:taskRes.unlinked,errors:taskRes.errors},
+        records:taskRes.rows.length,unlinked:taskRes.unlinked,rejected:taskRes.rejected,errors:taskRes.errors},
       activities:{accessible:Object.values(types).some(t=>!t.errors.length),
         complete:Object.values(types).every(t=>t.complete)&&conflicts.length===0,
         records:all.length,types,conflicts:conflicts.length},
