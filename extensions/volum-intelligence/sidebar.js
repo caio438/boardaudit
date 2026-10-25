@@ -42,7 +42,6 @@ async function audit(){
       relayTo(event.source,event.origin);
     };
     window.addEventListener('message',onHistoryRequest);
-    frame.addEventListener('load',()=>{historyFromRd=null;},{once:true});
     // Remove receptores da negociacao anterior na troca de deal.
     if(window.__volumHistoryReceiver)window.removeEventListener('message',window.__volumHistoryReceiver);
     window.__volumHistoryReceiver=onHistoryRequest;
