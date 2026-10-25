@@ -170,7 +170,7 @@ const uiEnd=widget.indexOf('function group(',uiStart);
 assert.ok(uiStart>=0&&uiEnd>uiStart,'accordion helper must exist');
 const ux=vm.createContext({esc:x=>String(x===null||x===undefined?'':x),String,Array,Number,Object,Set});
 vm.runInContext(widget.slice(uiStart,uiEnd)+
-  '\\nthis.criteriaAccordion=criterionSection;this.criteriaCard=criterionCard;this.criteriaLight=criterionLight;',ux);
+  String.fromCharCode(10)+'this.criteriaAccordion=criterionSection;this.criteriaCard=criterionCard;this.criteriaLight=criterionLight;',ux);
 const renderSdr=vm.runInNewContext('('+widget.slice(sdrStart,sdrEnd)+')',{
   section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
   esc:x=>String(x||''),
