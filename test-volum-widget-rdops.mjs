@@ -95,7 +95,9 @@ assert.equal(big.resumo.total,103);
 assert.equal(big.resumo.coberturaCompleta,true);
 
 // Must get actual DOM history into sandboxed Google HTML, not postMessage to wrapper.
-assert.match(sidebar,/VOLUM_REQUEST_RD_UI_HISTORY/);
+assert.match(chrome,/VOLUM_REQUEST_RD_UI_HISTORY/);
+assert.match(chrome,/INLINE_ID/);
+assert.match(chrome,/host.__volumHistoryCleanup/);
 assert.match(widget,/window\.top\.postMessage/);
 assert.match(widget,/chrome-extension/);
 assert.match(chrome,/waitHistoryChange/);
