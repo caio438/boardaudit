@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VOLUM Intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Auditoria consultiva e somente leitura para negociações no RD Station CRM.",
   "permissions": ["sidePanel", "storage", "tabs"],
   "host_permissions": ["https://crm.rdstation.com/*"],
@@ -12,5 +12,6 @@
     "run_at": "document_idle"
   }],
   "side_panel": { "default_path": "sidebar.html" },
+  "options_page": "options.html",
   "action": { "default_title": "Abrir VOLUM Intelligence" }
 }
