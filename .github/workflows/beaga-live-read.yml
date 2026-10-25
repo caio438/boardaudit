@@ -1,0 +1,80 @@
+name: Read Beaga RD live (owner command, read only)
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  beaga-read:
+    if: ${{ github.event.issue.number == 142 && github.event.comment.user.login == 'caio438' && github.event.comment.body == '/volum-beaga-refresh' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: apps-script-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Configure short-lived Apps Script authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+      - name: Read fresh Beaga RD/Board snapshot (no CRM updates)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Token refresh from the owner-only production clasp credential.
+          npx clasp versions >/tmp/beaga-versions.txt
+          set +e
+          npx clasp run-function VOLUM_PREVIEW_LEAD_PRIVADO --params '["6acc888b98976f0023dc583f"]' >/tmp/beaga-readout.txt 2>&1
+          status=$?
+          set -e
+          echo "LIVE_READ_COMMAND_EXIT=$status"
+          if [ "$status" -ne 0 ]; then
+            # Avoid printing Google auth, network logs, PII or untrusted body.
+            echo "LIVE_READ_STATUS=FUNCTION_CALL_FAILED"
+            echo "LIVE_READ_OUTPUT_BYTES=$(wc -c </tmp/beaga-readout.txt)"
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=fs.readFileSync('/tmp/beaga-readout.txt','utf8');
+          const p=raw.indexOf('{'),q=raw.lastIndexOf('}');
+          if(p<0||q<p) {console.log('LIVE_READ_STATUS=NO_JSON');process.exit(2);}
+          let r;try{r=JSON.parse(raw.slice(p,q+1));}
+          catch(e){console.log('LIVE_READ_STATUS=UNPARSEABLE');process.exit(2);}
+          if(r.sucesso!==true||r.modo!=='PREVIEW_SEM_PUBLICACAO'||r.somenteLeitura!==true) {
+            console.log('LIVE_READ_STATUS=SAFETY_CHECK_FAILED');process.exit(2);
+          }
+          const f=r.fontes||{},n=r.quantidades||{},s=r.sinais||{};
+          const clean=(v)=>Number(v)||0;
+          console.log('LIVE_READ_STATUS=SUCCESS');
+          console.log('LIVE_READ_AT='+new Date().toISOString());
+          console.log('LIVE_READ_TASKS='+clean(n.tarefas));
+          console.log('LIVE_READ_TASKS_DONE='+clean(n.tarefasConcluidas));
+          console.log('LIVE_READ_ACTIVITIES='+clean(n.atividades));
+          console.log('LIVE_READ_NOTES='+clean(n.anotacoes));
+          console.log('LIVE_READ_BOARD_CALLS='+clean(n.chamadasNoBoard));
+          console.log('LIVE_READ_TIMELINE_EVENTS='+clean(n.eventosLinhaTempo));
+          console.log('LIVE_READ_STAGE_MOVEMENTS='+clean(n.historicoEtapas));
+          console.log('LIVE_READ_ACTIVITIES_COMPLETE='+String(f.atividades?.completo===true));
+          console.log('LIVE_READ_ACTIVITY_TYPE_CONFLICTS='+clean(f.atividades?.conflitosDeTipo));
+          console.log('LIVE_READ_TASKS_COMPLETE='+String(f.tarefas?.completo===true));
+          console.log('LIVE_READ_RESCHEDULE_NOTE_COUNT='+((s.anotacaoCancelamentoOuReagendamento||[]).length));
+          console.log('LIVE_READ_NO_ANSWER_NOTE_COUNT='+((s.anotacaoNaoAtendeu||[]).length));
+          console.log('LIVE_READ_RECOVERY_3RD_CALL_TASK_COUNT='+((s.tarefaRecoveryDia1Ligacao3||[]).length));
+          console.log('LIVE_READ_ACTIVITY_TYPES='+JSON.stringify(r.tiposAtividade||{}));
+          NODE
+      - name: Remove credentials and raw in-run output
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.clasprc.json" /tmp/beaga-versions.txt /tmp/beaga-readout.txt
