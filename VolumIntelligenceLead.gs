@@ -500,9 +500,12 @@ function viCerebroLead_(ctx) {
   const primeiraLigacaoMs=primeiraLigacao?viLeadDataMs_(primeiraLigacao.data):null;
   const textoInicial=atividades.filter(x=>x.data&&(criacao===null||viLeadDataMs_(x.data)>=criacao))
     .sort((a,b)=>a.data.localeCompare(b.data));
-  const cad=(n,canal)=>textoInicial.find(a=>new RegExp('\\[CAD\\s*'+n+'\\]','i').test(a.texto||'') &&
-    canal.test(String(a.texto||'')));
-  const whats=cad(1,/whats/i),email=cad(2,/e-?mail/i);
+  const cad=(numero,canal,tipo)=>textoInicial.find(a=>{
+    const texto=String(a.texto||'');
+    const marcado=new RegExp('\\[CAD\\s*'+numero+'\\]','i').test(texto)&&canal.test(texto);
+    return marcado||viCadenciaCanaisTexto_(a).includes(tipo);
+  });
+  const whats=cad(1,/whats/i,'WHATSAPP'),email=cad(2,/e-?mail/i,'EMAIL');
   const coberturaAtividades=fontes.atividades?.acessivel===true&&fontes.atividades?.completo===true;
   const coberturaTarefas=fontes.tarefas?.acessivel===true&&fontes.tarefas?.completo===true;
   const regra=ctx.regraLead||{};
@@ -697,11 +700,13 @@ function viCerebroCadencia_(ctx) {
   const cobertura=fontes.tarefas?.completo===true&&fontes.atividades?.completo===true;
   const extra=regra.calendarioLocalConfirmado===true;
   const estiloConfirmado=['HUMANO','ROBO','HIBRIDO'].includes(modo);
-  const modeloAplicavel=estiloConfirmado&&escopo==='INBOUND'&&['POSITIVO','NEGATIVO'].includes(lmv);
+  const modeloAplicavel=(modo==='HUMANO'||(modo==='HIBRIDO'&&regra.perfilHumanoConfirmado===true))&&
+    escopo==='INBOUND'&&['POSITIVO','NEGATIVO'].includes(lmv);
   const canais={};
   const registros=[];
   const linksBoard=new Set();
-  ligacoes.filter(x=>x.data).forEach(l=>{
+  const closerIgnoradas=ligacoes.filter(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER').length;
+  ligacoes.filter(x=>x.data&&String(x.funcaoDeclarada||'').toUpperCase()!=='CLOSER').forEach(l=>{
     if(l.tarefaId)linksBoard.add(String(l.tarefaId));
     registros.push({dia:viCadenciaDiaBrasil_(l.data),data:l.data,canal:'LIGACAO',
       grau:'REGISTRO_TECNICO',fonte:'BOARD_API4COM',id:String(l.id||''),
@@ -785,7 +790,7 @@ function viCerebroCadencia_(ctx) {
     (modeloAplicavel?'Modelo esperado aplicado de modo preliminar.':'Nao e seguro pontuar sem perfil e LMV confirmados.'),
     'Estrutura da Cadencia / RD','Reconciliar a linha do tempo com a versao aprovada.');
   item('execucao','Execucao real x tarefas',ligacoes.length?'INDICIO':'NAO_VERIFICAVEL',
-    ligacoes.length+' chamada(s) no Board; '+candidatosTarefa.length+
+    (ligacoes.length-closerIgnoradas)+' chamada(s) possiveis de SDR no Board; '+candidatosTarefa.length+
     ' tarefa(s) de ligacao concluidas sem correspondencia direta no Board.',
     'Board API4COM / RD','Validar chamadas nao vinculadas; conclusao automatica nao equivale a ligacao.');
   item('canais','Canais utilizados',registros.length?'INDICIO':'NAO_VERIFICAVEL',
@@ -817,10 +822,11 @@ function viCerebroCadencia_(ctx) {
       inicioReferencia:entrada,calendarioFeriadosLocaisConfirmado:extra,
       diasUteisPlanejados:calendario.length,diasUteisComRegistro:diasUteisComRegistro.length,
       diasForaCalendario:foraDiaUtil,diasComLacuna:gaps.length,
-      ligacoesNoBoard:ligacoes.length,chamadasConcluidasNoRdSemCorrespondenciaNoBoard:candidatosTarefa.length,
-      tentativasCandidatasSemDuplicacao:ligacoes.length+candidatosTarefa.length,
+      ligacoesNoBoard:ligacoes.length-closerIgnoradas,ligacoesCloserExcluidas:closerIgnoradas,
+      chamadasConcluidasNoRdSemCorrespondenciaNoBoard:candidatosTarefa.length,
+      tentativasCandidatasSemDuplicacao:ligacoes.length-closerIgnoradas+candidatosTarefa.length,
       diasComLigacoesNoBoard:Array.from(new Set(ligacoes.map(l=>viCadenciaDiaBrasil_(l.data)).filter(Boolean))).sort(),
-      ligacoesComReferenciaGravacao:ligacoes.filter(l=>l.temReferenciaGravacao).length},
+      ligacoesComReferenciaGravacao:ligacoes.filter(l=>l.temReferenciaGravacao&&String(l.funcaoDeclarada||'')!=='CLOSER').length},
     criterios,calendario,intervalos:gaps,
     limite:'Sem regua e LMV aplicaveis, registro de canal e feriados locais, a auditoria informa evidencias mas nao certifica compliance. Dias de feriado e fim de semana sao excluidos da contagem.'};
 }
