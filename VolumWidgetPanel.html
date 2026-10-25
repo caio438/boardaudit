@@ -373,7 +373,7 @@ function runAudit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById(
 function audit(){runAudit();}
 if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){
   const m=event&&event.data||{};
-  if(!/^chrome-extension:\/\/[a-z0-9]+$/i.test(String(event.origin||''))||event.source!==window.top)return;
+  if(!(/^(?:chrome-extension:\/\/[a-z0-9]+|https:\/\/crm\.rdstation\.com)$/i.test(String(event.origin||'')))||event.source!==window.top)return;
   if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||!m.history)return;
   historyFromRd=m.history;runAudit();
 });
