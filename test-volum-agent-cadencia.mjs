@@ -30,6 +30,7 @@ assert.equal(c.viCadenciaCanaisTexto_(act('a','2026-10-13T13:00:00Z','Mandei men
 assert.equal(c.viCadenciaCanaisTexto_(act('b','2026-10-13T13:00:00Z','Enviei e-mail com apresentação')).join(','),'EMAIL');
 assert.equal(c.viCadenciaCanaisTexto_(act('c','2026-10-13T13:00:00Z','Vou enviar o email amanhã')).length,0);
 assert.equal(c.viCadenciaCanaisTexto_(act('d','2026-10-13T13:00:00Z','Não enviei email')).length,0);
+assert.equal(c.viCadenciaCanaisTexto_({...act('d2','2026-10-13T13:00:00Z','Não enviei email'),tipo:'note',origemClassificacao:'CAMPO_API'}).length,0);
 assert.equal(c.viCadenciaCanaisTexto_(act('e','2026-10-13T13:00:00Z','[CAD 1] WHATSAPP - ENVIADO; [CAD 2] EMAIL - ENVIADO')).length,2);
 
 const ctx={
