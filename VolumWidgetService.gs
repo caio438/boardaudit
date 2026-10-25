@@ -34,6 +34,9 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const inteligenciaRd=viWidgetDiagnosticoHistoricoRd_(leitura);
   parecer.diagnosticoRdOperacional=inteligenciaRd;
   if(inteligenciaRd.ativo){
+    // Nao reutilizar o placar antigo de 14 verificacoes forcadas a NAO_VERIFICAVEL.
+    // Aplicar o Plano SDR aos eventos das passagens anteriores a Apresentacao.
+    parecer.planoOtimizacaoSdr=viWidgetPlanoSdrHistoricoRd_(leitura,inteligenciaRd);
     parecer.status=inteligenciaRd.titulo;
     parecer.risco=inteligenciaRd.semRegistro?'ATENÇÃO OPERACIONAL':'SEM DESVIO CONFIRMADO';
     parecer.confianca='ALTA NA COBERTURA DO HISTÓRICO RD; REGRAS EM VALIDAÇÃO';
@@ -114,6 +117,8 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   if(inteligenciaRd.ativo && parecer.interpretacao)
     parecer.interpretacao=viWidgetValidarInterpretacaoRd_(parecer.interpretacao,leitura);
   delete parecer.contextoIa;
+  // Versionar a resposta inteira para identificar o backend realmente implantado.
+  parecer.versao='0.5.0-RD';
   return parecer;
 }
 
