@@ -31,3 +31,24 @@ assert.equal(ctx.viLeadHistoricoEtapas_({deal_stage_histories:[{deal_stage_id:'S
 assert.equal(ctx.viLeadLinhaTempo_([],[],calls,[]).length,2);
 assert.doesNotMatch(source, /\b(?:adicionarObjeto_|atualizarPorCampo_|registrarLog_|salvarSegredo_)\s*\(/);
 console.log('VOLUM Intelligence: testes de validacao, sanitizacao, vinculo, deduplicacao e linha do tempo passaram.');
+
+const advanced = vm.createContext({ Object, Array, String, Number, Set, Date, Boolean, Math, RegExp, Error });
+vm.runInContext(source, advanced);
+vm.runInContext("function viLeadRdGet_(token, path, filtros) { return {activities:filtros.type === 'note' ? [{id:'n1',deal_id:'6acc888b98976f0023dc583f',type:'note',date:'2026-10-22T12:54:00Z',text:'Reuniao desmarcada'}] : filtros.type === 'task' ? [{id:'t1',deal_id:'6acc888b98976f0023dc583f',type:'task',date:'2026-10-23T19:06:00Z'}] : []}; }", advanced);
+const activities = advanced.viLeadColetarAtividades_('fake',deal);
+assert.equal(activities.totalRegistrosUnicos,2);
+assert.equal(activities.completo,true);
+assert.equal(activities.itens.filter(x=>x.__viTipo==='note').length,1);
+const preview = advanced.viLeadResumoPrivado_({
+  versao:'PILOTO_V2', fontes:{tarefas:{acessivel:true},atividades:{acessivel:true,completo:true,porTipo:{note:{acessivel:true,completo:true,registros:1}}}},
+  atividades:[{tipo:'note',data:'2026-10-22T12:54:00Z',texto:'Wagner desmarcou a reuniao, token=PRIVADO',origemClassificacao:'CAMPO_API'}],
+  tarefas:[{tipo:'call',assunto:'Recovery Dia 1 Ligacao 3',concluida:true,concluidaEm:'2026-10-23T19:06:00Z'}],
+  ligacoesBoard:[{id:'i1'}],eventos:[{data:'2026-10-23T19:06:00Z',fonte:'RD',tipo:'NOTE',ref:'sensitive'}],negociacao:{historicoEtapas:[]}
+});
+assert.equal(preview.quantidades.anotacoes,1);
+assert.equal(preview.quantidades.chamadasNoBoard,1);
+assert.equal(preview.sinais.anotacaoCancelamentoOuReagendamento.length,1);
+assert.equal(preview.sinais.tarefaRecoveryDia1Ligacao3.length,1);
+assert.ok(!JSON.stringify(preview).includes('PRIVADO'), 'Preview nao pode vazar anotacoes.');
+assert.ok(!JSON.stringify(preview).includes('sensitive'), 'Preview nao pode vazar identificadores de eventos.');
+console.log('Preview privado e classificacao por tipos aprovados em mocks.');
