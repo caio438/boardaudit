@@ -10,6 +10,66 @@ const VOLUM_WIDGET = Object.freeze({
   versao: '0.4.7'
 });
 
+/**
+ * Reconstroi LEAD/CADENCIA com historico visual RD aceito e completo.
+ * A abertura de WhatsApp nao vira mensagem enviada; o evento de email
+ * enviado e diferente de resposta, nota ou tarefa.
+ */
+function viWidgetAgentesDetalhados_(leitura) {
+  const base=Array.isArray(leitura.cerebros)?leitura.cerebros:[];
+  const historico=leitura.historicoRdEtapas||{};
+  const visual=historico.linhaDoTempo||{};
+  const cobertura=visual.cobertura||{};
+  const eventos=Array.isArray(visual.eventos)?visual.eventos:[];
+  const completo=cobertura.acessivel===true&&cobertura.completo===true&&
+    eventos.length===Number(cobertura.totalVisual)&&
+    !(cobertura.lacunas||[]).length;
+  if(!completo)return base;
+  const tipoPorAcao={
+    EMAIL_ENVIADO:'email',EMAIL_RESPONDIDO:'response',
+    ANOTACAO:'note',WHATSAPP_ABERTO:'whatsapp_open'
+  };
+  const atividades=eventos.filter(e=>e&&e.data&&tipoPorAcao[e.acao]).map(e=>({
+    id:String(e.id||''),data:e.data,texto:String(e.texto||''),
+    tipo:tipoPorAcao[e.acao],origemClassificacao:'RD_UI_HISTORY',
+    autor:String(e.autor||''),acaoVisual:e.acao
+  }));
+  // WhatsApp aberto nunca fornece prova de envio. Nao se inventa ligacao a
+  // partir de tarefa visual; chamadas tecnicas seguem rastreaveis no Board.
+  const timeline=eventos.filter(e=>e&&e.data).map(e=>({
+    tipo:String(e.acao||'EVENTO_VISUAL'),data:e.data,id:String(e.id||''),
+    fonte:'RD_UI_HISTORY'
+  }));
+  const negociacao=leitura.negociacao||{};
+  const anterior=base.find(a=>a.agente==='CADENCIA')||{};
+  const perfil=anterior.indicadores||{};
+  const ctx={
+    criadaEm:negociacao.criadaEm||'',
+    inicioCadenciaEm:perfil.inicioReferencia||'',
+    negociacao:{responsavel:negociacao.responsavel||''},
+    cadastro:{origem:String((leitura.cadastroRd||{}).origem||'')},
+    regraLead:{},idCliente:leitura.idCliente||'',
+    regraCadencia:{
+      modoSdr:perfil.modoSdr||'NAO_DEFINIDO',fluxo:perfil.fluxo||'NAO_CONFIRMADO',
+      lmv:perfil.lmv||'NAO_CONFIRMADO',feriadosExtras:[],
+      calendarioLocalConfirmado:false
+    },
+    fontes:Object.assign({},leitura.fontes||{},{
+      atividades:{acessivel:true,completo:true,origem:'RD_UI_HISTORY'}
+    }),
+    atividades,tarefas:Array.isArray(leitura.tarefas)?leitura.tarefas:[],
+    ligacoes:Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[],
+    etapas:Array.isArray(negociacao.historicoEtapas)?negociacao.historicoEtapas:[],
+    timeline
+  };
+  const substitutos={LEAD:viCerebroLead_(ctx),CADENCIA:viCerebroCadencia_(ctx)};
+  substitutos.LEAD.indicadores.fontePrincipal='RD_UI_HISTORY';
+  substitutos.CADENCIA.indicadores.fontePrincipal='RD_UI_HISTORY + BOARD_API4COM';
+  substitutos.LEAD.limite+=' A origem em cadastro atual nao comprova o campo na data de entrada. Abertura WhatsApp nao comprova envio.';
+  substitutos.CADENCIA.limite+=' Os cartoes do RD sao a fonte principal de e-mails e notas; WhatsApp aberto nao equivale a envio.';
+  return base.map(a=>substitutos[a.agente]||a);
+}
+
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const email = viWidgetEmailSessao_();
   const emailSolicitado = String(identidade || '').trim().toLowerCase();
@@ -27,6 +87,11 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
+  parecer.agentesDetalhados=viWidgetAgentesDetalhados_(leitura).map(function(a){
+    return {agente:a.agente,estado:a.estado,indicadores:a.indicadores||{},
+      criterios:a.criterios||[],calendario:a.calendario||[],
+      intervalos:a.intervalos||[],limite:a.limite||''};
+  });
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
 
   // Uma captura visual completa substitui os palpites de funil e os totais do
