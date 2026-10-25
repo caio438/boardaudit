@@ -24,6 +24,40 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
+  // Somente RD: movimentacoes canonizadas e registros entre entradas de etapa.
+  const recorteRd=leitura.historicoRdEtapas||{};
+  parecer.historicoRdEtapas={
+    atualizadoEm:recorteRd.registroEm||'',
+    resumo:recorteRd.resumo||{},
+    cobertura:recorteRd.cobertura||{},
+    inconsistencias:recorteRd.inconsistencias||[],
+    janelas:(recorteRd.janelas||[]).map(function(j) {
+      return {
+        passagemId:j.passagemId,visita:j.visita,etapaId:j.etapaId,
+        etapaNome:j.etapaNome,inicio:j.inicio,fim:j.fim,
+        fimInformado:j.fimInformado,proximaEtapaNome:j.proximaEtapaNome,
+        status:j.status,duracaoMinutos:j.duracaoMinutos,
+        contagens:j.contagens,compliance:j.compliance,
+        alertas:j.alertas||[],totalEventos:(j.eventos||[]).length,
+        eventos:(j.eventos||[]).slice(-100).map(function(e) {
+          return {data:e.data,acao:e.acao,id:e.id||'',fonte:e.fonte,
+            confianca:e.confianca,origemClassificacao:e.origemClassificacao||'',
+            texto:String(e.texto||'').slice(0,320),
+            assunto:String(e.assunto||'').slice(0,160),
+            campoNome:e.campoNome||'',detalhe:e.detalhe||'',
+            etapaIdRegistrada:e.etapaIdRegistrada||'',
+            divergenciaEtapaRegistrada:e.divergenciaEtapaRegistrada===true};
+        })
+      };
+    })
+  };
+  parecer.cadastroAtualRd={
+    origem:(leitura.cadastroRd||{}).origem||'',
+    campanha:(leitura.cadastroRd||{}).campanha||'',
+    funil:(leitura.cadastroRd||{}).funil||'',
+    atualizadoEm:(leitura.cadastroRd||{}).atualizadoEm||'',
+    camposPersonalizados:(leitura.cadastroRd||{}).camposPersonalizados||[]
+  };
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
