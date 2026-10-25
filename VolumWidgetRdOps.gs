@@ -522,3 +522,136 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
       'Conformidade de pitch precisa de gravação/transcrição.',
       'Não equiparar abertura de WhatsApp a mensagem enviada.']};
 }
+
+
+/**
+ * Plano operacional Closer: sete itens do Plano de Otimizacao Wisetec.
+ * Sem "CONFORME" por simples palavra-chave, pagina de proposta ou tarefa.
+ * A exigibilidade comeca quando ha registro da reuniao realizada ou etapa
+ * comercial de proposta, nao so por a negociacao estar em Apresentacao.
+ */
+function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
+  const h=leitura.historicoRdEtapas||{};
+  const janelas=h.janelas||[];
+  const todos=((h.linhaDoTempo||{}).eventos||[]);
+  const normal=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\s+/g,' ').trim();
+  const primeira=janelas.findIndex(x=>
+    /apresenta|reuniao|demonstrac|proposta|fechamento|negociac/.test(normal(x.etapaNome)));
+  const closerIds=new Set(janelas.slice(Math.max(0,primeira)).map(x=>x.passagemId));
+  const eventos=primeira<0?[]:todos.filter(x=>closerIds.has(x.passagemId));
+  const buscar=(type,re)=>eventos.filter(e=>e.acao===type&&(!re||re.test(normal(e.texto)))).sort((a,b)=>
+    String(b.data).localeCompare(String(a.data)))[0]||null;
+  const notas=eventos.filter(e=>e.acao==='ANOTACAO');
+  const emails=eventos.filter(e=>e.acao==='EMAIL_ENVIADO');
+  const notaReuniao=notas.filter(e=>
+    /(?:reuniao|apresentacao|demonstracao).{0,50}(?:realizad|concluid|aconteceu)|(?:realizamos|fizemos) (?:a |uma )?(?:reuniao|apresentacao)/.test(normal(e.texto)) &&
+    !/(?:nao|nunca|sem) (?:foi )?realizad/.test(normal(e.texto)))[0]||null;
+  const propostaAtiva=/proposta|negociac|follow|recovery|recupera/.test(
+    normal((leitura.negociacao||{}).etapaAtualNome));
+  const devido=propostaAtiva||!!notaReuniao;
+  const coberturaVisual=diagnostico&&diagnostico.ativo===true;
+  const fontes=leitura.fontes||{};
+  const completoArquivo=(fontes.arquivosRd||{}).completo===true;
+  const completoTarefa=(fontes.tarefas||{}).completo===true;
+  const completoNotas=(fontes.atividades||{}).completo===true;
+  const arq=Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[];
+  const pdf=arq.filter(a=>String(a.extensao||'').toLowerCase()==='pdf'&&
+    /proposta|orcamento|apresentacao|comercial/i.test(a.nome||''));
+  const value=Number((leitura.negociacao||{}).valorInformado);
+  const valor=Number.isFinite(value)&&value>0;
+  const tarefas=(leitura.tarefas||[]).filter(t=>{
+    if(!t.criadaEm)return false;
+    const data=Date.parse(t.criadaEm);
+    return janelas.slice(Math.max(0,primeira)).some(j=>
+      data>=Date.parse(j.inicio)&&(!j.fim||data<Date.parse(j.fim)));
+  });
+  const follow=tarefas.filter(t=>/(?:follow|retorno|proposta|recovery|acompanhar|pr[oó]xim)/i.test(
+    String(t.assunto||'')+' '+String(t.anotacao||'')));
+  const acordo=notas.find(e=>
+    /(?:combinamos|acordamos|ficou combinado|proxima reuniao|follow.?up)/.test(normal(e.texto)))||null;
+  const proximo=follow.find(t=>t.previstaPara&&t.responsaveis?.filter(Boolean).length)||null;
+  const formal=emails.find(e=>/proposta|formaliz|orcamento|condicoes comerciais/.test(normal(e.texto)))||null;
+  const mencaoGravacao=eventos.find(e=>(e.acao==='ANOTACAO'||e.acao==='EMAIL_ENVIADO')&&
+    /gravac|tldv|recording|link da reuniao gravada/.test(normal(e.texto)))||null;
+  const urlGravacao=(leitura.atividades||[]).find(a=>a.temLinkGravacao===true&&
+    (primeira<0||janelas.slice(Math.max(0,primeira)).some(j=>
+      a.data&&Date.parse(a.data)>=Date.parse(j.inicio)&&
+      (!j.fim||Date.parse(a.data)<Date.parse(j.fim)))))||null;
+  const notaContexto=notas.find(e=>/diagnostico|faturamento|necessidade|dor|objetivo/.test(normal(e.texto)))||null;
+  const notaCompleta=notas.find(e=>/diagnostico|necessidade|dor/.test(normal(e.texto))&&
+    /entendimento|score|validacao/.test(normal(e.texto))&&
+    /fechamento|proximo passo|follow.?up/.test(normal(e.texto)))||null;
+  const positivo=notas.find(e=>
+    /(?:cliente|comprador|lead|contato).{0,65}(?:confirmou|acusou).{0,30}(?:recebimento|que recebeu|proposta recebida)|(?:confirmou recebimento|recebimento confirmado pelo cliente)/.test(normal(e.texto))&&
+    !/nao recebeu|sem confirmacao|aguardando|perguntamos se recebeu|chegou tudo/.test(normal(e.texto))&&
+    (!formal||e.data>=formal.data))||null;
+  const perguntou=notas.find(e=>
+    /(?:recebeu|chegou).{0,40}(?:email|e-mail|proposta)|chegou tudo|confirmar o recebimento/.test(normal(e.texto)))||null;
+  const proximasTarefas=follow.filter(t=>!t.concluida);
+  const atrasos=follow.filter(t=>t.previstaPara&&
+    ((!t.concluida&&Date.parse(t.previstaPara)<Date.now())||
+     (t.concluida&&t.concluidaEm&&Date.parse(t.concluidaEm)>Date.parse(t.previstaPara))));
+  const reg=(id,titulo,cond,ev,detalhe,acao,fonte)=>{
+    let conformidade='PENDENTE';
+    if(!devido)conformidade='NAO_APLICAVEL';
+    else if(cond==='SIM')conformidade='CONFORME';
+    else if(cond==='FALTA')conformidade='NAO_CONFORME';
+    const e=ev&&ev.acao?ev:null;
+    const prova=e?(e.id+' · '+(e.dataTexto||e.data||'')+' · '+(e.autor||'')+
+      ' · '+viWidgetSanitizar_(e.texto||'').slice(0,220)):
+      ev&&ev.id?'ID '+String(ev.id)+' · '+String(ev.nome||ev.assunto||'').slice(0,170):'';
+    return {id,titulo,conformidade,status:cond==='SIM'?'EVIDENCIADO':
+      cond==='FALTA'?'SEM_EVIDENCIA':!devido?'NAO_APLICAVEL':'INDICIO',
+      detalhe:devido?detalhe:'Aguardando realização documentada da reunião ou início da etapa de proposta; a obrigação ainda não venceu.',
+      evidencia:prova,acao:devido?acao:'',fonte:fonte||'RD · Histórico',pilar:'OFICIAL'};
+  };
+  const itens=[
+    reg('gravacao','Link da gravação da reunião',urlGravacao?'SIM':mencaoGravacao?'PARCIAL':completoNotas?'FALTA':'PARCIAL',
+      mencaoGravacao||urlGravacao,
+      urlGravacao?'Foi encontrado indicador de link de gravação relacionado a esta etapa. Conferir acesso e destino.':
+        mencaoGravacao?'Existe menção textual à gravação, sem URL autenticada.':
+        'O link da gravação não foi localizado nos registros acessíveis.',
+      'Registrar um link funcional da reunião no e-mail ou anotação.','RD · anotações e e-mail'),
+    reg('anotacao','Anotação privada do vendedor',notaCompleta?'PARCIAL':notaContexto?'PARCIAL':completoNotas?'FALTA':'PARCIAL',
+      notaCompleta||notaContexto,
+      notaCompleta?'A anotação contém seções de diagnóstico, entendimento e fechamento, mas o caráter privado e a completude dos links não são verificáveis aqui.':
+        notaContexto?'Existe anotação de contexto, mas faltam seções ou confirmação de privacidade.':
+        'Não foi localizada anotação estruturada da reunião.',
+      'Completar a anotação do Closer com diagnóstico, entendimento, fechamento, gravação e próximo passo.','RD · anotações'),
+    reg('proposta_pdf','PDF da proposta anexado',pdf.length?'SIM':completoArquivo?'FALTA':'PARCIAL',
+      pdf[0]||null,
+      pdf.length?'PDF localizado no recurso Arquivos do negócio. Confirmar versão, valor e destinatário.':
+        completoArquivo?'A aba Arquivos foi consultada integralmente, mas não há PDF de proposta.':
+        'A fonte de arquivos não está integralmente acessível; não é possível reprovar a anexação.',
+      'Anexar o PDF de proposta atualizado ao lead.','RD · Arquivos'),
+    reg('proximo_passo','Tarefa com data e acordo do próximo passo',
+      proximo&&acordo?'SIM':follow.length?'PARCIAL':completoTarefa?'FALTA':'PARCIAL',
+      proximo||acordo,
+      proximo&&acordo?'Há tarefa datada e acordo anotado. Confirmar se o compromisso corresponde ao comprador.':
+        follow.length?'Há tarefa de retorno, mas faltam acordo explícito, data/hora ou responsável.':
+        'Nenhuma tarefa de continuidade posterior à reunião foi localizada.',
+      'Registrar tarefa com data/hora, responsável e compromisso acordado com o lead.','RD · tarefas/anotações'),
+    reg('valores','Valores de proposta',valor?'PARCIAL':propostaAtiva?'FALTA':'PARCIAL',
+      null,valor?'Valor comercial positivo registrado no RD, mas não foi possível confrontar com o PDF de proposta.':
+        'Não há valor comercial positivo comprovado na negociação para uma oportunidade em proposta.',
+      'Preencher os valores no negócio e conferir igualdade com o documento da proposta.','RD · negociação/proposta'),
+    reg('recebimento','Confirmação de recebimento da proposta',
+      positivo?'SIM':perguntou?'PARCIAL':formal&&completoNotas?'FALTA':'PARCIAL',
+      positivo||perguntou,
+      positivo?'Anotação atribui confirmação positiva de recebimento ao comprador após formalização.':
+        perguntou?'Existe pergunta de confirmação; não equivale a resposta positiva.':
+        'Nenhum registro positivo de recebimento identificado após o envio da proposta.',
+      'Registrar resposta inequívoca do comprador; não confundir solicitação com confirmação.','RD · anotações/e-mail'),
+    reg('followup','Cadência de follow-up do Closer',
+      atrasos.length?'FALTA':formal&&follow.length?'PARCIAL':formal&&completoTarefa?'FALTA':'PARCIAL',
+      follow[0]||formal,
+      atrasos.length?atrasos.length+' tarefa(s) de retorno com atraso comprovado no registro.':
+        formal&&follow.length?'Há formalização e tarefa(s) de retorno; ainda falta validar cada passo devido da cadência.':
+        'Não foi possível confirmar execução da sequência completa de follow-up, inclusive lembretes e recovery.',
+      'Comparar envio, confirmação, agenda, lembretes e desfechos com as datas e canais da cadência vigente.','RD · Histórico/tarefas')
+  ];
+  return {titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:itens.length,
+    itens,aplicavel:devido,escopo:{passagensCloser:janelas.slice(Math.max(0,primeira)).length,
+      eventosCloser:eventos.length},aviso:'Verde só quando há comprovação operacional suficiente daquele item. A aderência integral à régua e ao pitch depende de eventos e fontes próprias; falta de acesso não vira vermelho.'};
+}
