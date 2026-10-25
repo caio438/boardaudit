@@ -180,13 +180,37 @@ areas.map(function(area){const list=items.filter(function(x){return x.grupo===ar
 if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
 return html;}
 function sdr(d){const s=d.planoOtimizacaoSdr||{};const itens=s.itens||[];const oficiais=itens.filter(x=>x.pilar==='OFICIAL');const extras=itens.filter(x=>x.pilar!=='OFICIAL');
-let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares')+'<div class="notice">Avaliação histórica do SDR, inclusive quando o lead já avançou para o closer. A aderência ao pitch exige gravação ou transcrição do SDR; não há pontuação automática.</div>';
+let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares')+'<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
 html+='<div class="countbar">'+Number((s.contagem||{}).ATENCAO||0)+' atenção · '+Number((s.contagem||{}).INDICIO||0)+' indícios · '+Number((s.contagem||{}).NAO_VERIFICAVEL||0)+' não verificáveis</div>';
 html+=group('7 pilares do Plano Wisetec',oficiais,true);
 html+=group('9 verificações complementares',extras,false);
 return html;}
 function closer(d){const c=d.criteriosPlanoWisetec||[];let html=section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">Análise orientada pela etapa do CRM. Proposta PDF, recebimento e gravação não são confirmados sem as respectivas fontes.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
+function boardEvidence(d) {
+  const resumo=d.evidenciasBoardResumo||{};
+  const rows=d.evidenciasBoard||[];
+  let html=section('Evidências de chamadas e reuniões','Board · vínculo da negociação');
+  if(!rows.length)return html+'<p class="muted">Nenhuma interação vinculada foi recuperada do board nesta consulta.</p>';
+  html+='<div class="glass"><p><b>'+Number(resumo.ligacoes||0)+'</b> ligação(ões) no board · '+
+    '<b>'+Number(resumo.sdrDeclaradas||0)+'</b> com função SDR · '+
+    '<b>'+Number(resumo.closerDeclaradas||0)+'</b> com função closer</p>';
+  html+='<p class="muted">Transcrição pendente: '+Number(resumo.transcricoesPendentes||0)+
+    '. Transcrições legíveis: '+Number(resumo.transcricoesLegiveis||0)+
+    '. Registro de ligação não prova conversa nem aplicação do pitch.</p></div>';
+  html+=group('Últimos '+rows.length+' registros vinculados',rows.map(function(x) {
+    const role=x.funcao==='NAO_COMPROVADO'?'Função não confirmada':'Função '+x.funcao+' (campo do board)';
+    const date=humanDate(x.data);
+    const txt='Duração informada: '+Number(x.duracaoSegundos||0)+'s. Gravação referenciada: '+
+      (x.gravacaoReferencia?'sim':'não')+'. Transcrição: '+
+      (x.statusTranscricao||'não informada')+'. Não confirma diálogo.';
+    return {titulo:x.tipo+' · '+date,status:x.funcao==='NAO_COMPROVADO'?'NAO_VERIFICAVEL':'INDICIO',
+      detalhe:txt,fonte:x.fonte+' · '+role,
+      evidencia:x.responsavelRegistrado?'Responsável cadastrado: '+x.responsavelRegistrado:''};
+  }),false);
+  return html;
+}
 function proof(d){let html=section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);
+html+=boardEvidence(d);
 html+=section('Compliance do processo','Verificações existentes')+group('Sinais operacionais',d.compliance||[],false);
 html+=section('Qualificação registrada','LMV, dor e contexto')+group('Qualificação',d.qualificacao||[],false);
 const evidence=d.evidencias||[];
