@@ -245,36 +245,71 @@ function viRdConciliarHistoricoUi_(historico, ui, dealId) {
   if(String(recebido.dealId||'').toLowerCase()!==String(dealId||'').toLowerCase())
     return {historico:base,aceito:false,motivo:'DEAL_ID_UI_NAO_CONFERE'};
   const bruto=Array.isArray(recebido.events)?recebido.events:[];
-  const chave=function(e) {
-    const t=String(e.kind||e.acao||'').toUpperCase();
-    const d=String(e.dataLocal||e.data||'').slice(0,16);
-    const a=String(e.author||e.autorId||'').toLowerCase().replace(/\s+/g,' ').trim();
-    const x=String(e.detail||e.texto||e.assunto||'').toLowerCase().replace(/\s+/g,' ').replace(/[^a-z0-9à-ÿ ]/gi,'').slice(0,220);
-    return [t,d,a,x].join('|');
-  };
-  const vistos={}, eventos=[];
+  if(bruto.length>250)return {historico:base,aceito:false,motivo:'LIMITE_EVENTOS_UI'};
+  const vistos={},eventos=[],invalidos=[];
   bruto.forEach(function(e,i){
-    const data=viLeadDataIso_(e.dataLocal||e.dateText);
-    const item={id:'UI_'+String(e.uiIndex===undefined?i:e.uiIndex),data:data,
+    if(!e||typeof e!=='object'){invalidos.push('CARD_INVALIDO_'+i);return;}
+    const pos=Number(e.uiIndex);
+    // A interface tem cartões legitimamente idênticos no mesmo minuto.
+    // A posição na lista é identidade visual; não deduplicar por hora/texto.
+    const index=Number.isInteger(pos)&&pos>=0?pos:i;
+    const key=String(index);
+    if(vistos[key]){invalidos.push('CARD_REPETIDO_'+key);return;}
+    vistos[key]=true;
+    const raw=String(e.dataLocal||'').trim();
+    // Horário da interface é America/Sao_Paulo, não UTC.
+    const clock=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(raw)?
+      raw+(raw.length===16?':00':'')+'-03:00':raw;
+    const data=viLeadDataIso_(clock||e.dateText);
+    if(!data)invalidos.push('CARD_SEM_DATA_'+index);
+    const item={id:'UI_'+key,uiIndex:index,data:data,
       dataTexto:String(e.dateText||''),acao:String(e.kind||'OUTRO_VISUAL_RD'),
-      tipoInformado:'UI_HISTORY',autor:String(e.author||''),etapaNome:String(e.stage||''),
+      tipoInformado:'UI_HISTORY',autor:viRdNomeSeguro_(e.author,110),
+      etapaNome:viRdNomeSeguro_(e.stage,120),
       texto:viRdNomeSeguro_(e.detail,6000),fonte:'RD_UI_HISTORY',
-      origemEvidencia:'INTERFACE_AUTENTICADA_RD',confianca:'EVENTO_VISUAL_RD'};
-    const k=chave(item); if(vistos[k])return; vistos[k]=true; eventos.push(item);
+      origemEvidencia:'INTERFACE_AUTENTICADA_RD',
+      confianca:'EVENTO_VISUAL_RD'};
+    eventos.push(item);
   });
-  eventos.sort(function(a,b){return String(a.data||a.dataTexto).localeCompare(String(b.data||b.dataTexto))||a.id.localeCompare(b.id);});
-  base.linhaDoTempo={origem:'RD_UI_HISTORY',eventos:eventos,
-    cobertura:{acessivel:recebido.coverage&&recebido.coverage.available===true,
-      completo:recebido.coverage&&recebido.coverage.complete===true,
-      totalVisual:Number(recebido.coverage&&recebido.coverage.totalVisual||eventos.length),
-      totalReconciliado:eventos.length,paginasCarregadas:Number(recebido.coverage&&recebido.coverage.pagesLoaded||0),
-      lacunas:[]},
-    limite:'Os cartões visuais sem ID de API são preservados como evidência da interface; não são convertidos em identificadores de API.'};
-  if(base.linhaDoTempo.cobertura.totalVisual!==eventos.length)
-    base.linhaDoTempo.cobertura.lacunas.push('EVENTO_VISUAL_SEM_DATA_OU_DUPLICADO');
+  eventos.sort(function(a,b){return String(a.data||a.dataTexto).localeCompare(String(b.data||b.dataTexto))||a.uiIndex-b.uiIndex;});
+  const coverage=recebido.coverage||{};
+  const declarado=Number(coverage.totalVisual);
+  const totalVisual=Number.isFinite(declarado)&&declarado>=0?declarado:bruto.length;
+  const lacunas=invalidos.slice(0,40);
+  if(totalVisual!==eventos.length)lacunas.push('TOTAL_VISUAL_DIVERGE_DOS_EVENTOS');
+  if(coverage.complete!==true)lacunas.push('PAGINACAO_UI_INCOMPLETA');
+  const janelas=Array.isArray(base.janelas)?base.janelas:[];
+  janelas.forEach(j=>{j.eventosHistoricoVisual=[];j.totalEventosHistoricoVisual=0;});
+  const eventosFora=[];
+  eventos.forEach(e=>{
+    const t=Date.parse(e.data||'');
+    if(!Number.isFinite(t)){eventosFora.push(e);return;}
+    // Registrar movimento no estágio de destino se a API o separa exatamente
+    // no limite; não assumir que a etapa textual exibida prevalece sobre o log.
+    const janela=janelas.slice().reverse().find(j=>{
+      const inicio=Date.parse(j.inicio||'');
+      const fim=Date.parse(j.fim||'');
+      return Number.isFinite(inicio)&&t>=inicio&&(!Number.isFinite(fim)||t<fim);
+    });
+    if(!janela){eventosFora.push(e);return;}
+    e.passagemId=janela.passagemId;
+    if(e.etapaNome&&janela.etapaNome&&
+      e.etapaNome.toLowerCase()!==janela.etapaNome.toLowerCase())
+      e.etapaInformadaDivergente=true;
+    janela.totalEventosHistoricoVisual++;
+    janela.eventosHistoricoVisual.push(e);
+  });
+  base.linhaDoTempo={origem:'RD_UI_HISTORY',eventos,
+    cobertura:{acessivel:coverage.available===true,
+      completo:coverage.complete===true&&lacunas.length===0,
+      totalVisual,totalReconciliado:eventos.length,
+      paginasCarregadas:Number(coverage.pagesLoaded||0),
+      semJanela:eventosFora.length,
+      lacunas:lacunas},
+    limite:'Fonte RD_UI_HISTORY: cada ID UI_n identifica um cartao visual (nao um ID da API). Sem registros completos nao se conclui ausencia de acao.'};
+  base.eventosHistoricoVisualSemJanela=eventosFora;
   return {historico:base,aceito:true};
 }
-
 
 /**
  * Coleta isolada do RD, SEM consultar INTERACOES/Board, API4COM ou tl;dv.
