@@ -6,7 +6,7 @@ function dealId(url) {
   return match ? match[1].toLowerCase() : '';
 }
 
-async function openDetachedWidget(tabId, url) {
+async function openDockedWidget(tabId, url) {
   const id = dealId(url);
   if (!id) return { opened: false, reason: 'NEGOCIACAO_RD_NAO_ABERTA' };
   const saved = await chrome.storage.local.get('volumEndpoint');
@@ -15,14 +15,12 @@ async function openDetachedWidget(tabId, url) {
   const widgetUrl = new URL(endpoint);
   widgetUrl.searchParams.set('volum_widget', '1');
   widgetUrl.searchParams.set('dealId', id);
-  const popup = await chrome.windows.create({
-    url: widgetUrl.toString(), type: 'popup', width: 500, height: 820
-  });
-  return { opened: Boolean(popup && popup.id), windowId: popup && popup.id };
+  await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_DOCKED_WIDGET', endpoint: widgetUrl.origin + widgetUrl.pathname });
+  return { opened: true };
 }
 
 chrome.action.onClicked.addListener(tab => {
-  openDetachedWidget(tab.id, tab.url).catch(console.warn);
+  openDockedWidget(tab.id, tab.url).catch(console.warn);
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'VOLUM_DEAL_ID') {
@@ -31,7 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
-    openDetachedWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
+    openDockedWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
     return true;
   }
 });
