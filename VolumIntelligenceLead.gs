@@ -507,19 +507,25 @@ function viCerebroLead_(ctx) {
   const regra=ctx.regraLead||{};
   const campos=Array.isArray(regra.camposObrigatorios)?regra.camposObrigatorios:[];
   const campoValor=String(cadastro.lmvDeclarado||'').trim();
+  const lmvAtual=String(cadastro.lmvAtual||'').trim();
+  const transicaoCadencia=etapas.find(e=>/cad[eê]ncia/i.test(String(e.nome||e.etapaNome||'')));
+  const transicaoMs=transicaoCadencia?viLeadDataMs_(transicaoCadencia.inicio):null;
   const itens=[];
   function criterio(id,titulo,status,detalhe,fonte,evidencia,acao) {
     itens.push({id,titulo,status,detalhe,fonte,evidencia:evidencia||'',acao});
   }
   criterio('origem','Origem e fluxo de entrada',cadastro.origem?'INDICIO':'NAO_VERIFICAVEL',
-    cadastro.origem?'Origem declarada no cadastro: '+String(cadastro.origem).slice(0,100)+'.':'Origem do formulario ainda nao recuperada.',
+    cadastro.origem?'Origem atual do negocio: '+String(cadastro.origem).slice(0,100)+'. Validar se era a mesma na entrada.':'Origem do formulario ainda nao recuperada.',
     'RD · cadastro',cadastro.origem?'Campo de origem presente':'','Recuperar origem, campanha e fluxo antes de aplicar regras especificas.');
   const faltantes=campos.filter(k=>!String(cadastro[k]||'').trim());
   criterio('integridade','Integridade do cadastro',campos.length?(faltantes.length?'ATENCAO':'EVIDENCIADO'):'NAO_VERIFICAVEL',
     campos.length?(faltantes.length?'Campos obrigatorios nao preenchidos: '+faltantes.join(', '):'Campos obrigatorios do processo preenchidos.'):'Campos obrigatorios do cliente ainda nao configurados.',
     'RD · cadastro / regras do cliente','','Validar campos obrigatorios para o fluxo de entrada.');
   criterio('lmv','LMV declarado (provisorio)',campoValor?'INDICIO':'NAO_VERIFICAVEL',
-    campoValor?'Faturamento informado no formulario: '+campoValor+'. Nao equivale a validacao pelo SDR.':'LMV original do formulario nao foi recuperado; nao deduzir a partir de anotacoes posteriores.',
+    campoValor?'Faturamento inicial identificado: '+campoValor+'. Nao equivale a validacao pelo SDR.':
+      (lmvAtual?'LMV/faturamento atualmente cadastrado em '+String(cadastro.lmvCampo||'campo personalizado')+': '+lmvAtual+
+      '. Este valor e atual, NAO comprova o informado originalmente no formulario.':
+      'LMV original do formulario nao foi recuperado; nao deduzir a partir de anotacoes posteriores.'),
     'RD · formulario',campoValor?'Declaracao do lead':'','Validacao do LMV durante conexao/pitch pertence ao Agente CONEXAO.');
   criterio('priorizacao','Priorizacao inicial','NAO_VERIFICAVEL',
     'Sem fluxo, LMV declarado e regra vigente consolidados, nao e possivel avaliar a prioridade atribuida.',
@@ -539,9 +545,13 @@ function viCerebroLead_(ctx) {
     primeiraLigacao?'Primeira ligacao tecnica encontrada; nao prova que o cliente atendeu.':'A criacao/conclusao de tarefa nao equivale a tentativa efetiva.',
     'Board · API4COM / RD · tarefas',primeiraLigacao?'Ligacao '+primeiraLigacao.id+' · '+primeiraLigacao.data:'',
     'Conferir primeira tentativa real e horario comercial antes de medir SLA.');
-  criterio('transicao','Entrada na cadencia',etapas.length?'INDICIO':'NAO_VERIFICAVEL',
-    etapas.length?'Historico de etapas encontrado; nomes e gatilhos ainda exigem conciliacao com o funil.':'Sem historico suficiente para validar transicao.',
-    'RD · historico de etapas','','Verificar passagem LEAD para CADENCIA e tarefas iniciais sem presumir execucao.');
+  criterio('transicao','Entrada na cadencia',transicaoCadencia?'EVIDENCIADO':'NAO_VERIFICAVEL',
+    transicaoCadencia?'Entrada em etapa nomeada CADENCIA em '+transicaoCadencia.inicio+'. A movimentacao nao prova contatos executados.':
+      (etapas.length?'Ha historico de movimentacoes, mas nenhuma etapa CADENCIA foi identificada com nome confirmado.':
+       'Sem historico suficiente para validar transicao.'),
+    'RD · deal_stage_histories / catalogo de etapas',
+    transicaoCadencia?'Etapa '+String(transicaoCadencia.etapaId||'')+' · '+transicaoCadencia.inicio:'',
+    'Confirmar no funil se CADENCIA e uma etapa formal e se a movimentacao seguiu a regra.');
   return {
     agente:'LEAD',estado:'AUDITORIA_DE_ENTRADA',indicadores:{
       criadaEm:inicio,primeiraEvidenciaEm:primeiroRegistro?.data||'',
@@ -556,6 +566,11 @@ function viCerebroLead_(ctx) {
         Math.round((viLeadDataMs_(whats.data)-criacao)/60000):null,
       minutosAtePrimeiroEmail:criacao!==null&&email&&viLeadDataMs_(email.data)>=criacao?
         Math.round((viLeadDataMs_(email.data)-criacao)/60000):null,
+      lmvAtual:lmvAtual,
+      lmvAtualStatus:lmvAtual?'ESTADO_ATUAL_NAO_HISTORICO':'NAO_RECUPERADO',
+      entradaCadenciaEm:transicaoCadencia?.inicio||'',
+      minutosAteEntradaCadencia:criacao!==null&&transicaoMs!==null&&transicaoMs>=criacao?
+        Math.round((transicaoMs-criacao)/60000):null,
       lmvDeclaradoStatus:campoValor?'PROVISORIO':'NAO_RECUPERADO',
       lmvValidadoStatus:'COMPETENCIA_AGENTE_CONEXAO'
     },criterios:itens,
@@ -670,7 +685,7 @@ function viCadenciaCanaisTexto_(atividade) {
   const channels=[];
   if(tipoConfiavel&&tipo==='email')channels.push('EMAIL');
   if(tipoConfiavel&&tipo==='call')channels.push('LIGACAO');
-  if(tipoConfiavel&&tipo==='messenger')channels.push('WHATSAPP');
+  // Evento messenger isolado nao prova que houve envio; exige texto de acao explicita.
   if(temVerbo) {
     if(/\b(whatsapp|whats|zap)\b/i.test(n))channels.push('WHATSAPP');
     if(/\b(e-?mail|correio eletronico)\b/i.test(n))channels.push('EMAIL');

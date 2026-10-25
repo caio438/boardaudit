@@ -233,11 +233,26 @@ function criterionSection(title,items){
 }
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
-function agentDia(d){return /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d||''))?
+function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
   d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}
+function agentReadiness(d,key){
+  const r=(d.prontidaoAgentes||{})[key]||{};
+  if(!r.totalCriterios)return '';
+  const b=Array.isArray(r.bloqueios)?r.bloqueios:[];
+  return '<div class="glass"><div class="eyebrow">CAPACIDADE DE AUDITORIA</div>'+
+    '<p><b>'+Number(r.registrosEIndicios||0)+' de '+Number(r.totalCriterios||0)+
+    '</b> critérios possuem algum registro ou indício. Isso não é uma nota de compliance.</p>'+
+    '<p class="small">Histórico visual: '+(r.historicoVisualCompleto?'completo':'parcial/indisponível')+
+    ' · Tarefas API: '+(r.tarefasApiCompletas?'completas':'parciais/indisponíveis')+
+    ' · Resultado: sem pontuação final até homologar regras e evidências.</p>'+
+    (b.length?'<details class="group"><summary><strong>Limites para validar compliance</strong><small>'+
+      b.length+' pontos</small></summary><div class="group-body">'+b.map(x=>'<p class="small">'+
+      esc(x)+'</p>').join('')+'</div></details>':'')+'</div>';
+}
 function leadAgent(d){const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='LEAD');if(!agente)return section('Agente LEAD','Entrada e classificacao provisoria')+'<p class="muted">Leitura ainda não disponível.</p>';
 let html=section('Agente LEAD','Cadastro, LMV provisório e encaminhamento');
 html+='<div class="notice">O LMV informado no formulário é provisório. A validação com o cliente durante a ligação pertence ao Agente CONEXÃO. Registro automático não prova contato.</div>';
+html+=agentReadiness(d,'lead');
 const met=agente.indicadores||{};
 html+='<div class="glass"><p><b>Chegada:</b> '+esc(rdMomento(met.criadaEm))+
   ' · <b>Primeiro registro:</b> '+esc(rdMomento(met.primeiraEvidenciaEm))+
@@ -254,6 +269,7 @@ function cadenceAgent(d){
   const met=agente.indicadores||{};
   let html=section('Agente CADÊNCIA','Execução real, dias úteis e intervalos');
   html+='<div class="notice">O Agente CADÊNCIA lê o histórico mesmo sem nomes CAD. O padrão manual é a Estrutura da Cadência; o Método VOLUM com robô só se aplica a operações automatizadas confirmadas. Tarefa concluída não prova tentativa de contato.</div>';
+html+=agentReadiness(d,'cadencia');
   html+='<div class="glass"><div class="eyebrow">CONTEXTO DA AUDITORIA</div><p>Modo SDR: <b>'+esc(display(met.modoSdr||'Não identificado'))+'</b> · Fluxo: <b>'+esc(display(met.fluxo||'Não identificado'))+'</b> · LMV: <b>'+esc(display(met.lmv||'Não confirmado'))+'</b></p><p>Dias úteis com registros: <b>'+Number(met.diasUteisComRegistro||0)+'</b> · Lacunas observadas: <b>'+Number(met.diasComLacuna||0)+'</b></p>'+(met.paradaEm?'<p><b>Fim da prospecção inicial:</b> '+rdMomento(met.paradaEm)+' · '+esc(display(met.paradaMotivo||'CONEXÃO'))+'. <b>'+Number(met.ligacoesAposParada||0)+'</b> ligação(ões) posteriores excluídas da cadência inicial.</p>':'')+'<p class="muted">Feriados locais: '+(met.calendarioFeriadosLocaisConfirmado?'configurados':'pendentes de validação')+'. Sem regras completas, não há reprovação automática.</p></div>';
   html+=criterionSection('Verificações de compliance',agente.criterios||[],true);
   const dias=agente.calendario||[];
