@@ -679,11 +679,16 @@ function viCadenciaCanaisTexto_(atividade) {
 }
 
 function viCadenciaSinalParada_(atividades) {
-  const achados=(atividades||[]).filter(a=>{
+  const achados=(atividades||[]).filter(a=>a&&a.data).map(a=>{
     const t=String(a.texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-    if(!t||/nao respondeu|nao atendeu|sem resposta|aguardando retorno|conexao nao realizada/.test(t))return false;
-    return /\[conexao realizada\]|cliente respondeu|lead respondeu|conversa realizada|agendou reuniao|reuniao agendada|confirmou interesse/.test(t);
-  }).filter(a=>a.data).sort((a,b)=>a.data.localeCompare(b.data));
+    if(!t||/nao respondeu|nao atendeu|sem resposta|aguardando retorno|conexao nao realizada/.test(t))return null;
+    const negativo=/nao (?:foi )?agendad[oa]|nao conseguiu agendar|sem agendamento|sem agenda|tentando agendar|pretend[eo] agendar|desmarc|cancelad[oa]|reagendar/.test(t);
+    const agenda=/(?:reuniao|apresentacao|demonstracao|videochamada|call)\s+(?:ja\s+)?(?:foi\s+)?(?:agendada|marcada|confirmada)|(?:agendamos|marcamos)\s+(?:uma?\s+)?(?:reuniao|apresentacao|demonstracao)/.test(t);
+    if(agenda&&!negativo)return {id:a.id,data:a.data,motivo:'AGENDAMENTO_CONFIRMADO',fonte:'RD_ATIVIDADES'};
+    const resposta=/\[conexao realizada\]|cliente respondeu|lead respondeu|conversa realizada|confirmou interesse/.test(t);
+    if(resposta)return {id:a.id,data:a.data,motivo:'RESPOSTA_OU_CONEXAO',fonte:'RD_ATIVIDADES'};
+    return null;
+  }).filter(Boolean).sort((a,b)=>a.data.localeCompare(b.data));
   return achados.length?achados[0]:null;
 }
 
@@ -727,25 +732,34 @@ function viCerebroCadencia_(ctx) {
     });
   });
   registros.sort((a,b)=>a.data.localeCompare(b.data)||a.canal.localeCompare(b.canal));
-  const candidatosTarefa=tarefas.filter(t=>t.concluida&&String(t.tipo||'')==='call'&&!linksBoard.has(String(t.id||'')));
-  const agendadas=tarefas.filter(t=>t.previstaPara).map(t=>({
+  const parada=viCadenciaSinalParada_(atividades);
+  const diaParada=parada?viCadenciaDiaBrasil_(parada.data):'';
+  const registrosCadencia=parada?registros.filter(r=>r.data<=parada.data):registros;
+  const registrosPosteriores=parada?registros.filter(r=>r.data>parada.data):[];
+  // Tarefas de agenda, follow-up e recovery nao sao tentativas da cadencia de prospeccao.
+  const foraEscopo=/recover|recovery|no[ -]?show|follow|agenda|reuni|apresenta|proposta|orcamento|lembrete|confirmacao/i;
+  const tarefasCadencia=tarefas.filter(t=>{
+    if(foraEscopo.test(String(t.assunto||'')))return false;
+    const realizado=t.concluidaEm||t.previstaPara||t.criadaEm;
+    return !parada||!realizado||realizado<=parada.data;
+  });
+  const candidatosTarefa=tarefasCadencia.filter(t=>t.concluida&&String(t.tipo||'')==='call'&&!linksBoard.has(String(t.id||'')));
+  const agendadas=tarefasCadencia.filter(t=>t.previstaPara).map(t=>({
     dia:viCadenciaDiaBrasil_(t.previstaPara),assunto:String(t.assunto||'').slice(0,110),
     concluida:t.concluida===true,id:t.id||'',criadaEm:t.criadaEm||'',
     concluidaEm:t.concluidaEm||''
   }));
-  const parada=viCadenciaSinalParada_(atividades);
-  const diaParada=parada?viCadenciaDiaBrasil_(parada.data):'';
   // A entrada nao confirma o SLA de inicio. O calendario e uma referencia e
   // nao vira violacao automatica quando falta LMV/versao/feriados locais.
   const entrada=viCadenciaDiaBrasil_(ctx.inicioCadenciaEm||ctx.criadaEm);
   const hoje=viCadenciaDiaBrasil_(ctx.agora||new Date());
-  const ultimoRegistro=registros.length?registros[registros.length-1].dia:'';
+  const ultimoRegistro=parada?diaParada:(registrosCadencia.length?registrosCadencia[registrosCadencia.length-1].dia:'');
   const limiteDias=modeloAplicavel?(lmv==='POSITIVO'?18:6):
     (ultimoRegistro?Math.min(18,Math.max(1,viCadenciaIntervaloDiasUteis_(entrada,ultimoRegistro,feriados)+
       (viCadenciaEhUtil_(entrada,feriados)?1:0))):0);
   const dias=viCadenciaDiasUteis_(entrada,limiteDias,feriados);
   const porDia={};
-  registros.forEach(r=>{
+  registrosCadencia.forEach(r=>{
     if(!r.dia)return;
     if(!porDia[r.dia])porDia[r.dia]={LIGACAO:0,WHATSAPP:0,EMAIL:0,itens:[]};
     porDia[r.dia][r.canal]=(porDia[r.dia][r.canal]||0)+1;
@@ -756,7 +770,7 @@ function viCerebroCadencia_(ctx) {
     const esperado=modeloAplicavel?viCadenciaPadraoDia_(i+1,lmv):null;
     const suspenso=diaParada&&dia>diaParada;
     let estado='REFERENCIA_SEM_PONTUACAO';
-    if(suspenso)estado='SUSPENSO_POR_CONEXAO';
+    if(suspenso)estado=parada&&parada.motivo==='AGENDAMENTO_CONFIRMADO'?'SUSPENSO_POR_AGENDAMENTO':'SUSPENSO_POR_CONEXAO';
     else if(dia>hoje)estado='FUTURO';
     else if(esperado){
       const incompleto=Object.keys(esperado).filter(c=>c!=='BREAKDOWN'&&encontrado[c] < esperado[c]);
@@ -784,23 +798,25 @@ function viCerebroCadencia_(ctx) {
     '. A nomenclatura das tarefas nao define se o SDR e humano ou robo.',
     'Estrutura da Cadencia / cadastro do cliente',
     'Confirmar modo da operacao, origem inbound e LMV para habilitar comparacao da regua.');
-  criterioCadencia('inicio','Inicio da cadencia',registros.length?'INDICIO':'NAO_VERIFICAVEL',
-    'Primeiro contato registrado: '+(registros[0]?.data||'nao localizado')+
+  criterioCadencia('inicio','Inicio da cadencia',registrosCadencia.length?'INDICIO':'NAO_VERIFICAVEL',
+    'Primeiro contato registrado: '+(registrosCadencia[0]?.data||'nao localizado')+
     '. A criacao de tarefas isolada nao comprova tentativa.',
     'RD / Board','Comparar inicio efetivo com SLA e horario comercial quando homologados.',
-    registros[0]?.fonte||'');
+    registrosCadencia[0]?.fonte||'');
   criterioCadencia('sequencia','Sequencia dos contatos',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
     'Dia a dia reconstituido por canal e data, sem exigir nomenclatura CAD. '+
     (modeloAplicavel?'Modelo esperado aplicado de modo preliminar.':'Nao e seguro pontuar sem perfil e LMV confirmados.'),
     'Estrutura da Cadencia / RD','Reconciliar a linha do tempo com a versao aprovada.');
-  criterioCadencia('execucao','Execucao real x tarefas',ligacoes.length?'INDICIO':'NAO_VERIFICAVEL',
-    (ligacoes.length-closerIgnoradas)+' chamada(s) possiveis de SDR no Board; '+candidatosTarefa.length+
+  const ligacoesCadencia=ligacoes.filter(l=>l.data&&String(l.funcaoDeclarada||'').toUpperCase()!=='CLOSER'&&(!parada||l.data<=parada.data));
+  criterioCadencia('execucao','Execucao real x tarefas',ligacoesCadencia.length?'INDICIO':'NAO_VERIFICAVEL',
+    ligacoesCadencia.length+' chamada(s) tecnicas na prospeccao, com autoria SDR ainda nao necessariamente confirmada; '+candidatosTarefa.length+
     ' tarefa(s) de ligacao concluidas sem correspondencia direta no Board.',
     'Board API4COM / RD','Validar chamadas nao vinculadas; conclusao automatica nao equivale a ligacao.');
-  criterioCadencia('canais','Canais utilizados',registros.length?'INDICIO':'NAO_VERIFICAVEL',
-    'Registro observado: '+registros.filter(x=>x.canal==='LIGACAO').length+' ligacao(oes), '+
-    registros.filter(x=>x.canal==='WHATSAPP').length+' WhatsApp e '+
-    registros.filter(x=>x.canal==='EMAIL').length+' email(s). Os textos podem ser indicios, nao entregas.',
+  criterioCadencia('canais','Canais utilizados',registrosCadencia.length?'INDICIO':'NAO_VERIFICAVEL',
+    'Na prospeccao inicial: '+registrosCadencia.filter(x=>x.canal==='LIGACAO').length+' ligacao(oes), '+
+    registrosCadencia.filter(x=>x.canal==='WHATSAPP').length+' WhatsApp e '+
+    registrosCadencia.filter(x=>x.canal==='EMAIL').length+' email(s). '+
+    registrosPosteriores.length+' registros de contato posteriores foram separados para Agenda/Closer/Recovery.',
     'RD / Board','Verificar envio real, autora e destinatario nas fontes acessiveis.');
   criterioCadencia('dias_uteis','Dias uteis e horario comercial',entrada?'INDICIO':'NAO_VERIFICAVEL',
     'Calendario Brasil/Sao Paulo: '+dias.length+' dias uteis mapeados; '+
@@ -812,28 +828,33 @@ function viCerebroCadencia_(ctx) {
     gaps.length+' intervalo(s) com ao menos um dia util sem registro de contato entre dias observados.',
     'RD / Board','Interpretar lacunas segundo a etapa, a regra aplicavel e a completude das fontes.',
     gaps.map(x=>x.de+' a '+x.ate+': '+x.diasUteisSemRegistro+' dia(s)').slice(0,5).join('; '));
-  criterioCadencia('parada','Interrupcao apos resposta',parada?'INDICIO':'NAO_VERIFICAVEL',
-    parada?'Registro sugere conexao em '+parada.data+
-      '; contatos posteriores devem ser avaliados no contexto, nao como cadencia obrigatoria.':
+  criterioCadencia('parada','Interrupcao apos resposta ou agenda',parada?'INDICIO':'NAO_VERIFICAVEL',
+    parada?'Registro de '+parada.motivo+' em '+parada.data+
+      '; contatos posteriores pertencem a agenda, closer ou recovery e nao a cadencia inicial.':
       'Sem gatilho de conexao inequívoco na coleta; ausencia nao prova falta de resposta.',
-    'RD · atividades','Confirmar resposta e a efetiva pausa/reclassificacao da negociacao.');
+    'RD · atividades','Confirmar agendamento/resposta e a transicao de etapa antes de certificar a pausa.',
+    parada?'Atividade '+parada.id:'');
   criterioCadencia('pendencias','Tarefas pendentes e recuperacao',tarefas.length?'INDICIO':'NAO_VERIFICAVEL',
-    tarefas.filter(x=>!x.concluida).length+' tarefa(s) pendente(s); '+
-    agendadas.length+' com data prevista. Breakup e recuperacao exigem registro contextual.',
+    tarefasCadencia.filter(x=>!x.concluida).length+' pendencia(s) identificadas na cadencia inicial; '+
+    tarefas.filter(x=>!x.concluida&&foraEscopo.test(String(x.assunto||''))).length+
+    ' pendencia(s) em Agenda/Follow-up/Recovery estao fora desta auditoria.',
     'RD · tarefas','Separar tarefas vencidas, prorrogadas e suspensas; conferir proxima acao.');
-  return {agente:'CADENCIA',estado:registros.length?'RECONSTRUCAO_PARCIAL':'DADOS_INSUFICIENTES',
+  return {agente:'CADENCIA',estado:registrosCadencia.length?'RECONSTRUCAO_PARCIAL':'DADOS_INSUFICIENTES',
     indicadores:{modoSdr:modo,fluxo:escopo,lmv:lmv,modelo:'ESTRUTURA_CADENCIA_INBOUND',
       inicioReferencia:entrada,calendarioFeriadosLocaisConfirmado:extra,
+      paradaMotivo:parada?.motivo||'NAO_CONFIRMADA',paradaEm:parada?.data||'',
+      contatosForaDaCadencia:registrosPosteriores.length,
+      ligacoesAposParada:ligacoes.filter(l=>l.data&&parada&&l.data>parada.data).length,
       diasUteisPlanejados:calendario.length,diasUteisComRegistro:diasUteisComRegistro.length,
       diasForaCalendario:foraDiaUtil,diasComLacuna:gaps.length,
-      ligacoesNoBoard:ligacoes.length-closerIgnoradas,ligacoesCloserExcluidas:closerIgnoradas,
+      ligacoesNoBoard:ligacoesCadencia.length,ligacoesCloserExcluidas:closerIgnoradas,
       chamadasConcluidasNoRdSemCorrespondenciaNoBoard:candidatosTarefa.length,
-      tentativasCandidatasSemDuplicacao:ligacoes.length-closerIgnoradas+candidatosTarefa.length,
-      diasComLigacoesNoBoard:Array.from(new Set(ligacoes.filter(l=>String(l.funcaoDeclarada||'')!=='CLOSER')
+      tentativasCandidatasSemDuplicacao:ligacoesCadencia.length+candidatosTarefa.length,
+      diasComLigacoesNoBoard:Array.from(new Set(ligacoesCadencia.filter(l=>String(l.funcaoDeclarada||'')!=='CLOSER')
         .map(l=>viCadenciaDiaBrasil_(l.data)).filter(Boolean))).sort(),
-      ligacoesComReferenciaGravacao:ligacoes.filter(l=>l.temReferenciaGravacao&&String(l.funcaoDeclarada||'')!=='CLOSER').length},
+      ligacoesComReferenciaGravacao:ligacoesCadencia.filter(l=>l.temReferenciaGravacao).length},
     criterios,calendario,intervalos:gaps,
-    limite:'Sem regua e LMV aplicaveis, registro de canal e feriados locais, a auditoria informa evidencias mas nao certifica compliance. Dias de feriado e fim de semana sao excluidos da contagem.'};
+    limite:'Cadencia inicial se encerra com agenda/conexao evidenciada; acoes de agenda, closer e recovery sao tratadas separadamente. Sem perfil, regra e cobertura completa nao ha nota de compliance. Feriados nacionais e finais de semana nao contam como dias uteis.'};
 }
 
 function viCerebroConexao_(ctx) {
