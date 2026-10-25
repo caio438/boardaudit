@@ -107,32 +107,94 @@
     if (/respondeu um email/i.test(text)) return 'EMAIL_RESPONDIDO';
     return 'OUTRO_VISUAL_RD';
   };
-  async function readHistory() {
+  const findHistoryTab = () =>
+    document.querySelector('[aria-controls="dealTabsHistory-panel"]') ||
+    document.querySelector('#dealTabsHistory-tab') ||
+    Array.from(document.querySelectorAll('[role="tab"], button')).find(node =>
+      /^Hist[oó]rico$/i.test(clean(node.textContent)));
+
+  const historyCards = panel => panel ?
+    Array.from(panel.querySelectorAll('ul[role="list"] > li')) : [];
+
+  // A listagem RD carrega mais cartões por AJAX; um delay fixo de 350ms
+  // pode produzir falsa cobertura completa. Aguardamos mudanças reais no DOM.
+  const waitHistoryChange = (before, timeoutMs) => new Promise(resolve => {
+    let settled = false;
+    let observer;
+    const finish = (ok) => {
+      if(settled)return;
+      settled=true;
+      if(observer)observer.disconnect();
+      clearTimeout(timeout);
+      resolve(ok);
+    };
+    const check = () => {
+      const panel = document.querySelector('#dealTabsHistory-panel');
+      if(panel&&before(panel))finish(true);
+    };
+    const timeout=setTimeout(()=>finish(false),timeoutMs);
+    observer=new MutationObserver(check);
+    observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,
+      attributeFilter:['disabled','aria-busy','aria-expanded']});
+    check();
+  });
+
+  const readHistory = async () => {
     const dealId = (location.href.match(dealPattern) || [])[1];
-    const panel = document.querySelector('#dealTabsHistory-panel');
-    if (!dealId || !panel) return { dealId: dealId || '', events: [], coverage: { available: false, complete: false, reason: 'ABA_HISTORICO_NAO_ABERTA' } };
-    let pages = 0;
-    while (pages < HISTORY_LIMIT) {
-      const more = panel.querySelector('button');
-      const all = Array.from(panel.querySelectorAll('button'));
-      const button = all.find(node => clean(node.textContent) === 'Ver mais');
-      if (!button || button.disabled) break;
-      button.click();
-      pages++;
-      await new Promise(resolve => setTimeout(resolve, 350));
+    if(!dealId)return {dealId:'',events:[],coverage:{available:false,complete:false,reason:'DEAL_NAO_ABERTO'}};
+    const active=document.querySelector('[role="tab"][aria-selected="true"]');
+    const tab=findHistoryTab();
+    let activated=false;
+    let panel=document.querySelector('#dealTabsHistory-panel');
+    if(tab&&(!panel||historyCards(panel).length===0||tab.getAttribute('aria-selected')!=='true')){
+      if(tab!==active) {
+        tab.click();
+        activated=true;
+      }
+      await waitHistoryChange(p=>historyCards(p).length>0,4000);
+      panel=document.querySelector('#dealTabsHistory-panel');
     }
-    const cards = Array.from(panel.querySelectorAll('ul[role="list"] > li'));
-    const events = cards.map((card, index) => {
-      const text = clean(card.innerText);
-      if (!text || /Feche até 40% mais vendas/.test(text)) return null;
-      const timestamps = text.match(/\d{2}\/\d{2}\/\d{2,4}(?:\s+às)?\s+\d{2}:\d{2}/g) || [];
-      const dateText = timestamps[timestamps.length - 1] || '';
-      const author = clean((text.match(/^(.+?)\s+(?:fez uma anotação|criou a tarefa|concluiu a tarefa|atualizou a tarefa|alterou |abriu um WhatsApp Web|enviou um e-mail|respondeu um email)/i) || [])[1]);
-      const stage = clean((text.match(/na etapa (.+?) do funil/i) || [])[1]);
-      return { source: 'RD_UI_HISTORY', uiIndex: index, dateText, dataLocal: dateToIso(dateText), author, stage, kind: kind(text), detail: text.slice(0, 6000) };
-    }).filter(Boolean);
-    return { dealId: dealId.toLowerCase(), events, coverage: { available: true, complete: !Array.from(panel.querySelectorAll('button')).some(node => clean(node.textContent) === 'Ver mais'), pagesLoaded: pages, totalVisual: events.length, origin: 'RD_UI_HISTORY' } };
-  }
+    if(!panel){
+      return {dealId:dealId.toLowerCase(),events:[],
+        coverage:{available:false,complete:false,reason:'ABA_HISTORICO_NAO_CARREGOU'}};
+    }
+    let pages=0, failure='';
+    try {
+      while(pages<HISTORY_LIMIT){
+        const button=Array.from(panel.querySelectorAll('button'))
+          .find(node=>clean(node.textContent)==='Ver mais'&&!node.disabled);
+        if(!button)break;
+        const initial=historyCards(panel).length;
+        button.click();
+        pages++;
+        const changed=await waitHistoryChange(p=>historyCards(p).length>initial,4500);
+        if(!changed){failure='PAGINACAO_SEM_NOVOS_CARTOES';break;}
+        panel=document.querySelector('#dealTabsHistory-panel')||panel;
+      }
+      const cards=historyCards(panel);
+      const events=cards.map((card,index)=>{
+        const text=clean(card.innerText);
+        if(!text||/Feche at[eé] 40% mais vendas/i.test(text))return null;
+        const timestamps=text.match(/\d{2}\/\d{2}\/\d{2,4}(?:\s+às)?\s+\d{2}:\d{2}/g)||[];
+        const dateText=timestamps[timestamps.length-1]||'';
+        const author=clean((text.match(/^(.+?)\s+(?:fez uma anota[cç][aã]o|criou a tarefa|concluiu a tarefa|atualizou a tarefa|alterou |abriu um WhatsApp Web|enviou um e-mail|respondeu um e-?mail)/i)||[])[1]);
+        const stage=clean((text.match(/na etapa (.+?) do funil/i)||[])[1]);
+        return {source:'RD_UI_HISTORY',uiIndex:index,dateText,
+          dataLocal:dateToIso(dateText),author,stage,kind:kind(text),
+          detail:text.slice(0,6000)};
+      }).filter(Boolean);
+      const pending=Array.from(panel.querySelectorAll('button'))
+        .some(node=>clean(node.textContent)==='Ver mais');
+      return {dealId:dealId.toLowerCase(),events,
+        coverage:{available:true,complete:!failure&&!pending&&pages<HISTORY_LIMIT,
+          pagesLoaded:pages,totalVisual:events.length,origin:'RD_UI_HISTORY',
+          reason:failure||(pending?'LIMITE_PAGINAS_OU_CARREGAMENTO':'')}};
+    } finally {
+      // Consultar o Histórico não deve deixar o usuário em outra aba do RD.
+      if(activated&&active&&active.isConnected)active.click();
+    }
+  };
+
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'VOLUM_OPEN_INLINE_WIDGET') {
       openInline(message.endpoint);
