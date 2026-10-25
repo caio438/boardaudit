@@ -8,7 +8,7 @@ new Function(source);
 const panelScript=panel.match(/<script>([\s\S]+?)<\/script>/);
 assert.ok(panelScript,'Painel deve incluir script.');
 new Function(panelScript[1]);
-assert.match(panel,/data-deal-id="<\\?= dealId \\?>"/);
+assert.ok(panel.includes('data-deal-id="<?= dealId ?>"'));
 const context=vm.createContext({Object,Array,String,Number,Date,Boolean,RegExp,Math,Error,Set});
 vm.runInContext(source,context);
 const dealId='6acc888b98976f0023dc583f';
