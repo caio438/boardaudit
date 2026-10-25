@@ -87,7 +87,7 @@ jobs:
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force > /tmp/volum-private-push.txt
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deploy \
             --deploymentId "$widget_id" \
-            --description "VOLUM Intelligence Sales Ops V3 ${GITHUB_SHA}" > /tmp/volum-private-deploy.txt
+            --description "VOLUM Intelligence Sales Ops V4 ${GITHUB_SHA}" > /tmp/volum-private-deploy.txt
           echo "WIDGET_PRIVATE_DEPLOY_UPDATED=1"
       - name: Verify private deployment changed and Board URL stayed pinned
         shell: bash
