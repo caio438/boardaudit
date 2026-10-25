@@ -197,6 +197,7 @@ function viWidgetParecerDeterministico_(leitura) {
     'Próxima ação e evidências correspondentes confirmadas.','Sales Ops · continuidade');
 
   const inteligencia = viWidgetInteligenciaComercial_(leitura);
+  const planoSdr = viWidgetPlanoSdr_(leitura);
   // Acrescentar no maximo 2 alertas comerciais com fonte, sem criar acoes duplicadas.
   const focos = inteligencia.itens.filter(x => x.status==='ATENCAO' &&
     x.prioridade==='ALTA' && x.id!=='vencidas');
@@ -238,7 +239,7 @@ function viWidgetParecerDeterministico_(leitura) {
     resumoExecutivo:resumo, proximaAcao:principal.acao,
     regraDeDecisao:principal.criterioConclusao,
     mensagemSugerida:mensagem, plano:{status:situacao,acao:principal.acao,mensagem:mensagem,regra:principal.criterioConclusao},
-    recomendacoes:recomendacoes.slice(0,6),inteligenciaComercial:inteligencia,compliance:compliance,
+    recomendacoes:recomendacoes.slice(0,6),inteligenciaComercial:inteligencia,planoOtimizacaoSdr:planoSdr,compliance:compliance,
     qualificacao:qual, criteriosPlanoWisetec:faseCloser?criterioCloser:[],
     fontesCobertura:[
       criterio('Atividades RD',fonteAtividades.acessivel === true?(fonteAtividades.completo === true?'CONSULTADA':'PARCIAL'):'NAO_VERIFICAVEL',
@@ -494,6 +495,165 @@ function viWidgetInteligenciaComercial_(leitura) {
     itens:itens, ultimaMovimentacao:ultima, diasSemMovimento:diasSemMovimento,
     coberturaCompleta:completo, emEtapaCloser:closer,
     aviso:'Leitura consultiva: indicio textual nao equivale a fato confirmado. Ausencia de registro nao comprova falta de execucao. Nao ha nota automatica de compliance.'
+  };
+}
+
+
+/**
+ * Plano de Otimizacao SDR - Wisetec.
+ * Referencia: auditoria do plano SDR de 14/09/2026 (sete pilares).
+ * Complementos consultivos nao substituem a escuta da ligacao ou a regra homologada.
+ * Retorna evidencias e acoes por criterio sem pontuacao automatica.
+ */
+function viWidgetPlanoSdr_(leitura) {
+  const notas = (Array.isArray(leitura.atividades)?leitura.atividades:[])
+    .filter(x=>x&&x.textoDisponivel&&['note','response','messenger','whatsapp_transcription'].includes(String(x.tipo||'').toLowerCase()))
+    .map(x=>({data:String(x.data||''),texto:viWidgetSanitizar_(x.texto||'')}))
+    .sort((a,b)=>a.data.localeCompare(b.data));
+  const tarefas = Array.isArray(leitura.tarefas)?leitura.tarefas:[];
+  const chamadas = Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[];
+  const fontes = leitura.fontes||{};
+  const coberturaTarefa=(fontes.tarefas||{}).acessivel===true&&(fontes.tarefas||{}).completo===true;
+  const coberturaAtiv=(fontes.atividades||{}).acessivel===true&&(fontes.atividades||{}).completo===true;
+  const cT=coberturaTarefa?'SEM_EVIDENCIA':'NAO_VERIFICAVEL';
+  const cA=coberturaAtiv?'SEM_EVIDENCIA':'NAO_VERIFICAVEL';
+  const normal = x=>viWidgetNormalizar_(x);
+  const nota=regex=>notas.filter(n=>regex.test(normal(n.texto))).slice(-1)[0]||null;
+  const detalhe=n=>n?'Anotacao '+(n.data?n.data.slice(0,10):'sem data')+
+    ': '+n.texto.slice(0,125):'';
+  const dias=Array.from(new Set(chamadas.map(x=>String(x.data||'').slice(0,10)).filter(Boolean))).sort();
+  const registrosCadencia=tarefas.filter(t=>/(?:cadencia|cadência|recovery|retomada|dia\s*\d+|tentativa\s*\d+)/i.test(t.assunto||''));
+  const voip=chamadas.filter(x=>x.temReferenciaGravacao||Number(x.duracaoSegundos)>0);
+  const conversa=nota(/(?:conversamos|falamos)\s+com\s+(?:o\s+|a\s+)?(?:cliente|lead)|(?:cliente|lead)\s+(?:retornou|confirmou|respondeu)/);
+  const naoAtendeu=nota(/(?:nao atendeu|sem resposta|caixa postal|nao respondeu)/);
+  const noShow=nota(/(?:no[\s-]?show|nao compareceu|faltou a reuniao|nao entrou na reuniao)/);
+  const tarefaNoShow=tarefas.filter(t=>/(?:no[\s-]?show|reagend|retomada)/i.test(t.assunto||''));
+  const planoNoShow=noShow||tarefaNoShow.length>0;
+  const followNoShow=tarefaNoShow.some(t=>{
+    if(!noShow||!noShow.data)return true;
+    const data=t.criadaEm||t.previstaPara||'';
+    return data&&data>=noShow.data;
+  });
+  const encontro=tarefas.filter(t=>t.tipo==='meeting'||/reuniao|apresentacao|demo/i.test(t.assunto||''));
+  const encontroComData=encontro.filter(t=>t.previstaPara&&Number.isFinite(Date.parse(t.previstaPara)));
+  const envioConvite=nota(/(?:convite enviado|link da reuniao enviado|reuniao confirmada|confirmou a reuniao)/);
+  const passagem=nota(/(?:passagem de bastao|passado para o closer|closer responsavel|o closer vai|encaminhado ao closer)/);
+  const passo=nota(/(?:proximo passo|combinamos|ficou combinado|vamos retornar|retorno agendado)/);
+  const segmento=nota(/(?:^|[\n;.])\s*(?:segmento|setor|atividade|ramo|tipo de empresa)\s*[:=-]\s*[^\n;]{2,}/);
+  const lmv=nota(/(?:^|[\n;.])\s*(?:lmv|faturamento|receita mensal|faixa de faturamento)\s*[:=-]\s*[^\n;]{2,}/);
+  const qualif=nota(/(?:^|[\n;.])\s*(?:dor|necessidade|perfil|motivo do interesse|objetivo)\s*[:=-]\s*[^\n;]{2,}/);
+  const escolha=nota(/(?:duas opcoes de horario|dois horarios|opcao de horario|horarios disponiveis)/);
+  const valorizacao=nota(/(?:reuniao.*(?:beneficio|rapida|entender|demonstracao)|demonstracao.*(?:beneficio|solucao))/);
+  const result=notas.filter(n=>/(?:nao atendeu|reagendou|respondeu|agendou|desqualificou|sem interesse|confirmou)/.test(normal(n.texto)));
+  const tarefasVencidas=tarefas.filter(t=>!t.concluida&&t.previstaPara&&Number.isFinite(Date.parse(t.previstaPara))&&Date.parse(t.previstaPara)<Date.now());
+  const tarefasCumpridas=tarefas.filter(t=>t.concluida&&Boolean(t.concluidaEm));
+  const eventos=Array.isArray(leitura.eventos)?leitura.eventos:[];
+  const primeiro=eventos.filter(e=>e.data&&e.tipo!=='ENTRADA_ETAPA').sort((a,b)=>a.data.localeCompare(b.data))[0];
+  const criada=String((leitura.negociacao||{}).criadaEm||'');
+  const atrasoPrimeiro=primeiro&&criada&&Date.parse(primeiro.data)>=Date.parse(criada)
+    ?Math.round((Date.parse(primeiro.data)-Date.parse(criada))/60000):null;
+  const itens=[];
+  function item(id,titulo,status,explicacao,acao,fonte,prioridade,evidencia,pilar) {
+    itens.push({id:id,titulo:titulo,status:status,detalhe:explicacao,
+      acao:acao,fonte:fonte,prioridade:prioridade||'MEDIA',
+      evidencia:evidencia||'',pilar:pilar||'COMPLEMENTAR',
+      regra:'Plano de Otimizacao SDR Wisetec (referencia); nao e score por lead.'});
+  }
+  item('cadencia','Uso da cadencia e tentativas',''+(registrosCadencia.length?'INDICIO':'NAO_VERIFICAVEL'),
+    registrosCadencia.length?'Foram localizadas '+registrosCadencia.length+' tarefa(s) de cadencia. Tarefa criada nao comprova contato executado.':'Sem sequencia de cadencia suficiente para comparar com o playbook.',
+    'Reconciliar passos, datas e resultados com a sequencia aprovada.','Tarefas RD','ALTA','','OFICIAL');
+  item('voip','Uso do VoIP nas tentativas',voip.length?'EVIDENCIADO':'NAO_VERIFICAVEL',
+    voip.length?'Ha '+voip.length+' chamada(s) com duracao ou referencia no board em '+dias.length+' dia(s). Nao prova conversa nem pitch.':
+      'Nenhuma ligacao verificavel foi vinculada ao lead no board consultado.',
+    'Conferir as gravacoes e vinculo de cada tentativa ao lead.','Board / API4COM','MEDIA','','OFICIAL');
+  item('pitch','Aplicacao do pitch de qualificacao','NAO_VERIFICAVEL',
+    'Aderencia a abertura, perguntas, objecoes e encerramento exige audio/transcricao atribuida ao SDR.',
+    'Vincular audio e auditar o pitch Wisetec correto para o tipo de ligacao.','Gravacao SDR nao lida','MEDIA','','OFICIAL');
+  item('no_show','Cadencia de recuperacao de no-show',
+    planoNoShow?(followNoShow?'INDICIO':'ATENCAO'):'NAO_APLICAVEL',
+    !planoNoShow?'Nao ha ocorrencia explicitamente identificada de no-show nesta leitura.':
+      followNoShow?'Ha sinal de no-show e tarefa relacionada; confirmar que a cadencia ocorreu.':
+      'Ha sinal de no-show, mas nao foi recuperada uma tarefa posterior de recuperacao.',
+    'Conferir o no-show, ativar retomada prevista e confirmar novo horario com o lead.',
+    'Anotacoes e tarefas RD','ALTA',detalhe(noShow),'OFICIAL');
+  item('handoff','Passagem de bastao SDR para closer',
+    passagem?'INDICIO':encontroComData.length?'NAO_VERIFICAVEL':cT,
+    passagem?'Anotacao menciona o repasse; aceite, contexto e responsavel ainda devem ser conferidos.':
+      encontroComData.length?'A reuniao foi marcada mas o repasse efetivo ao closer nao foi confirmado.':
+      'Nao ha evidencia clara de repasse nas fontes disponibilizadas.',
+    'Confirmar closer responsavel, resumo da qualificacao e aceite do agendamento.',
+    'Anotacoes/tarefas RD','ALTA',detalhe(passagem),'OFICIAL');
+  item('registros','Registros apos a realizacao da acao',
+    result.length?'INDICIO':notas.length?'INDICIO':cA,
+    result.length?'Foram encontradas '+result.length+' anotacao(oes) com resultado explicito; auditar a completude.':
+      notas.length?'Ha notas, mas resultados de cada tentativa nao estao confirmados.':
+      'Nenhuma anotacao interpretavel foi recuperada nesta consulta.',
+    'Registrar canal, resultado, data e proximo passo apos cada acao efetiva.',
+    'Atividades RD','MEDIA',detalhe(result.slice(-1)[0]||null),'OFICIAL');
+  item('tarefas','Marcacao e execucao de tarefas no prazo',
+    tarefasVencidas.length?'ATENCAO':tarefasCumpridas.length?'INDICIO':'NAO_VERIFICAVEL',
+    tarefasVencidas.length?'Ha '+tarefasVencidas.length+' tarefa(s) abertas vencidas; conferir execucao fora do CRM.':
+      tarefasCumpridas.length?tarefasCumpridas.length+' tarefa(s) concluidas com data no RD, sem auditoria de SLA completo.':
+      'O historico nao permite comprovar constancia de marcacao e timing.',
+    'Revisar tarefas vencidas, reconciliar com evidencias e definir prazos reais.',
+    'Tarefas RD','ALTA','','OFICIAL');
+  item('segmento','Segmento qualificado antes da agenda',segmento?'INDICIO':cA,
+    segmento?'Segmento citado nas notas; validar com fala do comprador.':'Segmento nao foi encontrado em anotacao identificavel.',
+    'Confirmar segmento e perfil conforme o pitch inicial.','Anotacoes RD','MEDIA',detalhe(segmento));
+  item('lmv','LMV/faturamento validado',lmv?'INDICIO':cA,
+    lmv?'LMV ou faturamento citado; falta confirmar valor e autoria no audio.':'LMV nao foi localizado nas notas consultadas.',
+    'Confirmar faturamento com o lead, sem inferir pela empresa.','Anotacoes RD','ALTA',detalhe(lmv));
+  item('qualificacao','Motivo e necessidade de contato',qualif?'INDICIO':cA,
+    qualif?'Uma necessidade ou motivacao foi documentada.':'Motivo do interesse nao ficou explicitado nas anotacoes reconheciveis.',
+    'Sintetizar motivo, segmento e contexto necessario ao closer.','Anotacoes RD','MEDIA',detalhe(qualif));
+  item('agenda','Agenda com dia, horario e responsavel',
+    encontroComData.length?'INDICIO':'NAO_VERIFICAVEL',
+    encontroComData.length?'Ha '+encontroComData.length+' tarefa(s) de reuniao com data; nao prova aceite do convidado.':
+      'Nao foi recuperado agendamento com data nesta fonte.',
+    'Confirmar data, horario, participantes e responsavel pelo atendimento.',
+    'Tarefas RD','ALTA');
+  item('confirmacao','Confirmacao do agendamento pelo lead',
+    envioConvite?'INDICIO':encontroComData.length?'NAO_VERIFICAVEL':'NAO_APLICAVEL',
+    envioConvite?'Anotacao menciona confirmacao/convite, mas faltam provas de entrega e aceite.':
+      'Nao ha confirmacao inequivoca do cliente via canal autenticado.',
+    'Verificar aceite do convite e contato de confirmacao antes da reuniao.',
+    'Anotacoes RD / calendario nao integrado','MEDIA',detalhe(envioConvite));
+  item('valor_reuniao','Valorizacao da reuniao no pitch',
+    valorizacao?'INDICIO':'NAO_VERIFICAVEL',
+    valorizacao?'Nota sugere explicacao do valor da reuniao, sem autoria de fala comprovada.':
+      'Nao ha audio de SDR que permita verificar se o beneficio da reuniao foi apresentado.',
+    'Na proxima ligacao, explicar o beneficio concreto da demo e conferir pelo audio.',
+    'Pitch SDR / gravacao pendente','MEDIA',detalhe(valorizacao));
+  item('horarios','Dupla opcao de horarios na proposta de agenda',
+    escolha?'INDICIO':'NAO_VERIFICAVEL',
+    escolha?'Anotacao menciona opcoes de horario, sem comparacao com pitch.':
+      'Nao ha transcricao para confirmar oferta de dois horarios.',
+    'Checar o pitch de agendamento com a gravacao atribuida ao SDR.',
+    'Pitch SDR / gravacao pendente','BAIXA',detalhe(escolha));
+  item('primeiro_registro','Tempo ate primeira evidencia registrada',
+    atrasoPrimeiro===null?'NAO_VERIFICAVEL':'INDICIO',
+    atrasoPrimeiro===null?'Nao ha marco de criacao ou primeiro registro comparavel.':
+      atrasoPrimeiro+' minutos ate o primeiro registro; isso nao equivale ao tempo ate primeiro contato.',
+    'Medir SLA de primeiro contato apenas quando houver tentativa com horario real.',
+    'Linha do tempo RD / Board','MEDIA');
+  item('resultado_ligacao','Resultado da tentativa identificado',
+    conversa?'INDICIO':naoAtendeu?'INDICIO':cA,
+    conversa?'Anotacao sugere dialogo, nao comprova interacao autenticada.':
+      naoAtendeu?'Registro de nao atendimento; nao converter em conexao.':
+      'Nao ha resultado de chamada explicitamente descrito.',
+    'Registrar outcome real de cada tentativa e reconciliar com o audio.',
+    'Anotacoes RD e ligacoes','MEDIA',detalhe(conversa||naoAtendeu));
+  const contagem={EVIDENCIADO:0,INDICIO:0,ATENCAO:0,SEM_EVIDENCIA:0,NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
+  itens.forEach(x=>{contagem[x.status]=(contagem[x.status]||0)+1;});
+  return {
+    titulo:'Plano de Otimizacao SDR',clienteReferencia:'Wisetec',
+    versao:'2026-09-14 + sinais consultivos V3',pontuacao:null,
+    oficial:itens.filter(x=>x.pilar==='OFICIAL').length,complementar:itens.filter(x=>x.pilar!=='OFICIAL').length,
+    total:itens.length,contagem:contagem,itens:itens,
+    restricoes:['Cadencia de dias e SLA de primeiro contato exigem playbook e calendario validos.',
+      'Uso VoIP nao equivale a conversa ou qualidade de pitch.',
+      'Sem audio/transcricao, nao inferir aderencia de pitch, dupla escolha ou objecoes.'],
+    aviso:'Checklist consultivo para Wisetec: os sete pilares do plano sao referencia operacional, nao nota automatica. Avalia historico SDR mesmo se a negociacao estiver na etapa do closer.'
   };
 }
 
