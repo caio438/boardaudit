@@ -422,11 +422,9 @@ function sdr(d){
     const extras=itens.filter(x=>x.pilar!=='OFICIAL');
     let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares');
     html+='<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
-    html+='<div class="countbar">'+Number((p.contagem||{}).ATENCAO||0)+
-      ' atenção · '+Number((p.contagem||{}).INDICIO||0)+' indícios · '+
-      Number((p.contagem||{}).NAO_VERIFICAVEL||0)+' não verificáveis</div>';
-    html+=group('7 pilares do Plano Wisetec',oficiais,true);
-    html+=group('9 verificações complementares',extras,false);
+    html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
+    html+=criterionSection('7 pilares do Plano Wisetec',oficiais);
+    html+=criterionSection('9 verificações complementares',extras);
     return html;
   }
   if(rd&&!rd.ativo){
@@ -456,16 +454,11 @@ function sdr(d){
         escopo.regraCadenciaAplicavel==='VERSAO_CLIENTE_NAO_CONFIRMADA'?
           'versão ainda não confirmada para esta negociação':escopo.regraCadenciaAplicavel||'não informada')+
       '. Não pontuar prazo de cadência sem régua homologada.</p></div>';
-    html+='<div class="countbar">'+Number(counts.ATENCAO||0)+' atenção · '+
-      Number(counts.SEM_EVIDENCIA||0)+' sem registro · '+
-      Number(counts.EVIDENCIADO||0)+Number(counts.INDICIO||0)+
-      ' com evidência ou indício · '+Number(counts.NAO_VERIFICAVEL||0)+
-      ' dependentes de fonte adicional · '+Number(counts.NAO_APLICAVEL||0)+
-      ' não aplicáveis</div>';
-    html+=group('7 pilares do Plano Wisetec',oficiais.map(garantir),true);
+    html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
+    html+=criterionSection('7 pilares do Plano Wisetec',oficiais.map(garantir));
     // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
     // em conteúdo vazio na leitura/cópia da interface.
-    html+=group('9 verificações complementares',extras.map(garantir),true);
+    html+=criterionSection('9 verificações complementares',extras.map(garantir));
     html+='<div class="glass"><p class="small">'+esc(plano.aviso||'')+'</p></div>';
     return html;
   }
