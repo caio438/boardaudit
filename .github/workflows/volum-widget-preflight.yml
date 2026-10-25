@@ -1,0 +1,76 @@
+name: Inspect existing VOLUM deployment (read only)
+on:
+  push:
+    branches:
+      - feature/volum-widget-board-unified-20261025
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: ${{ github.actor == 'caio438' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Configure temporary authentication
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+      - name: Inspect deployment metadata without IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp deployments > /tmp/volum-deployments.txt
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const text=fs.readFileSync('/tmp/volum-deployments.txt','utf8');
+          const rows=text.split(/\r?\n/).map(line=>line.match(/^\s*-\s+(\S+)\s+@(\S+)(?:\s+-\s+(.*))?\s*$/)).filter(Boolean)
+            .map(match=>({id:match[1],version:match[2],description:match[3]||''}));
+          const boardId='AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA';
+          const board=rows.filter(d=>d.id===boardId);
+          const privateRows=rows.filter(d=>d.version!=='HEAD'&&d.id!==boardId);
+          console.log('BOARD_DEPLOYMENT_FOUND='+board.length);
+          console.log('DEPLOYMENT_COUNT='+rows.length);
+          console.log('OTHER_VERSIONED_DEPLOYMENTS='+privateRows.length);
+          console.log('WIDGET_VERSION_433_MATCHES='+privateRows.filter(d=>d.version==='433').length);
+          console.log('WIDGET_NAME_MATCHES='+privateRows.filter(d=>/VOLUM|INTELLIGENCE|WIDGET/i.test(d.description)).length);
+          if(board.length!==1)process.exitCode=2;
+          NODE
+      - name: Inspect live Apps Script source without exposing contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/volum-widget-inspect
+          cp .clasp.json /tmp/volum-widget-inspect/.clasp.json
+          cd /tmp/volum-widget-inspect
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull > /tmp/volum-clasp-pull.txt
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const root='/tmp/volum-widget-inspect';
+          const names=fs.readdirSync(root);
+          const codeFile=names.find(n=>/^(Code|Código)\.js$/i.test(n));
+          const code=codeFile?fs.readFileSync(path.join(root,codeFile),'utf8'):'';
+          const has=n=>names.includes(n);
+          console.log('LIVE_SOURCE_FILES='+names.length);
+          console.log('LIVE_WIDGET_ROUTER='+(/volum_widget/.test(code)?'YES':'NO'));
+          console.log('LIVE_WIDGET_SERVICE='+(has('VolumWidgetService.js')?'YES':'NO'));
+          console.log('LIVE_WIDGET_PANEL='+(has('VolumWidgetPanel.html')?'YES':'NO'));
+          console.log('LIVE_WIDGET_WEBAPP='+(has('VolumWidgetWebApp.js')?'YES':'NO'));
+          console.log('LIVE_BOARD_DOGET='+( /function\s+doGet\s*\(/.test(code)?'YES':'NO'));
+          console.log('READ_ONLY_PROBE=SUCCESS');
+          NODE
+      - name: Remove credential file
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.clasprc.json"
