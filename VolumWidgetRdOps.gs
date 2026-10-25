@@ -317,10 +317,16 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     ids.has(String(e.passagemId||'')) ||
     (hadCloser && String(e.passagemId||'')===String(janelas[primeiraCloser]?.passagemId||'')));
   const notesAgenda=tipe(agendaContexto,'ANOTACAO');
-  const registrosAgenda=combinar(agendaContexto,
-    /reuniao|apresentacao|agendament|agenda|demonstracao|convite/);
-  const agendaConfirmada=combinar(notesAgenda,
-    /reuniao.{0,70}(?:agendad|marcad)|(?:agendamos|marcamos).{0,60}(?:reuniao|apresentacao)|apresentacao.{0,50}agendada/);
+  // O texto do card contém "na etapa Apresentação do funil".
+  // Esse sufixo não é evidência de convite ou reunião agendada.
+  const somenteDescricao=e=>texto(e).replace(/\bna etapa .+? do funil(?:\s|$)/g,' ');
+  const tiposAgenda=new Set(['ANOTACAO','TAREFA_CRIADA','TAREFA_ATUALIZADA',
+    'EMAIL_ENVIADO','EMAIL_RESPONDIDO']);
+  const registrosAgenda=agendaContexto.filter(e=>tiposAgenda.has(e.acao) &&
+    /(?:reuniao|apresentacao|agendament|agendad|agenda de |demonstracao|convite)/.test(somenteDescricao(e)));
+  const agendaConfirmada=notesAgenda.filter(e=>
+    /reuniao.{0,70}(?:agendad|marcad)|(?:agendamos|marcamos).{0,60}(?:reuniao|apresentacao)|apresentacao.{0,50}agendada/.test(somenteDescricao(e)) &&
+    !/reuniao.{0,40}(?:nao|nunca|sem).{0,20}(?:agendad|marcad)|(?:nao|nunca) (?:foi |esta )?(?:agendad|marcad)/.test(somenteDescricao(e)));
   const semConfirmar=/nao (?:foi |esta |est[aá] )?(?:confirmad|agendad)|aguardando confirmacao|tentando confirmar/;
   const respostasConfirmacao=combinar(notesAgenda,
     /(?:cliente|lead|comprador|contato).{0,70}confirmou|confirmou presenca|aceitou o convite/)
