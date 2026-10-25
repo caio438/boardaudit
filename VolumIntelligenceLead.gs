@@ -386,6 +386,32 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
   const ligacoes = viLeadLigacoesBoard_(interacoes, dealId);
+
+  // A API v1 pode devolver a negociação apenas com o ID da etapa.
+  // Resolver pelo endpoint oficial GET /deal_stages/{id} somente se necessário.
+  const etapaIdRd = String((negociacao.deal_stage || {}).id ||
+    (negociacao.deal_stage || {})._id || negociacao.deal_stage_id || '').trim();
+  let nomeEtapaRd = String((negociacao.deal_stage || {}).name ||
+    negociacao.deal_stage_name || '').trim();
+  let origemEtapa = nomeEtapaRd ? 'DADOS_NEGOCIACAO_RD' : 'SEM_NOME';
+  if (!nomeEtapaRd && /^[0-9a-f]{24}$/i.test(etapaIdRd)) {
+    try {
+      const etapaRetorno = viLeadRdGet_(vinculo.token, '/deal_stages/' + etapaIdRd, {});
+      const etapaObj = (etapaRetorno || {}).deal_stage || etapaRetorno || {};
+      const idConfirmado = String(etapaObj.id || etapaObj._id || '').toLowerCase();
+      if (idConfirmado === etapaIdRd.toLowerCase() && String(etapaObj.name || '').trim()) {
+        nomeEtapaRd = String(etapaObj.name).trim().slice(0, 120);
+        origemEtapa = 'CONSULTA_ETAPA_RD';
+      } else {
+        origemEtapa = 'SEM_CONFIRMACAO_ID';
+      }
+    } catch (erroEtapa) {
+      // Sem inferir o nome da etapa; a auditoria continua em modo parcial.
+      origemEtapa = 'FALHA_CONSULTA_ETAPA';
+    }
+  }
+  fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
+
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
   const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
@@ -395,8 +421,12 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V2_TIPOS_ATIVIDADE', dealId: dealId, idCliente: vinculo.idCliente,
     negociacao: {
       nome: String(negociacao.name || ''), criadaEm: ctx.criadaEm,
-      etapaAtualId: String((negociacao.deal_stage || {}).id || negociacao.deal_stage_id || ''),
-      etapaAtualNome: String((negociacao.deal_stage || {}).name || negociacao.deal_stage_name || ''),
+      etapaAtualId: etapaIdRd,
+      etapaAtualNome: nomeEtapaRd,
+      etapaOrigem: origemEtapa,
+      previsaoFechamento: String(negociacao.prediction_date || ''),
+      valorInformado: Number.isFinite(Number(negociacao.amount_total)) && negociacao.amount_total !== null ? Number(negociacao.amount_total) : null,
+      estadoFechamento: negociacao.win === true ? 'GANHA' : negociacao.win === false ? 'PERDIDA' : 'EM_ABERTO',
       responsavel: String((negociacao.user || {}).name || ''), historicoEtapas: etapas
     },
     fontes: Object.assign(fontes, { board: { acessivel: true, ligacoesVinculadas: ligacoes.length } }),
