@@ -35,9 +35,10 @@ const scenario=fixture({atividades:[
 const audit=ctx.viWidgetAuditoriaOperacional_(scenario);
 assert.equal(audit.criterios.filter(x=>x.estado==='INDICIO').length,5);
 assert.ok(audit.criterios.every(x=>x.fonte&&x.acao));
-assert.doesNotMatch(JSON.stringify(audit),/tldv\\.io\\/app\\/meetings\\/secret/);
+assert.ok(!JSON.stringify(audit).includes('tldv.io/app/meetings/secret'));
 assert.doesNotMatch(panel,/<header class="topbar"/);
-assert.match(panel,/function operationalAudit\\(d\\)/);
-const script=(panel.match(/<script>([\\s\\S]*?)<\\/script>/)||[])[1];
+assert.ok(panel.includes('function operationalAudit(d)'));
+const script=panel.split('<script>')[1]?.split('</script>')[0];
+assert.ok(script);
 new Function(script);
 console.log('V0.4.7: fonte inacessivel, falso positivo, link sanitizado, apos reuniao e layout OK.');
