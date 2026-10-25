@@ -610,7 +610,7 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
       evidencia:prova,acao:devido?acao:'',fonte:fonte||'RD · Histórico',pilar:'OFICIAL'};
   };
   const itens=[
-    reg('gravacao','Link da gravação da reunião',urlGravacao?'SIM':mencaoGravacao?'PARCIAL':completoNotas?'FALTA':'PARCIAL',
+    reg('gravacao','Link da gravação da reunião',urlGravacao?'SIM':mencaoGravacao?'PARCIAL':completoNotas&&propostaAtiva?'FALTA':'PARCIAL',
       mencaoGravacao||urlGravacao,
       urlGravacao?'Foi encontrado indicador de link de gravação relacionado a esta etapa. Conferir acesso e destino.':
         mencaoGravacao?'Existe menção textual à gravação, sem URL autenticada.':
@@ -622,10 +622,10 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
         notaContexto?'Existe anotação de contexto, mas faltam seções ou confirmação de privacidade.':
         'Não foi localizada anotação estruturada da reunião.',
       'Completar a anotação do Closer com diagnóstico, entendimento, fechamento, gravação e próximo passo.','RD · anotações'),
-    reg('proposta_pdf','PDF da proposta anexado',pdf.length?'SIM':completoArquivo?'FALTA':'PARCIAL',
+    reg('proposta_pdf','PDF da proposta anexado',pdf.length?'SIM':completoArquivo&&propostaAtiva?'FALTA':'PARCIAL',
       pdf[0]||null,
       pdf.length?'PDF localizado no recurso Arquivos do negócio. Confirmar versão, valor e destinatário.':
-        completoArquivo?'A aba Arquivos foi consultada integralmente, mas não há PDF de proposta.':
+        completoArquivo&&propostaAtiva?'A etapa de proposta foi iniciada, mas a aba Arquivos foi consultada integralmente sem localizar PDF.':
         'A fonte de arquivos não está integralmente acessível; não é possível reprovar a anexação.',
       'Anexar o PDF de proposta atualizado ao lead.','RD · Arquivos'),
     reg('proximo_passo','Tarefa com data e acordo do próximo passo',
