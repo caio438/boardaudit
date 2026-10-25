@@ -1,0 +1,129 @@
+name: Publish VOLUM private widget V2
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.event.issue.number == 142 && github.event.comment.body == '/volum-widget-publish-v2' && github.event.comment.user.login == 'caio438' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: apps-script-production
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install and test current revision
+        run: |
+          npm ci
+          npm test
+      - name: Require exact green main revision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$current" = "$GITHUB_SHA"
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?event=push&branch=main&per_page=30")"
+          conclusion="$(printf '%s' "$runs" | jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last | .conclusion // ""')"
+          test "$conclusion" = "success" || {
+            echo "::error::A revisao main nao tem CI verde no SHA exato."
+            exit 1
+          }
+      - name: Configure private clasp auth
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$CLASPRC_JSON"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+      - name: Confirm version capacity and existing deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx clasp deployments > /tmp/volum-deployments-before.txt
+          npx clasp versions > /tmp/volum-versions-before.txt
+          count="$(sed -n 's/^Found \([0-9][0-9]*\) versions\.$/\1/p' /tmp/volum-versions-before.txt | head -1)"
+          test -n "$count"
+          if [ "$count" -ge 199 ]; then
+            echo "::error::Sem margem segura de versoes Apps Script para publicar a widget."
+            exit 1
+          fi
+          echo "PRE_DEPLOY_VERSIONS=$count"
+      - name: Pull live project and stage only widget V2 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/volum-live-before /tmp/volum-staged-private /tmp/volum-live-after
+          cp .clasp.json /tmp/volum-live-before/.clasp.json
+          cd /tmp/volum-live-before
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull > /tmp/volum-pull-before.txt
+          cd "$GITHUB_WORKSPACE"
+          node scripts/volum-widget-private-stage.mjs \
+            "$GITHUB_WORKSPACE" /tmp/volum-live-before /tmp/volum-staged-private \
+            /tmp/volum-deployments-before.txt /tmp/volum-private-meta.json
+      - name: Publish to the existing private deployment ID only
+        shell: bash
+        run: |
+          set -euo pipefail
+          widget_id="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('/tmp/volum-private-meta.json','utf8')).widgetId)")"
+          cd /tmp/volum-staged-private
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" push --force > /tmp/volum-private-push.txt
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" deploy \
+            --deploymentId "$widget_id" \
+            --description "VOLUM Intelligence Sales Ops V2 ${GITHUB_SHA}" > /tmp/volum-private-deploy.txt
+          echo "WIDGET_PRIVATE_DEPLOY_UPDATED=1"
+      - name: Verify private deployment changed and Board URL stayed pinned
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          npx clasp deployments > /tmp/volum-deployments-after.txt
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const meta=JSON.parse(fs.readFileSync('/tmp/volum-private-meta.json','utf8'));
+          const txt=fs.readFileSync('/tmp/volum-deployments-after.txt','utf8');
+          const rows=txt.split(/\r?\n/).map(line=>line.match(/^\s*-\s+(\S+)\s+@(\S+)(?:\s+-\s+(.*))?\s*$/)).filter(Boolean).map(m=>({id:m[1],version:m[2]}));
+          const board=rows.find(d=>d.id===meta.boardId),widget=rows.find(d=>d.id===meta.widgetId);
+          if(!board||!widget||board.version!==meta.boardOldVersion||widget.version===meta.widgetOldVersion)throw new Error('Versoes finais nao coincidem com os deployments esperados');
+          console.log('BOARD_DEPLOYMENT_UNCHANGED=1');
+          console.log('PRIVATE_WIDGET_SAME_URL_NEW_VERSION=1');
+          NODE
+          cp .clasp.json /tmp/volum-live-after/.clasp.json
+          cd /tmp/volum-live-after
+          "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull > /tmp/volum-pull-after.txt
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const expected='/tmp/volum-staged-private',actual='/tmp/volum-live-after';
+          for(const [source,target] of [
+            ['VolumWidgetService.gs','VolumWidgetService.js'],
+            ['VolumIntelligenceLead.gs','VolumIntelligenceLead.js'],
+            ['VolumWidgetWebApp.gs','VolumWidgetWebApp.js'],
+            ['VolumWidgetPanel.html','VolumWidgetPanel.html']
+          ]){
+            if(fs.readFileSync(path.join(expected,source),'utf8')!==fs.readFileSync(path.join(actual,target),'utf8'))throw new Error('Readback divergente: '+source);
+          }
+          console.log('POST_DEPLOY_WIDGET_SOURCE_MATCH=1');
+          NODE
+      - name: Remove clasp credentials and temporary deployment metadata
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.clasprc.json" /tmp/volum-private-meta.json
