@@ -53,5 +53,6 @@ mock.Session.getActiveUser=()=>({getEmail:()=> 'outro@example.org'});
 assert.throws(()=>mock.doGet({parameter:{volum_widget:'1',dealId}}),/autorizado/);
 const script=panel.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(script,'Script do painel ausente');
-new Function(script[1].replace(/<\?=\s*JSON\.stringify\(dealId\)\s*\?>/,JSON.stringify(dealId)));
+new Function(script[1]);
+assert.ok(panel.includes('data-deal-id="<?= dealId ?>"'));
 console.log('VOLUM widget route: board preservado, autenticacao obrigatoria, dealId validado e painel legivel');

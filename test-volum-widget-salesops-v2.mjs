@@ -7,7 +7,8 @@ const panel=fs.readFileSync(new URL('./VolumWidgetPanel.html',import.meta.url),'
 new Function(source);
 const panelScript=panel.match(/<script>([\s\S]+?)<\/script>/);
 assert.ok(panelScript,'Painel deve incluir script.');
-new Function(panelScript[1].replace(/<\?=\s*JSON\.stringify\(dealId\)\s*\?>/,JSON.stringify('6acc888b98976f0023dc583f')));
+new Function(panelScript[1]);
+assert.ok(panel.includes('data-deal-id="<?= dealId ?>"'));
 const context=vm.createContext({Object,Array,String,Number,Date,Boolean,RegExp,Math,Error,Set});
 vm.runInContext(source,context);
 const dealId='6acc888b98976f0023dc583f';

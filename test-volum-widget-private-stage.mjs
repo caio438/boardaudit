@@ -32,6 +32,14 @@ try {
  assert.equal(fs.readFileSync(path.join(stage,'VolumWidgetPanel.html'),'utf8'),'V2');
  assert.equal(JSON.parse(fs.readFileSync(path.join(stage,'appsscript.json'),'utf8')).webapp.executeAs,'USER_ACCESSING');
  assert.equal(JSON.parse(fs.readFileSync(meta,'utf8')).widgetId,widgetId);
+ const repeatDeployments='Found 4 deployments.\n- HEAD_ID @HEAD\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - VOLUM Intelligence Sales Ops V2 446f2d8\n- DECOY @430 - VOLUM outra extensão\n';
+ const repeatStage=path.join(base,'repeat');
+ const repeatRes=prepareWidgetPrivateStage(repo,live,repeatStage,repeatDeployments,path.join(base,'meta-repeat.json'));
+ assert.equal(repeatRes.widgetVersion,'434','Atualizacao da V2 publicada deve selecionar 434');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(base,'meta-repeat.json'),'utf8')).widgetId,widgetId);
+ const collision='Found 4 deployments.\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - VOLUM Intelligence Sales Ops V2 um\n- OTHER_ID @435 - VOLUM Intelligence Sales Ops V2 dois\n';
+ assert.throws(()=>prepareWidgetPrivateStage(repo,live,path.join(base,'collision'),collision,path.join(base,'meta-collision.json')),/nao identificada/);
+
  const lateBoard="function doGet(e){return 'BOARD_INTACTO';}\nfunction widgetOldRouter(){return 'volum_widget';}";
  fs.writeFileSync(path.join(live,'Code.js'),lateBoard);
  const second=path.join(base,'patched');
@@ -45,5 +53,5 @@ try {
  
  assert.throws(()=>prepareWidgetPrivateStage(repo,live,path.join(base,'invalid'),
     'Found 2 deployments.\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - Other\n',path.join(base,'meta2.json')),/nao identificada/);
- console.log('Release privado: fonte do board preservada, implantacao 433 unica e manifesto protegido');
+ console.log('Release privado: fonte preservada, V2 433/434 e escolha unica autenticada');
 }finally{fs.rmSync(base,{recursive:true,force:true});}
