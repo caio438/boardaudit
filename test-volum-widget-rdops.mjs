@@ -9,6 +9,7 @@ const service=fs.readFileSync(new URL('./VolumWidgetService.gs',import.meta.url)
 const widget=fs.readFileSync(new URL('./VolumWidgetPanel.html',import.meta.url),'utf8');
 const chrome=fs.readFileSync(new URL('./extensions/volum-intelligence/content.js',import.meta.url),'utf8');
 const sidebar=fs.readFileSync(new URL('./extensions/volum-intelligence/sidebar.js',import.meta.url),'utf8');
+const webapp=fs.readFileSync(new URL('./VolumWidgetWebApp.gs',import.meta.url),'utf8');
 [core,stages,ops,service,chrome,sidebar].forEach(src=>new Function(src));
 assert.match(widget,/function rdDiagnosticoView\(/);
 new Function((widget.match(/<script>([\s\S]*?)<\/script>/)||[])[1]);
@@ -98,6 +99,10 @@ assert.equal(big.resumo.coberturaCompleta,true);
 assert.match(chrome,/VOLUM_REQUEST_RD_UI_HISTORY/);
 assert.match(chrome,/INLINE_ID/);
 assert.match(chrome,/host.__volumHistoryCleanup/);
+assert.match(chrome,/volum_history_nonce/);
+assert.match(widget,/data-history-nonce/);
+assert.match(webapp,/template.historyNonce/);
+assert.match(sidebar,/msg.nonce!==historyNonce/);
 assert.match(widget,/window\.top\.postMessage/);
 assert.match(widget,/chrome-extension/);
 assert.match(chrome,/waitHistoryChange/);
