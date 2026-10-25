@@ -5,32 +5,27 @@ function dealId(url) {
   return match ? match[1].toLowerCase() : '';
 }
 
-async function syncPanel(tabId, url) {
+async function openInlineWidget(tabId, url) {
   const id = dealId(url);
-  await chrome.sidePanel.setOptions({ tabId, path: 'sidebar.html', enabled: Boolean(id) });
-  if (id) await chrome.storage.session.set({ ['deal:' + tabId]: id });
+  if (!id) return { opened: false, reason: 'NEGOCIACAO_RD_NAO_ABERTA' };
+  const saved = await chrome.storage.local.get('volumEndpoint');
+  const endpoint = String(saved.volumEndpoint || '');
+  if (!/^https:\/\/script\.google\.com\//i.test(endpoint)) return { opened: false, reason: 'ENDPOINT_NAO_CONFIGURADO' };
+  await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_INLINE_WIDGET', endpoint: endpoint });
+  return { opened: true };
 }
 
-chrome.runtime.onInstalled.addListener(() =>
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
-);
-
-chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-  if (change.url || change.status === 'complete') syncPanel(tabId, change.url || tab.url).catch(console.warn);
-});
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  const tab = await chrome.tabs.get(tabId);
-  syncPanel(tabId, tab.url).catch(console.warn);
+chrome.action.onClicked.addListener(tab => {
+  openInlineWidget(tab.id, tab.url).catch(console.warn);
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'VOLUM_DEAL_ID') {
     const id = dealId(message.url);
-    if (sender.tab && id) chrome.storage.session.set({ ['deal:' + sender.tab.id]: id });
     sendResponse({ dealId: id });
     return;
   }
   if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
-    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => sendResponse({ opened: true })).catch(() => sendResponse({ opened: false }));
+    openInlineWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
     return true;
   }
 });

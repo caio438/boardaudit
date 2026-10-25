@@ -1,6 +1,7 @@
 (() => {
   const dealPattern = /\/app\/deals\/([0-9a-f]{24})(?:[/?#]|$)/i;
   const HISTORY_LIMIT = 30;
+  const INLINE_ID = 'volum-intelligence-inline-shell';
   const extract = () => {
     const match = location.href.match(dealPattern);
     if (match) chrome.runtime.sendMessage({ type: 'VOLUM_DEAL_ID', url: location.href });
@@ -21,6 +22,34 @@
     ].join(';');
     button.addEventListener('click', () => chrome.runtime.sendMessage({ type: 'VOLUM_OPEN_PANEL' }));
     document.body.appendChild(button);
+  };
+  const closeInline = () => {
+    const host = document.getElementById(INLINE_ID);
+    if (host) host.remove();
+  };
+  const openInline = endpoint => {
+    if (!extract() || !/^https:\/\/script\.google\.com\//i.test(String(endpoint || ''))) return;
+    const old = document.getElementById(INLINE_ID);
+    if (old) { old.remove(); return; }
+    const dealId = (location.href.match(dealPattern) || [])[1];
+    const url = new URL(endpoint);
+    url.searchParams.set('volum_widget', '1');
+    url.searchParams.set('dealId', dealId.toLowerCase());
+    const host = document.createElement('section');
+    host.id = INLINE_ID;
+    host.setAttribute('aria-label', 'VOLUM Intelligence');
+    host.style.cssText = [
+      'position:fixed','top:0','right:0','bottom:0','z-index:2147483646',
+      'width:min(430px,100vw)','margin:0','padding:0','border:0','outline:0',
+      'border-radius:0','box-shadow:none','background:#080911','overflow:hidden'
+    ].join(';');
+    const frame = document.createElement('iframe');
+    frame.src = url.toString();
+    frame.title = 'VOLUM Intelligence';
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.style.cssText = 'display:block;width:100%;height:100%;margin:0;padding:0;border:0;outline:0;box-shadow:none;background:transparent;';
+    host.appendChild(frame);
+    document.body.appendChild(host);
   };
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
   const dateToIso = value => {
@@ -70,6 +99,14 @@
     return { dealId: dealId.toLowerCase(), events, coverage: { available: true, complete: !Array.from(panel.querySelectorAll('button')).some(node => clean(node.textContent) === 'Ver mais'), pagesLoaded: pages, totalVisual: events.length, origin: 'RD_UI_HISTORY' } };
   }
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message && message.type === 'VOLUM_OPEN_INLINE_WIDGET') {
+      openInline(message.endpoint);
+      sendResponse({ opened: Boolean(document.getElementById(INLINE_ID)) });
+      return;
+    }
+    if (message && message.type === 'VOLUM_CLOSE_INLINE_WIDGET') {
+      closeInline(); sendResponse({ closed: true }); return;
+    }
     if (message && message.type === 'VOLUM_READ_RD_HISTORY') {
       readHistory().then(sendResponse).catch(error => sendResponse({ dealId: '', events: [], coverage: { available: false, complete: false, reason: 'FALHA_LEITURA_UI', detail: clean(error && error.message) } }));
       return true;
