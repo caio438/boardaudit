@@ -102,6 +102,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     atualizadoEm:(leitura.cadastroRd||{}).atualizadoEm||'',
     camposPersonalizados:(leitura.cadastroRd||{}).camposPersonalizados||[]
   };
+  if(inteligenciaRd.ativo)parecer.contextoIa=viWidgetContextoHistoricoRd_(leitura,inteligenciaRd);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
@@ -110,6 +111,8 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
       parecer.interpretacao = {disponivel:false,motivo:'IA_INDISPONIVEL'};
     }
   }
+  if(inteligenciaRd.ativo && parecer.interpretacao)
+    parecer.interpretacao=viWidgetValidarInterpretacaoRd_(parecer.interpretacao,leitura);
   delete parecer.contextoIa;
   return parecer;
 }
@@ -848,7 +851,7 @@ function viWidgetInterpretarGemini_(contexto, dealId) {
   const inicio = Date.now();
   const chave = obterSegredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Gemini nao configurado no projeto.');
-  const prompt = 'Voce e um auditor Sales Ops. Interprete apenas as evidencias fornecidas do mesmo lead. Responda SOMENTE JSON com: fatos (lista de objetos criterio, conclusao, fonte, data, confianca), lacunas (lista de objetos criterio, motivo, proximaVerificacao), recomendacoes (lista de objetos prioridade, acao, justificativa, criterioConclusao). '+
+  const prompt = 'Voce e um auditor Sales Ops. Interprete apenas as evidencias fornecidas do mesmo lead. Se a fonte for RD_UI_HISTORY, para CADA fato forneça uma referencia UI_n exata presente no contexto, e interprete a etapa atual e o caminho anterior sem misturar etapas. Nunca invente transcricoes, dor, decisor, autor ou acao sem registro. Responda SOMENTE JSON com: fatos (lista de objetos criterio, conclusao, referencia, fonte, data, confianca), lacunas (lista de objetos criterio, motivo, proximaVerificacao), recomendacoes (lista de objetos prioridade, acao, justificativa, criterioConclusao). '+
     'Nunca confunda tarefa criada com executada, e-mail enviado com recebido, arquivo PDF com entrega, link de convite com gravacao, ou anotacao do vendedor com mensagem direta do cliente. '+
     'NAO classifique ausencia de registro como falha quando a consulta for incompleta. Nao invente links ou datas. Evidencias: '+JSON.stringify(contexto);
   const resposta = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent', {
