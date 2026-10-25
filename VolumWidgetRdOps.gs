@@ -373,10 +373,32 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const detalheEvento=e=>e?viWidgetSanitizar_(e.texto||'').slice(0,260):'';
   const reg=(id,titulo,status,msg,e,acao,pilar)=>{
     const evid=ref(e);
-    itens.push({id,titulo,status,detalhe:msg,evidencia:e?
+    // Verde apenas se a evidencia atender ao critério específico, não por
+    // encontrar uma palavra solta. Vermelho = falta obrigatória comprovada
+    // na etapa já encerrada ou tarefa vencida. Não presumir SLA de cadência.
+    let conformidade='PENDENTE';
+    const obrigatoriosDepoisDoHandoff=new Set([
+      'handoff','registros','segmento','lmv','qualificacao','agenda']);
+    if(status==='NAO_APLICAVEL')conformidade='NAO_APLICAVEL';
+    else if(status==='ATENCAO')conformidade='NAO_CONFORME';
+    else if(status==='SEM_EVIDENCIA'&&hadCloser&&
+      obrigatoriosDepoisDoHandoff.has(id))conformidade='NAO_CONFORME';
+    else if(status==='INDICIO'&&e){
+      const t=texto(e);
+      if(id==='voip'&&e.acao==='OUTRO_VISUAL_RD'&&
+        /atendimento para|ligacao realizada|chamada efetuada/.test(t))
+        conformidade='CONFORME';
+      if(id==='segmento'&&e.acao==='ANOTACAO'&&
+        /(?:segmento|setor|ramo)(?: de atuacao)?\s*[:=-]\s*[\w\s-]{3,45}/.test(t))
+        conformidade='CONFORME';
+      if(id==='lmv'&&e.acao==='ANOTACAO'&&
+        /(?:lmv|faturamento|receita mensal)(?: validado| confirmado)?\s*[:=-]\s*(?:r\$ ?\d|positivo|negativo|acima|abaixo|entre \d)/.test(t))
+        conformidade='CONFORME';
+    }
+    itens.push({id,titulo,status,conformidade,detalhe:msg,evidencia:e?
       evid+' · '+detalheEvento(e):'',
       fonte:e?'RD_UI_HISTORY · '+e.id:'RD_UI_HISTORY · '+(pre.map(j=>j.etapaNome).join(' → ')||'etapas em validação'),
-      acao,prioridade:status==='ATENCAO'?'ALTA':'MEDIA',
+      acao,prioridade:conformidade==='NAO_CONFORME'?'ALTA':'MEDIA',
       pilar:pilar||'COMPLEMENTAR',janela:'JORNADA_SDR_ANTES_CLOSER',
       regra:'Verificacao da execucao documentada no RD. SLA/cadencia depende da versao da Wisetec homologada.'});
   };
