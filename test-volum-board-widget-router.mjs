@@ -54,5 +54,5 @@ assert.throws(()=>mock.doGet({parameter:{volum_widget:'1',dealId}}),/autorizado/
 const script=panel.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(script,'Script do painel ausente');
 new Function(script[1]);
-assert.match(panel,/data-deal-id="<\\?= dealId \\?>"/);
+assert.ok(panel.includes('data-deal-id="<?= dealId ?>"'));
 console.log('VOLUM widget route: board preservado, autenticacao obrigatoria, dealId validado e painel legivel');
