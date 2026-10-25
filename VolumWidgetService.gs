@@ -28,6 +28,40 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
+
+  // Uma captura visual completa substitui os palpites de funil e os totais do
+  // Board na visão principal. Primeiro o HISTÓRICO RD; depois as demais fontes.
+  const inteligenciaRd=viWidgetDiagnosticoHistoricoRd_(leitura);
+  parecer.diagnosticoRdOperacional=inteligenciaRd;
+  if(inteligenciaRd.ativo){
+    parecer.status=inteligenciaRd.titulo;
+    parecer.risco=inteligenciaRd.semRegistro?'ATENÇÃO OPERACIONAL':'SEM DESVIO CONFIRMADO';
+    parecer.confianca='ALTA NA COBERTURA DO HISTÓRICO RD; REGRAS EM VALIDAÇÃO';
+    parecer.resumoExecutivo=inteligenciaRd.sumario;
+    parecer.recomendacoes=inteligenciaRd.acoes;
+    parecer.proximaAcao=inteligenciaRd.acoes.length?
+      inteligenciaRd.acoes[0].acao:'Revisar o registro mais recente da etapa atual e validar próximo compromisso.';
+    parecer.regraDeDecisao=inteligenciaRd.acoes.length?
+      inteligenciaRd.acoes[0].criterioConclusao:
+      'Confirmar quem executará o próximo passo e registrar a decisão no CRM.';
+    parecer.operacional={
+      tipo:'AUDITORIA_HISTORICO_RD',
+      titulo:inteligenciaRd.titulo,
+      subtitulo:'Análise por eventos, responsável e etapa. O histórico do RD é a fonte primária desta leitura.',
+      fatos:inteligenciaRd.fatos,acoes:inteligenciaRd.acoes,
+      notasDeConfiabilidade:[inteligenciaRd.limite],
+      fonteRdCompleta:true,criterioPrincipal:'RD_UI_HISTORY',
+      tarefasNoLead:(leitura.tarefas||[]).length,
+      tipoAnalise:'JANELA_DA_ETAPA',totalHistorico:inteligenciaRd.resumo.total
+    };
+    parecer.auditoriaOperacional={
+      criterios:inteligenciaRd.criterios,
+      grupo:inteligenciaRd.titulo,
+      cobertura:{historicoVisual:(leitura.historicoRdEtapas.linhaDoTempo||{}).cobertura||{}},
+      observacao:inteligenciaRd.limite
+    };
+  }
+
   // Somente RD: movimentacoes canonizadas e registros entre entradas de etapa.
   const recorteRd=leitura.historicoRdEtapas||{};
   parecer.historicoRdEtapas={
