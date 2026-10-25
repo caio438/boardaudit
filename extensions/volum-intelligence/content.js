@@ -103,6 +103,57 @@
         history:latestHistory
       },r.origin);} catch(_ignore) {}
     };
+    // Cache persistente na extensao: por deployment + conta autorizada + deal.
+    // Nunca armazena transcricao bruta; limita payload, entradas e TTL.
+    const cacheVersion='VOLUM_WIDGET_CACHE_051';
+    const cacheTtl=60*60*1000,cacheMaxBytes=450000;
+    const deploymentPath=new URL(endpoint).pathname.replace(/[^a-zA-Z0-9_-]/g,'_').slice(-140);
+    const indexKey='volumCacheIndex:'+deploymentPath;
+    const storageKey=scope=>'volumCache:'+deploymentPath+':'+scope+':'+dealId.toLowerCase();
+    const cacheAllowed=msg=>msg&&msg.cacheVersion===cacheVersion&&
+      /^[a-f0-9]{32}$/i.test(String(msg.scope||''))&&
+      ['GET','PUT','CLEAR'].includes(msg.op);
+    const cacheValid=e=>e&&e.cacheVersion===cacheVersion&&
+      e.dealId===dealId.toLowerCase()&&Number.isFinite(Number(e.savedAt))&&
+      Date.now()>=Number(e.savedAt)&&Date.now()-Number(e.savedAt)<cacheTtl&&
+      e.answer?.versao==='0.5.1-RD'&&
+      e.answer?.trilhaDadosAgentes?.historicoRd?.completo===true;
+    const replyCache=(receiver,msg,entry)=>{
+      try{receiver.source.postMessage({
+        type:'VOLUM_CACHE_RESPONSE',dealId:dealId.toLowerCase(),
+        nonce:historyNonce,scope:msg.scope,
+        cacheVersion:cacheVersion,op:msg.op,entry:entry||null
+      },receiver.origin);}catch(_ignore){}
+    };
+    const handleCache=async(receiver,msg)=>{
+      if(!cacheAllowed(msg))return;
+      const key=storageKey(msg.scope);
+      try{
+        if(msg.op==='GET'){
+          const saved=await chrome.storage.local.get(key);
+          const entry=saved[key];
+          if(!cacheValid(entry)&&entry)await chrome.storage.local.remove(key);
+          replyCache(receiver,msg,cacheValid(entry)?entry:null);
+        }else if(msg.op==='CLEAR'){
+          await chrome.storage.local.remove(key);
+          replyCache(receiver,msg,null);
+        }else if(msg.op==='PUT'){
+          const entry=msg.entry;
+          const raw=JSON.stringify(entry||{});
+          if(!cacheValid(entry)||entry.scope!==msg.scope||raw.length>cacheMaxBytes)
+            return replyCache(receiver,msg,null);
+          const snapshot=await chrome.storage.local.get(indexKey);
+          const prior=Array.isArray(snapshot[indexKey])?snapshot[indexKey]:[];
+          const sorted=[{key,savedAt:Number(entry.savedAt)},...prior.filter(x=>
+            x?.key&&x.key!==key&&Number.isFinite(Number(x.savedAt))&&
+            Date.now()-Number(x.savedAt)<cacheTtl)]
+            .sort((a,b)=>b.savedAt-a.savedAt);
+          const keep=sorted.slice(0,12),remove=sorted.slice(12).map(x=>x.key);
+          await chrome.storage.local.set({[key]:entry,[indexKey]:keep});
+          if(remove.length)await chrome.storage.local.remove(remove);
+        }
+      }catch(_ignore){if(msg.op==='GET')replyCache(receiver,msg,null);}
+    };
     const refresh=async()=>{
       if(reading)return;
       reading=true;
@@ -116,20 +167,23 @@
     };
     const onRequest=(event)=>{
       const data=event&&event.data||{};
-      if(data.type!=='VOLUM_REQUEST_RD_UI_HISTORY' ||
-        data.dealId!==dealId.toLowerCase() || data.nonce!==historyNonce || !event.source ||
-        !host.isConnected)return;
+      if(data.dealId!==dealId.toLowerCase() || data.nonce!==historyNonce ||
+         !event.source || !host.isConnected)return;
       if(!/^https:\/\/(?:[a-z0-9-]+\.)?(?:googleusercontent\.com|script\.google\.com)$/i.test(event.origin||''))return;
       const receiver={source:event.source,origin:event.origin};
+      if(data.type==='VOLUM_CACHE_REQUEST'){
+        handleCache(receiver,data);return;
+      }
+      if(data.type!=='VOLUM_REQUEST_RD_UI_HISTORY')return;
       receivers.add(receiver);
       if(latestHistory && latestHistory.coverage?.complete===true && data.refresh!==true)reply(receiver);
       else refresh();
     };
     window.addEventListener('message',onRequest);
     host.__volumHistoryCleanup=()=>window.removeEventListener('message',onRequest);
-    // Coleta prévia: se a widget solicitar durante o carregamento, recebe no
-    // final, sem depender de delay arbitrário ou da sidebar antiga.
-    refresh();
+    // O painel solicita o Histórico apenas se nao houver cache valido;
+    // não abrir a aba Historico do RD sem necessidade.
+    // refresh() e invocado sob demanda por VOLUM_REQUEST_RD_UI_HISTORY.
   };
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
   const dateToIso = value => {
@@ -255,10 +309,13 @@
     }
   });
   addButton();
-  let lastUrl = location.href;
+  // Trocar de aba RD geralmente muda query/hash da URL. So trocar de
+  // NEGOCIACAO remove o painel; senão perderíamos o cache em memoria.
+  let lastDealId=(location.href.match(dealPattern)||[])[1]?.toLowerCase()||'';
   new MutationObserver(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
+    const newDealId=(location.href.match(dealPattern)||[])[1]?.toLowerCase()||'';
+    if(newDealId!==lastDealId){
+      lastDealId=newDealId;
       closeInline();
       const button=document.getElementById('volum-intelligence-trigger');
       if(button)button.remove();

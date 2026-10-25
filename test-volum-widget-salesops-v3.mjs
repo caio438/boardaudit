@@ -86,7 +86,7 @@ assert.match(ext,/searchParams\.set\('volum_widget','1'\)/);
 assert.match(ext,/searchParams\.set\('dealId',id\)/);
 assert.match(extCss,/color-scheme:dark/);
 assert.doesNotMatch(extHtml,/<footer|<header/);
-assert.equal(manifest.version,'0.3.1');
+assert.equal(manifest.version,'0.3.2');
 assert.ok(!manifest.permissions.includes('sidePanel'),'Painel nativo cria a tarja cinza que não pode ser estilizada.');
 assert.equal(Object.hasOwn(manifest,'side_panel'),false);
 assert.match(content,/VOLUM_OPEN_INLINE_WIDGET/);

@@ -8,6 +8,10 @@ function viWidgetRenderizarWebApp_(e) {
   const dealId = viLeadId_((e && e.parameter && e.parameter.dealId) || '');
   const template = HtmlService.createTemplateFromFile('VolumWidgetPanel');
   template.dealId = dealId;
+  // O cache local precisa ser particionado por conta autorizada, sem expor email.
+  const digest=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,email);
+  template.cacheScope=digest.map(x=>((x+256)%256).toString(16).padStart(2,'0'))
+    .join('').slice(0,32);
   template.historyNonce = /^[a-f0-9]{32}$/i.test(String((e && e.parameter && e.parameter.volum_history_nonce)||''))?
     String(e.parameter.volum_history_nonce):'';
   return template.evaluate().setTitle('VOLUM Intelligence').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);

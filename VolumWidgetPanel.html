@@ -147,6 +147,7 @@ button,input{font:inherit}button{cursor:pointer}
 
 </style>
 <meta name="volum-history-nonce" content="<?= historyNonce ?>">
+<meta name="volum-cache-scope" content="<?= cacheScope ?>">
 </head>
 <body>
 <main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
@@ -161,6 +162,15 @@ if(embedMode && document.documentElement && document.documentElement.classList)d
 let currentData=null;
 let activeTab='visao';
 let activeFilter='todos';
+const cacheScope=typeof document.querySelector==='function'?
+  (document.querySelector('meta[name="volum-cache-scope"]')?.content||''):'';
+const CACHE_VERSION='VOLUM_WIDGET_CACHE_051';
+const CACHE_RESPONSE_VERSION='0.5.1-RD';
+const CACHE_TTL_MS=60*60*1000;
+const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
+let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
+let estadoCarga='INIT',historicoReenviar=false,chamadaUsouHistorico=false;
+let analiseSeq=0,temporizadorBootstrap=null,temporizadorHistorico=null;
 function val(x){return x===null||x===undefined?'':String(x);}
 function esc(x){return val(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
 function safeClass(x){return val(x).replace(/[^a-zA-ZÀ-ÿ_]/g,'').slice(0,35);}
@@ -294,6 +304,53 @@ html+=agentReadiness(d,'cadencia');
   html+='<p class="small">'+esc(agente.limite||'')+'</p>';
   return html;
 }
+function evidenciasRoteadas(d){
+  const t=d.trilhaDadosAgentes||{},api=t.rdApi||{},ui=t.historicoRd||{},
+    board=t.board||{},ia=t.ia||{},join=t.correlacaoRd||{};
+  if(!t.versao)return '';
+  let html=section('De onde vêm as conclusões','Conferência automática de alimentação dos agentes');
+  html+='<div class="glass"><ul class="stack">'+
+    '<li><b>Histórico visual RD:</b> '+Number(ui.eventos||0)+' eventos · '+
+      (ui.completo?'coleta completa':'coleta incompleta')+'</li>'+
+    '<li><b>API RD:</b> '+Number(api.atividades||0)+' atividades, '+
+      Number(api.tarefas||0)+' tarefas e '+Number(api.arquivos||0)+' arquivos</li>'+
+    '<li><b>Conciliação RD UI + API:</b> '+Number(join.eventosConciliados||0)+
+      ' correspondência(s) únicas; '+Number(join.pareamentosAmbiguos||0)+
+      ' ambígua(s). Detalhes ambíguos não são atribuídos.</li>'+
+    '<li><b>Board:</b> '+Number(board.interacoes||0)+' interações vinculadas, '+
+      Number(board.auditoriasValidadas||0)+' auditoria(s) validadas</li>'+
+    '<li><b>Gemini:</b> '+Number(ia.fatosComReferenciaAceita||0)+
+      ' interpretações com referência aceita, '+Number(ia.fatosRejeitados||0)+
+      ' rejeitada(s)</li></ul>'+
+    '<p class="small">Cada agente usa seus critérios por fonte; a IA não aprova o compliance.</p></div>';
+  const ag=t.agentes||[];
+  html+=group('Cobertura por agente',ag.map(a=>({
+    titulo:a.agente+' · '+Number(a.comRegistro||0)+' com registro de '+Number(a.criterios||0),
+    status:a.semConclusao?'INDICIO':'EVIDENCIADO',
+    detalhe:Number(a.semConclusao||0)+' critério(s) ainda sem conclusão. Isso não representa taxa de compliance.',
+    fonte:'RD + Board · rastreabilidade'
+  })),false);
+  return html;
+}
+function fatosIaAgente(d,agente){
+  const fatos=((d.interpretacao||{}).fatos||[]).filter(f=>f.agente===agente);
+  if(!fatos.length)return '';
+  return section('Interpretação contextual da IA','Indícios com ID de cartão do RD')+
+    group('Gemini · não altera conformidade',fatos.map(f=>({
+      titulo:f.criterio||'Interpretação de registro',
+      status:'INDICIO',detalhe:f.conclusao||'',
+      evidencia:f.referencia+' · '+(f.tipoEvento||'')+' · '+rdMomento(f.data),
+      fonte:'RD_UI_HISTORY · '+f.referencia,
+      acao:'Conferir a anotação e o resultado antes de orientar a equipe.'
+    })),false);
+}
+function cacheStatusView(){
+  if(cacheVisualizada&&cacheSalvoEm)return '<div class="notice">Análise salva em cache às '+
+    esc(rdMomento(new Date(cacheSalvoEm).toISOString()))+
+    '. Trocar de aba não consulta a API nem o Gemini. Use Atualizar auditoria para reler o RD.</div>';
+  if(cacheErro)return '<div class="notice">'+esc(cacheErro)+'</div>';
+  return '';
+}
 function journeyAgent(d,nome,chave,titulo,subtitulo){
   const agente=(d.agentesDetalhados||[]).find(x=>x.agente===nome);
   let html=section(titulo,subtitulo);
@@ -332,6 +389,7 @@ function journeyAgent(d,nome,chave,titulo,subtitulo){
         '<p class="small">Fonte: '+esc(x.origem||'RD / Board')+'</p></div>';
     }).join('')+'</div>';
   }
+  html+=fatosIaAgente(d,nome);
   html+='<p class="small">'+esc(agente.limite||'')+'</p>';
   return html;
 }
@@ -548,6 +606,16 @@ function pilotPlan(d,tipo){
         '<p class="small">Validação interna do Board; verificar texto original e contexto antes de orientar o vendedor.</p></div>';
     }).join('');
   }
+  if((p.insightsIa||[]).length){
+    html+=section('Interpretações da IA para o Plano '+(tipo==='sdr'?'SDR':'Closer'),
+      'Indícios validados por referência visual');
+    html+=group('Referências do Histórico RD',(p.insightsIa||[]).map(x=>({
+      titulo:x.criterio||x.agente,status:'INDICIO',
+      detalhe:x.conclusao||'',evidencia:x.referencia,
+      fonte:'Gemini interpretando RD_UI_HISTORY · '+(x.tipoEvento||''),
+      acao:'Conferir o registro e aplicar o playbook antes de concluir.'
+    })),false);
+  }
   return html;
 }
 function sdr(d){
@@ -662,7 +730,7 @@ function documentEvidence(d){const x=d.evidenciasDocumentais||{};const files=(x.
  '<li>PDFs no RD: <b>'+Number(x.pdfs||0)+'</b> · PDFs compatíveis com proposta: <b>'+Number(x.propostaPdf||0)+'</b>.</li></ul>'+
  '<p class="small">E-mail, link e arquivo são rastros operacionais: não comprovam entrega, leitura, reunião realizada ou aceite.</p></div>';
  if(files.length)html+=group('Arquivos consultados',files.map(function(n){return {titulo:n,status:'INDICIO',detalhe:'Metadado de arquivo vinculado à negociação; conteúdo não foi lido.',fonte:'RD · arquivos'};}),false);return html;}
-function proof(d){let html=operationalAudit(d)+section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);html+=documentEvidence(d);
+function proof(d){let html=evidenciasRoteadas(d)+operationalAudit(d)+section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);html+=documentEvidence(d);
 html+=boardEvidence(d);
 html+=section('Compliance do processo','Verificações existentes')+group('Sinais operacionais',d.compliance||[],false);
 html+=section('Qualificação registrada','LMV, dor e contexto')+group('Qualificação',d.qualificacao||[],false);
@@ -677,18 +745,65 @@ const notice=currentData.diagnosticoRdOperacional?
  'Aguardando História visual completa do RD para evitar recomendações sem contexto.')+'</div>':
 '<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
 let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='cadencia'?cadenceAgent(currentData):activeTab==='conexao'?journeyAgent(currentData,'CONEXAO','conexao','Agente CONEXÃO','Canal, qualificação, LMV e handoff'):activeTab==='agenda'?journeyAgent(currentData,'AGENDA','agenda','Agente AGENDA','Convite, confirmação, no-show e recovery'):activeTab==='reuniao'?journeyAgent(currentData,'REUNIAO','reuniao','Agente REUNIÃO','Execução, gravação e continuidade'):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
-document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
+document.getElementById('card').innerHTML=header+cacheStatusView()+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
 let historyFromRd=null;
-function runAudit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';const rpc=google.script.run.withSuccessHandler(render).withFailureHandler(function(e){document.getElementById('card').innerHTML='<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+esc(e&&e.message||'Falha temporária na auditoria.')+'</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';});if(historyFromRd)rpc.VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId,historyFromRd,true);else rpc.VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
-function audit(){requestRdHistory(true);runAudit();}
-if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){
-  const m=event&&event.data||{};
-  if(!(/^(?:chrome-extension:\/\/[a-z0-9]+|https:\/\/crm\.rdstation\.com)$/i.test(String(event.origin||'')))||event.source!==window.top)return;
-  if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||m.nonce!==historyNonce||!m.history)return;
-  historyFromRd=m.history;runAudit();
-});
+function cachedEntryValid(e){
+  return !!(e&&e.cacheVersion===CACHE_VERSION&&e.scope===cacheScope&&
+    e.dealId===dealId&&Number(e.savedAt)>0&&Date.now()-Number(e.savedAt)>=0&&
+    Date.now()-Number(e.savedAt)<CACHE_TTL_MS&&
+    e.answer?.versao===CACHE_RESPONSE_VERSION&&
+    e.answer?.diagnosticoRdOperacional?.ativo===true&&
+    e.answer?.trilhaDadosAgentes?.historicoRd?.completo===true);
+}
+function cacheLocalGet(){
+  try{
+    if(!cacheScope)return null;
+    const raw=window.localStorage?.getItem(cacheStorageKey);
+    if(!raw)return null;
+    const e=JSON.parse(raw);
+    if(cachedEntryValid(e))return e;
+    window.localStorage?.removeItem(cacheStorageKey);
+  }catch(_ignore){}
+  return null;
+}
+function cacheExtension(op,entry){
+  try{
+    if(window.top&&window.top!==window&&historyNonce&&cacheScope)
+      window.top.postMessage({type:'VOLUM_CACHE_REQUEST',op,dealId,
+        nonce:historyNonce,scope:cacheScope,cacheVersion:CACHE_VERSION,
+        entry:entry||null},'*');
+  }catch(_ignore){}
+}
+function cacheLocalPut(entry){
+  try{if(cacheScope)window.localStorage?.setItem(cacheStorageKey,JSON.stringify(entry));}
+  catch(_ignore){}
+}
+function cacheClear(){
+  try{window.localStorage?.removeItem(cacheStorageKey);}catch(_ignore){}
+  cacheExtension('CLEAR',null);
+}
+function cacheUse(entry){
+  if(!cachedEntryValid(entry))return false;
+  clearTimeout(temporizadorBootstrap);
+  clearTimeout(temporizadorHistorico);
+  cacheLocalPut(entry);
+  estadoCarga='CACHE_HIT';cacheVisualizada=true;cacheSalvoEm=entry.savedAt;cacheErro='';
+  render(entry.answer);
+  return true;
+}
+function cacheSave(d){
+  if(!cacheScope||!d||d.versao!==CACHE_RESPONSE_VERSION||
+     d.diagnosticoRdOperacional?.ativo!==true||
+     d.trilhaDadosAgentes?.historicoRd?.completo!==true)return;
+  const e={cacheVersion:CACHE_VERSION,scope:cacheScope,dealId,
+    savedAt:Date.now(),answer:d};
+  // Limitar o armazenamento de dados comerciais no navegador.
+  const encoded=JSON.stringify(e);
+  if(encoded.length>450000)return;
+  cacheLocalPut(e);cacheExtension('PUT',e);
+}
 function requestRdHistory(refresh){
   try {
     if(window.top&&window.top!==window)window.top.postMessage({
@@ -696,7 +811,91 @@ function requestRdHistory(refresh){
     },'*');
   } catch(_ignore) {}
 }
-audit();
+function runAudit(){
+  if(estadoCarga==='RUNNING')return;
+  if(!/^[0-9a-f]{24}$/i.test(dealId)){
+    document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';
+    return;
+  }
+  clearTimeout(temporizadorHistorico);
+  estadoCarga='RUNNING';chamadaUsouHistorico=historyFromRd?.coverage?.complete===true;
+  const seq=++analiseSeq;
+  if(!currentData)document.getElementById('card').textContent='Lendo a negociação e as evidências comerciais…';
+  else cacheErro='Atualizando a auditoria com as evidências atuais…';
+  const rpc=google.script.run.withSuccessHandler(function(d){
+    if(seq!==analiseSeq)return;
+    estadoCarga='READY';cacheVisualizada=false;cacheSalvoEm=Date.now();cacheErro='';
+    render(d);cacheSave(d);
+    // Se a primeira leitura precisou de fallback, aplicar o Histórico recebido
+    // depois apenas uma vez. Troca de aba nunca aciona esse mecanismo.
+    if(historicoReenviar&&historyFromRd?.coverage?.complete===true&&!chamadaUsouHistorico){
+      historicoReenviar=false;estadoCarga='WAIT_HISTORY';runAudit();
+    }
+  }).withFailureHandler(function(e){
+    if(seq!==analiseSeq)return;
+    estadoCarga='READY';
+    cacheErro='Não foi possível atualizar a auditoria. A leitura salva, se existir, permanece visível.';
+    if(currentData)render(currentData);
+    else document.getElementById('card').innerHTML=
+      '<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+
+        esc(e?.message||'Falha temporária na auditoria.')+
+        '</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';
+  });
+  if(historyFromRd)rpc.VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId,historyFromRd,true);
+  else rpc.VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);
+}
+function aguardarHistorico(refresh){
+  estadoCarga='WAIT_HISTORY';cacheErro='';
+  if(refresh)historyFromRd=null;
+  requestRdHistory(refresh===true);
+  clearTimeout(temporizadorHistorico);
+  // Se a extensão estiver ausente, nunca deixar o painel eternamente vazio.
+  temporizadorHistorico=setTimeout(function(){
+    if(estadoCarga==='WAIT_HISTORY')runAudit();
+  },14000);
+  if(historyFromRd)runAudit();
+}
+function iniciarSemCache(){
+  if(estadoCarga!=='WAIT_CACHE')return;
+  clearTimeout(temporizadorBootstrap);
+  aguardarHistorico(false);
+}
+function audit(){
+  // Ação explícita do usuário sempre invalida e relê. Resultado pendente de
+  // chamada anterior não pode sobrescrever o novo pedido.
+  analiseSeq++;
+  historicoReenviar=false;cacheVisualizada=false;cacheSalvoEm=0;
+  cacheClear();
+  aguardarHistorico(true);
+}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){
+  const m=event&&event.data||{};
+  if(!(/^(?:chrome-extension:\/\/[a-z0-9]+|https:\/\/crm\.rdstation\.com)$/i.test(
+      String(event.origin||'')))||event.source!==window.top)return;
+  if(m.dealId!==dealId||m.nonce!==historyNonce)return;
+  if(m.type==='VOLUM_CACHE_RESPONSE'&&m.scope===cacheScope&&
+     m.cacheVersion===CACHE_VERSION&&m.op==='GET'){
+    if(estadoCarga!=='WAIT_CACHE')return;
+    if(!cacheUse(m.entry))iniciarSemCache();
+    return;
+  }
+  if(m.type!=='VOLUM_RD_UI_HISTORY'||!m.history)return;
+  historyFromRd=m.history;
+  if(estadoCarga==='WAIT_HISTORY')runAudit();
+  else if(estadoCarga==='RUNNING'&&historyFromRd.coverage?.complete===true&&
+    !chamadaUsouHistorico)historicoReenviar=true;
+});
+function bootstrapWidget(){
+  if(!/^[0-9a-f]{24}$/i.test(dealId)){
+    document.getElementById('card').textContent='Negociação RD inválida.';
+    return;
+  }
+  if(cacheUse(cacheLocalGet()))return;
+  estadoCarga='WAIT_CACHE';
+  cacheExtension('GET',null);
+  temporizadorBootstrap=setTimeout(iniciarSemCache,750);
+}
+bootstrapWidget();
 </script>
 </body>
 </html>
