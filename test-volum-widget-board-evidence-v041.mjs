@@ -62,7 +62,7 @@ const input={modo:'SOMENTE_LEITURA',dealId,
  atividades:[],tarefas:[],ligacoesBoard:enriched,reunioesBoard:[],eventos:[],cerebros:[]};
 const p=ctx.viWidgetAdicionarEvidenciasBoard_(
  ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(input),input),input);
-assert.equal(p.versao,'0.4.1');
+assert.equal(p.versao,'0.4.2');
 assert.equal(p.evidenciasBoardResumo.ligacoes,19);
 assert.equal(p.evidenciasBoardResumo.sdrDeclaradas,19);
 assert.equal(p.evidenciasBoardResumo.duracaoSdrMinima,1);
@@ -71,6 +71,8 @@ assert.equal(p.evidenciasBoardResumo.transcricoesPendentes,19);
 assert.equal(p.planoOtimizacaoSdr.itens.find(x=>x.id==='voip').status,'EVIDENCIADO');
 assert.equal(p.planoOtimizacaoSdr.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
 assert.equal(p.notaCompliance,null);
+assert.ok(!(p.operacional.notasDeConfiabilidade||[]).some(x=>/Nenhuma liga.+atribu.+papel SDR/i.test(x)),
+  'Nao deve haver aviso dizendo que SDR e desconhecido quando as 19 chamadas tem FUNCAO=SDR');
 assert.ok(!p.resumoExecutivo.join(' ').includes('comprovam conversa'));
 const anonymous={...input,ligacoesBoard:enriched.map(x=>({...x,funcaoDeclarada:'NAO_COMPROVADO',
   origemFuncao:'NAO_INFORMADA'}))};
