@@ -645,6 +645,14 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
 
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
+  // Consulta de etapas e agrupamento RD sao independentes do Board/API4COM.
+  const catalogoEtapasRd = viRdCatalogoEtapas_(vinculo.token,negociacao);
+  if (etapaIdRd && nomeEtapaRd) catalogoEtapasRd.nomes[etapaIdRd]=nomeEtapaRd;
+  const historicoRdEtapas = viRdAuditoriaJanelas_(negociacao,atividades,tarefas,catalogoEtapasRd,{
+    fontesParciais: fontes.atividades.completo !== true || fontes.tarefas.completo !== true
+  });
+  fontes.historicoRdEtapas = historicoRdEtapas.cobertura.etapas;
+  fontes.catalogoEtapasRd = historicoRdEtapas.cobertura.catalogoEtapas;
   const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, metadadosJornada.reunioes, metadadosJornada.formalizacoes);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at) };
@@ -669,6 +677,8 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
       viCerebroAgenda_(ctx), viCerebroReuniao_(ctx)
     ],
     eventos: timeline,
+    historicoRdEtapas: historicoRdEtapas,
+    cadastroRd: historicoRdEtapas.cadastroAtual,
     tarefas: tarefas,
     atividades: atividades,
     arquivosRd: arquivosRd.itens,
@@ -679,6 +689,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     formalizacoesBoard: metadadosJornada.formalizacoes,
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
+      'O historico por etapa separa o periodo entre movimentacoes e usa apenas evidencias do RD; nao atribui compliance sem regras homologadas.',
       'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
       'Nao aplicar compliance de outros clientes: regras Wisetec ainda nao homologadas para este piloto.',
       'Tipos de eventos extraidos por filtro podem nao estar no payload: origemClassificacao indica o nivel de evidencia.',
