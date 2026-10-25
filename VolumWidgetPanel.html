@@ -239,6 +239,12 @@ function rdDiagnosticoView(d){
     '<p><b>'+Number(r.total||0)+'</b> eventos visuais reconciliados · '+
     Number(r.etapas||0)+' passagem(ns) de etapa.</p></div>';
   html+='<div class="glass"><ul class="stack">'+(o.sumario||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
+  const semantica=d.interpretacao||{};
+  if(semantica.disponivel===true&&Array.isArray(semantica.fatos)&&semantica.fatos.length)
+    html+=group('Leitura contextual das anotações e conversas registradas',
+      semantica.fatos.map(x=>({titulo:x.criterio||'Contexto comercial',status:'INDICIO',
+        detalhe:x.conclusao,fonte:'RD · Histórico · '+x.referencia,
+        acao:'Conferir o registro de origem antes de tomar decisão comercial.'})),true);
   const c=o.criterios||[];
   const pendentes=c.filter(x=>x.estado==='SEM_REGISTRO'||x.estado==='ATENCAO');
   const identificados=c.filter(x=>x.estado==='EVIDENCIADO'||x.estado==='INDICIO');
