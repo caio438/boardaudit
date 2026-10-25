@@ -1,17 +1,36 @@
 {
   "manifest_version": 3,
   "name": "VOLUM Intelligence",
-  "version": "0.2.0",
-  "description": "Auditoria consultiva e somente leitura para negociações no RD Station CRM.",
-  "permissions": ["sidePanel", "storage", "tabs"],
-  "host_permissions": ["https://crm.rdstation.com/*"],
-  "background": { "service_worker": "service-worker.js", "type": "module" },
-  "content_scripts": [{
-    "matches": ["https://crm.rdstation.com/app/deals/*"],
-    "js": ["content.js"],
-    "run_at": "document_idle"
-  }],
-  "side_panel": { "default_path": "sidebar.html" },
+  "version": "0.3.0",
+  "description": "Inteligência comercial Sales Ops, planos SDR e Closer e evidências do RD Station CRM (somente leitura).",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://crm.rdstation.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://crm.rdstation.com/app/deals/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
   "options_page": "options.html",
-  "action": { "default_title": "Abrir VOLUM Intelligence" }
+  "action": {
+    "default_title": "Abrir VOLUM Intelligence"
+  }
 }
