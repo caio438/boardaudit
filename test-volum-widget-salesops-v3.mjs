@@ -92,6 +92,9 @@ assert.equal(Object.hasOwn(manifest,'side_panel'),false);
 assert.match(content,/VOLUM_OPEN_INLINE_WIDGET/);
 assert.match(content,/volum-intelligence-inline-shell/);
 assert.match(content,/box-shadow:none/);
+assert.match(content,/resize:horizontal/);
+assert.match(content,/Minimizar VOLUM/);
+assert.match(content,/Fechar VOLUM/);
 
 const card={textContent:'',innerHTML:''};
 const doc={getElementById:id=>id==='volum-root'?{dataset:{dealId:'6acc888b98976f0023dc583f'}}:id==='card'?card:null};

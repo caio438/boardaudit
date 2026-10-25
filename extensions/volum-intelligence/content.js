@@ -41,13 +41,48 @@
     host.style.cssText = [
       'position:fixed','top:0','right:0','bottom:0','z-index:2147483646',
       'width:min(430px,100vw)','margin:0','padding:0','border:0','outline:0',
-      'border-radius:0','box-shadow:none','background:#080911','overflow:hidden'
+      'border-radius:0','box-shadow:none','background:#080911','overflow:hidden',
+      'resize:horizontal','min-width:320px','max-width:calc(100vw - 24px)'
     ].join(';');
+    const controls = document.createElement('div');
+    controls.setAttribute('aria-label','Controles da VOLUM');
+    controls.style.cssText = 'position:absolute;top:7px;left:7px;z-index:2;display:flex;gap:4px;opacity:.16;transition:opacity .16s;';
+    controls.addEventListener('mouseenter',()=>{controls.style.opacity='1';});
+    controls.addEventListener('mouseleave',()=>{controls.style.opacity='.16';});
+    const control = (label, symbol, action) => {
+      const button = document.createElement('button');
+      button.type='button'; button.setAttribute('aria-label',label); button.textContent=symbol;
+      button.style.cssText='width:24px;height:24px;padding:0;border:0;border-radius:999px;background:#11121ddd;color:#e9e4ff;font:700 16px/1 Arial,sans-serif;cursor:pointer;';
+      button.addEventListener('click',action); return button;
+    };
+    let minimized = false;
+    const restore = () => {
+      minimized=false; host.style.top='0';host.style.bottom='0';host.style.width='min(430px,100vw)';host.style.height='auto';
+      frame.hidden=false; controls.style.opacity='.16';
+    };
+    const minimize = () => {
+      minimized=true;host.style.top='auto';host.style.bottom='18px';host.style.right='18px';host.style.width='52px';host.style.height='52px';
+      frame.hidden=true;controls.style.opacity='1';
+    };
+    controls.appendChild(control('Minimizar VOLUM','−',()=>minimized?restore():minimize()));
+    controls.appendChild(control('Fechar VOLUM','×',closeInline));
+    controls.addEventListener('dblclick',restore);
+    let dragging=false,startX=0,startY=0,startRight=0,startBottom=0;
+    controls.addEventListener('pointerdown',event=>{
+      if(minimized)return;dragging=true;startX=event.clientX;startY=event.clientY;
+      startRight=parseInt(host.style.right||'0',10)||0;startBottom=parseInt(host.style.bottom||'0',10)||0;
+      controls.setPointerCapture(event.pointerId);event.preventDefault();
+    });
+    controls.addEventListener('pointermove',event=>{
+      if(!dragging)return;host.style.right=Math.max(0,startRight-(event.clientX-startX))+'px';host.style.bottom=Math.max(0,startBottom-(event.clientY-startY))+'px';host.style.top='auto';
+    });
+    controls.addEventListener('pointerup',event=>{dragging=false;controls.releasePointerCapture(event.pointerId);});
     const frame = document.createElement('iframe');
     frame.src = url.toString();
     frame.title = 'VOLUM Intelligence';
     frame.setAttribute('referrerpolicy', 'no-referrer');
     frame.style.cssText = 'display:block;width:100%;height:100%;margin:0;padding:0;border:0;outline:0;box-shadow:none;background:transparent;';
+    host.appendChild(controls);
     host.appendChild(frame);
     document.body.appendChild(host);
   };
