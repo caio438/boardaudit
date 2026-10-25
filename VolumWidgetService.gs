@@ -74,7 +74,7 @@ function viWidgetParecerDeterministico_(leitura) {
   const fonteTarefas = fontes.tarefas || {};
   const nomeEtapa = String((leitura.negociacao || {}).etapaAtualNome || '');
   const etapa = viWidgetEtapa_(nomeEtapa);
-  const faseCloser = etapa.indice >= 4;
+  const faseCloser = etapa.indice >= 4 && etapa.indice <= 5;
   const resumo = [];
   const anotacoes = ats
     .filter(x => x && x.textoDisponivel && ['note','response','messenger','whatsapp_transcription'].includes(String(x.tipo || '').toLowerCase()))
@@ -223,9 +223,9 @@ function viWidgetParecerDeterministico_(leitura) {
   return {
     versao:VOLUM_WIDGET.versao, modo:'SOMENTE_LEITURA_CONSULTIVO', dealId:leitura.dealId,
     negociacao:{nome:String((leitura.negociacao || {}).nome || ''), etapaAtualId:String((leitura.negociacao || {}).etapaAtualId || ''),etapaAtualNome:nomeEtapa || 'Não informada'},
-    agenteAtual:etapa.agente,agentesExecutados:agentes,
+    agenteAtual:etapa.agente,etapaOrigem:String((leitura.negociacao || {}).etapaOrigem || 'NAO_CONFIRMADA'),agentesExecutados:agentes,
     agentesNaoAplicaveis:etapa.indice >= 0 ? eixos.slice(Math.min(etapa.indice+1,eixos.length)) : [],
-    status:situacao, risco:risco, confianca:conf,
+    status:situacao, risco:risco, confianca:conf,notaCompliance:null,
     resumoExecutivo:resumo, proximaAcao:principal.acao,
     regraDeDecisao:principal.criterioConclusao,
     mensagemSugerida:mensagem, plano:{status:situacao,acao:principal.acao,mensagem:mensagem,regra:principal.criterioConclusao},
