@@ -32,7 +32,7 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
     fs.copyFileSync(path.join(liveDir,n),path.join(stageDir,target));
   }
   const originalCode=fs.readFileSync(path.join(stageDir,'Code.gs'),'utf8');
-  const entry=originalCode.match(/\\bfunction\\s+doGet\\s*\\(\\s*e\\s*\\)\\s*\\{/);
+  const entry=originalCode.match(/\bfunction\s+doGet\s*\(\s*e\s*\)\s*\{/);
   if(!entry || !originalCode.includes('volum_widget')) {
     throw new Error('Entrada doGet e rota VOLUM nao identificadas no projeto ativo');
   }
@@ -44,7 +44,7 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
     // A versao viva pode ter o desvio VOLUM mais abaixo ou para o antigo handler.
     // Adiciona APENAS um retorno antecipado para o parametro da widget.
     // Sem volum_widget=1, o restante de doGet permanece byte-a-byte igual.
-    const early="function doGet(e) {\\n  if (e && e.parameter && String(e.parameter.volum_widget || '') === '1') {\\n    return viWidgetRenderizarWebApp_(e);\\n  }";
+    const early="function doGet(e) {\n  if (e && e.parameter && String(e.parameter.volum_widget || '') === '1') {\n    return viWidgetRenderizarWebApp_(e);\n  }";
     code=originalCode.slice(0,pos)+early+originalCode.slice(pos+entry[0].length);
     fs.writeFileSync(path.join(stageDir,'Code.gs'),code);
     routePatched=true;
