@@ -1,13 +1,12 @@
 name: Inspect existing VOLUM deployment (read only)
 on:
-  push:
-    branches:
-      - feature/volum-widget-board-unified-20261025
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
 jobs:
   inspect:
-    if: ${{ github.actor == 'caio438' }}
+    if: ${{ github.event.issue.number == 142 && github.event.comment.body == '/volum-widget-inspect' && github.event.comment.user.login == 'caio438' }}
     environment: apps-script-production
     runs-on: ubuntu-latest
     timeout-minutes: 10
