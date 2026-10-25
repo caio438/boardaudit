@@ -128,6 +128,7 @@ function viWidgetAgentesDetalhados_(leitura) {
     arquivos:Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[],
     atividadesApi:Array.isArray(leitura.atividades)?leitura.atividades:[],
     historicoVisualCompleto:true,
+    auditoriasBoard:Array.isArray(leitura.auditoriasBoard?.itens)?leitura.auditoriasBoard.itens:[],
     cadastro:viWidgetCadastroLeadApi_(leitura.cadastroRd||{}),
     regraLead:{},idCliente:leitura.idCliente||'',
     regraCadencia:{
@@ -171,6 +172,10 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
+  // Vincula SOMENTE auditorias historicas validadas do mesmo cliente e interacao.
+  // Nenhuma transcricao bruta nem auditoria de outros clientes retorna ao painel.
+  leitura.auditoriasBoard=typeof viPilotLerAuditoriasBoard_==='function'?
+    viPilotLerAuditoriasBoard_(leitura):{itens:[],cobertura:{acessivel:false}};
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
   parecer.agentesDetalhados=viWidgetAgentesDetalhados_(leitura).map(function(a){
@@ -219,6 +224,10 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     };
   }
 
+  // Os sete pilares do SDR e os sete do Closer recebem evidencias do RD
+  // e coaching de auditorias do Board somente quando vinculadas ao mesmo deal.
+  parecer.planosIntegradosWisetec=typeof viPilotPlanosWisetec_==='function'?
+    viPilotPlanosWisetec_(leitura,parecer):{ativo:false,motivo:'MOTOR_NAO_DISPONIVEL'};
   // Somente RD: movimentacoes canonizadas e registros entre entradas de etapa.
   const recorteRd=leitura.historicoRdEtapas||{};
   parecer.historicoRdEtapas={

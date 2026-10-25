@@ -155,6 +155,8 @@ function viJourneyConexao_(ctx) {
   const objecao=viJourneyBusca_(notas,e=>/(?:objecao|preco|valor alto|orcamento|concorrente|timing|prazo|nao faz sentido|inviavel)/.test(e.normal));
   const classificacao=viJourneyBusca_(notas,e=>/\blmv (?:positivo|negativo)\b|(?:qualificado|desqualificado) por (?:lmv|faturamento)/.test(e.normal));
   const agenda=viJourneyNotas_(ev,'AGENDA')[0]||null;
+  const auditSdr=(ctx.auditoriasBoard||[]).find(x=>x.tipo==='SDR'&&
+    ['APROVADA','EM_REVISAO'].includes(x.estado))||null;
   const audios=chamadas.filter(x=>x.temReferenciaGravacao===true);
   const transcricoes=chamadas.filter(x=>x.transcricaoDisponivel===true||x.transcricaoBoardStatus==='CONCLUIDA');
   const conexaoData=evidenciaContato?.data||'';
@@ -190,10 +192,18 @@ function viJourneyConexao_(ctx) {
       transcricoes[0]||audios[0], 'Localizar a transcricao e vincular ao playbook correto para auditar a conversa.',
       'Transcricao acessivel da ligacao correta com identidade de SDR confirmada.','Board · metadados de gravacao'),
     viJourneyItem_('pitch_sdr','Pitch e explicacao do valor',
-      'NAO_VERIFICAVEL',
-      'A existencia de chamada ou transcricao nao comprova o conteudo, as perguntas nem a qualidade do pitch.',
-      null,'Analisar transcricao autenticada e comparar com a versao do pitch SDR homologado.',
-      'Checar aderencia por trecho de transcricao, com citações e regra versionada.','Transcricao + playbook'),
+      auditSdr?'INDICIO':'NAO_VERIFICAVEL',
+      auditSdr?'O Board possui auditoria de pitch '+auditSdr.estado+
+        ' validada na geracao, vinculada a esta interacao. Aderencia de pitch avaliada: '+
+        (auditSdr.aderenciaPct===null?'nao calculada':auditSdr.aderenciaPct+'%')+
+        '. Nao equivale a compliance operacional completo.':
+        'A existencia de chamada ou transcricao nao comprova o conteudo, as perguntas nem a qualidade do pitch.',
+      auditSdr?{id:auditSdr.idAuditoria,data:auditSdr.dataValidacao,
+        texto:(auditSdr.pontos||[])[0]?.evidencia||'Auditoria de pitch validada'}:null,
+      auditSdr?((auditSdr.pontos||[])[0]?.acao||
+        'Revisar as correcoes na auditoria do Board e conferir na proxima ligacao.'):
+        'Analisar transcricao autenticada e comparar com a versao do pitch SDR homologado.',
+      'Trecho autenticado vinculado a regra de pitch e versao homologada.','Board · AUDITORIAS / Pitch SDR'),
     viJourneyItem_('lmv_validado','LMV validado pelo SDR',
       lmv?'INDICIO':viJourneyEstado_(ctx,false),
       lmv?'Anotacao relata validacao de LMV/faturamento; nao confundir com valor atual do formulario.':
@@ -225,7 +235,8 @@ function viJourneyConexao_(ctx) {
     fimJanelaConexaoEm:escopo.fimConexao,causaFimJanelaConexao:escopo.motivoFim,
     ligacoesTecnicasSdrOuSemPapel:chamadas.length,
     ligacoesComGravacao:audios.length,transcricoesReferenciadas:transcricoes.length,
-    anotacoesLmvValidado:lmv?1:0,anotacoesDeDor:dor?1:0
+    anotacoesLmvValidado:lmv?1:0,anotacoesDeDor:dor?1:0,
+    auditoriasSdrVinculadas:auditSdr?1:0
   },'Conexao e pitch nao sao certificados por duracao, status de tarefa ou metadado de transcricao.');
 }
 
@@ -359,6 +370,8 @@ function viJourneyReuniao_(ctx) {
   const closers=boardReunioes.filter(r=>String(r.funcaoDeclarada||'').toUpperCase()==='CLOSER');
   const atendente=ctx.negociacao?.responsavel||'';
   const notaCloser=viJourneyBusca_(notas,e=>/(?:closer|executivo comercial|responsavel pela reuniao)/.test(e.normal));
+  const auditCloser=(ctx.auditoriasBoard||[]).find(x=>x.tipo==='CLOSER'&&
+    ['APROVADA','EM_REVISAO'].includes(x.estado))||null;
   const ligacoes=(ctx.ligacoes||[]).filter(r=>String(r.funcaoDeclarada||'').toUpperCase()==='CLOSER');
   const gravaBoard=calendario.find(r=>r.gravacaoReferenciada)||
     boardReunioes.find(r=>r.temReferenciaGravacao)||
@@ -418,11 +431,17 @@ function viJourneyReuniao_(ctx) {
       transcript,'Localizar conteudo da transcricao e anexar ID da interacao correta.',
       'Texto da reuniao correta recuperavel com fonte, participantes e data.','Board · metadados'),
     viJourneyItem_('reuniao_pitch','Aderencia ao pitch e tratamento das objecoes',
-      'NAO_VERIFICAVEL',
-      obje?'Ha nota sobre possivel objecao, sem prova do que foi dito na reuniao.':
-        'Ainda nao foi feito confronto de transcricao com pitch, objeções e playbook.',
-      obje,'Analisar falas, criterios e contexto do playbook para apontar lacunas reais.',
-      'Trechos transcritos e vinculados a cada criterio do pitch validado.','Transcricao + playbook'),
+      auditCloser?'INDICIO':'NAO_VERIFICAVEL',
+      auditCloser?'Auditoria do Board '+auditCloser.estado+
+        ', validada na geracao e vinculada a esta reuniao. Os desvios dos quatro momentos sao consultivos ate revisao.':
+        (obje?'Ha nota sobre possivel objecao, sem prova do que foi dito na reuniao.':
+        'Ainda nao foi feito confronto de transcricao com pitch, objeções e playbook.'),
+      auditCloser?{id:auditCloser.idAuditoria,data:auditCloser.dataValidacao,
+        texto:(auditCloser.pontos||[])[0]?.evidencia||'Auditoria Closer validada'}:obje,
+      auditCloser?((auditCloser.pontos||[])[0]?.acao||
+        'Conferir os quatro momentos do pitch e a proxima conducao comercial.'):
+        'Analisar falas, criterios e contexto do playbook para apontar lacunas reais.',
+      'Trechos transcritos e vinculados a cada criterio do pitch validado.','Board · AUDITORIAS / Pitch Closer'),
     viJourneyItem_('reuniao_anotacao','Diagnostico e anotacao pos-reuniao',
       diagnostic?'INDICIO':viJourneyEstado_(ctx,false),
       diagnostic?'Nota posterior ao marco da reuniao contem contexto do comprador; completude permanece a verificar.':
@@ -469,6 +488,7 @@ function viJourneyReuniao_(ctx) {
     pdfPropostaEncontrado:Boolean(pdf),
     tarefasFollowup:follow.length,tarefasFollowupVencidas:vencidas.length,
     ownershipCloserConfirmadoNoBoard:closers.length>0,
+    auditoriasCloserVinculadas:auditCloser?1:0,
     exigibilidadePosReuniao:exigivel,
     reunioesAnterioresAoMarco:antes.length
   },'Gravacao e transcricao sao metadados; qualidade de pitch, objecoes, valores e compromisso exigem conteudo e regras homologadas.');
