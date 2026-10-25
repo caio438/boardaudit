@@ -514,6 +514,42 @@ html+='<details class="group"><summary><strong>Todos os critérios técnicos</st
 areas.map(function(area){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,false):''}).join('')+'</div></details>';
 if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
 return html;}
+function pilotPlan(d,tipo){
+  const root=d.planosIntegradosWisetec||{},p=root[tipo]||{};
+  if(!root.ativo||!p.pilares)return '';
+  const fonte=root.coberturaBoard||{};
+  let html=section('Prioridades Sales Ops','Wisetec · 7 pilares · negociação atual');
+  html+='<div class="notice">Resultado por negociação, não auditoria mensal do vendedor. '+
+    'Registros não equivalem a cumprimento integral. O score de compliance permanece pendente até homologar prazos e fontes.</div>';
+  html+='<div class="glass"><p><b>'+Number(p.quantidadeAuditorias||0)+
+    '</b> auditoria(s) validada(s) do Board com vínculo direto nesta negociação.'+
+    ' <b>'+Number((p.auditorias||[]).filter(x=>x.estado==='APROVADA').length)+
+    '</b> aprovada(s).</p><p class="small">Associação: '+esc(fonte.associacao||
+    'ID_CLIENTE + ID_INTERACAO + LINK_CRM')+
+    ' · Cobertura: '+esc(fonte.completo?'verificada':'indisponível ou parcial')+'</p></div>';
+  const melhorias=(p.melhorias||[]);
+  html+='<div class="action-list">'+(melhorias.length?melhorias.map(function(x,i){
+    return '<article class="action"><span class="eyebrow">'+esc(x.prioridade||'VERIFICAR')+
+      ' · '+esc(x.titulo||'Ajuste')+'</span><h3>'+esc(x.acao||'Conferir evidência')+
+      '</h3><p>'+esc(x.porQue||'')+'</p>'+
+      (x.evidencia?'<p class="small">Registro: '+esc(x.evidencia)+'</p>':'')+
+      '<p class="small">Fonte: '+esc(x.fonte||'RD / Board')+'</p>'+
+      '<p class="done"><b>Concluído quando:</b> '+esc(x.criterioConclusao||'Registro validado')+
+      '</p></article>';
+  }).join(''):'<p class="muted">Não há correções priorizadas; confira os sete pilares e a cobertura dos dados.</p>')+
+    '</div>';
+  if((p.auditorias||[]).length){
+    html+=section('Qualidade do pitch já analisada','Auditorias vinculadas do Board');
+    html+=(p.auditorias||[]).map(function(a){
+      return '<div class="glass"><div class="eyebrow">'+esc(a.estado)+' · '+esc(a.tipo)+
+        ' · '+esc(a.idAuditoria)+'</div><p>'+esc(a.resultado||'Resultado não informado')+'</p>'+
+        ((a.pontos||[]).length?'<p class="small">Ajuste observado: '+
+        esc((a.pontos[0].desvio||a.pontos[0].acao||''))+'</p>':'')+
+        '<p class="small">Validação interna do Board; verificar texto original e contexto antes de orientar o vendedor.</p></div>';
+    }).join('');
+  }
+  return html;
+}
 function sdr(d){
   const rd=d.diagnosticoRdOperacional||null;
   // Compatibilidade com clientes legados ou mocks antigos que nao trazem
@@ -547,7 +583,7 @@ function sdr(d){
       detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
       evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
     });
-    let html=section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
+    let html=(typeof pilotPlan==='function'?pilotPlan(d,'sdr'):'')+section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
     html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
       ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
     html+='<p class="small">Régua de cadência: '+esc(
@@ -576,7 +612,7 @@ function closer(d){
   }
   const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
   if(rd&&rd.ativo&&items.length){
-    let html=section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    let html=(typeof pilotPlan==='function'?pilotPlan(d,'closer'):'')+section('Plano de Otimização Closer','7 pilares · evidências do RD');
     html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
     html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
     html+=criterionSection('7 critérios do Plano Closer',items);

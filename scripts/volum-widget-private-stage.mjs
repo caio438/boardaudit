@@ -11,6 +11,8 @@ const OVERLAY=[
   'VolumIntelligenceLead.gs',
   'VolumRdStageTimeline.gs',
   'VolumWidgetRdOps.gs',
+  'VolumIntelligenceJourneyAgents.gs',
+  'VolumWidgetWisetecPilot.gs',
   'VolumWidgetService.gs',
   'VolumWidgetWebApp.gs',
   'VolumWidgetPanel.html'
