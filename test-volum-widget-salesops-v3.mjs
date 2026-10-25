@@ -86,13 +86,13 @@ assert.match(ext,/searchParams\.set\('volum_widget','1'\)/);
 assert.match(ext,/searchParams\.set\('dealId',id\)/);
 assert.match(extCss,/color-scheme:dark/);
 assert.doesNotMatch(extHtml,/<footer|<header/);
-assert.equal(manifest.version,'0.3.2');
+assert.equal(manifest.version,'0.3.3');
 assert.ok(!manifest.permissions.includes('sidePanel'),'Painel nativo cria a tarja cinza que não pode ser estilizada.');
 assert.equal(Object.hasOwn(manifest,'side_panel'),false);
-assert.ok(manifest.permissions.includes('windows'),'A janela destacada precisa ser redimensionável pelo Chrome.');
-assert.match(worker,/chrome\.windows\.create/);
-assert.match(worker,/type: 'popup'/);
-assert.match(worker,/width: 500, height: 820/);
+assert.ok(!manifest.permissions.includes('windows'),'O painel acoplado não deve abrir uma janela separada.');
+assert.match(worker,/VOLUM_OPEN_DOCKED_WIDGET/);
+assert.match(content,/ResizeObserver/);
+assert.match(content,/marginRight/);
 assert.match(worker,/DEFAULT_VOLUM_ENDPOINT/);
 
 const card={textContent:'',innerHTML:''};
