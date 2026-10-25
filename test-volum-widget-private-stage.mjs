@@ -40,6 +40,9 @@ try {
  const collision='Found 4 deployments.\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - VOLUM Intelligence Sales Ops V2 um\n- OTHER_ID @435 - VOLUM Intelligence Sales Ops V2 dois\n';
  assert.throws(()=>prepareWidgetPrivateStage(repo,live,path.join(base,'collision'),collision,path.join(base,'meta-collision.json')),/nao identificada/);
 
+ const nextDeployments=repeatDeployments.replace('Sales Ops V2','Sales Ops V3').replace('@434','@436');
+ const repeatNew=prepareWidgetPrivateStage(repo,live,path.join(base,'v3'),nextDeployments,path.join(base,'meta-v3.json'));
+ assert.equal(repeatNew.widgetVersion,'436','V3 deve ser selecionada pelo marcador de implantacao');
  const lateBoard="function doGet(e){return 'BOARD_INTACTO';}\nfunction widgetOldRouter(){return 'volum_widget';}";
  fs.writeFileSync(path.join(live,'Code.js'),lateBoard);
  const second=path.join(base,'patched');
