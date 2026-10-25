@@ -441,6 +441,7 @@ function sdr(d){
     const garantir=item=>({
       titulo:item.titulo||item.id||'Critério sem título',
       status:item.status==='SEM_EVIDENCIA'?'SEM_REGISTRO':item.status,
+      conformidade:item.conformidade||'PENDENTE',
       detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
       evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
     });
@@ -467,7 +468,35 @@ function sdr(d){
   return section('Plano SDR indisponível','Fonte incompleta')+
     '<div class="notice">'+esc(fonte||'Não foi possível completar a reconstrução do Histórico do RD.')+'</div>';
 }
-function closer(d){if(d.diagnosticoRdOperacional)return rdDiagnosticoView(d);const c=d.criteriosPlanoWisetec||[];let html=operationalAudit(d)+section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">A análise usa atividades de e-mail do RD quando existirem. E-mail de formalização ou link de gravação é indício: não confirma anexo, recebimento, reunião realizada ou qualidade da conversa.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
+function closer(d){
+  const rd=d.diagnosticoRdOperacional||null;
+  if(rd&&!rd.ativo){
+    return section('Plano Closer — coleta incompleta','Aguardando Histórico RD')+
+      '<div class="notice">'+esc(rd.motivo||'Precisamos do Histórico completo da negociação.')+
+      '</div><p class="muted">Sem a coleta completa, nenhum critério é reprovado automaticamente.</p>';
+  }
+  const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
+  if(rd&&rd.ativo&&items.length){
+    let html=section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
+    html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
+    html+=criterionSection('7 critérios do Plano Closer',items);
+    html+='<p class="small">'+esc(p.aviso||'')+'</p>';
+    return html;
+  }
+  // Compatibilidade com respostas antigas: não converter INDICIO em verde.
+  const legacy=(d.criteriosPlanoWisetec||[]).map((c,i)=>({
+    id:['gravacao','anotacao','proposta_pdf','proximo_passo','valores','recebimento','followup'][i]||'',
+    titulo:c.titulo||'Critério de Closer',
+    status:c.status||'NAO_VERIFICAVEL',
+    conformidade:'PENDENTE',detalhe:c.detalhe||'Sem descrição disponível.',
+    evidencia:c.evidencia||'',fonte:c.fonte||'RD',acao:c.acao||'Conferir o registro no Histórico do RD.'
+  }));
+  let html=section('Plano de Otimização Closer','7 pilares · leitura preliminar');
+  if(!legacy.length)return html+'<p class="muted">Não há critérios aplicáveis nesta fase da negociação.</p>';
+  html+='<div class="criteria-legend">? Amarelo: há informação parcial, mas a conformidade ainda não foi validada.</div>';
+  return html+criterionSection('7 critérios do Plano Closer',legacy);
+}
 function boardEvidence(d) {
   const resumo=d.evidenciasBoardResumo||{};
   const rows=d.evidenciasBoard||[];
