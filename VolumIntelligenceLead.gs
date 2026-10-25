@@ -741,7 +741,8 @@ function viCerebroCadencia_(ctx) {
   const hoje=viCadenciaDiaBrasil_(ctx.agora||new Date());
   const ultimoRegistro=registros.length?registros[registros.length-1].dia:'';
   const limiteDias=modeloAplicavel?(lmv==='POSITIVO'?18:6):
-    (ultimoRegistro?Math.min(18,Math.max(1,viCadenciaIntervaloDiasUteis_(entrada,ultimoRegistro,feriados)+1)):0);
+    (ultimoRegistro?Math.min(18,Math.max(1,viCadenciaIntervaloDiasUteis_(entrada,ultimoRegistro,feriados)+
+      (viCadenciaEhUtil_(entrada,feriados)?1:0))):0);
   const dias=viCadenciaDiasUteis_(entrada,limiteDias,feriados);
   const porDia={};
   registros.forEach(r=>{
