@@ -213,3 +213,51 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
     sumario,semRegistro:sinal,evidenciados:positivos,
     limite:'Base exclusivamente RD_UI_HISTORY. Abertura de WhatsApp não prova envio; tarefa concluída não prova contato; agendamento não prova reunião realizada. A ausência de registro é apontada quando a coleta visual é completa. Não atribuir nota final sem regra vigente do cliente.'};
 }
+
+
+/**
+ * Janela de evidencias compacta para interpretacao semantica. Apenas
+ * RD_UI_HISTORY, referencias verificaveis e texto truncado/sanitizado.
+ * Evita enviar os 103 cartões inteiros repetidamente à IA.
+ */
+function viWidgetContextoHistoricoRd_(leitura,diagnostico) {
+  const h=leitura.historicoRdEtapas||{},janelas=h.janelas||[];
+  const timeline=(h.linhaDoTempo||{}).eventos||[];
+  const ultima=janelas[janelas.length-1]||{};
+  const relevantes=timeline.filter(function(e) {
+    return e.passagemId===ultima.passagemId ||
+      ['ANOTACAO','EMAIL_ENVIADO','EMAIL_RESPONDIDO','ETAPA_ALTERADA','ALTERACAO'].includes(e.acao);
+  });
+  const selecionados=relevantes.slice(-52);
+  return {
+    fonte:'RD_UI_HISTORY',
+    politica:'Use somente evidencias indicadas por UI_n. O CRM é fonte da execução documentada. Tarefa criada não comprova execução, abertura do WhatsApp não comprova envio, etapa Apresentação não prova reunião realizada. Falta de registro em histórico completo deve ser indicada e atribuída à obrigação vigente, sem inventar SLA.',
+    etapaAtual:(leitura.negociacao||{}).etapaAtualNome||'',
+    historicoCompleto:diagnostico.ativo===true,
+    totalEventos:(diagnostico.resumo||{}).total||0,
+    janelas:janelas.map(j=>({passagemId:j.passagemId,etapa:j.etapaNome,
+      entrada:j.inicio,saida:j.fim,totalVisual:j.totalEventosHistoricoVisual||0})),
+    referencias:selecionados.map(e=>({ref:e.id,tipo:e.acao,data:e.data,
+      autor:String(e.autor||'').slice(0,90),etapa:e.etapaNome,
+      texto:viWidgetSanitizar_(e.texto||'').slice(0,
+        e.acao==='ANOTACAO'?700:260)})),
+    verificacoes:(diagnostico.criterios||[]).map(c=>({criterio:c.titulo,status:c.estado,
+      evidencia:String(c.evidencia||'').slice(0,230)})),
+    recomendacoes:(diagnostico.acoes||[]).map(a=>({acao:a.acao,porQue:a.porQue}))
+  };
+}
+
+function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
+  if(!interpretacao || interpretacao.disponivel===false)return {disponivel:false,motivo:'IA_INDISPONIVEL'};
+  const ids=new Set((((leitura.historicoRdEtapas||{}).linhaDoTempo||{}).eventos||[])
+    .map(e=>String(e.id||'')));
+  const refs=Array.isArray(interpretacao.fatos)?interpretacao.fatos:[];
+  const fatos=refs.filter(f=>ids.has(String(f.referencia||f.ref||'')) &&
+      String(f.conclusao||'').trim())
+    .slice(0,7).map(f=>({criterio:String(f.criterio||'').slice(0,90),
+      conclusao:viWidgetSanitizar_(f.conclusao).slice(0,500),
+      referencia:String(f.referencia||f.ref),fonte:'RD_UI_HISTORY',
+      confianca:'ANALISE_IA_SOBRE_EVENTO_VERIFICADO'}));
+  return {disponivel:fatos.length>0,fatos,
+    limite:'Análise interpretativa: o vínculo da referência com o registro existe, mas a conclusão ainda exige crítica do Sales Ops.'};
+}
