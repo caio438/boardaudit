@@ -1,0 +1,27 @@
+name: Validate exact main revision from control issue
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: >-
+      github.event.issue.number == 142 &&
+      github.event.comment.body == '/validate-main' &&
+      github.event.comment.user.login == 'caio438'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch exact main validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')"
+          gh api --method POST "repos/$REPO/actions/workflows/validate.yml/dispatches" \
+            -f ref=main -f "inputs[expected_sha]=$sha"
