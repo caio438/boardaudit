@@ -5,7 +5,23 @@
  * VOLUM_ANALISAR_LEAD('6acc888b98976f0023dc583f')
  * VOLUM_ANALISAR_LEAD('6acc888b98976f0023dc583f', { incluirTextos: true })
  */
-var VI_LEAD_PILOTO = Object.freeze({ limitePaginas: 10, tamanhoPagina: 200, limiteTexto: 4000 });
+var VI_LEAD_PILOTO = Object.freeze({
+  limitePaginas: 10,
+  limitePaginasAtividadesPorTipo: 5,
+  tamanhoPagina: 200,
+  limiteTexto: 4000
+});
+
+/**
+ * Valores documentados em https://developers.rdstation.com/reference/crm-v1-activities
+ * O RD v1 aceita o parametro type ao listar atividades por negociacao.
+ */
+var VI_TIPOS_ATIVIDADE_RD = Object.freeze([
+  'note', 'changelog', 'call', 'task', 'email', 'proposal', 'response',
+  'messenger', 'whatsapp_audio', 'whatsapp_transcription',
+  'child_deal_created', 'resource_log', 'created_from_parent_deal',
+  'workflow_recursive_limit'
+]);
 
 function viLeadId_(entrada) {
   const texto = String(entrada || '').trim();
@@ -72,24 +88,109 @@ function viLeadRdGet_(token, caminho, filtros) {
   }
 }
 
-function viLeadPaginar_(token, caminho, campo, dealId) {
+function viLeadPaginar_(token, caminho, campo, dealId, filtrosExtra, maxPaginas) {
   const itens = [];
   let completo = false;
-  for (let pagina = 1; pagina <= VI_LEAD_PILOTO.limitePaginas; pagina++) {
-    const resposta = viLeadRdGet_(token, caminho, {
+  let ignoradosSemVinculo = 0;
+  let ignoradosOutroLead = 0;
+  const limite = Math.min(Number(maxPaginas) || VI_LEAD_PILOTO.limitePaginas, VI_LEAD_PILOTO.limitePaginas);
+  for (let pagina = 1; pagina <= limite; pagina++) {
+    const parametros = Object.assign({}, filtrosExtra || {}, {
       deal_id: dealId, page: pagina, limit: VI_LEAD_PILOTO.tamanhoPagina
     });
-    const parte = Array.isArray(resposta[campo]) ? resposta[campo] : (Array.isArray(resposta.data) ? resposta.data : (Array.isArray(resposta) ? resposta : []));
-    // Defesa contra filtros ignorados pelo provedor.
+    const resposta = viLeadRdGet_(token, caminho, parametros);
+    const parte = Array.isArray(resposta) ? resposta :
+      (resposta && Array.isArray(resposta[campo]) ? resposta[campo] :
+      (resposta && Array.isArray(resposta.data) ? resposta.data : null));
+    if (!parte) throw new Error('Formato inesperado em consulta RD; lista de registros ausente.');
     parte.forEach(item => {
-      const associado = String(item.deal_id || (item.deal || {}).id || (item.deal || {})._id || '');
-      if (associado.toLowerCase() === dealId) itens.push(item);
+      const associado = String(
+        item.deal_id || (item.deal || {}).id || (item.deal || {})._id || ''
+      ).toLowerCase();
+      if (associado === dealId) itens.push(item);
+      else if (!associado) ignoradosSemVinculo++;
+      else ignoradosOutroLead++;
     });
-    const haMais = resposta.has_more !== undefined ? Boolean(resposta.has_more)
-      : Boolean(resposta.next_page) || parte.length >= VI_LEAD_PILOTO.tamanhoPagina;
+    const paginacao = (resposta && (resposta.pagination || resposta.paging || resposta.meta)) || {};
+    const totalPaginas = Number(paginacao.total_pages || resposta.total_pages || 0);
+    const haMais = resposta.has_more !== undefined ? Boolean(resposta.has_more) :
+      (totalPaginas ? pagina < totalPaginas :
+      (Boolean(resposta.next_page || paginacao.next_page || paginacao.next) ||
+       parte.length >= VI_LEAD_PILOTO.tamanhoPagina));
     if (!haMais) { completo = true; break; }
   }
-  return { itens: itens, completo: completo, truncado: !completo };
+  return { itens: itens, completo: completo, truncado: !completo,
+    ignoradosSemVinculo: ignoradosSemVinculo, ignoradosOutroLead: ignoradosOutroLead };
+}
+
+/**
+ * A lista /activities da v1 documenta deal_id e text, mas nao garante
+ * que o campo type esteja sempre no payload. Por isso consulta cada tipo
+ * explicitamente, preserva a origem da classificacao e nao duplica IDs.
+ * Maximo teorico: 14 * 5 + 10 paginas para tarefas + 1 negocio = 81 GETs
+ * por execucao, abaixo do limite documentado de 120 req/min.
+ */
+function viLeadColetarAtividades_(token, dealId) {
+  const unicas = {};
+  const ordem = [];
+  const porTipo = {};
+  const divergencias = [];
+  let completo = true;
+  let interrompido = false;
+  VI_TIPOS_ATIVIDADE_RD.forEach(tipoSolicitado => {
+    if (interrompido) {
+      porTipo[tipoSolicitado] = { acessivel: false, completo: false, motivo: 'NAO_CONSULTADO_POR_FALHA_ANTERIOR' };
+      completo = false;
+      return;
+    }
+    try {
+      const pagina = viLeadPaginar_(token, '/activities', 'activities', dealId,
+        { type: tipoSolicitado }, VI_LEAD_PILOTO.limitePaginasAtividadesPorTipo);
+      porTipo[tipoSolicitado] = {
+        acessivel: true, completo: pagina.completo, registros: pagina.itens.length,
+        ignoradosSemVinculo: pagina.ignoradosSemVinculo,
+        ignoradosOutroLead: pagina.ignoradosOutroLead
+      };
+      if (!pagina.completo) completo = false;
+      pagina.itens.forEach(item => {
+        const tipoDoPayload = String(item.type || '').toLowerCase();
+        const declarado = tipoDoPayload || tipoSolicitado;
+        const origem = tipoDoPayload ? 'CAMPO_API' : 'FILTRO_API';
+        const id = String(item.id || item._id || '');
+        const chave = id ? 'id:' + id : 'sem-id:' +
+          String(item.date || item.created_at || '') + ':' +
+          String(item.user_id || '') + ':' + String(item.text || '').slice(0, 200);
+        if (!Object.prototype.hasOwnProperty.call(unicas, chave)) {
+          unicas[chave] = Object.assign({}, item, {
+            __viTipo: declarado, __viTipoOrigem: origem, __viTipoConsultado: tipoSolicitado
+          });
+          ordem.push(chave);
+        } else {
+          const anterior = unicas[chave];
+          if (anterior.__viTipo !== declarado) {
+            divergencias.push({ id: id, tipos: [anterior.__viTipo, declarado] });
+            anterior.__viTipo = 'nao_confirmado';
+            anterior.__viTipoOrigem = 'CONFLITO_FILTROS';
+            completo = false;
+          }
+        }
+      });
+    } catch (erro) {
+      completo = false;
+      const m = String(erro && erro.message || '').match(/HTTP\s+(\d{3})/);
+      const status = m ? m[1] : '';
+      porTipo[tipoSolicitado] = {
+        acessivel: false, completo: false, motivo: 'FALHA_CONSULTA',
+        codigoHttp: status
+      };
+      if (status === '401' || status === '403' || status === '429') interrompido = true;
+    }
+  });
+  return {
+    itens: ordem.map(chave => unicas[chave]),
+    completo: completo, porTipo: porTipo, divergencias: divergencias,
+    totalRegistrosUnicos: ordem.length
+  };
 }
 
 function viLeadAtividades_(registros, incluirTextos) {
@@ -97,13 +198,13 @@ function viLeadAtividades_(registros, incluirTextos) {
     id: String(item.id || item._id || ''),
     dealId: String(item.deal_id || (item.deal || {}).id || ''),
     data: viLeadDataIso_(item.date || item.created_at),
-    // A listagem v1 nem sempre documenta o campo type na resposta.
-    // Sem type explicito, nao assumir que o registro e uma anotacao.
-    tipo: String(item.type || 'nao_informado').toLowerCase(),
+    // A classificacao pode vir do campo type ou do filtro enviado ao RD.
+    tipo: String(item.__viTipo || item.type || 'nao_informado').toLowerCase(),
+    origemClassificacao: String(item.__viTipoOrigem || (item.type ? 'CAMPO_API' : 'NAO_CONFIRMADA')),
     autorId: String(item.user_id || ''),
     etapaId: String(item.deal_stage_id || ''),
-    textoDisponivel: Boolean(String(item.text || item.content || '').trim()),
-    texto: viLeadTextoSeguro_(item.text || item.content || '', incluirTextos)
+    textoDisponivel: Boolean(String(item.text || item.description || item.content || '').trim()),
+    texto: viLeadTextoSeguro_(item.text || item.description || item.content || '', incluirTextos)
   }));
 }
 
@@ -164,7 +265,8 @@ function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas) {
     if (!a.data) return;
     const tipo = a.tipo === 'note' ? 'ANOTACAO' :
       (a.tipo === 'nao_informado' ? 'ATIVIDADE_SEM_TIPO' : 'ATIVIDADE_' + a.tipo.toUpperCase());
-    eventos.push({ data: a.data, fonte: 'RD_ATIVIDADES', tipo: tipo, ref: a.id });
+    eventos.push({ data: a.data, fonte: 'RD_ATIVIDADES', tipo: tipo,
+      tipoRd: a.tipo, origemClassificacao: a.origemClassificacao, ref: a.id });
   });
   tarefas.forEach(t => {
     if (t.criadaEm) eventos.push({ data: t.criadaEm, fonte: 'RD_TAREFA', tipo: 'CRIACAO_TAREFA', ref: t.id });
@@ -216,7 +318,9 @@ function viCerebroConexao_(ctx) {
       transcricoesMarcadasConcluidas: ctx.ligacoes.filter(l => l.transcricaoStatus === 'CONCLUIDA').length,
       atividadesDoRd: ctx.atividades.length,
       anotacoesComTipoConfirmado: ctx.atividades.filter(a => a.tipo === 'note').length,
-      atividadesSemTipoInformado: ctx.atividades.filter(a => a.tipo === 'nao_informado').length
+      atividadesSemTipoInformado: ctx.atividades.filter(a => a.tipo === 'nao_informado' || a.tipo === 'nao_confirmado').length,
+      eventosWhatsApp: ctx.atividades.filter(a => ['messenger', 'whatsapp_audio', 'whatsapp_transcription'].includes(a.tipo)).length,
+      eventosComTipoInferidoPorFiltro: ctx.atividades.filter(a => a.origemClassificacao === 'FILTRO_API').length
     },
     limite: 'Duracao ou anotacao nao comprova que houve dialogo, qualificacao ou compromisso.'
   };
@@ -269,13 +373,15 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   } catch (e) {
     fontes.tarefas = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
   }
-  try {
-    const resposta = viLeadPaginar_(vinculo.token, '/activities', 'activities', dealId);
-    atividadesBrutas = resposta.itens;
-    fontes.atividades = { acessivel: true, completo: resposta.completo, quantidade: atividadesBrutas.length };
-  } catch (e) {
-    fontes.atividades = { acessivel: false, completo: false, motivo: 'FALHA_CONSULTA' };
-  }
+  const atividadesLidas = viLeadColetarAtividades_(vinculo.token, dealId);
+  atividadesBrutas = atividadesLidas.itens;
+  fontes.atividades = {
+    acessivel: Object.values(atividadesLidas.porTipo).some(t => t.acessivel),
+    completo: atividadesLidas.completo,
+    quantidade: atividadesBrutas.length,
+    porTipo: atividadesLidas.porTipo,
+    conflitosDeTipo: atividadesLidas.divergencias.length
+  };
 
   const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
@@ -286,7 +392,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     criadaEm: viLeadDataIso_(negociacao.created_at) };
 
   return {
-    modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V1', dealId: dealId, idCliente: vinculo.idCliente,
+    modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V2_TIPOS_ATIVIDADE', dealId: dealId, idCliente: vinculo.idCliente,
     negociacao: {
       nome: String(negociacao.name || ''), criadaEm: ctx.criadaEm,
       etapaAtualId: String((negociacao.deal_stage || {}).id || negociacao.deal_stage_id || ''),
@@ -305,7 +411,9 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
       'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
-      'Nao aplicar compliance de outros clientes: regras Wisetec ainda nao homologadas para este piloto.'
+      'Nao aplicar compliance de outros clientes: regras Wisetec ainda nao homologadas para este piloto.',
+      'Tipos de eventos extraidos por filtro podem nao estar no payload: origemClassificacao indica o nivel de evidencia.',
+      'Eventos de atividade e tarefas podem descrever o mesmo fato; nao somar eventos de canais diferentes sem reconciliacao.'
     ]
   };
 }
