@@ -1,0 +1,4 @@
+const $ = id => document.getElementById(id);
+async function currentDeal() { const [tab] = await chrome.tabs.query({ active:true,currentWindow:true }); const s=await chrome.storage.local.get('volumEndpoint'); const m=String(tab.url||'').match(/\/app\/deals\/([0-9a-f]{24})(?:[/?#]|$)/i); return { id:m?m[1]:'', endpoint:s.volumEndpoint||'' }; }
+async function audit(){ const {id,endpoint}=await currentDeal(); if(!id){$('state').textContent='Abra uma negociação no RD Station para iniciar.';return;} if(!endpoint){$('state').textContent='Aguardando URL privada da VOLUM.';return;} $('state').hidden=true;$('summary').hidden=false;const frame=document.createElement('iframe');frame.src=endpoint+(endpoint.includes('?')?'&':'?')+'dealId='+encodeURIComponent(id);frame.title='VOLUM Intelligence';frame.style.cssText='width:100%;height:calc(100vh - 85px);border:0';$('summary').replaceChildren(frame);}
+audit();
