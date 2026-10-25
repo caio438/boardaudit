@@ -267,3 +267,228 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
   return {disponivel:fatos.length>0,fatos,
     limite:'Análise interpretativa: o vínculo da referência com o registro existe, mas a conclusão ainda exige crítica do Sales Ops.'};
 }
+
+
+/**
+ * Plano SDR por registros documentados da negociacao, nao por todos os
+ * registros do lead indistintamente. Sempre devolver 7 pilares + 9 extras
+ * com titulo, status, evidencia, janela, autor/data e proxima acao.
+ *
+ * Quando a etapa avanca, auditar retroativamente as passagens SDR.
+ * A etapa "Apresentacao" geralmente representa passagem para closer,
+ * mas evidencia nessa etapa nao e atribuida automaticamente ao SDR.
+ * Nenhum SLA numerico sera inventado sem versao de playbook homologada.
+ */
+function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
+  const stage=(leitura.historicoRdEtapas||{});
+  const visual=(stage.linhaDoTempo||{});
+  const eventos=Array.isArray(visual.eventos)?visual.eventos:[];
+  const janelas=Array.isArray(stage.janelas)?stage.janelas:[];
+  const deal=leitura.negociacao||{};
+  const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\s+/g,' ').trim();
+  const nomeStage=x=>normal(x.etapaNome||'');
+  const primeiraCloser=janelas.findIndex(j=>
+    /apresentacao|reuniao|proposta|negociacao|fechamento|closer/.test(nomeStage(j)));
+  const pre=primeiraCloser>=0?janelas.slice(0,primeiraCloser):janelas;
+  const ids=new Set(pre.map(j=>String(j.passagemId||'')));
+  // Se ainda nao houve closer, a etapa corrente pertence ao percurso SDR,
+  // salvo se o nome explicito disser o contrario.
+  const sdr=eventos.filter(e=>ids.has(String(e.passagemId||'')));
+  const texto=e=>normal(e.texto||'');
+  const data=e=>String(e.data||'');
+  const ordered=list=>list.slice().sort((a,b)=>data(a).localeCompare(data(b)));
+  const ultimo=list=>ordered(list).slice(-1)[0]||null;
+  const tipe=(list,type)=>list.filter(e=>e.acao===type);
+  const combinar=(list,re)=>list.filter(e=>re.test(texto(e)));
+  const anotacoes=tipe(sdr,'ANOTACAO');
+  const saidas=tipe(sdr,'TAREFA_CONCLUIDA');
+  const criadas=tipe(sdr,'TAREFA_CRIADA');
+  const emails=tipe(sdr,'EMAIL_ENVIADO');
+  const whatsapp=tipe(sdr,'WHATSAPP_ABERTO');
+  const ligacoes=combinar(sdr,/(?:atendimento para|ligac(?:ao|oes)|telefonema|chamada telefonica|discagem|voip)/);
+  const tentativas=[...ligacoes,...emails,...whatsapp].filter((e,i,arr)=>
+    arr.findIndex(x=>x.id===e.id)===i);
+  const notasResultado=combinar(anotacoes,
+    /(?:nao atendeu|nao respondeu|sem resposta|caixa postal|ocupado|retornou|respondeu|agendou|reagendou|confirmou|sem interesse|desqualificad|conversamos|falei com|falou com|atendeu)/);
+  const questoes=combinar(anotacoes,/faturamento|lmv|receita|qualific|dor|necessidade|objetivo|sistema atual|segmento|decisor/);
+  const hadCloser=primeiraCloser>=0;
+  const agendaContexto=eventos.filter(e=>
+    ids.has(String(e.passagemId||'')) ||
+    (hadCloser && String(e.passagemId||'')===String(janelas[primeiraCloser]?.passagemId||'')));
+  const notesAgenda=tipe(agendaContexto,'ANOTACAO');
+  const registrosAgenda=combinar(agendaContexto,
+    /reuniao|apresentacao|agendament|agenda|demonstracao|convite/);
+  const agendaConfirmada=combinar(notesAgenda,
+    /reuniao.{0,70}(?:agendad|marcad)|(?:agendamos|marcamos).{0,60}(?:reuniao|apresentacao)|apresentacao.{0,50}agendada/);
+  const semConfirmar=/nao (?:foi |esta |est[aá] )?(?:confirmad|agendad)|aguardando confirmacao|tentando confirmar/;
+  const respostasConfirmacao=combinar(notesAgenda,
+    /(?:cliente|lead|comprador|contato).{0,70}confirmou|confirmou presenca|aceitou o convite/)
+    .filter(e=>!semConfirmar.test(texto(e)));
+  const noShow=combinar(notesAgenda,
+    /no.?show|nao compareceu|faltou (?:a|na) reuniao|nao entrou (?:na|no) reuniao/);
+  const tarefaNoShow=combinar(agendaContexto,/no.?show|reagend|recuperacao de agenda/);
+  const repasse=combinar(notesAgenda,
+    /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel|resumo para o closer)/);
+  const notaSegmento=combinar(anotacoes,/segmento|setor de atuacao|ramo|tipo de empresa/);
+  const notaLmv=combinar(anotacoes,/lmv|faturamento|receita mensal|faixa de receita/);
+  const notaDor=combinar(anotacoes,/dor|necessidade|desafio|motivo do contato|objetivo|sistema atual/);
+  const notaValor=combinar(anotacoes,/valor da reuniao|beneficio da reuniao|importancia da reuniao|na apresentacao voce vai/);
+  const notaHorarios=combinar(notesAgenda,/dois horarios|duas opcoes|duas alternativas|opcao de horario/);
+
+  const tarefas=Array.isArray(leitura.tarefas)?leitura.tarefas:[];
+  const nasJanelas=(ts)=> {
+    const ms=Date.parse(ts||'');
+    return Number.isFinite(ms)&&pre.some(j=>{
+      const inicio=Date.parse(j.inicio||'');
+      const fim=j.fim?Date.parse(j.fim):Infinity;
+      return Number.isFinite(inicio)&&ms>=inicio&&ms<fim;
+    });
+  };
+  const tarefasSdr=tarefas.filter(t=>nasJanelas(t.criadaEm||''));
+  const abertas=tarefasSdr.filter(t=>t.concluida!==true);
+  const vencidas=abertas.filter(t=>t.previstaPara&&Date.parse(t.previstaPara)<Date.now());
+  const foraPrazo=tarefasSdr.filter(t=>t.concluida&&t.concluidaEm&&t.previstaPara&&
+    Date.parse(t.concluidaEm)>Date.parse(t.previstaPara));
+  const primeiras=ordered(sdr);
+  const entrada=String(deal.criadaEm||(stage.cadastroAtual||{}).criadoEm||'');
+  const primeiraAposCriacao=primeiras.find(e=>e.acao!=='NEGOCIACAO_CRIADA'&&
+    e.acao!=='ETAPA_ALTERADA')||null;
+  const minutos=entrada&&primeiraAposCriacao&&
+    Number.isFinite(Date.parse(entrada))&&Number.isFinite(Date.parse(primeiraAposCriacao.data))?
+    Math.max(0,Math.round((Date.parse(primeiraAposCriacao.data)-Date.parse(entrada))/60000)):null;
+  const aplicavel=diagnostico&&diagnostico.ativo===true;
+  const itens=[];
+  const ref=e=>e?'RD Histórico '+e.id+' · '+(e.dataTexto||e.data||'')+
+    (e.autor?' · '+String(e.autor).slice(0,80):'')+
+    (e.etapaNome?' · '+String(e.etapaNome).slice(0,70):''):'';
+  const detalheEvento=e=>e?viWidgetSanitizar_(e.texto||'').slice(0,260):'';
+  const reg=(id,titulo,status,msg,e,acao,pilar)=>{
+    const evid=ref(e);
+    itens.push({id,titulo,status,detalhe:msg,evidencia:e?
+      evid+' · '+detalheEvento(e):'',
+      fonte:e?'RD_UI_HISTORY · '+e.id:'RD_UI_HISTORY · '+(pre.map(j=>j.etapaNome).join(' → ')||'etapas em validação'),
+      acao,prioridade:status==='ATENCAO'?'ALTA':'MEDIA',
+      pilar:pilar||'COMPLEMENTAR',janela:'JORNADA_SDR_ANTES_CLOSER',
+      regra:'Verificacao da execucao documentada no RD. SLA/cadencia depende da versao da Wisetec homologada.'});
+  };
+
+  const dias=Array.from(new Set(tentativas.filter(e=>e.data).map(e=>e.data.slice(0,10)))).sort();
+  const cadenciaRegistrada=tentativas.length>0||saidas.length>0||criadas.length>0;
+  reg('cadencia','Uso da cadência e tentativas',
+    cadenciaRegistrada?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    sdr.length+' registro(s) nas etapas SDR: '+tentativas.length+' possiveis tentativas por canal ('+
+      emails.length+' email enviado, '+whatsapp.length+' WhatsApp Web aberto, '+
+      ligacoes.length+' registro(s) relacionados a ligacao); '+criadas.length+
+      ' tarefas criadas e '+saidas.length+' concluidas; '+dias.length+
+      ' dia(s) com registros de canal. Sem versao vigente da regua nao se pode declarar cadencia integral conforme.',
+    ultimo(tentativas)||ultimo(saidas)||ultimo(criadas),
+    'Confrontar os dias e canais registrados com a Estrutura da Cadência aplicável, separando início da cadência e recovery.','OFICIAL');
+  reg('voip','Uso de ligação nas tentativas',
+    ligacoes.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    ligacoes.length+' registro(s) mencionam ligação ou atendimento no Histórico RD. Tarefa ou duração não comprova conversa; analisar seu resultado documentado.',
+    ultimo(ligacoes),'Relacionar cada ligação registrada ao resultado da tentativa no CRM.','OFICIAL');
+  reg('pitch','Aplicação do pitch de qualificação','NAO_VERIFICAVEL',
+    'O Histórico RD permite ler anotações e resultados, mas não comprova palavra por palavra a aplicação do pitch SDR.',
+    ultimo(questoes),'Conferir o pitch apenas quando existir gravação ou transcrição atribuída ao SDR.','OFICIAL');
+  const noShowReal=noShow.length>0;
+  const retomadas=noShowReal?tarefaNoShow.filter(e=>data(e)>=data(ultimo(noShow))):[];
+  reg('no_show','Cadência de recuperação de no-show',
+    !noShowReal?'NAO_APLICAVEL':retomadas.length?'INDICIO':'SEM_EVIDENCIA',
+    !noShowReal?'Nenhum no-show explícito foi identificado nas anotações do Histórico do RD; não ativar esta cobrança.':
+      retomadas.length?'No-show registrado e '+retomadas.length+' ação(ões) posterior(es) relacionadas a retomada, ainda sem validar prazo.':
+      'Existe anotação de ausência do comprador, mas não foi localizado registro posterior de retomada ou reagendamento.',
+    ultimo(retomadas)||ultimo(noShow),noShowReal?
+      'Registrar nova tentativa de reagendamento conforme cadência de no-show, com data e desfecho.':'',
+    'OFICIAL');
+  reg('handoff','Passagem de bastão SDR → Closer',
+    repasse.length?'INDICIO':hadCloser?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    repasse.length?'Há anotação de repasse; conferir se inclui LMV, dor, responsável e reunião.':
+      hadCloser?'A negociação avançou para uma etapa de apresentação/reunião, mas não foi encontrada anotação explícita de passagem de bastão.':
+      'Ainda não foi identificada a passagem da negociação para uma etapa de closer.',
+    ultimo(repasse),'Registrar o contexto qualificado, responsável e compromisso acordado na passagem para o Closer.','OFICIAL');
+  reg('registros','Registro do resultado após cada ação',
+    notasResultado.length?'INDICIO':(saidas.length||ligacoes.length)?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    notasResultado.length+' anotação(ões) de desfecho localizadas para '+saidas.length+
+      ' tarefa(s) concluída(s) e '+ligacoes.length+
+      ' registro(s) de ligação. Uma nota pode cobrir várias tentativas; não há correspondência um a um demonstrada.',
+    ultimo(notasResultado)||ultimo(saidas),
+    'Reconciliar cada tentativa de ligação/contato com o desfecho registrado, sem criar eventos duplicados.','OFICIAL');
+  reg('tarefas','Marcação e execução das tarefas no prazo',
+    vencidas.length||foraPrazo.length?'ATENCAO':
+      tarefasSdr.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    tarefasSdr.length+' tarefa(s) criada(s) enquanto a negociação estava na jornada SDR; '+
+      vencidas.length+' aberta(s) vencida(s) e '+foraPrazo.length+
+      ' concluída(s) após data prevista. Não atribuir autoria SDR apenas pelo nome da tarefa.',
+    ultimo(sdr.filter(e=>e.acao==='TAREFA_CONCLUIDA'||e.acao==='TAREFA_CRIADA')),
+    'Revisar datas previstas e efetivas das tarefas com seus responsáveis; justificar e corrigir pendências.','OFICIAL');
+
+  reg('segmento','Segmento identificado antes da agenda',
+    notaSegmento.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    notaSegmento.length?'Há anotação sobre setor ou segmento no percurso SDR.':
+      'Nenhuma anotação identificável de segmento encontrada nas passagens SDR.',
+    ultimo(notaSegmento),'Registrar segmento e perfil do lead no CRM, conforme processo de qualificação.');
+  reg('lmv','LMV e faturamento validados no CRM',
+    notaLmv.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    notaLmv.length?'Há texto de LMV/faturamento nas anotações; verificar se representa declaração inicial ou validação posterior.':
+      'Não há anotação reconhecível de LMV validado nas passagens SDR. Campos atuais não comprovam a data da validação.',
+    ultimo(notaLmv),'Registrar o LMV validado, responsável e data da qualificação.');
+  reg('qualificacao','Necessidade e motivação registradas',
+    notaDor.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    notaDor.length?'Anotação de necessidade, dor ou motivação identificada; verificar profundidade do diagnóstico.':
+      'Não há anotação de dor, objetivo ou contexto identificável nas passagens SDR.',
+    ultimo(notaDor),'Registrar necessidade, dor, objetivo e motivação do contato.');
+  reg('agenda','Agendamento com data e responsável',
+    agendaConfirmada.length?'INDICIO':registrosAgenda.length?'INDICIO':hadCloser?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    agendaConfirmada.length?'Registro de agendamento identificado; verificar data, responsável e canal.':
+      registrosAgenda.length?'Há menção à reunião/agenda, mas o compromisso com data e horário precisa ser comprovado.':
+      hadCloser?'O negócio avançou para apresentação, mas não há evidência textual identificável do agendamento anterior.':
+      'Ainda não houve passagem confirmada para reunião.',
+    ultimo(agendaConfirmada)||ultimo(registrosAgenda),
+    'Localizar convite, data, horário e responsável no Histórico do RD.');
+  reg('confirmacao','Confirmação de presença do cliente',
+    respostasConfirmacao.length?'INDICIO':registrosAgenda.length?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    respostasConfirmacao.length?'Existe anotação atribuindo confirmação ao comprador; conferir data e origem.':
+      registrosAgenda.length?'Agendamento mencionado, mas não foi encontrada confirmação explícita de presença do cliente.':
+      'Não há agendamento documentado que torne esta verificação aplicável.',
+    ultimo(respostasConfirmacao),
+    registrosAgenda.length?'Registrar confirmação recebida pelo cliente, não apenas convite ou pergunta de confirmação.':'');
+  reg('valor_reuniao','Valor da reunião explicado no pitch',
+    notaValor.length?'INDICIO':'NAO_VERIFICAVEL',
+    notaValor.length?'Há anotação sobre benefícios da reunião, mas a fala exata exige áudio/transcrição.':
+      'Sem transcrição atribuída ao SDR, não é possível confirmar se explicou os benefícios da reunião.',
+    ultimo(notaValor),'Auditar pitch apenas com conteúdo da ligação SDR autenticado.');
+  reg('horarios','Oferecimento de duas opções de horário',
+    notaHorarios.length?'INDICIO':'NAO_VERIFICAVEL',
+    notaHorarios.length?'Há anotação citando alternativas de horários.':
+      'Não há texto suficiente para confirmar a oferta de duas opções; verificar gravação quando disponível.',
+    ultimo(notaHorarios),'Conferir a oferta de horários no registro da conversa.');
+  reg('primeiro_registro','Intervalo até o primeiro registro após entrada',
+    minutos!==null?'EVIDENCIADO':'NAO_VERIFICAVEL',
+    minutos!==null?minutos+' minuto(s) entre a criação do negócio e o primeiro evento não estrutural. Isso não mede automaticamente tempo até primeiro contato humano.':
+      'Criação do negócio e/ou primeiro evento sem data comparável.',
+    primeiraAposCriacao,'Calcular SLA de primeiro contato somente usando uma tentativa documentada e o calendário aplicável.');
+  reg('resultado_ligacao','Resultado de tentativa de ligação documentado',
+    notasResultado.length?'INDICIO':ligacoes.length?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    notasResultado.length?'Existem '+notasResultado.length+' anotações de desfecho (ex.: não atendeu, retorno, conversa).':
+      ligacoes.length?'Foram encontrados registros de ligação, mas nenhuma anotação de resultado identificável na jornada SDR.':
+      'Não há ligação identificada neste recorte para exigir desfecho.',
+    ultimo(notasResultado),'Registrar outcome da chamada ou apontar a anotação existente.');
+
+  const conta={EVIDENCIADO:0,INDICIO:0,ATENCAO:0,SEM_EVIDENCIA:0,
+    NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
+  itens.forEach(x=>{conta[x.status]=(conta[x.status]||0)+1;});
+  const uteis=Array.from(new Set(sdr.filter(e=>e.data).map(e=>e.data.slice(0,10)))).sort();
+  return {titulo:'Plano de Otimização SDR',versao:'RD_HISTORY_STAGE_V1',
+    fonte:'RD_UI_HISTORY',coberturaCompleta:aplicavel,clienteReferencia:'Wisetec',
+    total:itens.length,oficial:7,complementar:9,itens,contagem:conta,
+    escopo:{passagensSdr:pre.map(j=>({id:j.passagemId,nome:j.etapaNome,
+      entrada:j.inicio,saida:j.fim})),totalEventosSdr:sdr.length,
+      outrosEventos:eventos.length-sdr.length,diasComEventos:uteis,
+      eventoInicioCloser:hadCloser?janelas[primeiraCloser].inicio:'',
+      regraCadenciaAplicavel:'VERSAO_CLIENTE_NAO_CONFIRMADA'},
+    aviso:'Estes critérios analisam os registros anteriores à etapa de apresentação e as evidências de agenda. Sem versão vigente da cadência não atribuem compliance integral.',
+    restricoes:['As atribuições SDR/Closer dependem do cadastro de responsáveis da operação.',
+      'Conformidade de pitch precisa de gravação/transcrição.',
+      'Não equiparar abertura de WhatsApp a mensagem enviada.']};
+}
