@@ -22,7 +22,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetParecerDeterministico_(leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
-  if (usarGemini && parecer.contextoIa.length) {
+  if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
       parecer.interpretacao = viWidgetInterpretarGemini_(parecer.contextoIa, dealId);
     } catch (e) {
