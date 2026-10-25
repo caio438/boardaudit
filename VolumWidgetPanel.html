@@ -101,9 +101,9 @@ button,input{font:inherit}button{cursor:pointer}
 @media(prefers-reduced-motion:no-preference){.hero,.glass,.kpi,.action{transition:border-color .16s ease}.action:hover{border-color:#494061}.refresh{transition:background .16s ease}}
 
 /* A barra nativa do Chrome ja identifica o produto: no side panel, apenas conteudo. */
-.volum-embedded .topbar{display:none}
-.volum-embedded .shell{padding-top:10px}
-.volum-embedded .intro{padding-top:4px}
+.topbar{display:none}
+.shell{padding-top:8px}
+.intro{padding-top:8px}
 .volum-embedded .footer{display:none}
 .operation-fact{padding:10px 0;border-top:1px solid var(--line)}
 .operation-fact:first-child{border-top:0}
@@ -211,7 +211,14 @@ function boardEvidence(d) {
   }),false);
   return html;
 }
-function proof(d){let html=section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);
+function documentEvidence(d){const x=d.evidenciasDocumentais||{};const files=(x.nomesArquivos||[]);let html=section('E-mail e arquivos','Rastreabilidade comercial');html+='<div class="glass"><ul class="stack">'+
+ '<li>E-mail de formalização: <b>'+ (x.emailFormalizacao?'indício localizado':'não localizado') +'</b>.</li>'+
+ '<li>Referência de gravação/reunião realizada: <b>'+ (x.emailGravacao?'indício localizado':'não localizada') +'</b>.</li>'+
+ '<li>Próxima reunião/convite: <b>'+ (x.emailProximaReuniao?'indício localizado':'não localizado') +'</b>.</li>'+
+ '<li>PDFs no RD: <b>'+Number(x.pdfs||0)+'</b> · PDFs compatíveis com proposta: <b>'+Number(x.propostaPdf||0)+'</b>.</li></ul>'+
+ '<p class="small">E-mail, link e arquivo são rastros operacionais: não comprovam entrega, leitura, reunião realizada ou aceite.</p></div>';
+ if(files.length)html+=group('Arquivos consultados',files.map(function(n){return {titulo:n,status:'INDICIO',detalhe:'Metadado de arquivo vinculado à negociação; conteúdo não foi lido.',fonte:'RD · arquivos'};}),false);return html;}
+function proof(d){let html=section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);html+=documentEvidence(d);
 html+=boardEvidence(d);
 html+=section('Compliance do processo','Verificações existentes')+group('Sinais operacionais',d.compliance||[],false);
 html+=section('Qualificação registrada','LMV, dor e contexto')+group('Qualificação',d.qualificacao||[],false);
@@ -219,7 +226,7 @@ const evidence=d.evidencias||[];
 html+=section('Últimas evidências','Anotações acessíveis')+'<div class="glass"><ul class="stack">'+(evidence.map(function(x){return '<li class="evidence"><time>'+humanDate(x.data)+' · '+esc(x.fonte)+'</time>'+esc(x.texto)+'</li>'}).join('')||'<li class="muted">Nenhuma evidência textual disponível.</li>')+'</ul></div>';
 html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><ul class="stack">'+(d.limites||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
 return html;}
-function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">LEITURA SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
+function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">ANÁLISE COMERCIAL / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
 const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
 let body=activeTab==='visao'?overview(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
