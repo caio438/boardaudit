@@ -322,8 +322,10 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const somenteDescricao=e=>texto(e).replace(/\bna etapa .+? do funil(?:\s|$)/g,' ');
   const tiposAgenda=new Set(['ANOTACAO','TAREFA_CRIADA','TAREFA_ATUALIZADA',
     'EMAIL_ENVIADO','EMAIL_RESPONDIDO']);
+  const agendaNegada=e=>/(?:nao|nunca|sem) (?:foi |esta |tem |houve )?(?:agendad|marcad|confirmad)|(?:reuniao|apresentacao).{0,50}(?:nao|sem|nunca).{0,25}(?:agendad|marcad|confirmad)|aguardando confirmacao|tentando agendar|sem agendamento/.test(somenteDescricao(e));
   const registrosAgenda=agendaContexto.filter(e=>tiposAgenda.has(e.acao) &&
-    /(?:reuniao|apresentacao|agendament|agendad|agenda de |demonstracao|convite)/.test(somenteDescricao(e)));
+    /(?:reuniao|apresentacao|agendament|agendad|agenda de |demonstracao|convite)/.test(somenteDescricao(e)) &&
+    !agendaNegada(e));
   const agendaConfirmada=notesAgenda.filter(e=>
     /reuniao.{0,70}(?:agendad|marcad)|(?:agendamos|marcamos).{0,60}(?:reuniao|apresentacao)|apresentacao.{0,50}agendada/.test(somenteDescricao(e)) &&
     !/reuniao.{0,40}(?:nao|nunca|sem).{0,20}(?:agendad|marcad)|(?:nao|nunca) (?:foi |esta )?(?:agendad|marcad)/.test(somenteDescricao(e)));
