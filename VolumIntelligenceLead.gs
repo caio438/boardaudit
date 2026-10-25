@@ -396,6 +396,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     negociacao: {
       nome: String(negociacao.name || ''), criadaEm: ctx.criadaEm,
       etapaAtualId: String((negociacao.deal_stage || {}).id || negociacao.deal_stage_id || ''),
+      etapaAtualNome: String((negociacao.deal_stage || {}).name || negociacao.deal_stage_name || ''),
       responsavel: String((negociacao.user || {}).name || ''), historicoEtapas: etapas
     },
     fontes: Object.assign(fontes, { board: { acessivel: true, ligacoesVinculadas: ligacoes.length } }),
