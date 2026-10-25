@@ -139,13 +139,43 @@ function section(title,extra){return '<div class="section-head"><h2>'+esc(title)
 function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo)+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe)+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
-function tabs(){const list=[['visao','Visão geral'],['lead','Agente LEAD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function tabs(){const list=[['visao','Visão geral'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function leadAgent(d){const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='LEAD');if(!agente)return section('Agente LEAD','Entrada e classificacao provisoria')+'<p class="muted">Leitura ainda não disponível.</p>';
 let html=section('Agente LEAD','Cadastro, LMV provisório e encaminhamento');
 html+='<div class="notice">O LMV informado no formulário é provisório. A validação com o cliente durante a ligação pertence ao Agente CONEXÃO. Registro automático não prova contato.</div>';
 html+=group('Auditoria da entrada do lead',agente.criterios||[],true);
 html+='<p class="small">'+esc(agente.limite||'')+'</p>';
 return html;}
+function cadenceAgent(d){
+  const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='CADENCIA');
+  if(!agente)return section('Agente CADÊNCIA','Reconstrução das tentativas')+'<p class="muted">Leitura indisponível para esta negociação.</p>';
+  const met=agente.indicadores||{};
+  let html=section('Agente CADÊNCIA','Execução real, dias úteis e intervalos');
+  html+='<div class="notice">O Agente CADÊNCIA lê o histórico mesmo sem nomes CAD. O padrão manual é a Estrutura da Cadência; o Método VOLUM com robô só se aplica a operações automatizadas confirmadas. Tarefa concluída não prova tentativa de contato.</div>';
+  html+='<div class="glass"><div class="eyebrow">CONTEXTO DA AUDITORIA</div><p>Modo SDR: <b>'+esc(display(met.modoSdr||'Não identificado'))+'</b> · Fluxo: <b>'+esc(display(met.fluxo||'Não identificado'))+'</b> · LMV: <b>'+esc(display(met.lmv||'Não confirmado'))+'</b></p><p>Dias úteis com registros: <b>'+Number(met.diasUteisComRegistro||0)+'</b> · Lacunas observadas: <b>'+Number(met.diasComLacuna||0)+'</b></p><p class="muted">Feriados locais: '+(met.calendarioFeriadosLocaisConfirmado?'configurados':'pendentes de validação')+'. Sem regras completas, não há reprovação automática.</p></div>';
+  html+=group('Verificações de compliance',agente.criterios||[],true);
+  const dias=agente.calendario||[];
+  if(dias.length){
+    const itens=dias.map(function(x){
+      const esperado=x.esperado?Object.keys(x.esperado).map(function(k){return display(k)+' '+x.esperado[k]}).join(' · '):'Regra diária ainda não aplicável';
+      const encontrado=x.observado||{};
+      return {titulo:'Dia útil '+Number(x.numero)+' · '+humanDate(x.dia)+' · ciclo '+Number(x.ciclo),
+        status:x.estado,detalhe:'Previsto: '+esperado+'. Registros: '+Number(encontrado.ligacoes||0)+' ligação(ões), '+Number(encontrado.whatsapp||0)+' WhatsApp, '+Number(encontrado.email||0)+' e-mail(s).',
+        fonte:'RD Station / Board · horário de Brasília',
+        acao:'Abrir evidências da negociação para conferir autoria, horário e execução.'};
+    });
+    html+=group('Reconstrução diária ('+dias.length+' dias úteis)',itens,false);
+  }
+  const gaps=agente.intervalos||[];
+  if(gaps.length)html+=group('Intervalos sem registro',gaps.map(function(x){
+    return {titulo:humanDate(x.de)+' → '+humanDate(x.ate),status:'INDICIO',
+      detalhe:x.diasUteisSemRegistro+' dia(s) útil(eis) sem registro de tentativa entre as datas.',
+      fonte:'Calendário Brasil / fontes RD e Board',
+      acao:'Confirmar cobertura e motivo da pausa; não é desvio automático.'};
+  }),false);
+  html+='<p class="small">'+esc(agente.limite||'')+'</p>';
+  return html;
+}
 function playbook(d){const p=d.playbookSalesOps||{};if(!p.etapas)return '';const atual=p.decisaoAtual||{};let html=section('Playbook VOLUM','Leitura por etapa e evidência');html+='<div class="glass"><div class="eyebrow">DECISÃO ATUAL</div><h3 style="margin:7px 0;font-size:14px">'+esc(atual.titulo||'Etapa não confirmada')+'</h3>'+status(atual.status)+'<p class="muted">'+esc(atual.detalhe||'')+'</p><div class="to-do"><b>Validar agora:</b> '+esc(atual.acao||'Confirmar dados da etapa')+'</div></div>';html+=group('Jornada e provas disponíveis',p.etapas,true);html+='<p class="small">Compliance: '+esc(display(p.compliance||'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA'))+'.</p>';return html;}
 function overview(d){const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
 html+=playbook(d);
@@ -237,7 +267,7 @@ html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><
 return html;}
 function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
 const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
-let body=activeTab==='visao'?overview(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
+let body=activeTab==='visao'?overview(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='cadencia'?cadenceAgent(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
