@@ -38,6 +38,8 @@
     const url = new URL(endpoint);
     url.searchParams.set('volum_widget', '1');
     url.searchParams.set('dealId', dealId.toLowerCase());
+    const historyNonce=crypto.randomUUID().replace(/-/g,'');
+    url.searchParams.set('volum_history_nonce',historyNonce);
     const host = document.createElement('section');
     host.id = INLINE_ID;
     host.setAttribute('aria-label', 'VOLUM Intelligence');
@@ -97,6 +99,7 @@
       if(!latestHistory||!r||!r.source)return;
       try {r.source.postMessage({
         type:'VOLUM_RD_UI_HISTORY',dealId:dealId.toLowerCase(),
+        nonce:historyNonce,
         history:latestHistory
       },r.origin);} catch(_ignore) {}
     };
@@ -114,7 +117,7 @@
     const onRequest=(event)=>{
       const data=event&&event.data||{};
       if(data.type!=='VOLUM_REQUEST_RD_UI_HISTORY' ||
-        data.dealId!==dealId.toLowerCase() || !event.source ||
+        data.dealId!==dealId.toLowerCase() || data.nonce!==historyNonce || !event.source ||
         !host.isConnected)return;
       if(!/^https:\/\/(?:[a-z0-9-]+\.)?(?:googleusercontent\.com|script\.google\.com)$/i.test(event.origin||''))return;
       const receiver={source:event.source,origin:event.origin};
@@ -254,7 +257,12 @@
   addButton();
   let lastUrl = location.href;
   new MutationObserver(() => {
-    if (location.href !== lastUrl) { lastUrl = location.href; }
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      closeInline();
+      const button=document.getElementById('volum-intelligence-trigger');
+      if(button)button.remove();
+    }
     addButton();
   }).observe(document.documentElement, { childList: true, subtree: true });
 })();
