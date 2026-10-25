@@ -94,8 +94,10 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          npx clasp deployments > /tmp/volum-deployments-after.txt
-          node --input-type=module <<'NODE'
+          ready=0
+          for attempt in 1 2 3 4 5 6 7 8; do
+            npx clasp deployments > /tmp/volum-deployments-after.txt
+            if node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const meta=JSON.parse(fs.readFileSync('/tmp/volum-private-meta.json','utf8'));
           const txt=fs.readFileSync('/tmp/volum-deployments-after.txt','utf8');
@@ -105,6 +107,16 @@ jobs:
           console.log('BOARD_DEPLOYMENT_UNCHANGED=1');
           console.log('PRIVATE_WIDGET_SAME_URL_NEW_VERSION=1');
           NODE
+            then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = "1" || {
+            echo "::error::Verificacao de propagacao do Apps Script nao concluiu."
+            exit 1
+          }
           cp .clasp.json /tmp/volum-live-after/.clasp.json
           cd /tmp/volum-live-after
           "$GITHUB_WORKSPACE/node_modules/.bin/clasp" pull > /tmp/volum-pull-after.txt
