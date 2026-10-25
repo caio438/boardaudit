@@ -1,16 +1,17 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VOLUM Intelligence</title><link rel="stylesheet" href="sidebar.css"></head>
-<body><main>
-<header><span class="brand">VOLUM</span><span class="subtitle">INTELLIGENCE</span></header>
-<section id="state" class="card loading">Lendo a negociação…</section>
-<section id="summary" hidden>
-  <div class="stage"><span>Etapa atual</span><strong id="agent"></strong></div>
-  <div id="status" class="status"></div>
-  <h2>Próxima melhor ação</h2><p id="next"></p>
-  <h2>Evidências</h2><ul id="evidence"></ul>
-  <h2>Pendências</h2><ul id="blocks"></ul>
-  <button id="refresh">Atualizar auditoria</button>
-</section>
-<footer>Somente leitura · VOLUM Intelligence</footer>
-</main><script src="sidebar.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>VOLUM Intelligence</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <main class="widget">
+    <section id="state" class="state" role="status">Conectando à negociação RD…</section>
+    <section id="summary" aria-label="VOLUM Intelligence" hidden></section>
+  </main>
+  <script src="sidebar.js"></script>
+</body>
+</html>

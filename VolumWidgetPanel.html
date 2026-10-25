@@ -1,12 +1,171 @@
-<!doctype html><html lang="pt-BR"><head><base target="_top"><meta charset="utf-8">
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<title>VOLUM Intelligence · Sales Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#13213c;--muted:#64748b;--line:#e5eaf2;--violet:#5836be;--ok:#087a52;--warn:#aa5600;--danger:#b42318}
-*{box-sizing:border-box}body{margin:0;background:#f6f8fc;color:var(--ink);font:14px Arial,sans-serif}.shell{padding:16px}.brand{font-weight:800;letter-spacing:.13em;color:var(--violet);font-size:16px}.eyebrow{font-size:11px;color:var(--muted);margin-top:3px}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}.hero{border-left:4px solid var(--warn);background:#fff8ee}.hero strong{display:block;font-size:15px;line-height:1.3}.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.pill{font-size:11px;font-weight:700;border-radius:99px;padding:5px 8px;background:#eef2ff;color:#4338ca}.risk-ALTO{background:#fff0ef;color:var(--danger)}.risk-MÉDIO{background:#fff7e6;color:var(--warn)}.risk-BAIXO{background:#ecfdf5;color:var(--ok)}.risk-NÃO{background:#eef2f7;color:var(--muted)}h2{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}p{margin:0;line-height:1.42}.list{margin:0;padding:0;list-style:none}.list li{padding:8px 0;border-top:1px solid var(--line);line-height:1.35}.list li:first-child{border-top:0}.status{display:inline-block;font-size:10px;font-weight:800;margin-right:7px}.OK{color:var(--ok)}.PENDENTE,.REVISAR{color:var(--danger)}.INDICIO,.PARCIAL,.SEM_EVIDENCIA{color:var(--warn)}.EVIDENCIADO,.CONSULTADA,.OK{color:var(--ok)}.NAO_VERIFICAVEL{color:var(--muted)}.detail{display:block;color:var(--muted);font-size:12px;margin:3px 0 0 0}.quote{background:#f8f6ff;border-radius:8px;padding:10px;font-size:13px;line-height:1.42}.evidence time{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}button{width:100%;border:0;border-radius:8px;background:var(--violet);color:#fff;padding:11px;font-weight:bold;margin-top:16px;cursor:pointer}details summary{cursor:pointer;color:var(--violet);font-weight:bold}.empty{color:var(--muted)}
-</style></head><body><main class="shell" id="volum-root" data-deal-id="<?= dealId ?>"><div class="brand">VOLUM INTELLIGENCE</div><div class="eyebrow">Leitura Sales Ops · somente leitura</div><div id="card" class="card">Lendo a negociação…</div></main>
-<script>const dealId=document.getElementById("volum-root").dataset.dealId;
-function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function date(v){try{return new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(v));}catch(e){return esc(v);}}
-function checklist(items){return '<ul class="list">'+(items||[]).map(x=>'<li><span class="status '+esc(x.status)+'">'+(['OK','EVIDENCIADO','CONSULTADA'].includes(x.status)?'✓':'●')+' '+esc(x.status)+'</span><b>'+esc(x.titulo)+'</b><span class="detail">'+esc(x.detalhe)+'</span></li>').join('')+'</ul>';}
-function render(d){const ev=(d.evidencias||[]).map(x=>'<li class="evidence"><time>'+date(x.data)+' · '+esc(x.fonte)+'</time>'+esc(x.texto)+'</li>').join('')||'<li class="empty">Nenhuma evidência decisiva encontrada.</li>';const sum=(d.resumoExecutivo||[]).map(x=>'<li>'+esc(x)+'</li>').join('');const tasks=(d.recomendacoes||[]).map(x=>'<li><b>'+esc(x.prioridade)+' · '+esc(x.acao)+'</b><span class="detail">Motivo: '+esc(x.porQue)+'</span><span class="detail">Concluído quando: '+esc(x.criterioConclusao)+'</span></li>').join('');const plan=(d.criteriosPlanoWisetec||[]).length?'<h2>Plano Wisetec · Closer</h2>'+checklist(d.criteriosPlanoWisetec):'';const sources='<h2>Cobertura das fontes</h2>'+checklist(d.fontesCobertura);const msg=d.mensagemSugerida?'<h2>Mensagem sugerida</h2><div class="quote">'+esc(d.mensagemSugerida)+'</div>':'';const s=d.evidenciasResumo||{};document.getElementById('card').innerHTML='<section class="hero"><strong>'+esc(d.status)+'</strong><div class="meta"><span class="pill risk-'+esc(d.risco)+'">Risco '+esc(d.risco)+'</span><span class="pill">Etapa RD: '+esc((d.negociacao||{}).etapaAtualNome||'—')+'</span><span class="pill">Agente: '+esc(d.agenteAtual||'—')+'</span></div></section><h2>Leitura executiva</h2><ul class="list">'+sum+'</ul><h2>Decisão recomendada</h2><p><b>'+esc(d.proximaAcao)+'</b></p><h2>Regra de decisão</h2><p>'+esc(d.regraDeDecisao)+'</p>'+msg+'<h2>Recomendações priorizadas</h2><ul class="list">'+tasks+'</ul><h2>Compliance do processo</h2>'+checklist(d.compliance)+'<h2>Qualificação comercial</h2>'+checklist(d.qualificacao)+plan+sources+'<details><summary>Evidências e cobertura</summary><div class="eyebrow" style="margin:10px 0">Atividades: '+esc(s.atividades)+' · Ligações comprovadas: '+esc(s.ligacoesComprovadas)+' · Não atendeu: '+esc(s.registrosNaoAtendeu)+' · Tarefas em lote: '+(s.tarefasEmLote?'sim':'não')+'</div><ul class="list">'+ev+'</ul></details><button onclick="audit()">Atualizar auditoria</button>'; }
-function audit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';google.script.run.withSuccessHandler(render).withFailureHandler(e=>{document.getElementById('card').textContent=(e&&e.message)||'Falha na auditoria.';}).VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
-audit();</script></body></html>
+:root{color-scheme:dark;--bg:#080911;--panel:#11121f;--panel2:#18192b;--line:#2c2c40;--ink:#f5f3fb;--muted:#a09fb8;--low:#777991;--violet:#a277ff;--violet2:#c2aaff;--teal:#64dcb9;--yellow:#f4c67f;--red:#ff9692}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 Geist,Inter,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button,input{font:inherit}button{cursor:pointer}
+.shell{min-height:100vh;max-width:850px;margin:0 auto;padding:0 15px 22px}
+.topbar{display:flex;align-items:center;gap:9px;padding:18px 0;border-bottom:1px solid var(--line)}
+.logo{display:grid;place-items:center;background:linear-gradient(135deg,#ad86ff,#603bdc);height:34px;width:34px;border-radius:10px;color:#fff;font:700 22px/1 "Space Grotesk",sans-serif;letter-spacing:-.07em;box-shadow:0 0 25px #7644de44}
+.brand{display:flex;flex-direction:column;line-height:1.1;gap:4px;flex:1}
+.brand strong{font:700 15px "Space Grotesk",sans-serif;letter-spacing:.095em}
+.brand small{font:500 9px "Geist Mono",monospace;letter-spacing:.17em;color:var(--violet2)}
+.private{font:500 9px "Geist Mono",monospace;color:var(--muted);border:1px solid var(--line);padding:6px;border-radius:7px;white-space:nowrap}
+.private i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--teal);margin-right:5px}
+.eyebrow,.kicker{font:500 10px/1.5 "Geist Mono",monospace;letter-spacing:.09em;color:var(--violet2);text-transform:uppercase}
+.intro{padding:21px 0 12px}
+.intro h1{font:700 clamp(21px,5vw,27px)/1.18 "Space Grotesk",sans-serif;letter-spacing:-.03em;margin:6px 0 8px;overflow-wrap:anywhere}
+.lede{color:var(--muted);font-size:12px;margin:0}
+.meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:13px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:6px;background:#1c1c30;border:1px solid #35334d;color:#dcd4f0;font-size:10px;line-height:1.3}
+.chip .dot{width:6px;height:6px;background:var(--violet);border-radius:50%}
+.notice{padding:11px 13px;background:linear-gradient(90deg,#282143,#131322);border:1px solid #463565;border-radius:10px;color:#e7ddff;font-size:11px;line-height:1.5;margin:13px 0}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}
+.kpi{min-height:83px;background:linear-gradient(145deg,#1c1b2c,#10111d);border:1px solid var(--line);border-radius:11px;padding:11px 10px}
+.kpi strong{font:700 24px/1.2 "Space Grotesk",sans-serif;letter-spacing:-.04em;display:block}
+.kpi small{color:var(--muted);font-size:10px;display:block;margin-top:5px}
+.kpi em{font:9px "Geist Mono",monospace;color:var(--low);font-style:normal}
+.kpi.alert strong{color:var(--red)}.kpi.proof strong{color:var(--teal)}.kpi.unknown strong{color:var(--violet2)}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin:20px -2px 15px;scrollbar-width:thin}
+.tab{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-size:11px;font-weight:600;padding:11px 10px;white-space:nowrap;flex:1}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--violet)}
+.tab:focus-visible,.filter:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid #c2aaff;outline-offset:2px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:19px 0 10px}
+.section-head h2{margin:0;font:700 15px "Space Grotesk",sans-serif}
+.section-head small{font:10px "Geist Mono",monospace;color:var(--low)}
+.glass{background:linear-gradient(145deg,#181829,#10111e);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.hero{background:radial-gradient(circle at top right,#53347e55,transparent 50%),linear-gradient(140deg,#251a36,#10111e);border:1px solid #4a356a;border-radius:13px;padding:17px 16px;position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#9057ff,#c6b0ff,transparent)}
+.hero h2{font:700 19px/1.35 "Space Grotesk",sans-serif;letter-spacing:-.025em;margin:10px 0}
+.hero p{color:#d4cbe4;font-size:11px;margin:7px 0 0}
+.hero .next{background:#b18bff;border:0;border-radius:8px;color:#1a1026;font-weight:700;text-align:left;padding:11px 12px;display:block;width:100%;margin-top:13px}
+.hero .next:hover{background:#c6a7ff}
+.status-tag{display:inline-flex;vertical-align:middle;align-items:center;max-width:100%;padding:4px 7px;border-radius:5px;font:600 9px/1.2 "Geist Mono",monospace;letter-spacing:.01em;text-transform:uppercase;background:#292338;color:#d1b6ff;border:1px solid #44375c;white-space:nowrap}
+.state-ATENCAO,.risk-ALTO{background:#3e232a;border-color:#6a3e48;color:#ffb6ad}
+.state-SEM_EVIDENCIA,.risk-MEDIO{background:#3d2d1d;border-color:#66503a;color:#ffcd88}
+.state-EVIDENCIADO,.state-CONSULTADA,.state-OK{background:#1c3a30;border-color:#2e6554;color:#76e2be}
+.state-INDICIO,.state-PARCIAL{background:#2d2447;border-color:#4d4082;color:#c5adff}
+.state-NAO_VERIFICAVEL,.state-NAO_APLICAVEL,.risk-NAO{background:#252637;border-color:#3a3c4f;color:#b4b3c6}
+.risk-MÉDIO{background:#3d2d1d;border-color:#66503a;color:#ffcd88}
+.risk-NÃO{background:#252637;border-color:#3a3c4f;color:#b4b3c6}
+.stack{list-style:none;padding:0;margin:0}
+.stack li{border-top:1px solid #2b2c3d;padding:12px 0;font-size:12px;color:#d9d6e8}
+.stack li:first-child{border:0;padding-top:0}.stack li:last-child{padding-bottom:0}
+.muted{color:var(--muted);font-size:11px;line-height:1.55}
+.small{color:var(--low);font-size:10px;line-height:1.5}
+.action-list{display:grid;gap:8px}
+.action{background:#171827;border:1px solid var(--line);border-radius:10px;padding:13px}
+.action h3{font-size:12px;font-weight:600;line-height:1.45;margin:9px 0 7px}
+.action p{font-size:11px;color:var(--muted);margin:5px 0}
+.action .done{border-top:1px dashed #3a3b4d;padding-top:8px;color:#c6bdd7}
+.filters{display:flex;gap:5px;overflow-x:auto;scrollbar-width:thin;margin:5px 0 13px;padding:4px 1px}
+.filter{border:1px solid #37384f;border-radius:6px;background:#171827;color:#b8b6cb;padding:7px 9px;white-space:nowrap;font-size:10px}
+.filter.selected{background:#322541;color:#edddff;border-color:#8a60d4}
+.group{background:#131522;border:1px solid var(--line);border-radius:11px;margin:10px 0;overflow:hidden}
+.group>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px}
+.group>summary::-webkit-details-marker{display:none}
+.group>summary:after{content:"+";font-size:18px;color:var(--violet2)}
+.group[open]>summary:after{content:"−"}
+.group>summary strong{font:600 13px "Space Grotesk",sans-serif}
+.group>summary small{font:10px "Geist Mono",monospace;color:var(--muted)}
+.group-body{padding:0 12px 12px}
+.validation{border-top:1px solid #2d2e40;padding:12px 2px}
+.validation-head{display:flex;align-items:start;justify-content:space-between;gap:8px}
+.validation h3{margin:0 0 6px;font-size:12px;line-height:1.4;font-weight:600}
+.validation p{margin:6px 0;font-size:11px;color:var(--muted)}
+.validation .source{color:var(--low);font:10px/1.4 "Geist Mono",monospace;margin-top:6px}
+.to-do{font-size:11px;color:#dbcaff;background:#251d37;border-left:2px solid #9a73e9;border-radius:0 6px 6px 0;padding:9px;margin-top:10px}
+.proof-note{padding:9px;background:#1b1b2e;border-radius:7px;color:#b9b4ce;font-size:10px;overflow-wrap:anywhere;margin-top:7px}
+.countbar{color:#a3a1b6;font-size:11px;margin:9px 0 17px}
+.subdetail{border:1px solid var(--line);border-radius:10px;padding:13px;background:#151625;margin:10px 0}
+.subdetail summary{color:#d8c8ff;cursor:pointer;font-weight:600}
+.evidence time{display:block;color:#a1a0b6;font:10px "Geist Mono",monospace;margin-bottom:4px}
+.quote{white-space:pre-wrap;overflow-wrap:anywhere;border-radius:9px;background:#231d35;border:1px solid #42365a;color:#e4d9fc;padding:12px;font-size:11px}
+.warn{color:var(--yellow)}.error{background:#32202b;border:1px solid #723d52;padding:15px;border-radius:11px;color:#ffccd1;font-size:12px}
+.loading{padding:26px 6px;color:var(--muted);font-size:12px}
+.loading:before{content:"";display:inline-block;background:var(--violet);width:9px;height:9px;border-radius:50%;margin-right:9px;box-shadow:0 0 18px #8955fc}
+.refresh-wrap{position:sticky;bottom:0;margin:18px -15px -22px;padding:13px 15px 17px;background:linear-gradient(180deg,#08091100,#080911 25%);border-top:1px solid #292b3d}
+.refresh{border:1px solid #a38add;background:#a68aff;color:#171022;width:100%;font-weight:700;border-radius:9px;padding:12px}
+.refresh:hover{background:#c2aaff}.refresh:disabled{opacity:.6;cursor:default}
+.footer{padding:12px 0 18px;text-align:center;font:9px "Geist Mono",monospace;letter-spacing:.03em;color:#7d7d99}
+@media(max-width:380px){.shell{padding:0 11px 18px}.brand strong{font-size:13px}.private{font-size:8px}.tab{padding:10px 8px;font-size:10px}.kpi{padding:10px 7px}.kpi strong{font-size:21px}.chip{font-size:9px}}
+@media(prefers-reduced-motion:no-preference){.hero,.glass,.kpi,.action{transition:border-color .16s ease}.action:hover{border-color:#494061}.refresh{transition:background .16s ease}}
+</style>
+</head>
+<body>
+<main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
+<header class="topbar">
+  <div class="logo" aria-hidden="true">V</div>
+  <div class="brand"><strong>VOLUM</strong><small>INTELLIGENCE / SALES OPS</small></div>
+  <span class="private"><i></i>PRIVADO</span>
+</header>
+<div id="card" class="loading" role="status">Lendo a negociação e as evidências comerciais…</div>
+</main>
+<script>
+const dealId=document.getElementById("volum-root").dataset.dealId;
+let currentData=null;
+let activeTab='visao';
+let activeFilter='todos';
+function val(x){return x===null||x===undefined?'':String(x);}
+function esc(x){return val(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+function safeClass(x){return val(x).replace(/[^a-zA-ZÀ-ÿ_]/g,'').slice(0,35);}
+function display(x){return val(x).replace(/_/g,' ').replace(/NAO /g,'NÃO ').replace(/SEM EVIDENCIA/g,'SEM EVIDÊNCIA');}
+function status(s){return '<span class="status-tag state-'+safeClass(s)+'">'+esc(display(s||'PENDENTE'))+'</span>';}
+function humanDate(x){if(!x)return 'Sem data';const date=new Date(x);return Number.isNaN(date.getTime())?esc(x):new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(date);}
+function section(title,extra){return '<div class="section-head"><h2>'+esc(title)+'</h2><small>'+esc(extra||'')+'</small></div>';}
+function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo)+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe)+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
+function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
+function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
+function tabs(){const list=[['visao','Visão geral'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function overview(d){const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
+html+=section('Próxima melhor ação','Sales Ops');
+html+='<div class="glass"><div class="eyebrow">AÇÃO RECOMENDADA</div><p style="margin:9px 0;font-size:13px;font-weight:600">'+esc(d.proximaAcao||'Validar contexto do lead')+'</p><p class="muted">Como confirmar: '+esc(d.regraDeDecisao||'Obter evidência do resultado')+'</p></div>';
+html+=section('Resumo executivo','Evidências da negociação');
+html+='<div class="glass"><ul class="stack">'+(d.resumoExecutivo||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
+html+=section('Ações priorizadas',rec.length+' recomendações');
+html+='<div class="action-list">'+rec.map(function(x,i){return '<article class="action"><span class="eyebrow">AÇÃO '+(i+1)+'</span> <span class="status-tag '+(x.prioridade==='ALTA'?'state-ATENCAO':'state-INDICIO')+'">'+esc(x.prioridade||'MÉDIA')+'</span><h3>'+esc(x.acao)+'</h3><p>'+esc(x.porQue)+'</p><p class="done"><b>Concluído quando:</b> '+esc(x.criterioConclusao)+'</p></article>'}).join('')+'</div>';
+if(d.mensagemSugerida)html+=section('Mensagem sugerida','Revisar antes de enviar')+'<div class="quote">'+esc(d.mensagemSugerida)+'</div>';
+return html;}
+function counter(d){const c=(d.inteligenciaComercial||{}).contagem||{};const s=(d.planoOtimizacaoSdr||{}).contagem||{};return '<div class="kpis"><div class="kpi alert"><strong>'+Number(c.ATENCAO||0)+'</strong><small>Sinais de atenção</small><em>Inteligência</em></div><div class="kpi proof"><strong>'+Number(c.EVIDENCIADO||0)+'</strong><small>Dados evidenciados</small><em>Fontes consultadas</em></div><div class="kpi unknown"><strong>'+Number(s.NAO_VERIFICAVEL||0)+'</strong><small>SDR sem verificação</small><em>Plano de otimização</em></div></div>';}
+function intelligence(d){const intel=d.inteligenciaComercial||{itens:[],areas:[],contagem:{}};let items=intel.itens||[];let html=section('Inteligência comercial',items.length+' critérios de análise')+'<p class="muted">Cada item considera o histórico disponível. Indício não é prova de conversa; ausência de registro não comprova descumprimento.</p>';
+const filters=[['todos','Todos'],['ATENCAO','Atenção'],['SEM_EVIDENCIA','Sem evidência'],['INDICIO','Indícios'],['NAO_VERIFICAVEL','Não verificável']];
+html+='<div class="filters" role="group" aria-label="Filtrar critérios">'+filters.map(function(x){return '<button type="button" class="filter '+(activeFilter===x[0]?'selected':'')+'" onclick="changeFilter(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</div>';
+items=items.filter(function(x){return activeFilter==='todos'||x.status===activeFilter});
+const areas=intel.areas||[];
+html+=areas.map(function(area,i){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,i===0):''}).join('');
+if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
+return html;}
+function sdr(d){const s=d.planoOtimizacaoSdr||{};const itens=s.itens||[];const oficiais=itens.filter(x=>x.pilar==='OFICIAL');const extras=itens.filter(x=>x.pilar!=='OFICIAL');
+let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares')+'<div class="notice">Avaliação histórica do SDR, inclusive quando o lead já avançou para o closer. A aderência ao pitch exige gravação ou transcrição do SDR; não há pontuação automática.</div>';
+html+='<div class="countbar">'+Number((s.contagem||{}).ATENCAO||0)+' atenção · '+Number((s.contagem||{}).INDICIO||0)+' indícios · '+Number((s.contagem||{}).NAO_VERIFICAVEL||0)+' não verificáveis</div>';
+html+=group('7 pilares do Plano Wisetec',oficiais,true);
+html+=group('9 verificações complementares',extras,false);
+return html;}
+function closer(d){const c=d.criteriosPlanoWisetec||[];let html=section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">Análise orientada pela etapa do CRM. Proposta PDF, recebimento e gravação não são confirmados sem as respectivas fontes.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
+function proof(d){let html=section('Cobertura e rastreabilidade','Auditoria somente leitura')+group('Fontes consultadas',d.fontesCobertura||[],true);
+html+=section('Compliance do processo','Verificações existentes')+group('Sinais operacionais',d.compliance||[],false);
+html+=section('Qualificação registrada','LMV, dor e contexto')+group('Qualificação',d.qualificacao||[],false);
+const evidence=d.evidencias||[];
+html+=section('Últimas evidências','Anotações acessíveis')+'<div class="glass"><ul class="stack">'+(evidence.map(function(x){return '<li class="evidence"><time>'+humanDate(x.data)+' · '+esc(x.fonte)+'</time>'+esc(x.texto)+'</li>'}).join('')||'<li class="muted">Nenhuma evidência textual disponível.</li>')+'</ul></div>';
+html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><ul class="stack">'+(d.limites||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
+return html;}
+function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">LEITURA SALES OPS / '+esc(currentData.versao||'V3')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
+const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
+let body=activeTab==='visao'?overview(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
+document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
+function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
+function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
+function audit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';google.script.run.withSuccessHandler(render).withFailureHandler(function(e){document.getElementById('card').innerHTML='<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+esc(e&&e.message||'Falha temporária na auditoria.')+'</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';}).VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
+audit();
+</script>
+</body>
+</html>
