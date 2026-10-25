@@ -417,3 +417,89 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     ]
   };
 }
+
+/**
+ * Prova de leitura da linha do tempo, restrita ao caso-piloto.
+ * Recupera textos somente dentro do Apps Script para identificar evidencias.
+ * NENHUMA anotacao, contato, nome, gravação ou token retorna ao runner publico.
+ */
+function viLeadResumoPrivado_(resultado) {
+  const atividades = Array.isArray(resultado.atividades) ? resultado.atividades : [];
+  const tarefas = Array.isArray(resultado.tarefas) ? resultado.tarefas : [];
+  const chamadas = Array.isArray(resultado.ligacoesBoard) ? resultado.ligacoesBoard : [];
+  const eventos = Array.isArray(resultado.eventos) ? resultado.eventos : [];
+  const somenteNotas = atividades.filter(a => a.tipo === 'note');
+  const tem = (texto, re) => re.test(String(texto || ''));
+  const provas = {
+    desmarcouOuCancelouReuniao: somenteNotas.filter(a =>
+      tem(a.texto, /\b(?:desmarc|cancel|desistiu da reuni[aã]o|n[aã]o poder[aá] participar|reagend)/i)
+    ).map(a => ({ data: a.data, origem: a.origemClassificacao })).slice(0, 20),
+    anotouNaoAtendeu: somenteNotas.filter(a =>
+      tem(a.texto, /\bn[aã]o (?:atendeu|atende)|sem resposta|n[aã]o respondeu/i)
+    ).map(a => ({ data: a.data, origem: a.origemClassificacao })).slice(0, 20),
+    recoveryDia1Ligacao3: tarefas.filter(t =>
+      tem(t.assunto, /recovery\s*dia\s*1\s*liga(?:ç|c)[aã]o\s*3/i)
+    ).map(t => ({ data: t.concluidaEm || t.previstaPara, concluida: t.concluida })).slice(0, 20)
+  };
+  const tipagem = {};
+  atividades.forEach(item => { tipagem[item.tipo] = (tipagem[item.tipo] || 0) + 1; });
+  const tarefaConclusao = tarefas.filter(t => t.concluida).length;
+  const fonteAtividades = resultado.fontes && resultado.fontes.atividades || {};
+  const cobertura = {};
+  Object.keys(fonteAtividades.porTipo || {}).forEach(tipo => {
+    const p = fonteAtividades.porTipo[tipo] || {};
+    cobertura[tipo] = {
+      acessivel: p.acessivel === true, completo: p.completo === true,
+      registros: Number(p.registros || 0), motivo: String(p.motivo || ''),
+      codigoHttp: String(p.codigoHttp || ''),
+      ignoradosSemVinculo: Number(p.ignoradosSemVinculo || 0)
+    };
+  });
+  return {
+    sucesso: true, modo: 'PREVIEW_SEM_PUBLICACAO', somenteLeitura: true,
+    versao: String(resultado.versao || ''),
+    // O ID/cliente nao precisa sair da aplicacao no comando do GitHub.
+    fontes: {
+      tarefas: resultado.fontes && resultado.fontes.tarefas || {},
+      atividades: {
+        acessivel: fonteAtividades.acessivel === true,
+        completo: fonteAtividades.completo === true,
+        conflitosDeTipo: Number(fonteAtividades.conflitosDeTipo || 0),
+        porTipo: cobertura
+      },
+      board: { ligacoesVinculadas: chamadas.length }
+    },
+    quantidades: {
+      atividades: atividades.length,
+      anotacoes: somenteNotas.length,
+      tarefas: tarefas.length,
+      tarefasConcluidas: tarefaConclusao,
+      chamadasNoBoard: chamadas.length,
+      eventosLinhaTempo: eventos.length,
+      historicoEtapas: (resultado.negociacao && resultado.negociacao.historicoEtapas || []).length
+    },
+    tiposAtividade: tipagem,
+    sinais: {
+      anotacaoCancelamentoOuReagendamento: provas.desmarcouOuCancelouReuniao,
+      anotacaoNaoAtendeu: provas.anotouNaoAtendeu,
+      tarefaRecoveryDia1Ligacao3: provas.recoveryDia1Ligacao3
+    },
+    // Metadados de eventos e datas, nunca o texto real das anotacoes.
+    linhaTempoAmostra: eventos.slice(-25).map(e => ({
+      data: e.data, fonte: e.fonte, tipo: e.tipo
+    })),
+    observacao: 'Conteudo comercial foi analisado apenas em memoria. Nenhuma anotacao foi devolvida ao GitHub.'
+  };
+}
+
+function VOLUM_PREVIEW_LEAD_PRIVADO(entrada) {
+  const id = viLeadId_(entrada);
+  if (id !== '6acc888b98976f0023dc583f') {
+    throw new Error('Piloto restrito a negociacao Beaga Calçados; ID nao autorizado.');
+  }
+  const resultado = VOLUM_ANALISAR_LEAD(id, { incluirTextos: true });
+  if (resultado.modo !== 'SOMENTE_LEITURA') {
+    throw new Error('Modo de coleta invalido: operacao interrompida.');
+  }
+  return viLeadResumoPrivado_(resultado);
+}
