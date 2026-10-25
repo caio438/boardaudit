@@ -65,9 +65,15 @@ assert.equal(resultado.calendario[1].observado.ligacoes,1,'chamada do closer dev
 assert.equal(resultado.calendario[3].estado,'SUSPENSO_POR_CONEXAO');
 assert.equal(resultado.indicadores.ligacoesCloserExcluidas,1);
 assert.equal(resultado.indicadores.chamadasConcluidasNoRdSemCorrespondenciaNoBoard,1);
+const comTarefaCloser=c.viCerebroCadencia_({...ctx,tarefas:ctx.tarefas.concat([
+  {id:'tc',tipo:'call',concluida:true,assunto:'Ligação técnica do closer'}
+])});
+assert.equal(comTarefaCloser.indicadores.chamadasConcluidasNoRdSemCorrespondenciaNoBoard,1,
+  'tarefa vinculada a ligação de closer não pode virar tentativa de SDR');
 assert.notEqual(resultado.calendario[0].estado,'DESVIO');
 const withoutLmvs=c.viCerebroCadencia_({...ctx,regraCadencia:{...ctx.regraCadencia,lmv:'NAO_CONFIRMADO'}});
 assert.equal(withoutLmvs.calendario[0].esperado,null);
+assert.equal(withoutLmvs.calendario.length,3,'sem LMV conhecido mapeia apenas dias observados');
 assert.equal(withoutLmvs.criterios.find(x=>x.id==='perfil').status,'NAO_VERIFICAVEL');
 const robot=c.viCerebroCadencia_({...ctx,regraCadencia:{...ctx.regraCadencia,modoSdr:'ROBO'}});
 assert.equal(robot.calendario[0].esperado,null,'robô não recebe régua de SDR humano');
