@@ -117,6 +117,34 @@ button,input{font:inherit}button{cursor:pointer}
 .operation-action p{color:var(--muted);margin:7px 0}
 .operation-action .done{color:var(--teal);font-size:11px}
 .state-SEM_REGISTRO{background:#3b2532;color:#ffafbf;border-color:#62384b}
+
+/* Plano de Otimização: uma linha recolhida por critério, sem cartões empilhados. */
+.criteria-section{margin:14px 0}
+.criteria-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:15px 0 9px}
+.criteria-section-head h3{font:600 13px "Space Grotesk",sans-serif;margin:0}
+.criteria-section-head small{font:10px "Geist Mono",monospace;color:var(--muted)}
+.criteria-list{display:grid;gap:7px}
+.criteria-tile{border:1px solid #343349;background:#151522;border-radius:9px;overflow:hidden}
+.criteria-tile[open]{border-color:#514467;background:#191729}
+.criteria-tile summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:11px;padding:12px;min-height:46px}
+.criteria-tile summary::-webkit-details-marker{display:none}
+.criteria-tile summary:focus-visible{outline:2px solid var(--violet2);outline-offset:-2px}
+.criteria-tile summary .criterion-name{flex:1;min-width:0;color:#f2ecfb;font:600 12px/1.35 "Space Grotesk",sans-serif;overflow-wrap:anywhere}
+.criteria-tile summary .criterion-chevron{font-size:16px;line-height:1;color:#9f95b4;transition:transform .15s}
+.criteria-tile[open] summary .criterion-chevron{transform:rotate(90deg)}
+.criteria-light{display:inline-grid;place-items:center;flex-shrink:0;border:1px solid;border-radius:50%;width:17px;height:17px;font:700 11px/1 "Geist Mono",monospace}
+.criteria-light.green{color:#64dcb9;background:#153e30;border-color:#327f68}
+.criteria-light.red{color:#ffa09d;background:#43232b;border-color:#95545c}
+.criteria-light.yellow{color:#f4c67f;background:#41341c;border-color:#927643}
+.criteria-light.na{color:#828198;background:#252637;border-color:#444557}
+.criteria-detail{padding:0 13px 13px;border-top:1px solid #343349;font-size:11px;line-height:1.5}
+.criteria-detail p{margin:8px 0;color:#c7c3da;overflow-wrap:anywhere}
+.criteria-detail .criterion-rule{padding:9px 10px;background:#202035;border-radius:6px;color:#e8dcf7}
+.criteria-detail .criterion-proof{padding:9px 10px;background:#13251f;border:1px solid #35594a;border-radius:7px;color:#c2ebd7}
+.criteria-detail .criterion-gap{padding:9px 10px;background:#2a2027;border-left:2px solid #e5a09b;border-radius:0 6px 6px 0;color:#e9c3c1}
+.criteria-detail .criterion-note{color:#9b9ab2;font-size:10px}
+.criteria-legend{font-size:10px;color:#9998ae;line-height:1.5;margin-top:9px}
+
 </style>
 <meta name="volum-history-nonce" content="<?= historyNonce ?>">
 </head>
@@ -142,6 +170,67 @@ function humanDate(x){if(!x)return 'Sem data';const date=new Date(x);return Numb
 function section(title,extra){return '<div class="section-head"><h2>'+esc(title)+'</h2><small>'+esc(extra||'')+'</small></div>';}
 function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo||x.title||x.id||'Critério sem título')+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe||'Sem explicação disponível para este critério.')+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
+// Critérios oficiais: CONFORME só quando a prova satisfaz a regra inteira.
+// Um indicio de atividade continua amarelo, mesmo que o banco marque
+// "EVIDENCIADO" apenas porque um registro existe.
+const CRITERIOS_VERDE={
+  cadencia:'Sequência de tentativas efetivamente registradas por dia útil, canal e resultado, respeitando a versão da régua e a pausa após resposta/agendamento.',
+  voip:'Registro efetivo de ligação pela telefonia/VoIP associado ao negócio e ao SDR, não somente tarefa de ligação criada ou concluída.',
+  pitch:'Transcrição ou gravação atribuída ao SDR demonstrando as perguntas obrigatórias e a condução do pitch vigente.',
+  no_show:'No-show registrado e tentativas de reagendamento realizadas nos prazos e canais da cadência correspondente; caso não exista no-show, não se aplica.',
+  handoff:'Nota de passagem com SDR, Closer, LMV validado, segmento, dor, resumo, responsável e data/link do compromisso.',
+  registros:'Cada tentativa concluída tem resultado documentado, canal, data e próximo passo ou motivo de encerramento.',
+  tarefas:'Tarefas com responsável, vencimento e desfecho; nenhuma tarefa vencida sem justificativa e execução dentro do prazo estabelecido.',
+  segmento:'Segmento preenchido com valor específico antes da passagem para agenda.',
+  lmv:'LMV/faturamento validado com o comprador e valor ou faixa registrados antes do avanço.',
+  qualificacao:'Necessidade, motivação e contexto da dor documentados e úteis ao Closer.',
+  agenda:'Data, horário, participantes, Closer e acesso da reunião registrados, com compromisso aceito.',
+  confirmacao:'Resposta positiva do comprador ou aceite do convite com data; apenas enviar o convite não comprova confirmação.',
+  valor_reuniao:'A gravação/transcrição demonstra que o SDR explicou concretamente o valor da reunião.',
+  horarios:'A gravação/transcrição comprova a oferta das duas opções de horário previstas no pitch.',
+  primeiro_registro:'A primeira tentativa real está identificada e dentro do SLA aprovado, com calendário e feriados corretos; criar tarefa não basta.',
+  resultado_ligacao:'Para cada ligação realizada, existe resultado ou outcome registrado na negociação.',
+  gravacao:'Link de gravação real, recuperável e relacionado à reunião efetiva, registrado na anotação ou formalização.',
+  anotacao:'Anotação estruturada da reunião com diagnóstico, entendimento, fechamento, compromissos, gravação e próximo follow-up.',
+  proposta_pdf:'PDF da proposta comercial anexado ao negócio na aba Arquivos, identificável e correspondente à negociação.',
+  proximo_passo:'Tarefa posterior à reunião com responsável, data/hora e próximo passo explicitamente acordado com o comprador.',
+  valores:'Valores da proposta preenchidos na negociação e consistentes com os valores documentados no PDF enviado.',
+  recebimento:'Confirmação positiva registrada pelo comprador após envio da proposta; pergunta “chegou?” não é confirmação.',
+  followup:'Todos os passos aplicáveis e já vencidos da cadência de follow-up têm evento de execução, com canal, horário, resultado e próximo compromisso.'
+};
+function criterionLight(item){
+  const raw=String(item.conformidade||item.complianceEstado||'').toUpperCase();
+  if(raw==='CONFORME')return {cls:'green',label:'Conforme',glyph:'✓'};
+  if(raw==='NAO_CONFORME'||raw==='DESVIO_CONFIRMADO')return {cls:'red',label:'Desvio confirmado',glyph:'!'};
+  if(raw==='NAO_APLICAVEL'||String(item.status||'').toUpperCase()==='NAO_APLICAVEL')
+    return {cls:'na',label:'Não aplicável',glyph:'—'};
+  // Nunca converter EVIDENCIADO em aprovação integral: fonte pode provar
+  // apenas uma parte do checklist.
+  return {cls:'yellow',label:'Verificação parcial ou pendente',glyph:'?'};
+}
+function criterionCard(item){
+  const x=item||{},light=criterionLight(x),titulo=x.titulo||x.title||x.id||'Critério sem título';
+  const required=x.paraFicarVerde||CRITERIOS_VERDE[x.id]||x.regraComprovacao||'Cumprir a obrigação aplicável, dentro do prazo, com evidência no CRM.';
+  const detail=String(x.detalhe||x.explicacao||'Sem explicação disponível para este critério.');
+  const evidence=String(x.evidencia||'');
+  const action=String(x.acao||x.proximaValidacao||'');
+  const origin=String(x.fonte||x.referencia||'Histórico do RD');
+  return '<details class="criteria-tile"><summary>'+
+    '<span class="criteria-light '+light.cls+'" role="img" aria-label="'+esc(light.label)+'" title="'+esc(light.label)+'">'+esc(light.glyph)+'</span>'+
+    '<span class="criterion-name">'+esc(titulo)+'</span><span class="criterion-chevron" aria-hidden="true">›</span></summary>'+
+    '<div class="criteria-detail"><p class="criterion-rule"><b>Para ficar verde:</b> '+esc(required)+'</p>'+
+    '<p><b>Diagnóstico atual:</b> '+esc(detail)+'</p>'+
+    (evidence?'<p class="criterion-proof"><b>Evidência:</b> '+esc(evidence)+'</p>':'')+
+    (action?'<p class="criterion-gap"><b>O que falta / próximo ajuste:</b> '+esc(action)+'</p>':'')+
+    '<p class="criterion-note">Fonte: '+esc(origin)+
+      ' · Resultado: '+esc(light.label)+'</p></div></details>';
+}
+function criterionSection(title,items){
+  const list=Array.isArray(items)?items:[];
+  return '<div class="criteria-section"><div class="criteria-section-head"><h3>'+
+    esc(title)+'</h3><small>'+list.length+' critérios</small></div>'+
+    '<div class="criteria-list">'+list.map(criterionCard).join('')+'</div></div>';
+}
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function rdMomento(x){
