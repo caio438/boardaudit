@@ -31,6 +31,11 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     resumo:recorteRd.resumo||{},
     cobertura:recorteRd.cobertura||{},
     inconsistencias:recorteRd.inconsistencias||[],
+    eventosForaDasJanelas:(recorteRd.eventosSemEtapa||[]).slice(-30).map(function(e){
+      return {data:e.data,acao:e.acao,id:e.id||'',fonte:e.fonte,
+        assunto:String(e.assunto||'').slice(0,140),
+        texto:String(e.texto||'').slice(0,240)};
+    }),
     janelas:(recorteRd.janelas||[]).map(function(j) {
       return {
         passagemId:j.passagemId,visita:j.visita,etapaId:j.etapaId,
