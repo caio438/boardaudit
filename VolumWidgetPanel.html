@@ -232,7 +232,7 @@ function criterionSection(title,items){
     '<div class="criteria-list">'+list.map(criterionCard).join('')+'</div></div>';
 }
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
-function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['conexao','Agente CONEXÃO'],['agenda','Agente AGENDA'],['reuniao','Agente REUNIÃO'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
   d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}
 function agentReadiness(d,key){
@@ -291,6 +291,47 @@ html+=agentReadiness(d,'cadencia');
       fonte:'Calendário Brasil / fontes RD e Board',
       acao:'Confirmar cobertura e motivo da pausa; não é desvio automático.'};
   }),false);
+  html+='<p class="small">'+esc(agente.limite||'')+'</p>';
+  return html;
+}
+function journeyAgent(d,nome,chave,titulo,subtitulo){
+  const agente=(d.agentesDetalhados||[]).find(x=>x.agente===nome);
+  let html=section(titulo,subtitulo);
+  if(!agente)return html+'<p class="muted">A auditoria desta fase nao foi disponibilizada no payload.</p>';
+  html+='<div class="notice">O agente diferencia evento registrado, indicio e comprovação do processo. Um criterio com evidência parcial ainda não está aprovado. Sem regras homologadas e fontes completas, não existe nota de compliance.</div>';
+  html+=agentReadiness(d,chave);
+  const m=agente.indicadores||{};
+  const indicadores=nome==='CONEXAO'?[
+    ['Ligações técnicas SDR / sem papel',m.ligacoesTecnicasSdrOuSemPapel],
+    ['Gravações referenciadas',m.ligacoesComGravacao],
+    ['Transcrições com metadados',m.transcricoesReferenciadas],
+    ['Primeira resposta registrada',m.primeiraRespostaRegistradaEm?rdMomento(m.primeiraRespostaRegistradaEm):'Não confirmada']
+  ]:nome==='AGENDA'?[
+    ['Reuniões no calendário',m.calendarioReunioes],
+    ['Tarefas de reunião',m.tarefasReuniao],
+    ['No-show por status no calendário',m.noShowsComStatusNoCalendario],
+    ['Notas de no-show (não deduplicadas)',m.anotacoesNoShowNaoDeduplicadas],
+    ['Intervalo até reunião',m.horasEntreAgendamentoEReuniao===null?'Não medido':m.horasEntreAgendamentoEReuniao+' h']
+  ]:[
+    ['Reuniões realizadas (status calendário)',m.reunioesRealizadasRegistradas],
+    ['Gravação referenciada',m.gravacaoComReferencia?'Sim':'Não comprovada'],
+    ['Transcrição referenciada',m.transcricaoReferenciada?'Sim':'Não comprovada'],
+    ['E-mail de formalização',m.emailFormalizacaoEnviado?'Evento de envio':'Não comprovado'],
+    ['Tarefas de follow-up',m.tarefasFollowup]
+  ];
+  html+='<div class="glass"><div class="eyebrow">INDICADORES OPERACIONAIS</div><ul class="stack">'+
+    indicadores.map(function(x){return '<li>'+esc(x[0])+': <b>'+esc(x[1]===undefined?'Não disponível':x[1])+'</b></li>';}).join('')+'</ul></div>';
+  html+=criterionSection('Auditoria da etapa',agente.criterios||[]);
+  const a=(agente.recomendacoes||[]).slice(0,4);
+  if(a.length){
+    html+=section('Próximas verificações','Orientação Sales Ops baseada na etapa');
+    html+='<div class="action-list">'+a.map(function(x){
+      return '<div class="action"><h3>'+esc(x.titulo||'Validação necessária')+'</h3>'+
+        '<p>'+esc(x.acao||'Conferir o registro na fonte')+'</p>'+
+        (x.evidencia?'<p class="small">Referência: '+esc(x.evidencia)+'</p>':'')+
+        '<p class="small">Fonte: '+esc(x.origem||'RD / Board')+'</p></div>';
+    }).join('')+'</div>';
+  }
   html+='<p class="small">'+esc(agente.limite||'')+'</p>';
   return html;
 }
@@ -599,7 +640,7 @@ const notice=currentData.diagnosticoRdOperacional?
  'Leitura de execução do Histórico RD, com origem, autor e etapa. Não confunda abertura de WhatsApp, tarefa concluída ou convite com conversa realizada.':
  'Aguardando História visual completa do RD para evitar recomendações sem contexto.')+'</div>':
 '<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
-let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='cadencia'?cadenceAgent(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
+let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='lead'?leadAgent(currentData):activeTab==='cadencia'?cadenceAgent(currentData):activeTab==='conexao'?journeyAgent(currentData,'CONEXAO','conexao','Agente CONEXÃO','Canal, qualificação, LMV e handoff'):activeTab==='agenda'?journeyAgent(currentData,'AGENDA','agenda','Agente AGENDA','Convite, confirmação, no-show e recovery'):activeTab==='reuniao'?journeyAgent(currentData,'REUNIAO','reuniao','Agente REUNIÃO','Execução, gravação e continuidade'):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
