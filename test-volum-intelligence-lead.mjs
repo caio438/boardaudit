@@ -52,3 +52,16 @@ assert.equal(preview.sinais.tarefaRecoveryDia1Ligacao3.length,1);
 assert.ok(!JSON.stringify(preview).includes('PRIVADO'), 'Preview nao pode vazar anotacoes.');
 assert.ok(!JSON.stringify(preview).includes('sensitive'), 'Preview nao pode vazar identificadores de eventos.');
 console.log('Preview privado e classificacao por tipos aprovados em mocks.');
+
+const jornada=ctx.viLeadResumirJornadaRows_(
+ [{ID_REUNIAO:'r1',ID_CLIENTE:'c1',ID_INTERACAO:'i1',ID_TRANSCRICAO:'tr1',INICIO:'2026-10-24T10:00:00Z',STATUS:'REALIZADA',RESULTADO_REUNIAO:'REALIZADA',GRAVACAO_URL:'https://privado',TRANSCRICAO_URL:'https://privado/t'}],
+ [{ID_FORMALIZACAO:'f1',ID_INTERACAO:'i1',ID_TRANSCRICAO:'tr1',STATUS:'ENVIADA',RESULTADO_JSON:'segredo'}],
+ ['i1'],['tr1'],'c1'
+);
+assert.equal(jornada.reunioes.length,1);
+assert.equal(jornada.reunioes[0].gravacaoReferenciada,true);
+assert.equal(jornada.formalizacoes.length,1);
+assert.ok(!JSON.stringify(jornada).includes('privado'));
+assert.ok(!JSON.stringify(jornada).includes('segredo'));
+assert.equal(ctx.viLeadLinhaTempo_([],[],[],[],[],jornada.reunioes,jornada.formalizacoes).some(x=>x.tipo==='REUNIAO_CALENDARIO_REGISTRADA'),true);
+console.log('Metadados de jornada vinculados sem expor URL, conteúdo ou resultado textual.');

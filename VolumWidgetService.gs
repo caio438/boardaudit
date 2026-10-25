@@ -1029,8 +1029,13 @@ function viWidgetPlaybookSalesOps_(leitura,parecer) {
   const conversa=/(?:cliente|lead|prospect)\s+(?:respondeu|retornou|confirmou|conversou|falou)|(?:falamos|conversamos)\s+com/.test(texto);
   const qual=(parecer.qualificacao||[]).filter(x=>x.status==='INDICIO'||x.status==='EVIDENCIADO').length;
   const proxima=tarefas.some(t=>t&&!t.concluida&&t.previstaPara&&Number.isFinite(Date.parse(t.previstaPara)));
-  const gravacao=emails.some(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|meet\.google|teams\.microsoft)/.test(viWidgetNormalizar_(a.texto)));
-  const formalizacao=emails.some(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/.test(viWidgetNormalizar_(a.texto)))||atividades.some(a=>String((a||{}).tipo||'').toLowerCase()==='proposal');
+  const reunioesCalendario=Array.isArray(leitura.reunioesCalendarioBoard)?leitura.reunioesCalendarioBoard:[];
+  const formalizacoesBoard=Array.isArray(leitura.formalizacoesBoard)?leitura.formalizacoesBoard:[];
+  const gravacaoEmail=emails.some(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|meet\.google|teams\.microsoft)/.test(viWidgetNormalizar_(a.texto)));
+  const gravacaoBoard=reunioesCalendario.some(r=>r&&(r.gravacaoReferenciada||r.transcricaoReferenciada));
+  const reuniaoRegistrada=reunioesCalendario.length>0;
+  const gravacao=gravacaoEmail||gravacaoBoard;
+  const formalizacao=emails.some(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/.test(viWidgetNormalizar_(a.texto)))||atividades.some(a=>String((a||{}).tipo||'').toLowerCase()==='proposal')||formalizacoesBoard.length>0;
   const item=(id,titulo,status,detalhe,acao,referencia)=>({id,titulo,status,detalhe,acao,referencia});
   const etapas=[
     item('contexto','1. Contexto e responsável',etapa.indice>=0?'EVIDENCIADO':'NAO_VERIFICAVEL',etapa.indice>=0?'Etapa do CRM identificada.':'Etapa ou funil não confirmados.','Confirmar etapa, responsável e regra aplicável.','RD · negociação'),
@@ -1038,8 +1043,8 @@ function viWidgetPlaybookSalesOps_(leitura,parecer) {
     item('conexao','3. Conexão efetiva',conversa?'INDICIO':'NAO_VERIFICAVEL',conversa?'O histórico sugere resposta/conversa; validar no canal.':'Duração, tarefa ou tentativa não comprovam diálogo.','Confirmar resultado, canal e conteúdo antes de tratar como contato efetivo.','RD · atividades / gravações'),
     item('qualificacao','4. Qualificação para avanço',qual>=2?'INDICIO':'NAO_VERIFICAVEL',qual>=2?qual+' campo(s) de qualificação possuem indício textual.':'Contexto insuficiente para afirmar qualificação ou desqualificação.','Registrar dor, capacidade, decisor e critério de avanço.','RD · anotações'),
     item('continuidade','5. Acordo e próximo passo',proxima?'INDICIO':'NAO_VERIFICAVEL',proxima?'Existe tarefa futura datada; o aceite do cliente não está comprovado.':'Não foi recuperado próximo passo aberto e datado.','Confirmar responsável, data, canal e resultado esperado.','RD · tarefas'),
-    item('reuniao','6. Reunião e passagem de bastão',etapa.indice<4?'NAO_APLICAVEL':gravacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<4?'Ainda não é etapa de reunião/closer.':gravacao?'Há referência de gravação em e-mail; validar reunião e conteúdo.':'Não há prova suficiente de reunião, handoff ou pitch.','Validar realização, resumo da qualificação, closer e próximo acordo.','RD · e-mail / transcrição'),
-    item('proposta','7. Formalização, proposta e recovery',etapa.indice<5?'NAO_APLICAVEL':formalizacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<5?'Ainda não é etapa de proposta/follow-up.':formalizacao?'Há sinal de formalização; não confirma entrega, recebimento ou aceite.':'Não foi localizada evidência de formalização.','Conferir documento, destinatário, recebimento, feedback e cadência.','RD · e-mail / propostas')
+    item('reuniao','6. Reunião e passagem de bastão',etapa.indice<4?'NAO_APLICAVEL':gravacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<4?'Ainda não é etapa de reunião/closer.':gravacao?(gravacaoBoard?'Há metadado de reunião com gravação/transcrição referenciada; validar realização e conteúdo.':'Há referência de gravação em e-mail; validar reunião e conteúdo.'):reuniaoRegistrada?'Há reunião vinculada no board; sem evidência de conteúdo, handoff ou pitch.':'Não há prova suficiente de reunião, handoff ou pitch.','Validar realização, resumo da qualificação, closer e próximo acordo.','RD · e-mail / transcrição'),
+    item('proposta','7. Formalização, proposta e recovery',etapa.indice<5?'NAO_APLICAVEL':formalizacao?'INDICIO':'NAO_VERIFICAVEL',etapa.indice<5?'Ainda não é etapa de proposta/follow-up.':formalizacao?(formalizacoesBoard.length?'Há registro de formalização associado; não confirma entrega, recebimento ou aceite.':'Há sinal de formalização; não confirma entrega, recebimento ou aceite.'):'Não foi localizada evidência de formalização.','Conferir documento, destinatário, recebimento, feedback e cadência.','RD · e-mail / propostas')
   ];
   const atual=etapa.indice>=5?etapas[6]:etapa.indice>=4?etapas[5]:etapa.indice>=3?etapas[4]:etapa.indice>=2?etapas[3]:etapa.indice>=1?etapas[2]:etapas[0];
   return {versao:'VOLUM_SALES_OPS_PLAYBOOK_V1',modelo:'EVIDENCIA_POR_ETAPA',compliance:'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA',
