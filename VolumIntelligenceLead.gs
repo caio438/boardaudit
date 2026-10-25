@@ -311,6 +311,7 @@ function viLeadMetadadosTranscricoesBoard_(idsInteracoes) {
       retorno[id] = {
         status:status || 'NAO_INFORMADO',
         temConteudo:status === 'CONCLUIDA' && chars > 0,
+        idTranscricao:String(colunas.ID_TRANSCRICAO[i] || '').trim(),
         referenciaConfirmada:Boolean(colunas.ID_TRANSCRICAO[i]),
         tamanhoCaracteres:Math.max(0,chars)
       };
@@ -324,6 +325,68 @@ function viLeadMetadadosTranscricoesBoard_(idsInteracoes) {
     }};
   } catch (erro) {
     return {porInteracao:{},fonte:Object.assign({},vazio.fonte,{motivo:'FALHA_LEITURA'})};
+  }
+}
+
+
+/**
+ * Resume metadados de reunião/formalização sem retornar URL, participante,
+ * conteúdo de transcrição ou resultado textual. Vínculo é estritamente por
+ * ID de interação/transcrição já associado ao mesmo cliente.
+ */
+function viLeadResumirJornadaRows_(reunioes, formalizacoes, idsInteracoes, idsTranscricoes, idCliente) {
+  const interacoes = new Set((idsInteracoes || []).map(String).filter(Boolean));
+  const transcricoes = new Set((idsTranscricoes || []).map(String).filter(Boolean));
+  const cliente = String(idCliente || '').trim();
+  const pertence = function(item) {
+    if (!item) return false;
+    if (cliente && String(item.ID_CLIENTE || '').trim() && String(item.ID_CLIENTE || '').trim() !== cliente) return false;
+    return interacoes.has(String(item.ID_INTERACAO || '').trim()) ||
+      transcricoes.has(String(item.ID_TRANSCRICAO || '').trim());
+  };
+  const reunioesVinculadas = (Array.isArray(reunioes) ? reunioes : []).filter(pertence).map(function(item) {
+    const resultado = String(item.RESULTADO_REUNIAO || '').trim();
+    return {
+      id:String(item.ID_REUNIAO || '').trim(),
+      idInteracao:String(item.ID_INTERACAO || '').trim(),
+      idTranscricao:String(item.ID_TRANSCRICAO || '').trim(),
+      data:viLeadDataIso_(item.INICIO || item.FIM),
+      status:String(item.STATUS || '').trim().toUpperCase() || 'NAO_INFORMADO',
+      resultadoRegistrado:Boolean(resultado),
+      gravacaoReferenciada:Boolean(String(item.GRAVACAO_URL || '').trim()),
+      transcricaoReferenciada:Boolean(String(item.TRANSCRICAO_URL || item.ID_TRANSCRICAO || '').trim()),
+      origem:'REUNIOES_CALENDARIO'
+    };
+  });
+  const formalizacoesVinculadas = (Array.isArray(formalizacoes) ? formalizacoes : []).filter(pertence).map(function(item) {
+    return {
+      id:String(item.ID_FORMALIZACAO || item.ID || '').trim(),
+      idInteracao:String(item.ID_INTERACAO || '').trim(),
+      idTranscricao:String(item.ID_TRANSCRICAO || '').trim(),
+      status:String(item.STATUS || '').trim().toUpperCase() || 'NAO_INFORMADO',
+      origem:'FORMALIZACOES_REUNIAO'
+    };
+  });
+  return {reunioes:reunioesVinculadas,formalizacoes:formalizacoesVinculadas,
+    fonteReunioes:{acessivel:true,completo:true,origem:'REUNIOES_CALENDARIO',vinculadas:reunioesVinculadas.length,
+      comResultado:reunioesVinculadas.filter(function(x){return x.resultadoRegistrado;}).length,
+      comGravacao:reunioesVinculadas.filter(function(x){return x.gravacaoReferenciada;}).length,
+      comTranscricaoReferenciada:reunioesVinculadas.filter(function(x){return x.transcricaoReferenciada;}).length},
+    fonteFormalizacoes:{acessivel:true,completo:true,origem:'FORMALIZACOES_REUNIAO',vinculadas:formalizacoesVinculadas.length}};
+}
+
+function viLeadMetadadosJornadaBoard_(idsInteracoes, idsTranscricoes, idCliente) {
+  const vazio={reunioes:[],formalizacoes:[],
+    fonteReunioes:{acessivel:false,completo:false,origem:'REUNIOES_CALENDARIO',vinculadas:0},
+    fonteFormalizacoes:{acessivel:false,completo:false,origem:'FORMALIZACOES_REUNIAO',vinculadas:0}};
+  try {
+    // As linhas são transformadas imediatamente em metadados mínimos; a função
+    // não devolve textos, URLs, participantes ou RESULTADO_JSON.
+    const reunioes=lerObjetos_(APP.sheets.reunioesCalendario);
+    const formalizacoes=lerObjetos_(APP.sheets.formalizacoes);
+    return viLeadResumirJornadaRows_(reunioes, formalizacoes, idsInteracoes, idsTranscricoes, idCliente);
+  } catch (erro) {
+    return vazio;
   }
 }
 
@@ -342,7 +405,7 @@ function viLeadHistoricoEtapas_(negociacao) {
     }).sort((a, b) => a.inicio.localeCompare(b.inicio));
 }
 
-function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard) {
+function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, reunioesCalendario, formalizacoes) {
   const eventos = [];
   atividades.forEach(a => {
     if (!a.data) return;
@@ -358,6 +421,12 @@ function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard)
   ligacoes.forEach(l => { if (l.data) eventos.push({ data: l.data, fonte: 'BOARD_API4COM', tipo: 'LIGACAO_REGISTRADA', ref: l.tarefaId || l.id }); });
   (Array.isArray(reunioesBoard) ? reunioesBoard : []).forEach(r => {
     if(r.data) eventos.push({data:r.data,fonte:'BOARD_REUNIAO',tipo:'REUNIAO_REGISTRADA',ref:r.id});
+  });
+  (Array.isArray(reunioesCalendario) ? reunioesCalendario : []).forEach(r => {
+    if(r.data) eventos.push({data:r.data,fonte:'BOARD_REUNIOES_CALENDARIO',tipo:'REUNIAO_CALENDARIO_REGISTRADA',ref:r.id});
+  });
+  (Array.isArray(formalizacoes) ? formalizacoes : []).forEach(f => {
+    eventos.push({data:'',fonte:'BOARD_FORMALIZACOES',tipo:'FORMALIZACAO_REGISTRADA',ref:f.id});
   });
   etapas.forEach(e => { if (e.inicio) eventos.push({ data: e.inicio, fonte: 'RD_NEGOCIACAO', tipo: 'ENTRADA_ETAPA', ref: e.etapaId }); });
   return eventos.sort((a, b) => a.data.localeCompare(b.data));
@@ -486,6 +555,16 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   const ligacoes = comMetadados.filter(function(x) {return x.tipo==='LIGACAO';});
   const reunioesBoard = comMetadados.filter(function(x) {return x.tipo==='REUNIAO' || x.tipo==='MEETING';});
   fontes.transcricoesBoard = metadadosTranscricoes.fonte;
+  const metadadosJornada = viLeadMetadadosJornadaBoard_(
+    comMetadados.map(function(item) { return item.id; }),
+    Object.keys(metadadosTranscricoes.porInteracao).map(function(id) {
+      const item = metadadosTranscricoes.porInteracao[id] || {};
+      return String(item.idTranscricao || '');
+    }).filter(Boolean),
+    vinculo.idCliente
+  );
+  fontes.reunioesCalendarioBoard = metadadosJornada.fonteReunioes;
+  fontes.formalizacoesBoard = metadadosJornada.fonteFormalizacoes;
 
   // A API v1 pode devolver a negociação apenas com o ID da etapa.
   // Resolver pelo endpoint oficial GET /deal_stages/{id} somente se necessário.
@@ -513,7 +592,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
 
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
-  const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard);
+  const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, metadadosJornada.reunioes, metadadosJornada.formalizacoes);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at) };
 
@@ -542,6 +621,8 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     anotacoes: atividades.filter(a => a.tipo === 'note'),
     ligacoesBoard: ligacoes,
     reunioesBoard: reunioesBoard,
+    reunioesCalendarioBoard: metadadosJornada.reunioes,
+    formalizacoesBoard: metadadosJornada.formalizacoes,
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
       'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
