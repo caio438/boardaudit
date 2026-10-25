@@ -6,12 +6,14 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.1.0'
+  versao: '0.2.0'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
-  const email = String(identidade || '').trim().toLowerCase();
-  if (VOLUM_WIDGET.emailsAutorizados.indexOf(email) < 0) {
+  const email = viWidgetEmailSessao_();
+  const emailSolicitado = String(identidade || '').trim().toLowerCase();
+  if (VOLUM_WIDGET.emailsAutorizados.indexOf(email) < 0 ||
+      (emailSolicitado && emailSolicitado !== email)) {
     throw new Error('Acesso privado nao autorizado para esta widget.');
   }
   const leitura = VOLUM_ANALISAR_LEAD(dealId, { incluirTextos: true });
@@ -20,61 +22,238 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetParecerDeterministico_(leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
-  if (usarGemini && parecer.contextoIa.length) {
-    parecer.interpretacao = viWidgetInterpretarGemini_(parecer.contextoIa, dealId);
+  if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
+    try {
+      parecer.interpretacao = viWidgetInterpretarGemini_(parecer.contextoIa, dealId);
+    } catch (e) {
+      parecer.interpretacao = {disponivel:false,motivo:'IA_INDISPONIVEL'};
+    }
   }
   delete parecer.contextoIa;
   return parecer;
 }
 
+
+function viWidgetNormalizar_(valor) {
+  return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function viWidgetEtapa_(nome) {
+  const etapa = viWidgetNormalizar_(nome);
+  const mapa = [
+    [/recovery|retomada|recuperacao|follow|proposta|negociacao/, 5, 'FOLLOW-UP / RECOVERY'],
+    [/reuniao|apresentacao|demonstracao/, 4, 'REUNIÃO / CLOSER'],
+    [/agenda|agendad/, 3, 'AGENDA'],
+    [/contato feito|conexao|qualific|interesse/, 2, 'CONEXÃO'],
+    [/sem contato|cadencia|tentativa/, 1, 'CADÊNCIA'],
+    [/lead|entrada|novo/, 0, 'LEAD']
+  ];
+  if (/perdid|ganh|encerrad|finalizad/.test(etapa)) return {indice:6, agente:'NEGOCIAÇÃO ENCERRADA'};
+  const achada = mapa.find(x => x[0].test(etapa));
+  return achada ? {indice:achada[1], agente:achada[2]} :
+    {indice:-1, agente:'ETAPA NÃO MAPEADA'};
+}
+
+function viWidgetCampo_(anotacoes, regex) {
+  for (let i = anotacoes.length - 1; i >= 0; i--) {
+    const resultado = anotacoes[i].texto.match(regex);
+    if (resultado && resultado[1] && resultado[1].trim().length >= 2) {
+      return {texto:viWidgetSanitizar_(resultado[1].trim()).slice(0,90),
+        data:anotacoes[i].data, fonte:anotacoes[i].fonte};
+    }
+  }
+  return null;
+}
+
 function viWidgetParecerDeterministico_(leitura) {
   const ats = Array.isArray(leitura.atividades) ? leitura.atividades : [];
-  const ts = Array.isArray(leitura.tarefas) ? leitura.tarefas : [];
-  const calls = Array.isArray(leitura.ligacoesBoard) ? leitura.ligacoesBoard : [];
-  const txt = ats.filter(a => a.textoDisponivel).map(a => ({data:a.data,fonte:a.tipo,texto:viWidgetSanitizar_(a.texto)})).filter(a=>a.texto);
-  const corpus = txt.map(x=>x.texto).join('\n').toLowerCase();
-  const has = re => re.test(corpus);
-  const concorrente=has(/\b(outra empresa|concorrente|j[aá] resolvi|contratamos|contratei)\b/i);
-  const cancelou=has(/\b(desmarc|cancel|reagend|n[aã]o poder)\b/i);
-  const respondeu=has(/\b(obrigad|j[aá]|sim|n[aã]o|resolvi|empresa|contrat)/i);
-  const campo=re=>{const x=corpus.match(re);return x?x[0].slice(0,150):'';};
-  const lmv=campo(/(?:faturamento|receita|fatura)[^\n]{0,80}/i);
-  const dor=campo(/(?:dor|problema|dificuldade|precisa|busca|objetivo)[^\n]{0,100}/i);
-  const sistema=campo(/(?:sistema atual|erp|software|usa(?:m)?)[^\n]{0,80}/i);
-  const decisor=campo(/(?:s[oó]cio|decisor|respons[aá]vel|diretor|propriet[aá]rio)[^\n]{0,80}/i);
-  const pitch=has(/\b(apresent|demonstra|mostrei|solu[cç][aã]o|como funcion)/i);
-  const nomeEtapa=String((leitura.negociacao||{}).etapaAtualNome||(leitura.negociacao||{}).etapaAtualId||'Etapa não identificada');
-  const normal=nomeEtapa.normalize?nomeEtapa.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase():nomeEtapa.toLowerCase();
-  const rota=[[/lead|entrada|novo/,0,'LEAD'],[/cadenc/,1,'CADÊNCIA'],[/identific|interesse|conex/,2,'CONEXÃO'],[/agenda|agend/,3,'AGENDA'],[/reuniao|reuni/,4,'REUNIÃO / CLOSER'],[/proposta|follow|recovery|recuper/,5,'FOLLOW-UP / RECOVERY']];
-  const e=rota.filter(x=>x[0].test(normal))[0]||rota[2];
-  const lote={};ts.filter(t=>t.concluida&&t.concluidaEm).forEach(t=>{const k=String(t.concluidaEm).slice(0,16);lote[k]=(lote[k]||0)+1;});
-  const tarefasEmLote=Object.keys(lote).some(k=>lote[k]>=3);
-  const callsOk=calls.filter(c=>Number(c.duracaoSegundos)>0||c.temReferenciaGravacao).length;
-  const naoAtendeu=txt.filter(x=>/\bn[aã]o atendeu|sem resposta\b/i.test(x.texto)).length;
-  const check=(titulo,ok,detalhe)=>({titulo:titulo,status:ok?'OK':'PENDENTE',detalhe:detalhe});
-  const plano=concorrente?{
-    status:'ATENÇÃO · NEGATIVA POR CONCORRENTE',
-    acao:'Faça uma única tentativa contextual para entender se a solução escolhida cobre a dor original.',
-    mensagem:'Entendi que vocês resolveram com outra empresa e não quero insistir sem sentido. A solução escolhida já cobre totalmente o ponto que motivou seu contato? Se houver algo em aberto, posso mostrar em 10 minutos como tratamos isso. Se estiver resolvido, organizo um retorno futuro sem te incomodar agora.',
-    regra:'Se houver abertura, validar qualificação antes de agendar. Sem abertura ou sem resposta após essa tentativa, registrar perda por concorrente ou pausa controlada.'
-  }:cancelou?{
-    status:'ATENÇÃO · REUNIÃO/AGENDA EM RISCO',acao:'Confirmar novo horário e registrar o motivo do reagendamento antes de retomar cadência.',
-    mensagem:'Vi que a reunião precisou ser ajustada. Qual período funciona melhor para retomarmos, e existe algo que eu possa preparar para tornar a conversa mais objetiva?',
-    regra:'Sem novo horário confirmado, não considerar reunião como agendada nem avançar a etapa.'
-  }:respondeu&&!lmv?{
-    status:'ATENÇÃO · QUALIFICAÇÃO INCOMPLETA',acao:'Concluir LMV, dor, sistema atual e decisor antes de sugerir agenda.',
-    mensagem:'Para eu entender se faz sentido avançar: qual é o faturamento médio mensal, como vocês resolvem isso hoje e qual impacto esse ponto tem na operação?',
-    regra:'Não avançar para Agenda sem LMV e pitch evidenciados.'
-  }:{status:'EM ANDAMENTO · PRÓXIMA AÇÃO DE ETAPA',acao:'Executar a próxima ação prevista para a etapa atual, registrando canal e resultado.',mensagem:'',regra:'Reavaliar quando houver nova evidência comercial ou mudança de etapa.'};
-  const comp=[
-    check('Entrada e cadência inicial',ats.length>0||ts.length>0,(ats.length||ts.length)?'Há atividade registrada.':'Sem atividade recuperada.'),
-    check('Tentativa de contato comprovada',callsOk>0||respondeu,respondeu?'Resposta do lead registrada.':callsOk?'Ligação com evidência.':'Não comprovada.'),
-    check('Agenda liberada',pitch&&Boolean(lmv),pitch&&lmv?'Pitch e LMV evidenciados.':'Exige pitch e LMV confirmados.'),
-    check('Registro confiável de tarefas',!tarefasEmLote,tarefasEmLote?'Conclusões em lote não contam como tentativas comprovadas.':'Sem padrão de lote relevante.')
+  const tarefas = Array.isArray(leitura.tarefas) ? leitura.tarefas : [];
+  const chamadas = Array.isArray(leitura.ligacoesBoard) ? leitura.ligacoesBoard : [];
+  const fontes = leitura.fontes || {};
+  const fonteAtividades = fontes.atividades || {};
+  const fonteTarefas = fontes.tarefas || {};
+  const nomeEtapa = String((leitura.negociacao || {}).etapaAtualNome || '');
+  const etapa = viWidgetEtapa_(nomeEtapa);
+  const faseCloser = etapa.indice >= 4 && etapa.indice <= 5;
+  const resumo = [];
+  const anotacoes = ats
+    .filter(x => x && x.textoDisponivel && ['note','response','messenger','whatsapp_transcription'].includes(String(x.tipo || '').toLowerCase()))
+    .map(x => ({data:String(x.data || ''), fonte:String(x.tipo || 'atividade'),
+      texto:viWidgetSanitizar_(x.texto)}))
+    .filter(x => x.texto)
+    .sort((a,b) => a.data.localeCompare(b.data));
+  const recente = anotacoes.slice(-8);
+  const normal = valor => viWidgetNormalizar_(valor);
+  const naoAtendeu = anotacoes.filter(x => /nao atendeu|sem resposta|caixa postal|chamada nao atendida/.test(normal(x.texto))).length;
+  const resposta = anotacoes.some(x => {
+    const t=normal(x.texto);
+    return /(?:cliente|lead|prospect)\s+(?:respondeu|retornou|confirmou|conversou|falou)\b|(?:falamos|conversamos)\s+com\s+(?:o\s+|a\s+)?(?:cliente|lead|prospect)/.test(t)
+      && !/cliente nao respondeu|lead nao respondeu|nao conseguimos contato/.test(t);
+  });
+  const ocorrencia = regex => recente.filter(x => regex.test(normal(x.texto))).slice(-1)[0] || null;
+  const concorrente = ocorrencia(/(?:fechou|contratou|optou|escolheu)\s+(?:com\s+|por\s+)?(?:outra empresa|concorrente|outro fornecedor)|(?:resolveu|fechou)\s+com\s+(?:um\s+)?concorrente/);
+  const cancelamento = ocorrencia(/reuniao\s+(?:foi\s+)?(?:cancelada|desmarcada)|(?:cancelou|desmarcou)\s+(?:a\s+)?reuniao/);
+  const novaAgenda = ocorrencia(/(?:reagendamento|nova data|novo horario)\s+confirmad|reuniao\s+reagendada\s+para/);
+  const agendaPendente = Boolean(cancelamento && (!novaAgenda || novaAgenda.data < cancelamento.data));
+  const lmv = viWidgetCampo_(anotacoes, /(?:^|[\n;.])\s*(?:lmv|faturamento(?:\s+(?:medio|mensal))?|receita mensal)\s*[:=-]\s*([^\n;]{2,90})/im);
+  const dor = viWidgetCampo_(anotacoes, /(?:^|[\n;.])\s*(?:dor|problema|desafio|objetivo)\s*[:=-]\s*([^\n;]{2,110})/im);
+  const sistema = viWidgetCampo_(anotacoes, /(?:^|[\n;.])\s*(?:sistema atual|erp atual|software atual)\s*[:=-]\s*([^\n;]{2,90})/im);
+  const decisor = viWidgetCampo_(anotacoes, /(?:^|[\n;.])\s*(?:decisor|tomador de decisao|responsavel pela decisao)\s*[:=-]\s*([^\n;]{2,90})/im);
+  const chamadasComEvidencia = chamadas.filter(x => Boolean(x.temReferenciaGravacao) || Number(x.duracaoSegundos) > 0);
+  const tarefaDeReuniao = tarefas.filter(x => x.tipo === 'meeting' || /reuniao|apresentacao/i.test(x.assunto || ''));
+  const pendentes = tarefas.filter(x => !x.concluida);
+  const comPrazo = pendentes.filter(x => x.previstaPara && Number.isFinite(Date.parse(x.previstaPara)))
+    .sort((a,b) => Date.parse(a.previstaPara)-Date.parse(b.previstaPara));
+  const vencidas = comPrazo.filter(x => Date.parse(x.previstaPara) < Date.now());
+  const lote = {};
+  tarefas.filter(x => x.concluida && x.concluidaEm).forEach(x => {
+    const minuto=String(x.concluidaEm).slice(0,16);
+    lote[minuto]=(lote[minuto] || 0)+1;
+  });
+  const tarefasEmLote=Object.keys(lote).some(x=>lote[x] >= 3);
+  const completo = fonteAtividades.acessivel === true && fonteAtividades.completo === true
+    && fonteTarefas.acessivel === true && fonteTarefas.completo === true;
+  const conf = completo && anotacoes.length ? 'MÉDIA' : 'BAIXA';
+
+  const criterio = (titulo,status,detalhe,referencia) =>
+    ({titulo:titulo,status:status,detalhe:detalhe,referencia:referencia || 'Evidências consultadas'});
+  const qual = [
+    criterio('LMV',lmv?'INDICIO':'SEM_EVIDENCIA',lmv?'Registro textual: '+lmv.texto:'Sem informação estruturada recuperada. Confirmar com o lead.'),
+    criterio('Dor / objetivo',dor?'INDICIO':'SEM_EVIDENCIA',dor?'Registro textual: '+dor.texto:'Ainda não evidenciado de forma estruturada.'),
+    criterio('Sistema atual',sistema?'INDICIO':'SEM_EVIDENCIA',sistema?'Registro textual: '+sistema.texto:'Não localizado nas anotações acessíveis.'),
+    criterio('Decisor',decisor?'INDICIO':'SEM_EVIDENCIA',decisor?'Registro textual: '+decisor.texto:'Não localizado nas anotações acessíveis.')
   ];
-  const qual=[check('LMV validado pelo SDR',Boolean(lmv),lmv||'Não confirmado em conversa.'),check('Dor ou objetivo identificado',Boolean(dor),dor||'Sem evidência textual.'),check('Sistema atual mapeado',Boolean(sistema),sistema||'Sem evidência textual.'),check('Decisor identificado',Boolean(decisor),decisor||'Sem evidência textual.')];
-  const resumo=[];if(concorrente)resumo.push('Lead informou que resolveu com outra empresa.');if(cancelou)resumo.push('Há sinal de cancelamento ou reagendamento.');if(naoAtendeu)resumo.push(naoAtendeu+' registro(s) de não atendimento — não equivalem a conexão.');if(tarefasEmLote)resumo.push('Tarefas concluídas em lote foram excluídas da contagem de tentativas.');if(!resumo.length)resumo.push('Sem exceção crítica identificada nas evidências recuperadas.');
-  return {versao:VOLUM_WIDGET.versao,modo:'SOMENTE_LEITURA_CONSULTIVO',dealId:leitura.dealId,negociacao:{nome:String((leitura.negociacao||{}).nome||''),etapaAtualId:String((leitura.negociacao||{}).etapaAtualId||''),etapaAtualNome:nomeEtapa},agenteAtual:e[2],agentesExecutados:[viWidgetAgenteLead_(leitura),viWidgetAgenteCadencia_(leitura,txt),viWidgetAgenteConexao_(respondeu,Boolean(lmv),concorrente,e[1]>=3)],agentesNaoAplicaveis:['LEAD','CADÊNCIA','CONEXÃO','AGENDA','REUNIÃO / CLOSER','FOLLOW-UP / RECOVERY'].slice(e[1]+1),status:plano.status,risco:concorrente||cancelou?'ALTO':!lmv?'MÉDIO':'BAIXO',confianca:txt.length?'MÉDIA':'BAIXA',resumoExecutivo:resumo,plano:plano,proximaAcao:plano.acao,mensagemSugerida:plano.mensagem,regraDeDecisao:plano.regra,compliance:comp,qualificacao:qual,evidenciasResumo:{atividades:ats.length,ligacoesComprovadas:callsOk,registrosNaoAtendeu:naoAtendeu,tarefasEmLote:tarefasEmLote},bloqueiosDeAvanco:comp.filter(x=>x.status==='PENDENTE').map(x=>x.titulo),evidencias:txt.filter(x=>/\b(n[aã]o atendeu|desmarc|cancel|reagend|outra empresa|j[aá] resolvi|contrat)/i.test(x.texto)).slice(-8).reverse(),limites:['Ausência de evidência não prova ausência de execução.','Tarefas concluídas em lote não comprovam tentativa individual.'],contextoIa:txt.slice(-12)};
+  const compliance = [
+    criterio('Tentativa de contato',chamadasComEvidencia.length?'EVIDENCIADO':'SEM_EVIDENCIA',
+      chamadasComEvidencia.length+' ligação(ões) com duração ou referência no board. Não comprovam conversa.',
+      'Board API4COM'),
+    criterio('Conexão efetiva',resposta?'INDICIO':'SEM_EVIDENCIA',
+      resposta?'Anotação sugere retorno ou conversa; confirmar pelo áudio.':'Não foi identificada conversa explícita. Tarefas e chamadas não bastam.',
+      'Anotações RD'),
+    criterio('Qualificação antes da agenda',lmv&&dor?'INDICIO':'SEM_EVIDENCIA',
+      lmv&&dor?'LMV e dor foram anotados; validar confirmação com o cliente.':'LMV e/ou dor não constam em campos textuais identificáveis.',
+      'Critério operacional VOLUM'),
+    criterio('Integridade da cadência',tarefasEmLote?'REVISAR':'NAO_VERIFICAVEL',
+      tarefasEmLote?'Há 3 ou mais tarefas concluídas no mesmo minuto. Não contar como tentativas individuais sem prova.':'Cadência completa depende da régua aprovada e das evidências de canal.',
+      'Tarefas RD')
+  ];
+  const criterioCloser = [
+    criterio('Link da gravação da reunião','NAO_VERIFICAVEL','A coleta de ligações do board não prova a gravação de reunião do closer.','Plano Wisetec · closer'),
+    criterio('Anotação privada do vendedor',ats.some(x=>x.tipo==='note' && x.textoDisponivel)?'INDICIO':'NAO_VERIFICAVEL',
+      ats.some(x=>x.tipo==='note' && x.textoDisponivel)?'Há anotação RD, mas não é possível confirmar se é a anotação privada de reunião.':'O tipo e a privacidade da anotação de reunião não estão confirmados.','Plano Wisetec · closer'),
+    criterio('Proposta comercial anexada em PDF','NAO_VERIFICAVEL','Anexos PDF não são coletados por este leitor. Não inferir falta de proposta.','Plano Wisetec · closer'),
+    criterio('Tarefa com data e acordo de próximo passo',comPrazo.length?'INDICIO':'NAO_VERIFICAVEL',
+      comPrazo.length?'Há '+comPrazo.length+' tarefa(s) abertas com data. O acordo com o lead não está comprovado.':'Nenhuma tarefa aberta com data recuperada; coleta e acordo precisam de verificação.','Plano Wisetec · closer'),
+    criterio('Valores da proposta','NAO_VERIFICAVEL','Valor e coerência da proposta não estão disponíveis nesta coleta.','Plano Wisetec · closer'),
+    criterio('Confirmação de recebimento da proposta','NAO_VERIFICAVEL','E-mail enviado não equivale a recebimento confirmado; falta verificação do canal.','Plano Wisetec · closer'),
+    criterio('Cadência de follow-up do closer',comPrazo.length?'INDICIO':'NAO_VERIFICAVEL',
+      comPrazo.length?'Há follow-ups/tarefas datados; não há régua homologada para afirmar aderência.':'A sequência de follow-up depende de régua e histórico completos.','Plano Wisetec · closer')
+  ];
+
+  const recomendacoes=[];
+  function recomendar(prioridade,acao,porQue,criterioConclusao,origem) {
+    recomendacoes.push({prioridade:prioridade,acao:acao,porQue:porQue,
+      criterioConclusao:criterioConclusao,origem:origem || 'Orientação Sales Ops'});
+  }
+  if (agendaPendente) recomendar('ALTA',
+    'Confirmar novo horário antes de considerar a reunião agendada.',
+    'Há anotação de cancelamento sem confirmação posterior de nova data.',
+    'Novo horário confirmado pelo cliente, com responsável e tarefa coerentes.','Plano Wisetec · próximo passo');
+  if (concorrente) recomendar('MÉDIA',
+    'Validar se a escolha de outro fornecedor encerra a oportunidade ou admite uma única retomada contextual.',
+    'Uma das anotações recentes sugere escolha de concorrente; validar contexto e data.',
+    'Motivo da decisão confirmado e próximo estado definido sem insistência automática.','Sales Ops · decisão');
+  if (vencidas.length) recomendar('ALTA',
+    'Revisar '+vencidas.length+' tarefa(s) abertas com data vencida e definir próximo passo real.',
+    'Tarefa vencida não garante que houve atraso comercial; requer conferência com o responsável.',
+    'Cada tarefa revisada, com evidência do resultado ou novo acordo.','Plano Wisetec · tarefa e prazo');
+  if (tarefasEmLote) recomendar('MÉDIA',
+    'Conferir as conclusões em lote contra ligações e outros canais.',
+    'Três ou mais tarefas foram concluídas no mesmo minuto; não equivalem a três contatos.',
+    'Tentativas individuais reconciliadas com gravações ou mensagens.','Sales Ops · evidências');
+  if (etapa.indice === 3 && (!lmv || !dor)) recomendar('MÉDIA',
+    'Confirmar LMV e dor com o lead antes de validar a passagem para a agenda.',
+    'Não há registro estruturado suficiente dos dois pontos; ausência no texto não prova ausência da conversa.',
+    'LMV e dor documentados com evidência rastreável.','Sales Ops · passagem de etapa');
+  if (faseCloser && !comPrazo.length) recomendar('MÉDIA',
+    'Revisar o próximo acordo de follow-up e sua data com o closer.',
+    'Nenhuma tarefa aberta datada foi recuperada na coleta atual.',
+    'Próximo passo, responsável e data confirmados com o lead.','Plano Wisetec · closer');
+  if (!faseCloser && etapa.indice >= 0 && etapa.indice <= 2 && !resposta) recomendar('MÉDIA',
+    'Identificar a próxima tentativa válida e registrar o resultado efetivo.',
+    'Há registro de tarefas/chamadas, mas nenhuma anotação inequívoca de conversa com o lead.',
+    'Canal, data e resultado verificáveis sem duplicar tentativas.','Sales Ops · cadência');
+  if (etapa.indice < 0) recomendar('MÉDIA',
+    'Mapear a etapa atual ao processo VOLUM antes de aplicar regras de avanço.',
+    'O nome da etapa RD não está disponível ou não corresponde ao mapeamento homologado.',
+    'Etapa identificada e regra de execução correspondente selecionada.','Governança · integração');
+  if (!completo) recomendar('MÉDIA',
+    'Completar ou conferir a cobertura das fontes antes de concluir compliance.',
+    'Uma ou mais fontes RD estão inacessíveis, incompletas ou não confirmadas.',
+    'Paginação e acesso das fontes validados; lacunas documentadas.','Governança · evidências');
+  if (!recomendacoes.length) recomendar('BAIXA',
+    'Validar a próxima ação da etapa atual com o responsável da negociação.',
+    'Não surgiu alerta prioritário nas fontes consultadas; isso não atesta conformidade integral.',
+    'Próxima ação e evidências correspondentes confirmadas.','Sales Ops · continuidade');
+
+  const prioridadeOrdem={ALTA:0,MÉDIA:1,BAIXA:2};
+  recomendacoes.sort((a,b) => prioridadeOrdem[a.prioridade]-prioridadeOrdem[b.prioridade]);
+  const principal=recomendacoes[0];
+  const situacao=agendaPendente?'REAGENDAMENTO SEM NOVA CONFIRMAÇÃO':
+    concorrente?'POSSÍVEL NEGATIVA POR CONCORRENTE':
+    vencidas.length?'TAREFAS VENCIDAS PARA REVISÃO':
+    !completo?'COBERTURA DE DADOS INCOMPLETA':'DIAGNÓSTICO CONSULTIVO';
+  const risco=agendaPendente || vencidas.length ? 'ALTO' : concorrente || !completo ? 'MÉDIO' : 'NÃO CLASSIFICADO';
+  if (agendaPendente) resumo.push('Há evidência recente de cancelamento sem nova confirmação identificada.');
+  if (concorrente) resumo.push('Registro recente sugere escolha de outro fornecedor; confirmar a decisão.');
+  if (naoAtendeu) resumo.push(naoAtendeu+' registro(s) de não atendimento não comprovam conexão.');
+  if (tarefasEmLote) resumo.push('Conclusões de tarefas no mesmo minuto exigem revisão da prova de execução.');
+  if (!completo) resumo.push('A leitura RD é parcial; não é seguro atribuir nota global de compliance.');
+  if (!resumo.length) resumo.push('Nenhum alerta forte identificado, mas a auditoria ainda não cobre todos os canais.');
+  const mensagem=agendaPendente?
+    'Olá! Para organizarmos nossa conversa, qual novo dia e horário seria melhor para vocês? Posso preparar os pontos prioritários antes da reunião.':
+    concorrente?
+    'Obrigado pelo retorno. Posso confirmar se a solução escolhida já atende o ponto que motivou o contato? Se estiver tudo resolvido, respeitamos a decisão.':
+    '';
+  const eixos=['LEAD','CADÊNCIA','CONEXÃO','AGENDA','REUNIÃO / CLOSER','FOLLOW-UP / RECOVERY'];
+  const agentes=(Array.isArray(leitura.cerebros)?leitura.cerebros:[]).filter(x => {
+    const idx={LEAD:0,CADENCIA:1,CONEXAO:2,AGENDA:3,REUNIAO:4}[x.agente];
+    return etapa.indice >= 0 && idx !== undefined && idx <= etapa.indice;
+  }).map(x => ({agente:x.agente, status:x.estado, indicadores:x.indicadores || {}}));
+  return {
+    versao:VOLUM_WIDGET.versao, modo:'SOMENTE_LEITURA_CONSULTIVO', dealId:leitura.dealId,
+    negociacao:{nome:String((leitura.negociacao || {}).nome || ''), etapaAtualId:String((leitura.negociacao || {}).etapaAtualId || ''),etapaAtualNome:nomeEtapa || 'Não informada'},
+    agenteAtual:etapa.agente,etapaOrigem:String((leitura.negociacao || {}).etapaOrigem || 'NAO_CONFIRMADA'),agentesExecutados:agentes,
+    agentesNaoAplicaveis:etapa.indice >= 0 ? eixos.slice(Math.min(etapa.indice+1,eixos.length)) : [],
+    status:situacao, risco:risco, confianca:conf,notaCompliance:null,
+    resumoExecutivo:resumo, proximaAcao:principal.acao,
+    regraDeDecisao:principal.criterioConclusao,
+    mensagemSugerida:mensagem, plano:{status:situacao,acao:principal.acao,mensagem:mensagem,regra:principal.criterioConclusao},
+    recomendacoes:recomendacoes.slice(0,5),compliance:compliance,
+    qualificacao:qual, criteriosPlanoWisetec:faseCloser?criterioCloser:[],
+    fontesCobertura:[
+      criterio('Atividades RD',fonteAtividades.acessivel === true?(fonteAtividades.completo === true?'CONSULTADA':'PARCIAL'):'NAO_VERIFICAVEL',
+        fonteAtividades.acessivel === true?'Consulta de atividades '+(fonteAtividades.completo === true?'completa':'incompleta')+'.':'Consulta não confirmada.'),
+      criterio('Tarefas RD',fonteTarefas.acessivel === true?(fonteTarefas.completo === true?'CONSULTADA':'PARCIAL'):'NAO_VERIFICAVEL',
+        fonteTarefas.acessivel === true?'Consulta de tarefas '+(fonteTarefas.completo === true?'completa':'incompleta')+'.':'Consulta não confirmada.'),
+      criterio('Ligações board','CONSULTADA','Vínculos por ID de negociação; ligação não comprova conversa.'),
+      criterio('Propostas PDF, e-mail, gravação de reunião','NAO_VERIFICAVEL','Não há coleta autenticada e completa desses canais nesta versão.')
+    ],
+    evidenciasResumo:{atividades:ats.length,anotacoesInterpretaveis:anotacoes.length,
+      tarefas:tarefas.length,ligacoesComprovadas:chamadasComEvidencia.length,
+      registrosNaoAtendeu:naoAtendeu,tarefasEmLote:tarefasEmLote,tarefasVencidas:vencidas.length,
+      tarefasReuniao:tarefaDeReuniao.length},
+    bloqueiosDeAvanco:[],evidencias:recente.slice(-6).reverse().map(x=>({
+      data:x.data,fonte:x.fonte,texto:x.texto.slice(0,240)})),
+    limites:['Indício textual não é confirmação do cliente.',
+      'Ausência de evidência não prova falta de execução.',
+      'Não atribuir score global de compliance sem acesso a todas as fontes e regras homologadas.',
+      'Tarefa concluída, chamada curta ou atividade registrada não provam conexão.'],
+    contextoIa:{etapa:etapa.agente,status:situacao,confianca:conf,
+      indicadores:{tarefas:tarefas.length,ligacoesComEvidencia:chamadasComEvidencia.length,
+        anotacoes:anotacoes.length,tarefasVencidas:vencidas.length},
+      recomendacoes:recomendacoes.slice(0,3).map(x=>({acao:x.acao,porQue:x.porQue}))}
+  };
 }
 
 function viWidgetAgenteLead_(leitura) {
@@ -93,9 +272,16 @@ function viWidgetAgenteConexao_(haResposta, lmvConfirmado, concorrente, agenda) 
     agendaObservada: agenda };
 }
 function viWidgetSanitizar_(texto) {
-  return String(texto || '').replace(/https?:\/\/[^\s<>"']+/gi, '[LINK_OMITIDO]')
-    .replace(/\b\d{10,13}\b/g, '[TELEFONE_OMITIDO]').slice(0, 1800);
+  return String(texto || '')
+    .replace(/https?:\/\/[^\s<>"']+/gi, '[LINK_OMITIDO]')
+    .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '[EMAIL_OMITIDO]')
+    .replace(/\b\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}\b/g, '[DOCUMENTO_OMITIDO]')
+    .replace(/\b\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2}\b/g, '[DOCUMENTO_OMITIDO]')
+    .replace(/(?:\+?55[\s.-]?)?\(?\d{2}\)?[\s.-]?\d{4,5}[\s.-]?\d{4}\b/g, '[TELEFONE_OMITIDO]')
+    .replace(/\b\d{10,14}\b/g, '[NUMERO_OMITIDO]')
+    .slice(0,900);
 }
+
 function viWidgetInterpretarGemini_(contexto, dealId) {
   const modelo = consumoIaModeloTextoGratuito_();
   consumoIaValidarAntes_(modelo);

@@ -2,7 +2,7 @@
  * Ponte privada da widget. Publique como Web App restrita às contas VOLUM,
  * executando como usuário que acessa. Nunca habilitar acesso anônimo.
  */
-function doGet(e) {
+function viWidgetRenderizarWebApp_(e) {
   const email = viWidgetEmailSessao_();
   viWidgetExigirEmail_(email);
   const dealId = viLeadId_((e && e.parameter && e.parameter.dealId) || '');
