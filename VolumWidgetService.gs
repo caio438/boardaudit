@@ -7,7 +7,7 @@
 // 0.4.6: evidências de e-mail, arquivos e recovery são avaliadas somente por fonte rastreável.
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.6'
+  versao: '0.4.7'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -23,6 +23,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
+  parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
@@ -35,6 +36,55 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   return parecer;
 }
 
+
+
+// Estados por evidencia: enunciado do vendedor nao equivale a confirmacao de recebimento.
+function viWidgetRecebimentoConfirmado_(texto) {
+  const t=viWidgetNormalizar_(texto);
+  if (/nao\s+(?:receb|chegou)|sem\s+(?:confirmacao|retorno)|(?:aguard|cobrar|confirmar|verificar|pedir).{0,45}receb/.test(t)) return false;
+  return /(?:cliente|lead|comprador|contato).{0,65}(?:confirmou|acusou).{0,30}(?:recebimento|recebid)\w*|(?:cliente|lead|comprador|contato).{0,50}(?:disse|informou|respondeu).{0,25}(?:que\s+)?recebeu|(?:recebi|recebemos)\s+(?:a\s+)?(?:proposta|orcamento)/.test(t);
+}
+function viWidgetEhFollowup_(t) {
+  return /(?:follow[ -]?up|recovery|retomad|retorno|cobrar resposta|pos[ -]?reuniao|proposta|acompanhar negociacao)/.test(viWidgetNormalizar_(String(t.assunto||'')+' '+String(t.anotacao||'')));
+}
+function viWidgetAuditoriaOperacional_(leitura) {
+  const ats=Array.isArray(leitura.atividades)?leitura.atividades:[];
+  const tarefas=Array.isArray(leitura.tarefas)?leitura.tarefas:[];
+  const arquivos=Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[];
+  const fontes=leitura.fontes||{};
+  const reunioes=[...(leitura.reunioesCalendarioBoard||[]),...(leitura.reunioesBoard||[])];
+  const aSort=ats.slice().sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+  const email=aSort.find(a=>a.tipo==='email'&&/(?:formaliz|enviamos\s+(?:a\s+)?proposta|segue\s+(?:a\s+)?proposta)/.test(viWidgetNormalizar_(a.texto)));
+  const link=aSort.find(a=>a.temLinkGravacao===true);
+  const receb=aSort.find(a=>['note','response','messenger','whatsapp_transcription'].includes(a.tipo)&&viWidgetRecebimentoConfirmado_(a.texto));
+  const pdf=arquivos.find(a=>String(a.extensao||'').toLowerCase()==='pdf'&&/(?:proposta|orcamento|comercial)/i.test(a.nome||''));
+  const marco=[...reunioes.map(r=>r.data),...tarefas.filter(t=>t.tipo==='meeting'||/reuniao/i.test(t.assunto||'')).map(t=>t.concluidaEm)]
+    .filter(Boolean).sort().at(-1)||'';
+  const follow=tarefas.filter(t=>viWidgetEhFollowup_(t)&&marco&&
+    String(t.criadaEm||t.previstaPara||'')>marco)
+    .sort((a,b)=>String(a.previstaPara||'').localeCompare(String(b.previstaPara||'')))[0];
+  const item=(id,titulo,estado,evidencia,fonte,data,acao)=>({id,titulo,estado,evidencia,fonte,data,acao});
+  const nao=(fonte)=>fonte&&fonte.acessivel===true&&fonte.completo===true?'NAO_LOCALIZADO':'FONTE_INCOMPLETA';
+  const resultado=[
+    item('email','E-mail de formalizacao',email?'INDICIO':nao(fontes.atividades),
+      email?'Mensagem associada ao envio ou formalizacao; entrega nao comprovada.':'Nao ha mensagem comprovada nas fontes acessiveis.',
+      'RD · atividades/e-mail',email?.data||'','Confirmar destinatario, anexo e data de envio.'),
+    item('gravacao','Link de gravacao',link?'INDICIO':nao(fontes.atividades),
+      link?'Referencia de URL de gravacao localizada, endereco omitido por seguranca.':'Link nao localizado no historico consultado.',
+      'RD · atividades',link?.data||'','Verificar se abre a gravacao correta e auditar o conteudo.'),
+    item('proposta','PDF de proposta',pdf?'INDICIO':nao(fontes.arquivosRd),
+      pdf?'Arquivo compativel: '+viWidgetSanitizar_(pdf.nome):'Nao foi possivel confirmar PDF de proposta.',
+      'RD · arquivos',pdf?.data||'','Validar PDF, versao, valor e destinatario.'),
+    item('recebimento','Confirmacao de recebimento',receb?'INDICIO':nao(fontes.atividades),
+      receb?'Registro descreve confirmacao explicita de recebimento; autoria requer conferencia.':'Texto inequivoco de confirmacao nao encontrado.',
+      'RD · anotacoes/WhatsApp',receb?.data||'','Conferir quem confirmou e quando.'),
+    item('followup','Tarefa de follow-up apos reuniao',follow?'INDICIO':(!marco?'MARCO_REUNIAO_NAO_VERIFICADO':nao(fontes.tarefas)),
+      follow?'Tarefa posterior localizada: '+viWidgetSanitizar_(follow.assunto)+'; prevista para '+viWidgetDiaExibicao_(viWidgetDiaBrasil_(follow.previstaPara)):!marco?'Data da reuniao nao confirmada; impossivel avaliar posteridade.':'Tarefa posterior nao identificada.',
+      'RD · tarefas/reunioes',follow?.criadaEm||'','Registrar proximo passo e validar resultado com o comprador.')
+  ];
+  return {criterios:resultado,cobertura:{atividades:fontes.atividades||{},tarefas:fontes.tarefas||{},arquivos:fontes.arquivosRd||{}},
+    observacao:'INDICIO = registro rastreavel; NAO_LOCALIZADO nao comprova ausencia de execucao.'};
+}
 
 function viWidgetNormalizar_(valor) {
   return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -112,11 +162,10 @@ function viWidgetParecerDeterministico_(leitura) {
     .map(x=>Date.parse(x.data||'')).filter(Number.isFinite)
     .concat(tarefaDeReuniao.map(x=>Date.parse(x.concluidaEm||x.previstaPara||'')).filter(Number.isFinite));
   const ultimaReuniaoMs = referenciasReuniao.length ? Math.max.apply(null,referenciasReuniao) : null;
-  const tarefasFollowup = comPrazo.filter(x => /follow|recovery|retomada|retorno|proposta|pos.reuniao/i.test(String(x.assunto||'')) &&
-    (ultimaReuniaoMs===null || Date.parse(x.previstaPara)>ultimaReuniaoMs));
+  const tarefasFollowup = comPrazo.filter(x => viWidgetEhFollowup_(x) && ultimaReuniaoMs!==null && Date.parse(x.criadaEm||x.previstaPara)>ultimaReuniaoMs);
   const textosEmailOuWhatsApp = ats.filter(x=>['email','messenger','whatsapp_audio','whatsapp_transcription','response','note'].includes(String(x.tipo||'').toLowerCase())&&x.textoDisponivel).map(x=>viWidgetNormalizar_(x.texto)).join('\n');
-  const gravacaoReferenciada = /(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/.test(textosEmailOuWhatsApp);
-  const recebimentoConfirmado = /(?:(?:proposta|orcamento).{0,90}(?:recebi|recebemos|recebimento|confirmad)|(?:recebi|recebemos|recebimento|confirmad).{0,90}(?:proposta|orcamento))/.test(textosEmailOuWhatsApp);
+  const gravacaoReferenciada = ats.some(x=>Boolean(x.temLinkGravacao)) || /(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/.test(textosEmailOuWhatsApp);
+  const recebimentoConfirmado = ats.some(x=>x&&x.textoDisponivel&&['note','response','messenger','whatsapp_transcription'].includes(String(x.tipo||''))&&viWidgetRecebimentoConfirmado_(x.texto));
   const propostaPdf = arquivosRd.filter(x=>String(x.extensao||'').toLowerCase()==='pdf'&&/(?:proposta|orcamento|apresentacao|comercial)/i.test(String(x.nome||'')));
   const lote = {};
   tarefas.filter(x => x.concluida && x.concluidaEm).forEach(x => {
@@ -712,12 +761,13 @@ function viWidgetInterpretarGemini_(contexto, dealId) {
   const inicio = Date.now();
   const chave = obterSegredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Gemini nao configurado no projeto.');
-  const prompt = 'Classifique a evidencia comercial. Responda APENAS JSON com status, lmv, confianca e proximaAcao. Nao invente fatos. Evidencias: ' +
-    JSON.stringify(contexto);
+  const prompt = 'Voce e um auditor Sales Ops. Interprete apenas as evidencias fornecidas do mesmo lead. Responda SOMENTE JSON com: fatos (lista de objetos criterio, conclusao, fonte, data, confianca), lacunas (lista de objetos criterio, motivo, proximaVerificacao), recomendacoes (lista de objetos prioridade, acao, justificativa, criterioConclusao). '+
+    'Nunca confunda tarefa criada com executada, e-mail enviado com recebido, arquivo PDF com entrega, link de convite com gravacao, ou anotacao do vendedor com mensagem direta do cliente. '+
+    'NAO classifique ausencia de registro como falha quando a consulta for incompleta. Nao invente links ou datas. Evidencias: '+JSON.stringify(contexto);
   const resposta = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent', {
     method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': chave },
     payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 350, responseMimeType: 'application/json' } }),
+      generationConfig: { temperature: 0, maxOutputTokens: 1400, responseMimeType: 'application/json' } }),
     muteHttpExceptions: true
   });
   const status = resposta.getResponseCode(), corpo = resposta.getContentText();
@@ -788,12 +838,11 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   const notasNormal=notas.map(a=>viWidgetNormalizar_(a.texto));
   const emails=atividades.filter(a=>a&&String(a.tipo||'').toLowerCase()==='email'&&a.textoDisponivel&&a.texto);
   const emailFormalizacao=emails.find(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/i.test(viWidgetNormalizar_(a.texto)))||null;
-  const emailGravacao=emails.find(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|teams\.microsoft|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const emailGravacao=emails.find(a=>a.temLinkGravacao===true||/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|link\s+da\s+reuniao\s+(?:que\s+)?fizemos)/i.test(viWidgetNormalizar_(a.texto)))||null;
   const emailProximaReuniao=emails.find(a=>/(?:proxima\s+reuniao|meet\.google)/i.test(viWidgetNormalizar_(a.texto)))||null;
   const pdfs=arquivosRd.filter(a=>String(a.extensao||'').toLowerCase()==='pdf');
   const propostaPdf=pdfs.filter(a=>/(?:proposta|orcamento|apresentacao|comercial)/i.test(String(a.nome||'')));
-  const promessaRecebida=notas.find(a=>
-    /(?:cliente|comprador|lead)\s+(?:confirmou|acusou)\s+(?:o\s+)?recebimento\s+(?:da\s+)?proposta|proposta\s+recebida\s+e\s+confirmada/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const promessaRecebida=notas.find(a=>viWidgetRecebimentoConfirmado_(a.texto)&&String(a.tipo||'').toLowerCase()!=='email')||null;
   const propostaRegistrada=atividades.some(a=>a.tipo==='proposal')||Boolean(emailFormalizacao)||
     notasNormal.some(t=>/(?:proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado)/.test(t));
   const comValor=negociacao.valorInformado!==null && negociacao.valorInformado!==undefined &&
@@ -1001,7 +1050,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     }
   }
   const foco=acoes[0]||null;
-  parecer.versao='0.4.6';
+  parecer.versao='0.4.7';
   parecer.operacional={
     tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
       noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
@@ -1028,9 +1077,17 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     parecer.proximaAcao=foco.acao;
     parecer.regraDeDecisao=foco.criterioConclusao;
   }
-  parecer.contextoIa={etapa:parecer.agenteAtual,
-    status:parecer.status,
-    recomendacoes:acoes.slice(0,3).map(a=>({acao:a.acao,porQue:a.porQue}))};
+  parecer.contextoIa={etapa:parecer.agenteAtual,status:parecer.status,
+    cobertura:{atividades:fontes.atividades||{},tarefas:fontes.tarefas||{},arquivos:fontes.arquivosRd||{}},
+    historico:atividades.filter(a=>a&&a.textoDisponivel).sort((a,b)=>String(a.data||'').localeCompare(String(b.data||'')))
+      .slice(-30).map(a=>({data:a.data,tipo:a.tipo,fonte:'RD_ATIVIDADE',id:String(a.id||'').slice(0,60),
+        texto:viWidgetSanitizar_(a.texto).slice(0,480),temLinkGravacao:!!a.temLinkGravacao})),
+    tarefas:tarefas.slice(-30).map(t=>({id:String(t.id||'').slice(0,60),assunto:viWidgetSanitizar_(t.assunto),
+      criadaEm:t.criadaEm,previstaPara:t.previstaPara,concluida:t.concluida,responsaveis:t.responsaveis})),
+    arquivos:arquivosRd.slice(0,25).map(a=>({id:a.id,nome:viWidgetSanitizar_(a.nome),data:a.data})),
+    reunioes:(leitura.reunioesCalendarioBoard||[]).slice(-12).map(r=>({id:r.id,data:r.data,status:r.status,
+      gravacaoReferenciada:r.gravacaoReferenciada,resultadoRegistrado:r.resultadoRegistrado})),
+    recomendacoes:acoes.slice(0,5).map(a=>({acao:a.acao,porQue:a.porQue}))};
   return parecer;
 }
 
@@ -1053,7 +1110,7 @@ function viWidgetPlaybookSalesOps_(leitura,parecer) {
   const proxima=tarefas.some(t=>t&&!t.concluida&&t.previstaPara&&Number.isFinite(Date.parse(t.previstaPara)));
   const reunioesCalendario=Array.isArray(leitura.reunioesCalendarioBoard)?leitura.reunioesCalendarioBoard:[];
   const formalizacoesBoard=Array.isArray(leitura.formalizacoesBoard)?leitura.formalizacoesBoard:[];
-  const gravacaoEmail=emails.some(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|meet\.google|teams\.microsoft)/.test(viWidgetNormalizar_(a.texto)));
+  const gravacaoEmail=emails.some(a=>a.temLinkGravacao===true||/(?:gravac|recording|tldv|grain|fireflies|fathom|loom)/.test(viWidgetNormalizar_(a.texto)));
   const gravacaoBoard=reunioesCalendario.some(r=>r&&(r.gravacaoReferenciada||r.transcricaoReferenciada));
   const reuniaoRegistrada=reunioesCalendario.length>0;
   const gravacao=gravacaoEmail||gravacaoBoard;
@@ -1167,6 +1224,6 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.6';
+  parecer.versao='0.4.7';
   return parecer;
 }
