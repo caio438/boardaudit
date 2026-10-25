@@ -119,11 +119,12 @@ button,input{font:inherit}button{cursor:pointer}
 </style>
 </head>
 <body>
-<main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
+<main class="shell" id="volum-root" data-deal-id="<?= dealId ?>" data-history-nonce="<?= historyNonce ?>">
 <div id="card" class="loading" role="status">Lendo a negociação e as evidências comerciais…</div>
 </main>
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
+const historyNonce=document.getElementById("volum-root").dataset.historyNonce||'';
 const embedMode=true;
 if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
@@ -374,13 +375,13 @@ function audit(){requestRdHistory(true);runAudit();}
 if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){
   const m=event&&event.data||{};
   if(!(/^(?:chrome-extension:\/\/[a-z0-9]+|https:\/\/crm\.rdstation\.com)$/i.test(String(event.origin||'')))||event.source!==window.top)return;
-  if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||!m.history)return;
+  if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||m.nonce!==historyNonce||!m.history)return;
   historyFromRd=m.history;runAudit();
 });
 function requestRdHistory(refresh){
   try {
     if(window.top&&window.top!==window)window.top.postMessage({
-      type:'VOLUM_REQUEST_RD_UI_HISTORY',dealId:dealId,refresh:refresh===true
+      type:'VOLUM_REQUEST_RD_UI_HISTORY',dealId:dealId,refresh:refresh===true,nonce:historyNonce
     },'*');
   } catch(_ignore) {}
 }
