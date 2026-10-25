@@ -51,3 +51,9 @@ jobs:
 
       - name: Preview files sent to Apps Script
         run: npx clasp show-file-status
+
+      - name: Install private MCP dependencies
+        run: npm --prefix mcp install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate MCP stdio handshake and read-only tests
+        run: npm --prefix mcp test

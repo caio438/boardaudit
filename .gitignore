@@ -1,1 +1,5 @@
 node_modules/
+mcp/.env
+mcp/.env.*
+mcp/snapshots/
+mcp/board-*.json
