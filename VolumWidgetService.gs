@@ -18,6 +18,10 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     throw new Error('Acesso privado nao autorizado para esta widget.');
   }
   const leitura = VOLUM_ANALISAR_LEAD(dealId, { incluirTextos: true });
+  if(opcoes&&opcoes.historicoUiRd){
+    const conciliacao=viRdConciliarHistoricoUi_(leitura.historicoRdEtapas,opcoes.historicoUiRd,dealId);
+    if(conciliacao.aceito)leitura.historicoRdEtapas=conciliacao.historico;
+  }
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
@@ -31,6 +35,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     resumo:recorteRd.resumo||{},
     cobertura:recorteRd.cobertura||{},
     inconsistencias:recorteRd.inconsistencias||[],
+    linhaDoTempo:recorteRd.linhaDoTempo||{},
     eventosForaDasJanelas:(recorteRd.eventosSemEtapa||[]).slice(-30).map(function(e){
       return {data:e.data,acao:e.acao,id:e.id||'',fonte:e.fonte,
         assunto:String(e.assunto||'').slice(0,140),
@@ -73,6 +78,15 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   delete parecer.contextoIa;
   return parecer;
+}
+
+function VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId, historicoUiRd, usarGemini) {
+  const seguro=historicoUiRd&&typeof historicoUiRd==='object'?historicoUiRd:{};
+  const eventos=Array.isArray(seguro.events)?seguro.events:[];
+  if(eventos.length>250)throw new Error('Historico visual acima do limite seguro de leitura.');
+  return VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId,viWidgetEmailSessao_(),{
+    usarGemini:usarGemini===true,historicoUiRd:seguro
+  });
 }
 
 

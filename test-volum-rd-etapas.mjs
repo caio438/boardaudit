@@ -156,8 +156,24 @@ assert.equal(preview.passagens,5);
 assert.ok(!JSON.stringify(preview).includes('Registro do SDR'));
 ctx.viLeadRdGet_=oldRead;
 
+// Aceite do Histórico visual: 103 cartões úteis do RD entram uma vez cada;
+// nenhum recebe ID de API inventado e a origem visual permanece explícita.
+const visual103={dealId:deal.id,coverage:{available:true,complete:true,totalVisual:103,pagesLoaded:10},events:Array.from({length:103},(_,i)=>({
+ uiIndex:i,dateText:'23/10/2026 16:'+String(i%60).padStart(2,'0'),
+ dataLocal:'2026-10-23T16:'+String(i%60).padStart(2,'0')+':00',author:'Autor '+i,
+ stage:'Proposta enviada',kind:i%3===0?'TAREFA_CRIADA':i%3===1?'ANOTACAO':'ALTERACAO',detail:'Evento visual '+i
+}))};
+const reconciled=ctx.viRdConciliarHistoricoUi_(ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{}),visual103,deal.id);
+assert.equal(reconciled.aceito,true);
+assert.equal(reconciled.historico.linhaDoTempo.eventos.length,103);
+assert.equal(reconciled.historico.linhaDoTempo.cobertura.totalVisual,103);
+assert.equal(reconciled.historico.linhaDoTempo.cobertura.totalReconciliado,103);
+assert.equal(reconciled.historico.linhaDoTempo.eventos.every(x=>x.fonte==='RD_UI_HISTORY'&&/^UI_/.test(x.id)),true);
+assert.equal(ctx.viRdConciliarHistoricoUi_({},visual103,'aaaaaaaaaaaaaaaaaaaaaaaa').aceito,false);
+
 assert.match(widget,/'etapasrd','Etapas RD'/);
 assert.match(widget,/function rdWindows\(d\)/);
 assert.match(service,/parecer\.historicoRdEtapas/);
+assert.match(service,/VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO/);
 assert.doesNotMatch(stages,/\b(?:registrarLog_|atualizarPorCampo_|adicionarObjeto_|salvarSegredo_)\s*\(/);
 console.log('RD stage windows: Beaga 6 -> 5, exact boundaries, re-entry, evidence, current fields and source status validated.');

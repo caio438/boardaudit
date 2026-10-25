@@ -233,6 +233,48 @@ function viRdAuditoriaJanelas_(negociacao,atividades,tarefas,catalogo,opcoes) {
   };
 }
 
+/**
+ * Concilia o espelho visual do Histórico nativo com a coleta v1. A interface
+ * é a fonte de cobertura para cartões que a API não retorna; IDs da API nunca
+ * são fabricados. A chave usa tipo, minuto, autor e detalhe normalizado para
+ * impedir contagem dupla entre as duas leituras.
+ */
+function viRdConciliarHistoricoUi_(historico, ui, dealId) {
+  const base=historico||{};
+  const recebido=ui||{};
+  if(String(recebido.dealId||'').toLowerCase()!==String(dealId||'').toLowerCase())
+    return {historico:base,aceito:false,motivo:'DEAL_ID_UI_NAO_CONFERE'};
+  const bruto=Array.isArray(recebido.events)?recebido.events:[];
+  const chave=function(e) {
+    const t=String(e.kind||e.acao||'').toUpperCase();
+    const d=String(e.dataLocal||e.data||'').slice(0,16);
+    const a=String(e.author||e.autorId||'').toLowerCase().replace(/\s+/g,' ').trim();
+    const x=String(e.detail||e.texto||e.assunto||'').toLowerCase().replace(/\s+/g,' ').replace(/[^a-z0-9à-ÿ ]/gi,'').slice(0,220);
+    return [t,d,a,x].join('|');
+  };
+  const vistos={}, eventos=[];
+  bruto.forEach(function(e,i){
+    const data=viLeadDataIso_(e.dataLocal||e.dateText);
+    const item={id:'UI_'+String(e.uiIndex===undefined?i:e.uiIndex),data:data,
+      dataTexto:String(e.dateText||''),acao:String(e.kind||'OUTRO_VISUAL_RD'),
+      tipoInformado:'UI_HISTORY',autor:String(e.author||''),etapaNome:String(e.stage||''),
+      texto:viRdNomeSeguro_(e.detail,6000),fonte:'RD_UI_HISTORY',
+      origemEvidencia:'INTERFACE_AUTENTICADA_RD',confianca:'EVENTO_VISUAL_RD'};
+    const k=chave(item); if(vistos[k])return; vistos[k]=true; eventos.push(item);
+  });
+  eventos.sort(function(a,b){return String(a.data||a.dataTexto).localeCompare(String(b.data||b.dataTexto))||a.id.localeCompare(b.id);});
+  base.linhaDoTempo={origem:'RD_UI_HISTORY+RD_V1',eventos:eventos,
+    cobertura:{acessivel:recebido.coverage&&recebido.coverage.available===true,
+      completo:recebido.coverage&&recebido.coverage.complete===true,
+      totalVisual:Number(recebido.coverage&&recebido.coverage.totalVisual||eventos.length),
+      totalReconciliado:eventos.length,paginasCarregadas:Number(recebido.coverage&&recebido.coverage.pagesLoaded||0),
+      lacunas:[]},
+    limite:'Os cartões visuais sem ID de API são preservados como evidência da interface; não são convertidos em identificadores de API.'};
+  if(base.linhaDoTempo.cobertura.totalVisual!==eventos.length)
+    base.linhaDoTempo.cobertura.lacunas.push('EVENTO_VISUAL_SEM_DATA_OU_DUPLICADO');
+  return {historico:base,aceito:true};
+}
+
 
 /**
  * Coleta isolada do RD, SEM consultar INTERACOES/Board, API4COM ou tl;dv.
