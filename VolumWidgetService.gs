@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.2'
+  versao: '0.4.3'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -255,7 +255,9 @@ function viWidgetParecerDeterministico_(leitura) {
       criterio('Tarefas RD',fonteTarefas.acessivel === true?(fonteTarefas.completo === true?'CONSULTADA':'PARCIAL'):'NAO_VERIFICAVEL',
         fonteTarefas.acessivel === true?'Consulta de tarefas '+(fonteTarefas.completo === true?'completa':'incompleta')+'.':'Consulta não confirmada.'),
       criterio('Ligações board','CONSULTADA','Vínculos por ID de negociação; ligação não comprova conversa.'),
-      criterio('Propostas PDF, e-mail, gravação de reunião','NAO_VERIFICAVEL','Não há coleta autenticada e completa desses canais nesta versão.')
+      criterio('E-mails RD',ats.filter(x=>String(x.tipo||'').toLowerCase()==='email').length?'CONSULTADA':'NAO_VERIFICAVEL',
+        ats.filter(x=>String(x.tipo||'').toLowerCase()==='email').length?'Atividades de e-mail foram consultadas; envio não equivale a recebimento.':'Nenhuma atividade de e-mail disponível nesta leitura.'),
+      criterio('Propostas PDF e gravação de reunião','NAO_VERIFICAVEL','Anexos e conteúdo de gravação não são coletados automaticamente.')
     ],
     evidenciasResumo:{atividades:ats.length,anotacoesInterpretaveis:anotacoes.length,
       tarefas:tarefas.length,ligacoesComprovadas:chamadasComEvidencia.length,
@@ -770,9 +772,12 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     .sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
   const ultimaNota=notas[0]||null;
   const notasNormal=notas.map(a=>viWidgetNormalizar_(a.texto));
+  const emails=atividades.filter(a=>a&&String(a.tipo||'').toLowerCase()==='email'&&a.textoDisponivel&&a.texto);
+  const emailFormalizacao=emails.find(a=>/(?:formaliza|proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado|segue\s+(?:a\s+)?proposta)/i.test(viWidgetNormalizar_(a.texto)))||null;
+  const emailGravacao=emails.find(a=>/(?:gravac|recording|tldv|grain|fireflies|fathom|loom|zoom\.us|meet\.google|teams\.microsoft)/i.test(viWidgetNormalizar_(a.texto)))||null;
   const promessaRecebida=notas.find(a=>
     /(?:cliente|comprador|lead)\s+(?:confirmou|acusou)\s+(?:o\s+)?recebimento\s+(?:da\s+)?proposta|proposta\s+recebida\s+e\s+confirmada/i.test(viWidgetNormalizar_(a.texto)))||null;
-  const propostaRegistrada=atividades.some(a=>a.tipo==='proposal')||
+  const propostaRegistrada=atividades.some(a=>a.tipo==='proposal')||Boolean(emailFormalizacao)||
     notasNormal.some(t=>/(?:proposta\s+(?:foi\s+)?enviada|enviamos\s+(?:a\s+)?proposta|orcamento\s+enviado)/.test(t));
   const comValor=negociacao.valorInformado!==null && negociacao.valorInformado!==undefined &&
     Number.isFinite(Number(negociacao.valorInformado)) && Number(negociacao.valorInformado)>0;
@@ -801,13 +806,21 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   if (ultimaNota) fato('ULTIMA_ANOTACAO',
     'Última anotação acessível: '+viWidgetDiaExibicao_(ultimaNota.data)+
     '. Conteúdo sujeito à conferência.','RD · atividades','INDICIO');
+  if (emailFormalizacao) fato('EMAIL_FORMALIZACAO',
+    'E-mail com sinal de formalização/proposta em '+viWidgetDiaExibicao_(emailFormalizacao.data)+
+    '. O conteúdo não comprova anexo, entrega ou aceite.','RD · e-mail','INDICIO');
+  if (emailGravacao) fato('EMAIL_GRAVACAO',
+    'E-mail com referência de gravação de reunião em '+viWidgetDiaExibicao_(emailGravacao.data)+
+    '. A presença da referência não comprova a realização ou o conteúdo da reunião.','RD · e-mail','INDICIO');
   const avisos=[];
   const tarefasComAutoria=tarefas.filter(t=>Array.isArray(t.responsaveis)&&t.responsaveis.length>0).length;
   if (tarefas.length>0 && tarefasComAutoria<tarefas.length) avisos.push(
     (tarefas.length-tarefasComAutoria)+' tarefa(s) sem responsável identificado na resposta; não atribuir a SDR ou closer.');
   avisos.push('Nenhuma ligação do board é atribuída ao papel SDR sem vínculo de operador e função confirmado.');
   if (!coberturaRd) avisos.push('Consultas RD incompletas: ausência de registros não deve ser interpretada como falha.');
-  if (emProposta) avisos.push('Etapa “Proposta enviada” não comprova anexo PDF, entrega nem aceite do comprador.');
+  if (emProposta) avisos.push(emailFormalizacao?
+    'Há sinal de e-mail de formalização; ainda não confirma anexo, entrega ou aceite do comprador.':
+    'Etapa “Proposta enviada” não comprova anexo PDF, entrega nem aceite do comprador.');
   const acoes=[];
   const ids=new Set();
   function acao(id,prioridade,titulo,motivo,conclusao,fonte) {
@@ -834,8 +847,10 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
         'Documento, valor, destinatário e data de envio verificados.','RD · etapa / anexos ainda não integrados');
       if (!promessaRecebida) acao('recebimento','MÉDIA',
         'Confirmar se o comprador recebeu e avaliou a proposta.',
-        'Não há confirmação explícita identificável no texto recuperado; e-mail e WhatsApp não estão validados.',
-        'Recebimento e percepção do comprador registrados com data.','RD · anotações / canais não integrados');
+        emailFormalizacao?
+          'Há e-mail de formalização, mas envio não equivale a recebimento ou avaliação pelo comprador.':
+          'Não há confirmação explícita identificável no texto recuperado, inclusive nas atividades de e-mail disponíveis.',
+        'Recebimento e percepção do comprador registrados com data.','RD · e-mail / anotações');
       if (!comValor) acao('valor','MÉDIA',
         'Conferir o valor da proposta e o valor da negociação no CRM.',
         'O leitor não recuperou valor positivo do registro da negociação.',
@@ -938,11 +953,19 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
       valor.detalhe=comValor?'Valor positivo consta no campo da negociação; o PDF não foi conferido.':
         'Valor da proposta não pôde ser confirmado nas fontes disponíveis.';
     }
+    const gravacao=closer.find(x=>/Link da gravação/.test(x.titulo||''));
+    if (gravacao&&emailGravacao) {
+      gravacao.status='INDICIO';gravacao.detalhe=
+        'Atividade de e-mail em '+viWidgetDiaExibicao_(emailGravacao.data)+
+        ' contém referência de gravação. Validar acesso, reunião correspondente e conteúdo separadamente.';
+      gravacao.referencia='RD · e-mail';
+    }
     const recebimento=closer.find(x=>/Confirmação de recebimento/.test(x.titulo||''));
     if (recebimento&&promessaRecebida) {
       recebimento.status='INDICIO';recebimento.detalhe=
-        'Anotação '+viWidgetDiaExibicao_(promessaRecebida.data)+
+        'Atividade '+viWidgetDiaExibicao_(promessaRecebida.data)+
         ' menciona recebimento, mas ainda exige verificação do canal.';
+      recebimento.referencia='RD · atividade';
     }
     const tarefasProximas=closer.find(x=>/Tarefa com data e acordo/.test(x.titulo||''));
     if (tarefasProximas) {
@@ -954,7 +977,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     }
   }
   const foco=acoes[0]||null;
-  parecer.versao='0.4.0';
+  parecer.versao='0.4.3';
   parecer.operacional={
     tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
       noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
@@ -1079,6 +1102,6 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.2';
+  parecer.versao='0.4.3';
   return parecer;
 }
