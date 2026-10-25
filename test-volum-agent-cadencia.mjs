@@ -73,7 +73,7 @@ assert.equal(comTarefaCloser.indicadores.chamadasConcluidasNoRdSemCorrespondenci
 assert.notEqual(resultado.calendario[0].estado,'DESVIO');
 const withoutLmvs=c.viCerebroCadencia_({...ctx,regraCadencia:{...ctx.regraCadencia,lmv:'NAO_CONFIRMADO'}});
 assert.equal(withoutLmvs.calendario[0].esperado,null);
-assert.equal(withoutLmvs.calendario.length,3,'sem LMV conhecido mapeia apenas dias observados');
+assert.equal(withoutLmvs.calendario.length,2,'sem LMV conhecido, so dias com tentativas observadas; resposta nao e tentativa');
 assert.equal(withoutLmvs.criterios.find(x=>x.id==='perfil').status,'NAO_VERIFICAVEL');
 const robot=c.viCerebroCadencia_({...ctx,regraCadencia:{...ctx.regraCadencia,modoSdr:'ROBO'}});
 assert.equal(robot.calendario[0].esperado,null,'robô não recebe régua de SDR humano');
