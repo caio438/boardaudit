@@ -21,7 +21,8 @@ try {
   webapp:{executeAs:'USER_DEPLOYING',access:'DOMAIN'}};
  fs.writeFileSync(path.join(live,'appsscript.json'),JSON.stringify(manifest));
  fs.writeFileSync(path.join(repo,'.clasp.json'),JSON.stringify({scriptId:'TEST_BOARD',rootDir:'.'}));
- for(const name of ['VolumIntelligenceLead.gs','VolumWidgetService.gs','VolumWidgetWebApp.gs'])
+ for(const name of ['VolumIntelligenceLead.gs','VolumRdStageTimeline.gs',
+   'VolumWidgetRdOps.gs','VolumWidgetService.gs','VolumWidgetWebApp.gs'])
    fs.writeFileSync(path.join(repo,name),"function test_"+name.replace(/[^a-z]/gi,'_')+"(){}");
  fs.writeFileSync(path.join(repo,'VolumWidgetPanel.html'),'V2');
  const res=prepareWidgetPrivateStage(repo,live,stage,deployments,meta);
@@ -30,6 +31,13 @@ try {
  assert.equal(fs.readFileSync(path.join(stage,'Code.gs'),'utf8'),board);
  assert.equal(fs.readFileSync(path.join(stage,'Control.gs'),'utf8'),"function atividadeDoBoard(){return 'inalterada';}");
  assert.equal(fs.readFileSync(path.join(stage,'VolumWidgetPanel.html'),'utf8'),'V2');
+ assert.equal(fs.readFileSync(path.join(stage,'VolumRdStageTimeline.gs'),'utf8'),
+   fs.readFileSync(path.join(repo,'VolumRdStageTimeline.gs'),'utf8'),
+   'Historico RD precisa ser copiado no release privado');
+ assert.equal(fs.readFileSync(path.join(stage,'VolumWidgetRdOps.gs'),'utf8'),
+   fs.readFileSync(path.join(repo,'VolumWidgetRdOps.gs'),'utf8'),
+   'Motor de auditoria Sales Ops precisa ser copiado no release privado');
+
  assert.equal(JSON.parse(fs.readFileSync(path.join(stage,'appsscript.json'),'utf8')).webapp.executeAs,'USER_ACCESSING');
  assert.equal(JSON.parse(fs.readFileSync(meta,'utf8')).widgetId,widgetId);
  const repeatDeployments='Found 4 deployments.\n- HEAD_ID @HEAD\n- '+boardId+' @427 - BoardAudit\n- '+widgetId+' @434 - VOLUM Intelligence Sales Ops V2 446f2d8\n- DECOY @430 - VOLUM outra extensão\n';
