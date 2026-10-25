@@ -121,6 +121,41 @@ const noPipeline=ctx.viRdCatalogoEtapas_('safe-token',{deal_stage:{id:S[0],name:
 assert.equal(noPipeline.fonte.acessivel,false);
 assert.equal(noPipeline.nomes[S[0]],'LEAD');
 
+// Standalone RD read must not depend on finding a matching Board interaction.
+const oldRead=ctx.viLeadRdGet_;
+ctx.obterIntegracaoCliente_=(client,kind)=>{
+  assert.equal(client,'CLI-20260803131300-C4455D17');
+  assert.equal(kind,'RD_STATION');
+  return {ATIVO:'SIM',ID_INTEGRACAO:'rd-only-test'};
+};
+ctx.obterSegredo_=(key)=>{assert.equal(key,'INTEGRACAO_TOKEN_rd-only-test');return 'FAKE_READ_ONLY_TOKEN';};
+ctx.lerObjetos_=()=>{throw new Error('Board must never be queried by RD-only history collector');};
+ctx.viLeadRdGet_=(token,path,params)=>{
+  assert.equal(token,'FAKE_READ_ONLY_TOKEN');
+  if(path==='/deals/'+deal.id)return {...deal,deal_custom_fields:[]};
+  if(path==='/tasks')return {tasks:[{id:'t1',deal_id:deal.id,
+    created_at:'2026-10-13T11:00:00Z',date:'2026-10-14T00:00:00Z',
+    done:false,type:'call',subject:'Tentativa prevista'}]};
+  if(path==='/activities')return {activities:params.type==='note'?
+    [{id:'n1',deal_id:deal.id,type:'note',
+      date:'2026-10-13T12:54:00Z',text:'Registro do SDR'}]:[]};
+  if(path==='/deal_stages')return {deal_stages:S.map((id,i)=>({id,name:['LEAD','CADENCIA','CONEXAO','AGENDA','PROPOSTA'][i]})),has_more:false,total:5};
+  throw new Error('Unexpected RD endpoint '+path);
+};
+const direct=ctx.viRdLerEtapasPorCliente_(deal.id,
+  'CLI-20260803131300-C4455D17',{incluirTextos:true});
+assert.equal(direct.resumo.passagensConsolidadas,5);
+assert.equal(direct.resumo.duplicatasConciliadas,1);
+assert.equal(direct.cobertura.tarefas.quantidade,1);
+assert.equal(direct.cobertura.atividades.quantidade,1);
+assert.equal(direct.janelas[3].contagens.atividades,1);
+assert.ok(!JSON.stringify(direct).includes('FAKE_READ_ONLY_TOKEN'));
+const preview=ctx.VOLUM_RD_VALIDAR_ETAPAS_BEAGA();
+assert.equal(preview.modo,'PREVIEW_SOMENTE_RD');
+assert.equal(preview.passagens,5);
+assert.ok(!JSON.stringify(preview).includes('Registro do SDR'));
+ctx.viLeadRdGet_=oldRead;
+
 assert.match(widget,/'etapasrd','Etapas RD'/);
 assert.match(widget,/function rdWindows\(d\)/);
 assert.match(service,/parecer\.historicoRdEtapas/);
