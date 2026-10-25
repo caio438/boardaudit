@@ -63,6 +63,52 @@ continua usando a Web App privada Apps Script.
 - Armazenamento apenas em memória, com cache de 60 segundos por lead.
   Sem logs dos conteúdos da negociação e sem comandos de escrita.
 
+## Conexão ao BoardAudit real pelo Google Sheets (opcional)
+
+A partir da versão 0.2.0 o MCP lê os registros do BoardAudit diretamente
+pela **API Google Sheets em modo leitura**, sem precisar baixar a planilha
+inteira, sempre que as variáveis abaixo estiverem configuradas em um host
+privado:
+
+```bash
+export VOLUM_MCP_CLIENT_KEY='wisetec'
+export VOLUM_RD_TOKEN='(credencial RD armazenada no cofre do host)'
+export VOLUM_BOARD_CLIENT_ID='(ID exato do cliente na planilha)'
+export VOLUM_BOARD_SPREADSHEET_ID='(ID da planilha autorizada)'
+export GOOGLE_APPLICATION_CREDENTIALS='/caminho/privado/service-account-readonly.json'
+# Por padrão NÃO ler o conteúdo de transcrições.
+export VOLUM_BOARD_TRANSCRIPT_EXCERPTS='NAO'
+```
+
+Compartilhe a planilha com o **e-mail de serviço apenas como Leitor**,
+usando uma identidade de serviço específica para o MCP. Autorize exclusivamente
+o escopo `https://www.googleapis.com/auth/spreadsheets.readonly`. Nunca
+coloque o JSON de credenciais ou qualquer token no GitHub, ChatGPT ou ZIP.
+
+O conector pesquisa somente os IDs de cliente e os links CRM das
+interações. Depois, consulta os detalhes **apenas das linhas ligadas
+simultaneamente ao cliente configurado e ao ID da negociação**.
+
+Também faz reconciliação por `ID_INTERACAO` com as abas `TRANSCRICOES`
+e `AUDITORIAS`, expondo apenas status, tipo, contagens e evidências
+necessárias. O campo `FUNCAO` do board identifica o papel declarado
+(SDR/Closer); não equivale a comprovação de fala, identidade biométrica
+ou qualidade do pitch.
+
+Para permitir **excertos** de no máximo 4 transcrições concluídas por
+lead, até 4.000 caracteres cada, configure explicitamente
+`VOLUM_BOARD_TRANSCRIPT_EXCERPTS=SIM`. O padrão é desabilitado. Conteúdo
+parcial não deve ser avaliado como transcrição integral.
+
+O conector é **somente leitura** e o servidor MCP permanece em transporte
+privado stdio. Não há endpoint de dados público, não há publicação de
+auditorias e não se altera nenhum registro.
+
+**Status de implantação:** código e testes no repositório. A ligação em
+tempo real depende de configurar credenciais ADC no host privado e dar
+acesso de leitura à planilha. A inspeção feita pela conexão administrativa
+nesta sessão não configura, por si só, acesso para o processo MCP.
+
 ## Snapshot do board (opcional, fora do repositório)
 
 Para testes offline de chamadas, pode ser definido
@@ -89,7 +135,7 @@ Formato:
 }
 ```
 
-Este modo **não** integra o board automaticamente; só usa um arquivo
+Este modo de snapshot **não** integra o board automaticamente; só usa um arquivo
 preparado e validado pela operação. Não usar arquivos sem origem confiável.
 
 ## Testes
