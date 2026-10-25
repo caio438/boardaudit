@@ -6,21 +6,19 @@ function dealId(url) {
   return match ? match[1].toLowerCase() : '';
 }
 
-async function openDockedWidget(tabId, url) {
+async function openSidePanel(tabId, url) {
   const id = dealId(url);
   if (!id) return { opened: false, reason: 'NEGOCIACAO_RD_NAO_ABERTA' };
   const saved = await chrome.storage.local.get('volumEndpoint');
   const endpoint = String(saved.volumEndpoint || DEFAULT_VOLUM_ENDPOINT);
   if (!/^https:\/\/script\.google\.com\//i.test(endpoint)) return { opened: false, reason: 'ENDPOINT_NAO_CONFIGURADO' };
-  const widgetUrl = new URL(endpoint);
-  widgetUrl.searchParams.set('volum_widget', '1');
-  widgetUrl.searchParams.set('dealId', id);
-  await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_DOCKED_WIDGET', endpoint: widgetUrl.origin + widgetUrl.pathname });
+  await chrome.sidePanel.setOptions({ tabId, path: 'sidebar.html', enabled: true });
+  await chrome.sidePanel.open({ tabId });
   return { opened: true };
 }
 
 chrome.action.onClicked.addListener(tab => {
-  openDockedWidget(tab.id, tab.url).catch(console.warn);
+  openSidePanel(tab.id, tab.url).catch(console.warn);
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'VOLUM_DEAL_ID') {
@@ -29,7 +27,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
-    openDockedWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
+    openSidePanel(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
     return true;
   }
 });
