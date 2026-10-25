@@ -116,6 +116,7 @@ button,input{font:inherit}button{cursor:pointer}
 .operation-action h3{font-size:13px;line-height:1.4;margin:7px 0}
 .operation-action p{color:var(--muted);margin:7px 0}
 .operation-action .done{color:var(--teal);font-size:11px}
+.state-SEM_REGISTRO{background:#3b2532;color:#ffafbf;border-color:#62384b}
 </style>
 <meta name="volum-history-nonce" content="<?= historyNonce ?>">
 </head>
@@ -139,7 +140,7 @@ function display(x){return val(x).replace(/_/g,' ').replace(/NAO /g,'NÃO ').rep
 function status(s){return '<span class="status-tag state-'+safeClass(s)+'">'+esc(display(s||'PENDENTE'))+'</span>';}
 function humanDate(x){if(!x)return 'Sem data';const date=new Date(x);return Number.isNaN(date.getTime())?esc(x):new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(date);}
 function section(title,extra){return '<div class="section-head"><h2>'+esc(title)+'</h2><small>'+esc(extra||'')+'</small></div>';}
-function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo)+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe)+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
+function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo||x.title||x.id||'Critério sem título')+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe||'Sem explicação disponível para este critério.')+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
@@ -322,12 +323,53 @@ html+='<details class="group"><summary><strong>Todos os critérios técnicos</st
 areas.map(function(area){const list=items.filter(function(x){return x.grupo===area});return list.length?group(area,list,false):''}).join('')+'</div></details>';
 if(!items.length)html+='<div class="glass muted">Nenhum critério encontrado para este filtro.</div>';
 return html;}
-function sdr(d){if(d.diagnosticoRdOperacional){const o=d.diagnosticoRdOperacional;return section('Histórico SDR e passagens anteriores','Fonte: RD · sem atribuição por suposição')+'<div class="notice">A etapa atual não apaga o histórico de LEAD, CADÊNCIA e CONEXÃO. A auditoria SDR detalhada será calculada por janelas anteriores, com regras do cliente, sem inferir execução de ligação a partir do nome da tarefa.</div>'+ (o.ativo?'<p class="muted">'+Number((o.resumo||{}).etapas||0)+' passagens identificadas. Consulte Etapas RD para os eventos em ordem.</p>':'<p class="muted">Histórico do RD não recebido.</p>');}const s=d.planoOtimizacaoSdr||{};const itens=s.itens||[];const oficiais=itens.filter(x=>x.pilar==='OFICIAL');const extras=itens.filter(x=>x.pilar!=='OFICIAL');
-let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares')+'<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
-html+='<div class="countbar">'+Number((s.contagem||{}).ATENCAO||0)+' atenção · '+Number((s.contagem||{}).INDICIO||0)+' indícios · '+Number((s.contagem||{}).NAO_VERIFICAVEL||0)+' não verificáveis</div>';
-html+=group('7 pilares do Plano Wisetec',oficiais,true);
-html+=group('9 verificações complementares',extras,false);
-return html;}
+function sdr(d){
+  const rd=d.diagnosticoRdOperacional||null;
+  if(rd&&!rd.ativo){
+    return section('Plano SDR — coleta incompleta','Aguardando Histórico RD')+
+      '<div class="notice">'+esc(rd.motivo||'O Histórico do RD ainda não foi recebido por completo.')+
+      '</div><p class="muted">Não exibir 14 verificações vazias nem atribuir desvios à equipe enquanto a coleta estiver incompleta. Atualize a auditoria para reler o Histórico da negociação.</p>';
+  }
+  const plano=d.planoOtimizacaoSdr||{},itens=plano.itens||[];
+  if(rd&&rd.ativo&&plano.fonte==='RD_UI_HISTORY'){
+    const oficiais=itens.filter(x=>x.pilar==='OFICIAL');
+    const extras=itens.filter(x=>x.pilar!=='OFICIAL');
+    const escopo=plano.escopo||{};
+    const counts=plano.contagem||{};
+    const garantir=item=>({
+      titulo:item.titulo||item.id||'Critério sem título',
+      status:item.status==='SEM_EVIDENCIA'?'SEM_REGISTRO':item.status,
+      detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
+      evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
+    });
+    let html=section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
+    html+='<div class="notice">São auditadas as passagens anteriores a Apresentação e os registros relacionados ao agendamento. A etapa atual não apaga a execução anterior. Cada constatação informa o registro e a próxima correção.</div>';
+    html+='<div class="glass"><p><b>Passagens SDR:</b> '+
+      Number((escopo.passagensSdr||[]).length)+' · <b>Eventos anteriores ao Closer:</b> '+
+      Number(escopo.totalEventosSdr||0)+' · <b>Registros de todo o Histórico:</b> '+
+      Number((rd.resumo||{}).total||0)+'</p>'+
+      '<p class="small">Regra de cadência vigente: '+esc(
+        escopo.regraCadenciaAplicavel==='VERSAO_CLIENTE_NAO_CONFIRMADA'?
+          'versão ainda não confirmada para esta negociação':escopo.regraCadenciaAplicavel||'não informada')+
+      '. Não pontuar prazo de cadência sem régua homologada.</p></div>';
+    html+='<div class="countbar">'+Number(counts.ATENCAO||0)+' atenção · '+
+      Number(counts.SEM_EVIDENCIA||0)+' sem registro · '+
+      Number(counts.EVIDENCIADO||0)+Number(counts.INDICIO||0)+
+      ' com evidência ou indício · '+Number(counts.NAO_VERIFICAVEL||0)+
+      ' dependentes de fonte adicional · '+Number(counts.NAO_APLICAVEL||0)+
+      ' não aplicáveis</div>';
+    html+=group('7 pilares do Plano Wisetec',oficiais.map(garantir),true);
+    // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
+    // em conteúdo vazio na leitura/cópia da interface.
+    html+=group('9 verificações complementares',extras.map(garantir),true);
+    html+='<div class="glass"><p class="small">'+esc(plano.aviso||'')+'</p></div>';
+    return html;
+  }
+  // Sem o histórico completo, mostrar causa técnica em vez de score fictício.
+  const fonte=rd?rd.motivo:'Histórico visual do RD não recebido pelo motor';
+  return section('Plano SDR indisponível','Fonte incompleta')+
+    '<div class="notice">'+esc(fonte||'Não foi possível completar a reconstrução do Histórico do RD.')+'</div>';
+}
 function closer(d){if(d.diagnosticoRdOperacional)return rdDiagnosticoView(d);const c=d.criteriosPlanoWisetec||[];let html=operationalAudit(d)+section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">A análise usa atividades de e-mail do RD quando existirem. E-mail de formalização ou link de gravação é indício: não confirma anexo, recebimento, reunião realizada ou qualidade da conversa.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
 function boardEvidence(d) {
   const resumo=d.evidenciasBoardResumo||{};
