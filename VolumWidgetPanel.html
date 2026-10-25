@@ -446,21 +446,18 @@ function sdr(d){
       evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
     });
     let html=section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
-    html+='<div class="notice">São auditadas as passagens anteriores a Apresentação e os registros relacionados ao agendamento. A etapa atual não apaga a execução anterior. Cada constatação informa o registro e a próxima correção.</div>';
-    html+='<div class="glass"><p><b>Passagens SDR:</b> '+
-      Number((escopo.passagensSdr||[]).length)+' · <b>Eventos anteriores ao Closer:</b> '+
-      Number(escopo.totalEventosSdr||0)+' · <b>Registros de todo o Histórico:</b> '+
-      Number((rd.resumo||{}).total||0)+'</p>'+
-      '<p class="small">Regra de cadência vigente: '+esc(
-        escopo.regraCadenciaAplicavel==='VERSAO_CLIENTE_NAO_CONFIRMADA'?
-          'versão ainda não confirmada para esta negociação':escopo.regraCadenciaAplicavel||'não informada')+
-      '. Não pontuar prazo de cadência sem régua homologada.</p></div>';
+    html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
+      ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
+    html+='<p class="small">Régua de cadência: '+esc(
+      escopo.regraCadenciaAplicavel==='VERSAO_CLIENTE_NAO_CONFIRMADA'?
+        'versão em validação':escopo.regraCadenciaAplicavel||'não informada')+
+      '. Sem régua vigente não aprovar cadência integral.</p>';
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
     html+=criterionSection('7 pilares do Plano Wisetec',oficiais.map(garantir));
     // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
     // em conteúdo vazio na leitura/cópia da interface.
     html+=criterionSection('9 verificações complementares',extras.map(garantir));
-    html+='<div class="glass"><p class="small">'+esc(plano.aviso||'')+'</p></div>';
+    html+='<p class="small">'+esc(plano.aviso||'')+'</p>';
     return html;
   }
   // Sem o histórico completo, mostrar causa técnica em vez de score fictício.
