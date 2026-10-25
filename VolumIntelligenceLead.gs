@@ -753,7 +753,9 @@ function viCerebroCadencia_(ctx) {
   // nao vira violacao automatica quando falta LMV/versao/feriados locais.
   const entrada=viCadenciaDiaBrasil_(ctx.inicioCadenciaEm||ctx.criadaEm);
   const hoje=viCadenciaDiaBrasil_(ctx.agora||new Date());
-  const ultimoRegistro=parada?diaParada:(registrosCadencia.length?registrosCadencia[registrosCadencia.length-1].dia:'');
+  // Quando o LMV ainda nao foi validado, exibimos os dias de tentativa; o dia
+  // da resposta sem contato ativo nao pode virar dia de prospeccao observado.
+  const ultimoRegistro=registrosCadencia.length?registrosCadencia[registrosCadencia.length-1].dia:diaParada;
   const limiteDias=modeloAplicavel?(lmv==='POSITIVO'?18:6):
     (ultimoRegistro?Math.min(18,Math.max(1,viCadenciaIntervaloDiasUteis_(entrada,ultimoRegistro,feriados)+
       (viCadenciaEhUtil_(entrada,feriados)?1:0))):0);
