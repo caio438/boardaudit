@@ -125,7 +125,8 @@ button,input{font:inherit}button{cursor:pointer}
 </main>
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
-const historyNonce=document.querySelector('meta[name="volum-history-nonce"]')?.content||'';
+const historyNonce=typeof document.querySelector==='function'?
+  (document.querySelector('meta[name="volum-history-nonce"]')?.content||''):'';
 const embedMode=true;
 if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
