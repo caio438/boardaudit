@@ -119,12 +119,13 @@ button,input{font:inherit}button{cursor:pointer}
 </style>
 </head>
 <body>
-<main class="shell" id="volum-root" data-deal-id="<?= dealId ?>" data-history-nonce="<?= historyNonce ?>">
+<meta name="volum-history-nonce" content="<?= historyNonce ?>">
+<main class="shell" id="volum-root" data-deal-id="<?= dealId ?>">
 <div id="card" class="loading" role="status">Lendo a negociação e as evidências comerciais…</div>
 </main>
 <script>
 const dealId=document.getElementById("volum-root").dataset.dealId;
-const historyNonce=document.getElementById("volum-root").dataset.historyNonce||'';
+const historyNonce=document.querySelector('meta[name="volum-history-nonce"]')?.content||'';
 const embedMode=true;
 if(embedMode && document.documentElement && document.documentElement.classList)document.documentElement.classList.add('volum-embedded');
 let currentData=null;
