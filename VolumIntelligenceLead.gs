@@ -503,3 +503,38 @@ function VOLUM_PREVIEW_LEAD_PRIVADO(entrada) {
   }
   return viLeadResumoPrivado_(resultado);
 }
+
+/**
+ * Smoke test real de leitura RD - executar manualmente no editor do Apps Script.
+ * NAO publica, altera, envia ou grava dados; imprime apenas contagens e sinais.
+ * Nao registra texto de anotacoes, URLs, tokens ou IDs de contatos.
+ * O codigo do piloto e da integracao deve estar presente no HEAD autenticado.
+ */
+function VOLUM_VALIDAR_API_WISETEC() {
+  const id = '6acc888b98976f0023dc583f';
+  const leitura = VOLUM_ANALISAR_LEAD(id, { incluirTextos: true });
+  const notas = Array.isArray(leitura.anotacoes) ? leitura.anotacoes : [];
+  const tarefas = Array.isArray(leitura.tarefas) ? leitura.tarefas : [];
+  const fontes = leitura.fontes || {};
+  const atividades = fontes.atividades || {};
+  const sinais = {
+    notaReuniaoDesmarcada: notas.filter(n => /desmarc|cancel|reagend/i.test(String(n.texto || ''))).length,
+    notaNaoAtendeu: notas.filter(n => /n[aã]o atendeu|n[aã]o atende/i.test(String(n.texto || ''))).length,
+    tarefaRecoveryDia1Ligacao3: tarefas.filter(t => /recovery\s*dia\s*1\s*liga(?:ç|c)[aã]o\s*3/i.test(String(t.assunto || ''))).length
+  };
+  const resumo = {
+    modo: 'SOMENTE_LEITURA',
+    sucessoConsulta: atividades.acessivel === true || (fontes.tarefas || {}).acessivel === true,
+    atividadesAcessiveis: atividades.acessivel === true,
+    atividadesCompletas: atividades.completo === true,
+    tarefasAcessiveis: (fontes.tarefas || {}).acessivel === true,
+    quantidadeAnotacoes: notas.length,
+    quantidadeAnotacoesComTexto: notas.filter(n => n.textoDisponivel).length,
+    quantidadeTarefas: tarefas.length,
+    quantidadeTarefasConcluidas: tarefas.filter(t => t.concluida).length,
+    quantidadeLigacoesBoard: (leitura.ligacoesBoard || []).length,
+    sinais: sinais
+  };
+  console.log(JSON.stringify(resumo));
+  return resumo;
+}
