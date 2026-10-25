@@ -772,48 +772,48 @@ function viCerebroCadencia_(ctx) {
       if(intervalo>1)gaps.push({de:p,ate:d,diasUteisSemRegistro:intervalo-1});}
   });
   const criterios=[];
-  function item(id,titulo,status,detalhe,fonte,acao,evidencia){
+  function criterioCadencia(id,titulo,status,detalhe,fonte,acao,evidencia){
     criterios.push({id,titulo,status,detalhe,fonte,acao,evidencia:evidencia||''});
   }
-  item('perfil','Tipo de operacao e regra aplicavel',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('perfil','Tipo de operacao e regra aplicavel',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
     'Modo SDR: '+modo+'. Fluxo: '+escopo+'. LMV: '+lmv+
     '. A nomenclatura das tarefas nao define se o SDR e humano ou robo.',
     'Estrutura da Cadencia / cadastro do cliente',
     'Confirmar modo da operacao, origem inbound e LMV para habilitar comparacao da regua.');
-  item('inicio','Inicio da cadencia',registros.length?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('inicio','Inicio da cadencia',registros.length?'INDICIO':'NAO_VERIFICAVEL',
     'Primeiro contato registrado: '+(registros[0]?.data||'nao localizado')+
     '. A criacao de tarefas isolada nao comprova tentativa.',
     'RD / Board','Comparar inicio efetivo com SLA e horario comercial quando homologados.',
     registros[0]?.fonte||'');
-  item('sequencia','Sequencia dos contatos',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('sequencia','Sequencia dos contatos',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
     'Dia a dia reconstituido por canal e data, sem exigir nomenclatura CAD. '+
     (modeloAplicavel?'Modelo esperado aplicado de modo preliminar.':'Nao e seguro pontuar sem perfil e LMV confirmados.'),
     'Estrutura da Cadencia / RD','Reconciliar a linha do tempo com a versao aprovada.');
-  item('execucao','Execucao real x tarefas',ligacoes.length?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('execucao','Execucao real x tarefas',ligacoes.length?'INDICIO':'NAO_VERIFICAVEL',
     (ligacoes.length-closerIgnoradas)+' chamada(s) possiveis de SDR no Board; '+candidatosTarefa.length+
     ' tarefa(s) de ligacao concluidas sem correspondencia direta no Board.',
     'Board API4COM / RD','Validar chamadas nao vinculadas; conclusao automatica nao equivale a ligacao.');
-  item('canais','Canais utilizados',registros.length?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('canais','Canais utilizados',registros.length?'INDICIO':'NAO_VERIFICAVEL',
     'Registro observado: '+registros.filter(x=>x.canal==='LIGACAO').length+' ligacao(oes), '+
     registros.filter(x=>x.canal==='WHATSAPP').length+' WhatsApp e '+
     registros.filter(x=>x.canal==='EMAIL').length+' email(s). Os textos podem ser indicios, nao entregas.',
     'RD / Board','Verificar envio real, autora e destinatario nas fontes acessiveis.');
-  item('dias_uteis','Dias uteis e horario comercial',entrada?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('dias_uteis','Dias uteis e horario comercial',entrada?'INDICIO':'NAO_VERIFICAVEL',
     'Calendario Brasil/Sao Paulo: '+dias.length+' dias uteis mapeados; '+
     foraDiaUtil.length+' dia(s) com registros em fim de semana ou feriado nacional. '+
     (extra?'Feriados locais configurados.':'Feriados locais e excecoes ainda nao confirmados.'),
     'Calendario nacional / RD','Validar calendario local e horario da equipe antes de declarar atraso.',
     foraDiaUtil.join(', '));
-  item('intervalos','Intervalos entre contatos',diasUteisComRegistro.length>1?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('intervalos','Intervalos entre contatos',diasUteisComRegistro.length>1?'INDICIO':'NAO_VERIFICAVEL',
     gaps.length+' intervalo(s) com ao menos um dia util sem registro de contato entre dias observados.',
     'RD / Board','Interpretar lacunas segundo a etapa, a regra aplicavel e a completude das fontes.',
     gaps.map(x=>x.de+' a '+x.ate+': '+x.diasUteisSemRegistro+' dia(s)').slice(0,5).join('; '));
-  item('parada','Interrupcao apos resposta',parada?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('parada','Interrupcao apos resposta',parada?'INDICIO':'NAO_VERIFICAVEL',
     parada?'Registro sugere conexao em '+parada.data+
       '; contatos posteriores devem ser avaliados no contexto, nao como cadencia obrigatoria.':
       'Sem gatilho de conexao inequívoco na coleta; ausencia nao prova falta de resposta.',
     'RD · atividades','Confirmar resposta e a efetiva pausa/reclassificacao da negociacao.');
-  item('pendencias','Tarefas pendentes e recuperacao',tarefas.length?'INDICIO':'NAO_VERIFICAVEL',
+  criterioCadencia('pendencias','Tarefas pendentes e recuperacao',tarefas.length?'INDICIO':'NAO_VERIFICAVEL',
     tarefas.filter(x=>!x.concluida).length+' tarefa(s) pendente(s); '+
     agendadas.length+' com data prevista. Breakup e recuperacao exigem registro contextual.',
     'RD · tarefas','Separar tarefas vencidas, prorrogadas e suspensas; conferir proxima acao.');
