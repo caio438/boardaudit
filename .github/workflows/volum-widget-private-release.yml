@@ -38,7 +38,7 @@ jobs:
           test "$GITHUB_REF" = "refs/heads/main"
           current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
           test "$current" = "$GITHUB_SHA"
-          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?event=push&branch=main&per_page=30")"
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?branch=main&per_page=30")"
           conclusion="$(printf '%s' "$runs" | jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last | .conclusion // ""')"
           test "$conclusion" = "success" || {
             echo "::error::A revisao main nao tem CI verde no SHA exato."
