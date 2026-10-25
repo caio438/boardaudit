@@ -202,6 +202,23 @@ assert.equal(planoSdr.itens.find(x=>x.id==='handoff').conformidade,'NAO_CONFORME
  'Missing mandatory handoff after Closer stage with complete history is a deviation');
 assert.equal(planoSdr.itens.find(x=>x.id==='cadencia').conformidade,'PENDENTE',
  'Cadence cannot be green without the version and expected channels');
+
+function sdrForOneNote(line){
+ const h=ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{});
+ const visual=makeUi([{kind:'ANOTACAO',stage:'Contato feito',
+  dateText:'23/10/2026 11:40',dataLocal:'2026-10-23T11:40:00',
+  detail:'SDR fez anotação: '+line}]);
+ const c=ctx.viRdConciliarHistoricoUi_(h,visual,deal.id);
+ const read={negociacao:{etapaAtualNome:'Apresentação',criadaEm:'2026-10-23T08:00:00Z'},
+  historicoRdEtapas:c.historico,tarefas:[],fontes:{}};
+ return ctx.viWidgetPlanoSdrHistoricoRd_(read,ctx.viWidgetDiagnosticoHistoricoRd_(read));
+}
+assert.equal(sdrForOneNote('LMV: positivo').itens.find(x=>x.id==='lmv').conformidade,'PENDENTE',
+ 'LMV declared, but not validated, must not turn green');
+assert.equal(sdrForOneNote('LMV validado: positivo').itens.find(x=>x.id==='lmv').conformidade,'CONFORME',
+ 'Structured LMV validation by SDR is a sufficient CRM evidence for this narrow rule');
+assert.equal(sdrForOneNote('Segmento: Engenharia').itens.find(x=>x.id==='segmento').conformidade,'CONFORME');
+
 const planoCloser=ctx.viWidgetPlanoCloserHistoricoRd_(inputSdr,diagSdr);
 assert.equal(planoCloser.itens.length,7);
 assert.ok(planoCloser.itens.every(x=>x.titulo&&x.detalhe&&x.conformidade));
