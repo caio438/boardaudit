@@ -31,11 +31,23 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
     const target=n.endsWith('.js')?(n==='Código.js'?'Code.gs':n.replace(/\.js$/,'.gs')):n;
     fs.copyFileSync(path.join(liveDir,n),path.join(stageDir,target));
   }
-  const code=fs.readFileSync(path.join(stageDir,'Code.gs'),'utf8');
-  const pos=code.indexOf('function doGet(e)');
-  if(pos<0 || !code.slice(pos,pos+1600).includes('volum_widget') ||
-    !code.slice(pos,pos+1600).includes('viWidgetRenderizarWebApp_')) {
-    throw new Error('Roteamento privado no doGet remoto nao confirmado; preservar projeto');
+  const originalCode=fs.readFileSync(path.join(stageDir,'Code.gs'),'utf8');
+  const entry=originalCode.match(/\\bfunction\\s+doGet\\s*\\(\\s*e\\s*\\)\\s*\\{/);
+  if(!entry || !originalCode.includes('volum_widget')) {
+    throw new Error('Entrada doGet e rota VOLUM nao identificadas no projeto ativo');
+  }
+  const pos=entry.index;
+  const already=originalCode.slice(pos,pos+1600);
+  let code=originalCode;
+  let routePatched=false;
+  if(!(already.includes('volum_widget') && already.includes('viWidgetRenderizarWebApp_'))) {
+    // A versao viva pode ter o desvio VOLUM mais abaixo ou para o antigo handler.
+    // Adiciona APENAS um retorno antecipado para o parametro da widget.
+    // Sem volum_widget=1, o restante de doGet permanece byte-a-byte igual.
+    const early="function doGet(e) {\\n  if (e && e.parameter && String(e.parameter.volum_widget || '') === '1') {\\n    return viWidgetRenderizarWebApp_(e);\\n  }";
+    code=originalCode.slice(0,pos)+early+originalCode.slice(pos+entry[0].length);
+    fs.writeFileSync(path.join(stageDir,'Code.gs'),code);
+    routePatched=true;
   }
   for(const n of OVERLAY){
     const source=path.join(repoDir,n);
@@ -63,7 +75,10 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
   }
   if(getCount!==1)throw new Error('Implantacao VOLUM deve ter somente uma doGet');
   const mainAfter=fs.readFileSync(path.join(stageDir,'Code.gs'),'utf8');
-  if(mainAfter!==code)throw new Error('Fonte Code.gs do board foi alterada');
+  if(mainAfter!==code)throw new Error('O Codigo do board mudou alem da rota esperada');
+  if(routePatched && !mainAfter.endsWith(originalCode.slice(pos+entry[0].length))) {
+    throw new Error('Codigo original do board nao foi integralmente preservado');
+  }
   const claspPath=path.join(repoDir,'.clasp.json');
   const clasp=JSON.parse(fs.readFileSync(claspPath,'utf8'));
   if(!clasp.scriptId)throw new Error('scriptId do BoardAudit ausente');
@@ -72,7 +87,8 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
     boardOldVersion:board.version,boardId:board.id,projectScriptId:clasp.scriptId};
   fs.writeFileSync(metaFile,JSON.stringify(meta),{mode:0o600});
   return {ok:true,files:entries.length,gs:gs.length,widgetVersion:widget[0].version,
-    boardVersion:board.version,boardSourceUnchanged:true,
+    boardVersion:board.version,boardSourceUnchanged:!routePatched,
+    boardRouteOnlyPatch:routePatched,
     manifestBefore:originalConfig.executeAs||'UNKNOWN',manifestAfter:'USER_ACCESSING'};
 }
 
