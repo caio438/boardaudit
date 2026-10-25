@@ -11,9 +11,9 @@
 <style>
 :root{color-scheme:dark;--bg:#080911;--panel:#11121f;--panel2:#18192b;--line:#2c2c40;--ink:#f5f3fb;--muted:#a09fb8;--low:#777991;--violet:#a277ff;--violet2:#c2aaff;--teal:#64dcb9;--yellow:#f4c67f;--red:#ff9692}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 Geist,Inter,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+html,body{width:100%;max-width:100%;overflow-x:hidden}body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 Geist,Inter,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 button,input{font:inherit}button{cursor:pointer}
-.shell{min-height:100vh;max-width:850px;margin:0 auto;padding:0 15px 22px}
+.shell{width:100%;min-width:0;min-height:100vh;max-width:850px;margin:0 auto;padding:0 15px 22px;overflow-x:clip}#card,section{min-width:0}
 .topbar{display:flex;align-items:center;gap:9px;padding:18px 0;border-bottom:1px solid var(--line)}
 .logo{display:grid;place-items:center;background:linear-gradient(135deg,#ad86ff,#603bdc);height:34px;width:34px;border-radius:10px;color:#fff;font:700 22px/1 "Space Grotesk",sans-serif;letter-spacing:-.07em;box-shadow:0 0 25px #7644de44}
 .brand{display:flex;flex-direction:column;line-height:1.1;gap:4px;flex:1}
@@ -49,7 +49,7 @@ button,input{font:inherit}button{cursor:pointer}
 .hero p{color:#d4cbe4;font-size:11px;margin:7px 0 0}
 .hero .next{background:#b18bff;border:0;border-radius:8px;color:#1a1026;font-weight:700;text-align:left;padding:11px 12px;display:block;width:100%;margin-top:13px}
 .hero .next:hover{background:#c6a7ff}
-.status-tag{display:inline-flex;vertical-align:middle;align-items:center;max-width:100%;padding:4px 7px;border-radius:5px;font:600 9px/1.2 "Geist Mono",monospace;letter-spacing:.01em;text-transform:uppercase;background:#292338;color:#d1b6ff;border:1px solid #44375c;white-space:nowrap}
+.status-tag{display:inline-flex;vertical-align:middle;align-items:center;justify-content:flex-end;max-width:48%;padding:4px 7px;border-radius:5px;font:600 9px/1.2 "Geist Mono",monospace;letter-spacing:.01em;text-transform:uppercase;text-align:right;background:#292338;color:#d1b6ff;border:1px solid #44375c;white-space:normal;overflow-wrap:anywhere}
 .state-ATENCAO,.risk-ALTO{background:#3e232a;border-color:#6a3e48;color:#ffb6ad}
 .state-SEM_EVIDENCIA,.risk-MEDIO{background:#3d2d1d;border-color:#66503a;color:#ffcd88}
 .state-EVIDENCIADO,.state-CONSULTADA,.state-OK{background:#1c3a30;border-color:#2e6554;color:#76e2be}
@@ -80,7 +80,7 @@ button,input{font:inherit}button{cursor:pointer}
 .group-body{padding:0 12px 12px}
 .validation{border-top:1px solid #2d2e40;padding:12px 2px}
 .validation-head{display:flex;align-items:start;justify-content:space-between;gap:8px}
-.validation h3{margin:0 0 6px;font-size:12px;line-height:1.4;font-weight:600}
+.validation h3{min-width:0;margin:0 0 6px;font-size:12px;line-height:1.4;font-weight:600;overflow-wrap:anywhere}
 .validation p{margin:6px 0;font-size:11px;color:var(--muted)}
 .validation .source{color:var(--low);font:10px/1.4 "Geist Mono",monospace;margin-top:6px}
 .to-do{font-size:11px;color:#dbcaff;background:#251d37;border-left:2px solid #9a73e9;border-radius:0 6px 6px 0;padding:9px;margin-top:10px}
@@ -93,7 +93,7 @@ button,input{font:inherit}button{cursor:pointer}
 .warn{color:var(--yellow)}.error{background:#32202b;border:1px solid #723d52;padding:15px;border-radius:11px;color:#ffccd1;font-size:12px}
 .loading{padding:26px 6px;color:var(--muted);font-size:12px}
 .loading:before{content:"";display:inline-block;background:var(--violet);width:9px;height:9px;border-radius:50%;margin-right:9px;box-shadow:0 0 18px #8955fc}
-.refresh-wrap{position:sticky;bottom:0;margin:18px -15px -22px;padding:13px 15px 17px;background:linear-gradient(180deg,#08091100,#080911 25%);border-top:1px solid #292b3d}
+.refresh-wrap{position:static;margin:18px 0 0;padding:13px 0 4px;background:var(--bg);border-top:1px solid #292b3d}
 .refresh{border:1px solid #a38add;background:#a68aff;color:#171022;width:100%;font-weight:700;border-radius:9px;padding:12px}
 .refresh:hover{background:#c2aaff}.refresh:disabled{opacity:.6;cursor:default}
 .footer{padding:12px 0 18px;text-align:center;font:9px "Geist Mono",monospace;letter-spacing:.03em;color:#7d7d99}
@@ -185,7 +185,7 @@ html+='<div class="countbar">'+Number((s.contagem||{}).ATENCAO||0)+' atenção �
 html+=group('7 pilares do Plano Wisetec',oficiais,true);
 html+=group('9 verificações complementares',extras,false);
 return html;}
-function closer(d){const c=d.criteriosPlanoWisetec||[];let html=section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">Análise orientada pela etapa do CRM. Proposta PDF, recebimento e gravação não são confirmados sem as respectivas fontes.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
+function closer(d){const c=d.criteriosPlanoWisetec||[];let html=section('Plano de Otimização Closer','Wisetec · 7 pilares')+'<div class="notice">A análise usa atividades de e-mail do RD quando existirem. E-mail de formalização ou link de gravação é indício: não confirma anexo, recebimento, reunião realizada ou qualidade da conversa.</div>';if(!c.length)return html+'<div class="glass"><p class="muted">O plano do closer é exibido quando a negociação está em reunião, proposta ou follow-up. A ausência aqui não é falha do vendedor.</p></div>';return html+group('Validações do closer',c,true);}
 function boardEvidence(d) {
   const resumo=d.evidenciasBoardResumo||{};
   const rows=d.evidenciasBoard||[];
