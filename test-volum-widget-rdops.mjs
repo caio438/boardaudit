@@ -58,6 +58,18 @@ assert.equal(res.fase,'APRESENTACAO');
 assert.equal(res.resumo.total,7,'two real cards in same minute must not collapse');
 assert.equal(linked.historico.linhaDoTempo.eventos[0].data,'2026-10-25T13:00:00.000Z',
  'RD local 10:00 BRT must translate to 13:00 UTC');
+const semanticCtx=ctx.viWidgetContextoHistoricoRd_({
+  historicoRdEtapas:linked.historico,negociacao:{etapaAtualNome:'Apresentação'}
+},res);
+assert.equal(semanticCtx.fonte,'RD_UI_HISTORY');
+assert.equal(semanticCtx.historicoCompleto,true);
+assert.ok(semanticCtx.referencias.every(x=>/^UI_/.test(x.ref)));
+const semanticOk=ctx.viWidgetValidarInterpretacaoRd_({fatos:[
+  {criterio:'Agenda',conclusao:'Há anotação de agenda',referencia:'UI_3'},
+  {criterio:'Inventado',conclusao:'Afirma reunião sem referência',referencia:'UI_999'}
+]}, {historicoRdEtapas:linked.historico});
+assert.equal(semanticOk.fatos.length,1);
+assert.equal(semanticOk.fatos[0].referencia,'UI_3');
 assert.equal(res.canais.whatsappAbertos,1);
 assert.equal(res.canais.emailsEnviados,1);
 assert.equal(res.criterios.find(x=>x.id==='lembrete').estado,'EVIDENCIADO');
