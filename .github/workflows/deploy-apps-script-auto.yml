@@ -134,7 +134,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
 
           cp -- *.gs /tmp/boardaudit-deploy/
-          cp Index.html appsscript.json /tmp/boardaudit-deploy/
+          cp Index.html VolumWidgetPanel.html appsscript.json /tmp/boardaudit-deploy/
 
           for src in /tmp/boardaudit-production/*.js; do
             [ -e "$src" ] || continue
@@ -173,6 +173,7 @@ jobs:
 
           node prepare-dark-mode-deploy.mjs /tmp/boardaudit-deploy
 
+          test -s /tmp/boardaudit-deploy/VolumWidgetPanel.html
           for file in /tmp/boardaudit-deploy/*.gs; do
             node -e \
               "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))" \
