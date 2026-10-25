@@ -179,7 +179,7 @@ function rdWindows(d){
       'Etapa ainda em andamento';
     const c=j.contagens||{};
     html+='<div class="glass"><p><b>Entrada:</b> '+esc(rdMomento(j.inicio))+
-      '<p><b>'+esc(fim)+'</b></p>'+
+      '</p><p><b>'+esc(fim)+'</b></p>'+
       '<p>Atividades: '+Number(c.atividades||0)+' · Mudanças confirmadas: '+
       Number(c.alteracoesConfirmadas||0)+' · Tipo incerto: '+Number(c.atividadesTipoNaoConfirmado||0)+
       ' · Tarefas criadas: '+Number(c.tarefasCriadas||0)+
@@ -196,6 +196,12 @@ function rdWindows(d){
       ' eventos mais recentes desta passagem. O histórico integral permanece na leitura de backend.</p>';
     if((j.alertas||[]).length)html+='<p class="small">Observações: '+esc((j.alertas||[]).join('; '))+'</p>';
   });
+  if((h.eventosForaDasJanelas||[]).length)html+=section('Eventos sem etapa atribuível','Registro RD sem janela segura')+
+    group('Não atribuir automaticamente a uma etapa',h.eventosForaDasJanelas.map(function(e){
+      return {titulo:rdMomento(e.data)+' · '+display(e.acao),status:'NAO_VERIFICAVEL',
+        detalhe:e.texto||e.assunto||'Evento fora do período conhecido das etapas.',
+        fonte:e.fonte+(e.id?' · '+e.id:'')};
+    }),false);
   if((h.inconsistencias||[]).length)html+=section('Observações do histórico','Revisar consistência')+
     group('Alertas da API',h.inconsistencias.map(function(x){
       return {titulo:display(x.tipo),status:'NAO_VERIFICAVEL',
