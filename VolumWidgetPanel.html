@@ -139,7 +139,87 @@ function section(title,extra){return '<div class="section-head"><h2>'+esc(title)
 function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo)+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe)+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
 function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
-function tabs(){const list=[['visao','Visão geral'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function rdMomento(x){
+  if(!x)return 'Em andamento';
+  const date=new Date(x);
+  return Number.isNaN(date.getTime())?val(x):
+    new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',
+      month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(date);
+}
+function rdWindows(d){
+  const h=d.historicoRdEtapas||{},res=h.resumo||{},cad=d.cadastroAtualRd||{};
+  let html=section('Histórico por etapa no RD','Da entrada até a próxima movimentação');
+  html+='<div class="notice">A janela de cada etapa vai da entrada até a próxima entrada. Tarefa criada, tarefa concluída e contato realizado são fatos diferentes. Sem a regra vigente da etapa, este painel não atribui desvio de compliance.</div>';
+  html+='<div class="glass"><p><b>Passagens identificadas:</b> '+Number(res.passagensConsolidadas||0)+
+    ' · <b>Registros RD:</b> '+Number(res.quantidadeEventosRd||0)+
+    ' · <b>Entradas duplicadas conciliadas:</b> '+Number(res.duplicatasConciliadas||0)+'</p>'+
+    '<p class="small">Origem: '+esc(cad.origem||'Não recuperada')+
+    ' · Campanha: '+esc(cad.campanha||'Não recuperada')+
+    ' · Funil: '+esc(cad.funil||'Não informado')+'</p>'+
+    '<p class="small">Atividades completas: '+(res.fonteAtividadesParcial?'não, leitura parcial':'sim, conforme retorno da API')+
+    '. Atualização: '+esc(rdMomento(h.atualizadoEm))+'</p></div>';
+  const visual=(h.linhaDoTempo||{}), cobertura=visual.cobertura||{};
+  if(cobertura.acessivel){
+    html+=section('Histórico visual reconciliado','Interface autenticada do RD');
+    html+='<div class="glass"><p><b>'+Number(cobertura.totalReconciliado||0)+'</b> de '+Number(cobertura.totalVisual||0)+
+      ' cartões reconciliados · '+(cobertura.completo?'paginação completa':'paginação ainda incompleta')+'.</p>'+
+      '<p class="small">Cada evento conserva tipo, autor, data, etapa textual e origem da evidência. Itens sem ID da API permanecem como evento visual, sem ID inventado.</p></div>';
+    html+=group('Linha do tempo visual ('+Number(cobertura.totalReconciliado||0)+')',(visual.eventos||[]).map(function(e){return {
+      titulo:(e.dataTexto||rdMomento(e.data))+' · '+display(e.acao),status:'INDICIO',
+      detalhe:e.texto||'Cartão visual sem detalhe textual.',fonte:(e.fonte||'RD_UI_HISTORY')+' · '+(e.autor||'autor não exibido')+(e.etapaNome?' · '+e.etapaNome:'')};}),false);
+    if((cobertura.lacunas||[]).length)html+='<p class="small warn">Lacunas identificadas: '+esc(cobertura.lacunas.join('; '))+'</p>';
+  }
+  if((cad.camposPersonalizados||[]).length){
+    html+=group('Campos atuais do negócio — não são histórico',cad.camposPersonalizados.map(function(c){
+      const valor=Array.isArray(c.valorAtual)?c.valorAtual.join(' · '):c.valorAtual;
+      return {titulo:c.nome||c.id||'Campo sem título',status:'REGISTRO',
+        detalhe:'Valor atual: '+(valor||'Não informado')+
+          (c.atualizadoEm?' · Atualizado em '+rdMomento(c.atualizadoEm):''),
+        fonte:'RD · campos personalizados atuais',acao:'Para auditar alterações passadas, localizar evento histórico correspondente.'};
+    }),false);
+  }
+  const janelas=h.janelas||[];
+  if(!janelas.length){
+    html+='<p class="muted">Não foi possível reconstruir as entradas de etapa com as datas disponíveis.</p>';
+  }
+  janelas.forEach(function(j,i){
+    html+=section((i+1)+'. '+(j.etapaNome&&j.etapaNome!=='ETAPA_SEM_NOME_CONFIRMADO'?j.etapaNome:'Etapa RD ('+(j.etapaId||'desconhecida')+')'),
+      'Passagem '+Number(j.visita||1));
+    const fim=j.fim?'Saída '+rdMomento(j.fim)+(j.proximaEtapaNome?' → '+j.proximaEtapaNome:''):
+      'Etapa ainda em andamento';
+    const c=j.contagens||{};
+    html+='<div class="glass"><p><b>Entrada:</b> '+esc(rdMomento(j.inicio))+
+      '</p><p><b>'+esc(fim)+'</b></p>'+
+      '<p>Atividades: '+Number(c.atividades||0)+' · Mudanças confirmadas: '+
+      Number(c.alteracoesConfirmadas||0)+' · Tipo incerto: '+Number(c.atividadesTipoNaoConfirmado||0)+
+      ' · Tarefas criadas: '+Number(c.tarefasCriadas||0)+
+      ' · Concluídas: '+Number(c.tarefasConcluidas||0)+'</p>'+
+      '<p class="small">Compliance: sem pontuação até homologar regras desta etapa.</p></div>';
+    const es=(j.eventos||[]).map(function(e){
+      return {titulo:rdMomento(e.data)+' · '+display(e.acao),status:e.confianca==='TIPO_NAO_CONFIRMADO'?'NAO_VERIFICAVEL':'INDICIO',
+        detalhe:e.assunto||e.texto||e.campoNome||e.detalhe||'Registro sem descrição textual',
+        fonte:e.fonte+(e.id?' · ID '+e.id:''),
+        evidencia:e.divergenciaEtapaRegistrada?'Etapa indicada pelo evento diverge da janela cronológica.':''};
+    });
+    html+=group('Registros nesta passagem ('+Number(j.totalEventos||0)+')',es,false);
+    if(Number(j.totalEventos||0)>es.length)html+='<p class="small">O painel exibe os '+es.length+
+      ' eventos mais recentes desta passagem. O histórico integral permanece na leitura de backend.</p>';
+    if((j.alertas||[]).length)html+='<p class="small">Observações: '+esc((j.alertas||[]).join('; '))+'</p>';
+  });
+  if((h.eventosForaDasJanelas||[]).length)html+=section('Eventos sem etapa atribuível','Registro RD sem janela segura')+
+    group('Não atribuir automaticamente a uma etapa',h.eventosForaDasJanelas.map(function(e){
+      return {titulo:rdMomento(e.data)+' · '+display(e.acao),status:'NAO_VERIFICAVEL',
+        detalhe:e.texto||e.assunto||'Evento fora do período conhecido das etapas.',
+        fonte:e.fonte+(e.id?' · '+e.id:'')};
+    }),false);
+  if((h.inconsistencias||[]).length)html+=section('Observações do histórico','Revisar consistência')+
+    group('Alertas da API',h.inconsistencias.map(function(x){
+      return {titulo:display(x.tipo),status:'NAO_VERIFICAVEL',
+        detalhe:'Inconsistência da cronologia; não implica falha do SDR.',fonte:'RD · deal_stage_histories'};
+    }),false);
+  return html;
+}
 function playbook(d){const p=d.playbookSalesOps||{};if(!p.etapas)return '';const atual=p.decisaoAtual||{};let html=section('Playbook VOLUM','Leitura por etapa e evidência');html+='<div class="glass"><div class="eyebrow">DECISÃO ATUAL</div><h3 style="margin:7px 0;font-size:14px">'+esc(atual.titulo||'Etapa não confirmada')+'</h3>'+status(atual.status)+'<p class="muted">'+esc(atual.detalhe||'')+'</p><div class="to-do"><b>Validar agora:</b> '+esc(atual.acao||'Confirmar dados da etapa')+'</div></div>';html+=group('Jornada e provas disponíveis',p.etapas,true);html+='<p class="small">Compliance: '+esc(display(p.compliance||'NAO_PONTUADO_SEM_REGRA_HOMOLOGADA'))+'.</p>';return html;}
 function overview(d){const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
 html+=playbook(d);
@@ -231,11 +311,14 @@ html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><
 return html;}
 function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
 const notice='<div class="notice">Não atribuímos uma nota de compliance quando não há fontes e regras suficientes. A widget diferencia fato registrado, indício e dado não verificável.</div>';
-let body=activeTab==='visao'?overview(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
+let body=activeTab==='visao'?overview(currentData):activeTab==='etapasrd'?rdWindows(currentData):activeTab==='inteligencia'?intelligence(currentData):activeTab==='sdr'?sdr(currentData):activeTab==='closer'?closer(currentData):proof(currentData);
 document.getElementById('card').innerHTML=header+counter(currentData)+tabs()+(activeTab==='visao'?notice:'')+'<section aria-label="Conteúdo da auditoria">'+body+'</section><div class="refresh-wrap"><button type="button" class="refresh" onclick="audit()">↻ Atualizar auditoria</button></div><footer class="footer">VOLUM INTELLIGENCE · DADOS DO RD / BOARD · USO INTERNO</footer>';}
 function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData);}
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
-function audit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';google.script.run.withSuccessHandler(render).withFailureHandler(function(e){document.getElementById('card').innerHTML='<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+esc(e&&e.message||'Falha temporária na auditoria.')+'</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';}).VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
+let historyFromRd=null;
+function runAudit(){if(!/^[0-9a-f]{24}$/i.test(dealId)){document.getElementById('card').textContent='Não foi possível identificar a negociação RD. Feche e reabra a widget.';return;}document.getElementById('card').textContent='Atualizando…';const rpc=google.script.run.withSuccessHandler(render).withFailureHandler(function(e){document.getElementById('card').innerHTML='<div class="error"><strong>Não foi possível concluir a leitura.</strong><p>'+esc(e&&e.message||'Falha temporária na auditoria.')+'</p><button type="button" class="refresh" onclick="audit()">Tentar novamente</button></div>';});if(historyFromRd)rpc.VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId,historyFromRd,true);else rpc.VOLUM_WIDGET_AUDITAR_SESSAO(dealId,true);}
+function audit(){runAudit();}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('message',function(event){const m=event&&event.data||{};if(m.type!=='VOLUM_RD_UI_HISTORY'||m.dealId!==dealId||!m.history)return;historyFromRd=m.history;runAudit();});
 audit();
 </script>
 </body>

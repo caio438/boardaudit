@@ -18,12 +18,56 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     throw new Error('Acesso privado nao autorizado para esta widget.');
   }
   const leitura = VOLUM_ANALISAR_LEAD(dealId, { incluirTextos: true });
+  if(opcoes&&opcoes.historicoUiRd){
+    const conciliacao=viRdConciliarHistoricoUi_(leitura.historicoRdEtapas,opcoes.historicoUiRd,dealId);
+    if(conciliacao.aceito)leitura.historicoRdEtapas=conciliacao.historico;
+  }
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
   const parecer = viWidgetAdicionarEvidenciasBoard_(viWidgetRefinarParecerV4_(viWidgetParecerDeterministico_(leitura), leitura), leitura);
   parecer.playbookSalesOps=viWidgetPlaybookSalesOps_(leitura,parecer);
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
+  // Somente RD: movimentacoes canonizadas e registros entre entradas de etapa.
+  const recorteRd=leitura.historicoRdEtapas||{};
+  parecer.historicoRdEtapas={
+    atualizadoEm:recorteRd.registroEm||'',
+    resumo:recorteRd.resumo||{},
+    cobertura:recorteRd.cobertura||{},
+    inconsistencias:recorteRd.inconsistencias||[],
+    linhaDoTempo:recorteRd.linhaDoTempo||{},
+    eventosForaDasJanelas:(recorteRd.eventosSemEtapa||[]).slice(-30).map(function(e){
+      return {data:e.data,acao:e.acao,id:e.id||'',fonte:e.fonte,
+        assunto:String(e.assunto||'').slice(0,140),
+        texto:String(e.texto||'').slice(0,240)};
+    }),
+    janelas:(recorteRd.janelas||[]).map(function(j) {
+      return {
+        passagemId:j.passagemId,visita:j.visita,etapaId:j.etapaId,
+        etapaNome:j.etapaNome,inicio:j.inicio,fim:j.fim,
+        fimInformado:j.fimInformado,proximaEtapaNome:j.proximaEtapaNome,
+        status:j.status,duracaoMinutos:j.duracaoMinutos,
+        contagens:j.contagens,compliance:j.compliance,
+        alertas:j.alertas||[],totalEventos:(j.eventos||[]).length,
+        eventos:(j.eventos||[]).slice(-100).map(function(e) {
+          return {data:e.data,acao:e.acao,id:e.id||'',fonte:e.fonte,
+            confianca:e.confianca,origemClassificacao:e.origemClassificacao||'',
+            texto:String(e.texto||'').slice(0,320),
+            assunto:String(e.assunto||'').slice(0,160),
+            campoNome:e.campoNome||'',detalhe:e.detalhe||'',
+            etapaIdRegistrada:e.etapaIdRegistrada||'',
+            divergenciaEtapaRegistrada:e.divergenciaEtapaRegistrada===true};
+        })
+      };
+    })
+  };
+  parecer.cadastroAtualRd={
+    origem:(leitura.cadastroRd||{}).origem||'',
+    campanha:(leitura.cadastroRd||{}).campanha||'',
+    funil:(leitura.cadastroRd||{}).funil||'',
+    atualizadoEm:(leitura.cadastroRd||{}).atualizadoEm||'',
+    camposPersonalizados:(leitura.cadastroRd||{}).camposPersonalizados||[]
+  };
   const usarGemini = Boolean(opcoes && opcoes.usarGemini === true);
   if (usarGemini && parecer.contextoIa && parecer.contextoIa.recomendacoes.length) {
     try {
@@ -34,6 +78,15 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   }
   delete parecer.contextoIa;
   return parecer;
+}
+
+function VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId, historicoUiRd, usarGemini) {
+  const seguro=historicoUiRd&&typeof historicoUiRd==='object'?historicoUiRd:{};
+  const eventos=Array.isArray(seguro.events)?seguro.events:[];
+  if(eventos.length>250)throw new Error('Historico visual acima do limite seguro de leitura.');
+  return VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId,viWidgetEmailSessao_(),{
+    usarGemini:usarGemini===true,historicoUiRd:seguro
+  });
 }
 
 

@@ -23,9 +23,20 @@ async function audit(){
     frame.src=url.toString();
     frame.title='VOLUM Intelligence - negociação RD';
     frame.setAttribute('referrerpolicy','no-referrer');
+    let frameLoaded=false,historyFromRd=null;
+    const deliverHistory=()=>{
+      if(frameLoaded&&historyFromRd)frame.contentWindow.postMessage({type:'VOLUM_RD_UI_HISTORY',dealId:id,history:historyFromRd},url.origin);
+    };
+    frame.addEventListener('load',()=>{frameLoaded=true;deliverHistory();},{once:true});
     $('summary').replaceChildren(frame);
     $('state').hidden=true;
     $('summary').hidden=false;
+    // A API v1 não materializa todos os cartões que o Histórico nativo mostra.
+    // A leitura ocorre somente na aba já aberta, sem escrever no CRM.
+    chrome.tabs.sendMessage(tab.id,{type:'VOLUM_READ_RD_HISTORY'},function(history){
+      if(chrome.runtime.lastError || !history || history.dealId!==id)return;
+      historyFromRd=history;deliverHistory();
+    });
   }catch(e){state((e&&e.message)||'Não foi possível abrir a widget. Confira a configuração.');}
 }
 audit();

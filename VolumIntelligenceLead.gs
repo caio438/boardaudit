@@ -623,9 +623,14 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   // Resolver pelo endpoint oficial GET /deal_stages/{id} somente se necessário.
   const etapaIdRd = String((negociacao.deal_stage || {}).id ||
     (negociacao.deal_stage || {})._id || negociacao.deal_stage_id || '').trim();
-  let nomeEtapaRd = String((negociacao.deal_stage || {}).name ||
+  // O catalogo do funil resolve todas as etapas com uma consulta paginada,
+  // evitando uma consulta individual adicional para a etapa atual.
+  const catalogoEtapasRd = viRdCatalogoEtapas_(vinculo.token, negociacao);
+  const nomeEtapaPayload=String((negociacao.deal_stage || {}).name ||
     negociacao.deal_stage_name || '').trim();
-  let origemEtapa = nomeEtapaRd ? 'DADOS_NEGOCIACAO_RD' : 'SEM_NOME';
+  let nomeEtapaRd=nomeEtapaPayload||catalogoEtapasRd.nomes[etapaIdRd]||'';
+  let origemEtapa=nomeEtapaPayload?'DADOS_NEGOCIACAO_RD':
+    nomeEtapaRd?'CATALOGO_ETAPAS_RD':'SEM_NOME';
   if (!nomeEtapaRd && /^[0-9a-f]{24}$/i.test(etapaIdRd)) {
     try {
       const etapaRetorno = viLeadRdGet_(vinculo.token, '/deal_stages/' + etapaIdRd, {});
@@ -645,6 +650,13 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   fontes.etapa = {acessivel:Boolean(nomeEtapaRd), origem:origemEtapa};
 
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
+  // A leitura agrupada utiliza somente registros do RD (sem atribuir chamadas do Board).
+  if (etapaIdRd && nomeEtapaRd) catalogoEtapasRd.nomes[etapaIdRd]=nomeEtapaRd;
+  const historicoRdEtapas = viRdAuditoriaJanelas_(negociacao,atividades,tarefas,catalogoEtapasRd,{
+    fontesParciais: fontes.atividades.completo !== true || fontes.tarefas.completo !== true
+  });
+  fontes.historicoRdEtapas = historicoRdEtapas.cobertura.etapas;
+  fontes.catalogoEtapasRd = historicoRdEtapas.cobertura.catalogoEtapas;
   const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, metadadosJornada.reunioes, metadadosJornada.formalizacoes);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at) };
@@ -669,6 +681,8 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
       viCerebroAgenda_(ctx), viCerebroReuniao_(ctx)
     ],
     eventos: timeline,
+    historicoRdEtapas: historicoRdEtapas,
+    cadastroRd: historicoRdEtapas.cadastroAtual,
     tarefas: tarefas,
     atividades: atividades,
     arquivosRd: arquivosRd.itens,
@@ -679,6 +693,7 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
     formalizacoesBoard: metadadosJornada.formalizacoes,
     advertencias: [
       'Dados consultados sob demanda, sem persistencia nem alteracao no CRM.',
+      'O historico por etapa separa o periodo entre movimentacoes e usa apenas evidencias do RD; nao atribui compliance sem regras homologadas.',
       'Ausencia de evidencias nao significa que a atividade nao aconteceu.',
       'Nao aplicar compliance de outros clientes: regras Wisetec ainda nao homologadas para este piloto.',
       'Tipos de eventos extraidos por filtro podem nao estar no payload: origemClassificacao indica o nivel de evidencia.',
