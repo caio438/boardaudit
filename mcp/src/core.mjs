@@ -29,6 +29,8 @@ export function redact(value,max=4000) {
 export function normalizeDate(value) {
   const s=String(value||'').trim();
   if(!s)return '';
+  // Data sem hora permanece data civil; converter para UTC a deslocaria para o dia anterior em Sao Paulo.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return Number.isNaN(Date.parse(s))?'':s;
   const br=s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
   if(br){
     const iso=br[3]+'-'+br[2]+'-'+br[1]+'T'+(br[4]||'00')+':'+(br[5]||'00')+':'+(br[6]||'00')+'-03:00';
@@ -250,7 +252,7 @@ export function buildHistory(raw,{dealId,clientKey,roleMap={},boardSnapshot=null
       owner:redact(deal.user?.name||'',90),
       amount:deal.amount_total===null||deal.amount_total===undefined?null:Number(deal.amount_total),
       forecastDate:String(deal.prediction_date||'').slice(0,30),
-      closureState:deal.win===true?'GANHA':deal.win===false?'PERDIDA':'ABERTA'},
+      closureState:deal.win===true?'GANHA':deal.win===false && (deal.closed_at||deal.closed===true)?'PERDIDA':'NAO_CONFIRMADA'},
     coverage,warnings,events
   };
 }
