@@ -56,6 +56,12 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
   const criadas=doTipo('TAREFA_CRIADA');
   const feitas=doTipo('TAREFA_CONCLUIDA');
   const movimentacoes=doTipo('ETAPA_ALTERADA');
+  const naPassagem=e=>!ultima.passagemId||
+    e.passagemId===ultima.passagemId||
+    (e.etapa&&normal(e.etapa)===normal(atual));
+  const notasDaEtapa=notas.filter(naPassagem);
+  const emailsDaEtapa=enviados.filter(naPassagem);
+  const criadasNaEtapa=criadas.filter(naPassagem);
   const buscar=(list,re)=>ultimaDe(list.filter(e=>re.test(e.normal)));
   const nNegada=/nao (?:foi |esta |est[aá] )?(?:agendad|confirmad|enviad|realizad)|tentando agendar|procurando agendar|aguardando confirmacao|sem confirmacao/;
   const agenda=buscar(notas.filter(e=>!nNegada.test(e.normal)),
@@ -64,19 +70,19 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
     buscar(notas,/convite enviado|te enviei o convite|convite no seu email/);
   const lembrete=buscar(enviados,/lembrete|nossa reuniao|nosso compromisso/)||
     buscar(notas,/lembrando.{0,70}(?:compromisso|reuniao|encontro)|logo vamos comecar nosso compromisso/);
-  const confirmacao=buscar(notas.filter(e=>!nNegada.test(e.normal)),
+  const confirmacao=buscar(notas.filter(e=>!nNegada.test(e.normal)&&(!agenda||e.data>=agenda.data)),
     /(?:cliente|lead|contato|comprador).{0,70}confirmou.{0,35}(?:presenca|participacao|convite)|(?:confirmou presenca|confirmou o convite|aceitou o convite)/);
   const realizada=buscar(notas.filter(e=>!/nao (?:foi )?realizad/.test(e.normal)),
     /(?:reuniao|apresentacao|demonstracao).{0,45}(?:realizada|aconteceu|concluida)|(?:realizamos|fizemos) (?:a |uma )?(?:reuniao|apresentacao)/);
-  const propostaEmail=buscar(enviados,/proposta|formaliz|orcamento|condicoes comerciais/);
-  const propostaAnotada=buscar(notas,/enviei.{0,50}proposta|proposta.{0,40}(?:enviada|encaminhada)/);
-  const gravacao=buscar(notas.concat(enviados),/gravac|recording|tldv|link da reuniao gravada/);
-  const recebimento=buscar(notas.filter(e=>
+  const propostaEmail=buscar(emailsDaEtapa,/proposta|formaliz|orcamento|condicoes comerciais/);
+  const propostaAnotada=buscar(notasDaEtapa,/enviei.{0,50}proposta|proposta.{0,40}(?:enviada|encaminhada)/);
+  const gravacao=buscar(notasDaEtapa.concat(emailsDaEtapa),/gravac|recording|tldv|link da reuniao gravada/);
+  const recebimento=buscar(notasDaEtapa.filter(e=>
     !/chegou tudo|voce recebeu|recebeu a proposta\?|consegue confirmar|aguardando.{0,20}recebimento|nao recebeu/.test(e.normal)),
     /(?:cliente|comprador|lead|contato).{0,70}(?:confirmou|acusou).{0,30}(?:recebimento|que recebeu)|(?:ele|ela).{0,25}confirmou.{0,20}recebimento/);
-  const recovery=buscar(criadas,/recovery|recupera|retomad/)||
+  const recovery=buscar(criadasNaEtapa,/recovery|recupera|retomad/)||
     buscar(notas,/iniciar recovery|inicio de recovery/);
-  const follow=buscar(criadas,/follow|retorno|acompanhamento|recuperacao/);
+  const follow=buscar(criadasNaEtapa,/follow|retorno|acompanhamento|recuperacao/);
   const respondido=ultimaDe(respostas);
   const canais={emailsEnviados:enviados.length,emailsRespondidos:respostas.length,
     whatsappAbertos:aberturas.length,tarefasCriadas:criadas.length,
