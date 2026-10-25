@@ -480,19 +480,82 @@ function viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard,
   return eventos.sort((a, b) => a.data.localeCompare(b.data));
 }
 
+/**
+ * Agente LEAD: entrada e encaminhamento inicial. O LMV informado pelo
+ * formulario e provisório; validacao pelo SDR pertence ao Agente CONEXAO.
+ */
 function viCerebroLead_(ctx) {
-  const primeiro = ctx.timeline.find(e => e.tipo !== 'ENTRADA_ETAPA');
-  const criacao = viLeadDataMs_(ctx.criadaEm);
-  const primeiraData = primeiro ? viLeadDataMs_(primeiro.data) : null;
+  const negocio=ctx.negociacao || {};
+  const cadastro=ctx.cadastro || {};
+  const tarefas=Array.isArray(ctx.tarefas)?ctx.tarefas:[];
+  const atividades=Array.isArray(ctx.atividades)?ctx.atividades:[];
+  const ligacoes=Array.isArray(ctx.ligacoes)?ctx.ligacoes:[];
+  const etapas=Array.isArray(ctx.etapas)?ctx.etapas:[];
+  const fontes=ctx.fontes||{};
+  const inicio=String(ctx.criadaEm||'');
+  const criacao=viLeadDataMs_(inicio);
+  const primeiroRegistro=(ctx.timeline||[]).find(e=>e.tipo!=='ENTRADA_ETAPA'&&e.data);
+  const primeiroRegistroMs=primeiroRegistro?viLeadDataMs_(primeiroRegistro.data):null;
+  const primeiraLigacao=ligacoes.filter(x=>x.data).sort((a,b)=>a.data.localeCompare(b.data))[0];
+  const primeiraLigacaoMs=primeiraLigacao?viLeadDataMs_(primeiraLigacao.data):null;
+  const textoInicial=atividades.filter(x=>x.data&&(criacao===null||viLeadDataMs_(x.data)>=criacao))
+    .sort((a,b)=>a.data.localeCompare(b.data));
+  const cad=(n,canal)=>textoInicial.find(a=>new RegExp('\\[CAD\\s*'+n+'\\]','i').test(a.texto||'') &&
+    canal.test(String(a.texto||'')));
+  const whats=cad(1,/whats/i),email=cad(2,/e-?mail/i);
+  const coberturaAtividades=fontes.atividades?.acessivel===true&&fontes.atividades?.completo===true;
+  const coberturaTarefas=fontes.tarefas?.acessivel===true&&fontes.tarefas?.completo===true;
+  const regra=ctx.regraLead||{};
+  const campos=Array.isArray(regra.camposObrigatorios)?regra.camposObrigatorios:[];
+  const campoValor=String(cadastro.lmvDeclarado||'').trim();
+  const itens=[];
+  function criterio(id,titulo,status,detalhe,fonte,evidencia,acao) {
+    itens.push({id,titulo,status,detalhe,fonte,evidencia:evidencia||'',acao});
+  }
+  criterio('origem','Origem e fluxo de entrada',cadastro.origem?'INDICIO':'NAO_VERIFICAVEL',
+    cadastro.origem?'Origem declarada no cadastro: '+String(cadastro.origem).slice(0,100)+'.':'Origem do formulario ainda nao recuperada.',
+    'RD · cadastro',cadastro.origem?'Campo de origem presente':'','Recuperar origem, campanha e fluxo antes de aplicar regras especificas.');
+  const faltantes=campos.filter(k=>!String(cadastro[k]||'').trim());
+  criterio('integridade','Integridade do cadastro',campos.length?(faltantes.length?'ATENCAO':'EVIDENCIADO'):'NAO_VERIFICAVEL',
+    campos.length?(faltantes.length?'Campos obrigatorios nao preenchidos: '+faltantes.join(', '):'Campos obrigatorios do processo preenchidos.'):'Campos obrigatorios do cliente ainda nao configurados.',
+    'RD · cadastro / regras do cliente','','Validar campos obrigatorios para o fluxo de entrada.');
+  criterio('lmv','LMV declarado (provisorio)',campoValor?'INDICIO':'NAO_VERIFICAVEL',
+    campoValor?'Faturamento informado no formulario: '+campoValor+'. Nao equivale a validacao pelo SDR.':'LMV original do formulario nao foi recuperado; nao deduzir a partir de anotacoes posteriores.',
+    'RD · formulario',campoValor?'Declaracao do lead':'','Validacao do LMV durante conexao/pitch pertence ao Agente CONEXAO.');
+  criterio('priorizacao','Priorizacao inicial','NAO_VERIFICAVEL',
+    'Sem fluxo, LMV declarado e regra vigente consolidados, nao e possivel avaliar a prioridade atribuida.',
+    'RD · cadastro / metodo Wisetec','','Aplicar regras de priorizacao da origem e do LMV provisório.');
+  criterio('responsavel','Responsavel pelo lead',negocio.responsavel?'EVIDENCIADO':'NAO_VERIFICAVEL',
+    negocio.responsavel?'Responsavel atual identificado; atribuicao no momento de entrada nao comprovada.':'Nao foi possivel identificar responsavel pelo registro.',
+    'RD · negociacao',negocio.responsavel?'Responsavel atual: '+String(negocio.responsavel).slice(0,80):'',
+    'Confirmar responsavel inicial e eventuais redistribuicoes na entrada.');
+  function sinalEnvio(a,tipo) {
+    if(!a)return {status:coberturaAtividades?'NAO_VERIFICAVEL':'FONTE_INCOMPLETA',detalhe:'Registro de '+tipo+' inicial nao confirmavel nesta consulta.'};
+    return {status:'INDICIO',detalhe:'Registro textual CAD inicial localizado, sem confirmacao de entrega.'};
+  }
+  const w=sinalEnvio(whats,'WhatsApp 0'),e=sinalEnvio(email,'E-mail 0');
+  criterio('whatsapp0','WhatsApp 0 (CAD 1)',w.status,w.detalhe,'RD · atividades',whats?'Atividade '+whats.id+' · '+whats.data:'','Validar registro do envio; tarefa criada isoladamente nao comprova envio.');
+  criterio('email0','E-mail 0 (CAD 2)',e.status,e.detalhe,'RD · atividades',email?'Atividade '+email.id+' · '+email.data:'','Validar registro do envio e destinatario; nao inferir entrega.');
+  criterio('primeiro_contato','Inicio efetivo do contato',primeiraLigacao?'INDICIO':coberturaTarefas?'NAO_VERIFICAVEL':'FONTE_INCOMPLETA',
+    primeiraLigacao?'Primeira ligacao tecnica encontrada; nao prova que o cliente atendeu.':'A criacao/conclusao de tarefa nao equivale a tentativa efetiva.',
+    'Board · API4COM / RD · tarefas',primeiraLigacao?'Ligacao '+primeiraLigacao.id+' · '+primeiraLigacao.data:'',
+    'Conferir primeira tentativa real e horario comercial antes de medir SLA.');
+  criterio('transicao','Entrada na cadencia',etapas.length?'INDICIO':'NAO_VERIFICAVEL',
+    etapas.length?'Historico de etapas encontrado; nomes e gatilhos ainda exigem conciliacao com o funil.':'Sem historico suficiente para validar transicao.',
+    'RD · historico de etapas','','Verificar passagem LEAD para CADENCIA e tarefas iniciais sem presumir execucao.');
   return {
-    agente: 'LEAD', estado: criacao !== null && primeiraData !== null ? 'MEDICAO_PARCIAL' : 'DADOS_INSUFICIENTES',
-    indicadores: {
-      criadaEm: ctx.criadaEm,
-      primeiraEvidenciaEm: primeiro ? primeiro.data : '',
-      minutosAtePrimeiroRegistro: criacao !== null && primeiraData !== null && primeiraData >= criacao
-        ? Math.round((primeiraData - criacao) / 60000) : null
-    },
-    limite: 'Nao equivale ao tempo ate primeiro contato: inclui anotacoes e criacao de tarefas.'
+    agente:'LEAD',estado:'AUDITORIA_DE_ENTRADA',indicadores:{
+      criadaEm:inicio,primeiraEvidenciaEm:primeiroRegistro?.data||'',
+      minutosAtePrimeiroRegistro:criacao!==null&&primeiroRegistroMs!==null&&primeiroRegistroMs>=criacao?
+        Math.round((primeiroRegistroMs-criacao)/60000):null,
+      primeiraLigacaoEm:primeiraLigacao?.data||'',
+      minutosAtePrimeiraLigacao:criacao!==null&&primeiraLigacaoMs!==null&&primeiraLigacaoMs>=criacao?
+        Math.round((primeiraLigacaoMs-criacao)/60000):null,
+      tarefasCriadas:tarefas.length,
+      lmvDeclaradoStatus:campoValor?'PROVISORIO':'NAO_RECUPERADO',
+      lmvValidadoStatus:'COMPETENCIA_AGENTE_CONEXAO'
+    },criterios:itens,
+    limite:'Registro automatico nao prova contato. LMV do formulario e provisório; classificacao definitiva e pitch pertencem ao Agente CONEXAO.'
   };
 }
 
@@ -647,7 +710,9 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   const etapas = viLeadHistoricoEtapas_(negociacao || {});
   const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, metadadosJornada.reunioes, metadadosJornada.formalizacoes);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
-    criadaEm: viLeadDataIso_(negociacao.created_at) };
+    criadaEm: viLeadDataIso_(negociacao.created_at),
+    negociacao: { responsavel: String((negociacao.user || {}).name || '') },
+    fontes: fontes, cadastro: {}, regraLead: {} };
 
   return {
     modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V2_TIPOS_ATIVIDADE', dealId: dealId, idCliente: vinculo.idCliente,
