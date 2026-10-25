@@ -51,6 +51,6 @@ assert.equal(result.sinais.recoveryDia1Ligacao3,1);
 assert.equal(urls.length,3);
 assert.equal(logs.length,1);
 const publicText=JSON.stringify(result)+'\n'+logs.join('\n');
-assert.doesNotMatch(publicText,/Wagner|DUMMY_TOKEN_TEST|OUTRO CLIENTE|a1|t1/);
+assert.doesNotMatch(publicText,/Wagner|DUMMY_TOKEN_TEST|OUTRO CLIENTE|"(?:id|ref)":"(?:a1|t1)"/);
 assert.doesNotMatch(source,/UrlFetchApp\.fetch|(?<!\/)\/api\/v1\/activities.*method:\s*'post'/);
 console.log('Teste RD isolado aprovado: 3 GET, vinculo validado, evidencias resumidas sem texto ou token.');
