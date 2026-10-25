@@ -881,6 +881,7 @@ function viCerebroCadencia_(ctx) {
 }
 
 function viCerebroConexao_(ctx) {
+  if (typeof viJourneyConexao_ === 'function') return viJourneyConexao_(ctx);
   return {
     agente: 'CONEXAO', estado: 'REQUER_INTERPRETACAO',
     indicadores: {
@@ -897,6 +898,7 @@ function viCerebroConexao_(ctx) {
 }
 
 function viCerebroAgenda_(ctx) {
+  if (typeof viJourneyAgenda_ === 'function') return viJourneyAgenda_(ctx);
   const reunioes = ctx.tarefas.filter(t => t.tipo === 'meeting');
   return {
     agente: 'AGENDA', estado: reunioes.length ? 'TAREFAS_OBSERVAVEIS' : 'DADOS_INSUFICIENTES',
@@ -909,6 +911,7 @@ function viCerebroAgenda_(ctx) {
 }
 
 function viCerebroReuniao_(ctx) {
+  if (typeof viJourneyReuniao_ === 'function') return viJourneyReuniao_(ctx);
   const reunioes = ctx.tarefas.filter(t => t.tipo === 'meeting');
   return {
     agente: 'REUNIAO', estado: reunioes.length ? 'REQUER_TRANSCRICAO_E_PLAYBOOK' : 'DADOS_INSUFICIENTES',
@@ -1027,7 +1030,12 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   const timeline = viLeadLinhaTempo_(atividades, tarefas, ligacoes, etapas, reunioesBoard, metadadosJornada.reunioes, metadadosJornada.formalizacoes);
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at),
-    negociacao: { responsavel: String((negociacao.user || {}).name || '') },
+    negociacao: { responsavel: String((negociacao.user || {}).name || ''), etapaAtualNome:nomeEtapaRd },
+    etapaAtual:nomeEtapaRd,
+    janelas:historicoRdEtapas.janelas||[],
+    reunioesBoard:reunioesBoard,reunioesCalendario:metadadosJornada.reunioes||[],
+    formalizacoes:metadadosJornada.formalizacoes||[],arquivos:arquivosRd.itens||[],
+    atividadesApi:atividades,historicoVisualCompleto:false,
     fontes: fontes, cadastro: {}, regraLead: {}, idCliente:vinculo.idCliente,
     regraCadencia: String(vinculo.idCliente)==='CLI-20260803131300-C4455D17' ?
       {modoSdr:'HUMANO',fluxo:'INBOUND_EM_VALIDACAO',lmv:'NAO_CONFIRMADO',

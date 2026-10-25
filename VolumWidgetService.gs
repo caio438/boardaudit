@@ -70,7 +70,16 @@ function viWidgetProntidaoAgentes_(leitura,agentes) {
   if(!regraAplicavel)bCad.push('Faixa LMV, fluxo inbound e modo SDR humano nao foram confirmados para aplicar a regua.');
   if(perfil.calendarioFeriadosLocaisConfirmado!==true)bCad.push('Calendario local e excecoes operacionais ainda nao homologados.');
   bCad.push('Abertura do WhatsApp e tarefa concluida nao comprovam envio nem conversa; confirmar em fonte de mensagens/telefonia.');
+  const bCon=['Qualidade do pitch e LMV validado exigem transcricao vinculada, autoria e playbook SDR homologado.'];
+  if(!visualCompleto)bCon.push('Historico visual nao foi conciliado integralmente: ausencia nao e desvio.');
+  const bAgenda=['Convite, aceite e no-show sao eventos distintos; falta regra de prazos por cliente.'];
+  if(!visualCompleto)bAgenda.push('Sem captura visual completa, a auditoria de mensagens e lembretes e parcial.');
+  const bReuniao=['Aderencia ao pitch depende de texto da transcricao e da versao do playbook Closer.'];
+  if((f.arquivosRd||{}).completo!==true)bReuniao.push('A aba Arquivos nao foi comprovadamente lida por completo.');
+  if(!tarefasCompletas)bReuniao.push('A coleta de tarefas esta parcial; nao concluir falta de follow-up.');
   return {lead:resumo('LEAD',bLead),cadencia:resumo('CADENCIA',bCad),
+    conexao:resumo('CONEXAO',bCon),agenda:resumo('AGENDA',bAgenda),
+    reuniao:resumo('REUNIAO',bReuniao),
     fontes:{historicoVisualCompleto:visualCompleto,apiTarefasCompletas:tarefasCompletas,
       apiAtividadesCompletas:f.atividades?.completo===true,
       boardTelefoniaDisponivel:f.board?.acessivel===true},
@@ -94,7 +103,8 @@ function viWidgetAgentesDetalhados_(leitura) {
   const atividades=eventos.filter(e=>e&&e.data&&tipoPorAcao[e.acao]).map(e=>({
     id:String(e.id||''),data:e.data,texto:String(e.texto||''),
     tipo:tipoPorAcao[e.acao],origemClassificacao:'RD_UI_HISTORY',
-    autor:String(e.autor||''),acaoVisual:e.acao
+    autor:String(e.autor||''),acaoVisual:e.acao,
+    passagemId:String(e.passagemId||'')
   }));
   // WhatsApp aberto nunca fornece prova de envio. Nao se inventa ligacao a
   // partir de tarefa visual; chamadas tecnicas seguem rastreaveis no Board.
@@ -109,7 +119,15 @@ function viWidgetAgentesDetalhados_(leitura) {
     criadaEm:negociacao.criadaEm||'',
     inicioCadenciaEm:(Array.isArray(historico.janelas)?historico.janelas:[])
       .find(x=>/cad[eê]ncia/i.test(String(x.etapaNome||'')))?.inicio||perfil.inicioReferencia||'',
-    negociacao:{responsavel:negociacao.responsavel||''},
+    negociacao:{responsavel:negociacao.responsavel||'',etapaAtualNome:negociacao.etapaAtualNome||''},
+    etapaAtual:negociacao.etapaAtualNome||'',
+    janelas:Array.isArray(historico.janelas)?historico.janelas:[],
+    reunioesBoard:Array.isArray(leitura.reunioesBoard)?leitura.reunioesBoard:[],
+    reunioesCalendario:Array.isArray(leitura.reunioesCalendarioBoard)?leitura.reunioesCalendarioBoard:[],
+    formalizacoes:Array.isArray(leitura.formalizacoesBoard)?leitura.formalizacoesBoard:[],
+    arquivos:Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[],
+    atividadesApi:Array.isArray(leitura.atividades)?leitura.atividades:[],
+    historicoVisualCompleto:true,
     cadastro:viWidgetCadastroLeadApi_(leitura.cadastroRd||{}),
     regraLead:{},idCliente:leitura.idCliente||'',
     regraCadencia:{
@@ -128,6 +146,9 @@ function viWidgetAgentesDetalhados_(leitura) {
     timeline
   };
   const substitutos={LEAD:viCerebroLead_(ctx),CADENCIA:viCerebroCadencia_(ctx)};
+  if(typeof viJourneyConexao_==='function')substitutos.CONEXAO=viJourneyConexao_(ctx);
+  if(typeof viJourneyAgenda_==='function')substitutos.AGENDA=viJourneyAgenda_(ctx);
+  if(typeof viJourneyReuniao_==='function')substitutos.REUNIAO=viJourneyReuniao_(ctx);
   substitutos.LEAD.indicadores.fontePrincipal='RD_UI_HISTORY';
   substitutos.CADENCIA.indicadores.fontePrincipal='RD_UI_HISTORY + BOARD_API4COM';
   substitutos.LEAD.limite+=' A origem em cadastro atual nao comprova o campo na data de entrada. Abertura WhatsApp nao comprova envio.';
@@ -155,7 +176,8 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   parecer.agentesDetalhados=viWidgetAgentesDetalhados_(leitura).map(function(a){
     return {agente:a.agente,estado:a.estado,indicadores:a.indicadores||{},
       criterios:a.criterios||[],calendario:a.calendario||[],
-      intervalos:a.intervalos||[],limite:a.limite||''};
+      intervalos:a.intervalos||[],recomendacoes:a.recomendacoes||[],
+      limite:a.limite||''};
   });
   parecer.prontidaoAgentes=viWidgetProntidaoAgentes_(leitura,parecer.agentesDetalhados);
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
