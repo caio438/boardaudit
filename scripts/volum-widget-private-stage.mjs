@@ -20,7 +20,7 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
   const other=matches.filter(x=>x.id!==BOARD_DEPLOYMENT_ID && x.version!=='HEAD');
   // Em publicacoes posteriores a V2 deixa de estar na versao 433.
   // Identificar pelo marcador unico do deployment atual e usar 433 apenas como fallback legado.
-  const atuais=other.filter(x=>/^VOLUM Intelligence Sales Ops V2(?:\s|$)/i.test(x.description.trim()));
+  const atuais=other.filter(x=>/^VOLUM Intelligence Sales Ops V[23](?:\s|$)/i.test(x.description.trim()));
   const legados=other.filter(x=>x.version===LEGACY_WIDGET_VERSION && /VOLUM|INTELLIGENCE|WIDGET/i.test(x.description));
   const widget=atuais.length===1?atuais[0]:(atuais.length===0&&legados.length===1?legados[0]:null);
   if(!widget)throw new Error('Implantacao VOLUM privada nao identificada univocamente');
