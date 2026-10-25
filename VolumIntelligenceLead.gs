@@ -533,12 +533,12 @@ function viCerebroLead_(ctx) {
     'RD · negociacao',negocio.responsavel?'Responsavel atual: '+String(negocio.responsavel).slice(0,80):'',
     'Confirmar responsavel inicial e eventuais redistribuicoes na entrada.');
   function sinalEnvio(a,tipo) {
-    if(!a)return {status:coberturaAtividades?'NAO_VERIFICAVEL':'FONTE_INCOMPLETA',detalhe:'Registro de '+tipo+' inicial nao confirmavel nesta consulta.'};
-    return {status:'INDICIO',detalhe:'Registro textual CAD inicial localizado, sem confirmacao de entrega.'};
+    if(!a)return {status:coberturaAtividades?'NAO_VERIFICAVEL':'FONTE_INCOMPLETA',detalhe:'Registro de '+tipo+' nao confirmavel nesta consulta; a obrigatoriedade depende do perfil.'};
+    return {status:'INDICIO',detalhe:'Registro de comunicacao localizado, sem confirmacao de autoria ou entrega.'};
   }
   const w=sinalEnvio(whats,'WhatsApp 0'),e=sinalEnvio(email,'E-mail 0');
-  criterio('whatsapp0','WhatsApp 0 (CAD 1)',w.status,w.detalhe,'RD · atividades',whats?'Atividade '+whats.id+' · '+whats.data:'','Validar registro do envio; tarefa criada isoladamente nao comprova envio.');
-  criterio('email0','E-mail 0 (CAD 2)',e.status,e.detalhe,'RD · atividades',email?'Atividade '+email.id+' · '+email.data:'','Validar registro do envio e destinatario; nao inferir entrega.');
+  criterio('whatsapp0','Primeiro registro de WhatsApp',w.status,w.detalhe,'RD · atividades',whats?'Atividade '+whats.id+' · '+whats.data:'','Verificar canal, horario e autoria segundo a regra aplicavel; tarefa criada nao prova envio.');
+  criterio('email0','Primeiro registro de e-mail',e.status,e.detalhe,'RD · atividades',email?'Atividade '+email.id+' · '+email.data:'','Validar destinatario e origem do envio conforme o tipo de SDR; nao inferir entrega.');
   criterio('primeiro_contato','Inicio efetivo do contato',primeiraLigacao?'INDICIO':coberturaTarefas?'NAO_VERIFICAVEL':'FONTE_INCOMPLETA',
     primeiraLigacao?'Primeira ligacao tecnica encontrada; nao prova que o cliente atendeu.':'A criacao/conclusao de tarefa nao equivale a tentativa efetiva.',
     'Board · API4COM / RD · tarefas',primeiraLigacao?'Ligacao '+primeiraLigacao.id+' · '+primeiraLigacao.data:'',
