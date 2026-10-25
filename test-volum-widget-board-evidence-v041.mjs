@@ -86,13 +86,19 @@ assert.match(panel,/Transcrição pendente/);
 const card={textContent:'',innerHTML:''};
 const root={dataset:{dealId}};
 const doc={documentElement:{classList:{add(){}}},
- getElementById:(id)=>id==='volum-root'?root:id==='card'?card:null};
+ getElementById:(id)=>id==='volum-root'?root:id==='card'?card:null,
+ querySelector:sel=>sel.includes('volum-history-nonce')?{content:'b'.repeat(32)}:
+  sel.includes('volum-cache-scope')?{content:'a'.repeat(32)}:null};
 const runner={withSuccessHandler(x){this.success=x;return this;},
  withFailureHandler(x){this.failure=x;return this;},
  VOLUM_WIDGET_AUDITAR_SESSAO(){}};
-const ui=vm.createContext({document:doc,google:{script:{run:runner}},
+const win={top:{postMessage(){}},addEventListener(){},
+ localStorage:{getItem:()=>null,removeItem(){},setItem(){}}};
+const ui=vm.createContext({document:doc,window:win,google:{script:{run:runner}},
+ setTimeout:()=>1,clearTimeout:()=>{},
  Intl,Date,Array,Number,Math,RegExp,Set,String,Object});
 vm.runInContext(script,ui,{timeout:3000});
+ui.runAudit();
 runner.success(p);
 ui.changeTab('evidencias');
 assert.match(card.innerHTML,/19/);
