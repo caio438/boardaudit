@@ -100,7 +100,7 @@ assert.match(chrome,/VOLUM_REQUEST_RD_UI_HISTORY/);
 assert.match(chrome,/INLINE_ID/);
 assert.match(chrome,/host.__volumHistoryCleanup/);
 assert.match(chrome,/volum_history_nonce/);
-assert.match(widget,/data-history-nonce/);
+assert.match(widget,/volum-history-nonce/);
 assert.match(webapp,/template.historyNonce/);
 assert.match(sidebar,/msg.nonce!==historyNonce/);
 assert.match(widget,/window\.top\.postMessage/);
