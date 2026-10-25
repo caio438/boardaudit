@@ -559,21 +559,270 @@ function viCerebroLead_(ctx) {
   };
 }
 
+/**
+ * Datas de cadencia sao calculadas na hora local do CRM (Sao Paulo), nunca
+ * diretamente pelo dia UTC. Ponto facultativo nao e automaticamente feriado.
+ */
+function viCadenciaDiaBrasil_(valor) {
+  const s=String(valor||'').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const dt=valor instanceof Date?valor:new Date(s);
+  if (!Number.isFinite(dt.getTime())) return '';
+  const partes=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(dt);
+  const p={};
+  partes.forEach(x=>{if(x.type!=='literal')p[x.type]=x.value;});
+  return p.year+'-'+p.month+'-'+p.day;
+}
+
+function viCadenciaAdicionarDias_(dia,delta) {
+  const dt=new Date(dia+'T12:00:00Z');
+  if(!Number.isFinite(dt.getTime()))return '';
+  dt.setUTCDate(dt.getUTCDate()+delta);
+  return dt.toISOString().slice(0,10);
+}
+
+function viCadenciaSextaPaixao_(ano) {
+  // Algoritmo gregoriano (Meeus/Jones/Butcher), para o calendario nacional.
+  const a=ano%19,b=Math.floor(ano/100),c=ano%100,d=Math.floor(b/4),e=b%4;
+  const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3);
+  const h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4;
+  const l=(32+2*e+2*i-h-k+7*1000)%7;
+  const m=Math.floor((a+11*h+22*l)/451);
+  const mes=Math.floor((h+l-7*m+114)/31),dia=(h+l-7*m+114)%31+1;
+  const pascoa=ano+'-'+String(mes).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+  return viCadenciaAdicionarDias_(pascoa,-2);
+}
+
+function viCadenciaEhUtil_(dia,feriadosExtras) {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dia))return false;
+  const data=new Date(dia+'T12:00:00Z');
+  const sem=data.getUTCDay();
+  if(sem===0||sem===6)return false;
+  const md=dia.slice(5);
+  if(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'].includes(md))return false;
+  if(dia===viCadenciaSextaPaixao_(Number(dia.slice(0,4))))return false;
+  return !(Array.isArray(feriadosExtras)&&feriadosExtras.includes(dia));
+}
+
+function viCadenciaDiasUteis_(inicio,total,feriadosExtras) {
+  const a=[];
+  let dia=String(inicio||'');
+  for(let i=0;i<380&&a.length<total&&dia;i++){
+    if(viCadenciaEhUtil_(dia,feriadosExtras))a.push(dia);
+    dia=viCadenciaAdicionarDias_(dia,1);
+  }
+  return a;
+}
+
+function viCadenciaIntervaloDiasUteis_(diaA,diaB,feriadosExtras) {
+  if(!diaA||!diaB||diaB<=diaA)return 0;
+  let d=viCadenciaAdicionarDias_(diaA,1),n=0;
+  for(let i=0;i<380&&d&&d<=diaB;i++,d=viCadenciaAdicionarDias_(d,1)){
+    if(viCadenciaEhUtil_(d,feriadosExtras))n++;
+  }
+  return n;
+}
+
+function viCadenciaPadraoDia_(numero,lmv) {
+  const positivo=[
+    {LIGACAO:2,WHATSAPP:1},
+    {LIGACAO:1,EMAIL:1,WHATSAPP:1},
+    {LIGACAO:2,EMAIL:1},
+    {LIGACAO:1,WHATSAPP:2},
+    {EMAIL:1,WHATSAPP:2},
+    {LIGACAO:1,EMAIL:1,BREAKDOWN:1}
+  ];
+  const negativo=[
+    {WHATSAPP:1},
+    {EMAIL:1,WHATSAPP:1},
+    {EMAIL:1},
+    {WHATSAPP:2},
+    {EMAIL:1,WHATSAPP:2},
+    {EMAIL:1,BREAKDOWN:1}
+  ];
+  if(!Number.isInteger(numero)||numero<1)return null;
+  if(lmv==='POSITIVO'&&numero<=18)return Object.assign({},positivo[(numero-1)%6]);
+  if(lmv==='NEGATIVO'&&numero<=6)return Object.assign({},negativo[numero-1]);
+  return null;
+}
+
+/**
+ * Extrai canais de anotacoes sem depender de nome CAD. Texto futuro ou negado
+ * nao conta como execucao. Atividade do RD e indício; nao e prova de entrega.
+ */
+function viCadenciaCanaisTexto_(atividade) {
+  const texto=String(atividade&&atividade.texto||'');
+  if(!texto.trim())return [];
+  const n=texto.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const tipo=String(atividade.tipo||'').toLowerCase();
+  const origem=String(atividade.origemClassificacao||'');
+  const tipoConfiavel=origem==='CAMPO_API';
+  const temVerbo=/\b(enviei|enviado|enviada|envio realizado|mandei|disparei|disparo realizado|liguei|ligacao realizada|chamada realizada|tentei ligar|tentativa de ligacao|realizamos contato|encaminhei|contactei|fizemos contato)\b/i.test(n);
+  const futuro=/\b(vou enviar|vamos enviar|irei enviar|preciso enviar|a enviar|vou ligar|vamos ligar|preciso ligar|devera enviar|pretendo enviar)\b/i.test(n);
+  const negado=/\b(nao enviei|nao foi enviado|nao mandei|nao liguei|sem envio|sem ligacao|nao houve contato)\b/i.test(n);
+  if((futuro||negado)&&!tipoConfiavel)return [];
+  // Alguns registros agregam WhatsApp 0 e email 0 na mesma atividade.
+  const channels=[];
+  if(tipoConfiavel&&tipo==='email')channels.push('EMAIL');
+  if(tipoConfiavel&&tipo==='call')channels.push('LIGACAO');
+  if(tipoConfiavel&&tipo==='messenger')channels.push('WHATSAPP');
+  if(temVerbo) {
+    if(/\b(whatsapp|whats|zap)\b/i.test(n))channels.push('WHATSAPP');
+    if(/\b(e-?mail|correio eletronico)\b/i.test(n))channels.push('EMAIL');
+    if(/\b(ligacao|liguei|chamada|telefonei|telefonema)\b/i.test(n))channels.push('LIGACAO');
+  }
+  return Array.from(new Set(channels));
+}
+
+function viCadenciaSinalParada_(atividades) {
+  const achados=(atividades||[]).filter(a=>{
+    const t=String(a.texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    if(!t||/nao respondeu|nao atendeu|sem resposta|aguardando retorno|conexao nao realizada/.test(t))return false;
+    return /\[conexao realizada\]|cliente respondeu|lead respondeu|conversa realizada|agendou reuniao|reuniao agendada|confirmou interesse/.test(t);
+  }).filter(a=>a.data).sort((a,b)=>a.data.localeCompare(b.data));
+  return achados.length?achados[0]:null;
+}
+
 function viCerebroCadencia_(ctx) {
-  const idsGravados = new Set(ctx.ligacoes.map(l => l.tarefaId).filter(Boolean));
-  const chamadasSemBoard = ctx.tarefas.filter(t => t.tipo === 'call' && t.concluida && !idsGravados.has(t.id));
-  const dias = Array.from(new Set(ctx.ligacoes.map(l => l.data.slice(0, 10)).filter(Boolean))).sort();
-  return {
-    agente: 'CADENCIA', estado: ctx.ligacoes.length || chamadasSemBoard.length ? 'TENTATIVAS_OBSERVAVEIS' : 'DADOS_INSUFICIENTES',
-    indicadores: {
-      ligacoesNoBoard: ctx.ligacoes.length,
-      chamadasConcluidasNoRdSemCorrespondenciaNoBoard: chamadasSemBoard.length,
-      tentativasCandidatasSemDuplicacao: ctx.ligacoes.length + chamadasSemBoard.length,
-      diasComLigacoesNoBoard: dias,
-      ligacoesComReferenciaGravacao: ctx.ligacoes.filter(l => l.temReferenciaGravacao).length
-    },
-    limite: 'Nao atesta cumprimento da sequencia completa sem cadencia oficial e dados de WhatsApp/email.'
-  };
+  const tarefas=Array.isArray(ctx.tarefas)?ctx.tarefas:[];
+  const atividades=Array.isArray(ctx.atividades)?ctx.atividades:[];
+  const ligacoes=Array.isArray(ctx.ligacoes)?ctx.ligacoes:[];
+  const fontes=ctx.fontes||{};
+  const regra=ctx.regraCadencia||{};
+  const modo=String(regra.modoSdr||'NAO_DEFINIDO').toUpperCase();
+  const lmv=String(regra.lmv||'NAO_CONFIRMADO').toUpperCase();
+  const escopo=String(regra.fluxo||'NAO_CONFIRMADO').toUpperCase();
+  const feriados=Array.isArray(regra.feriadosExtras)?regra.feriadosExtras:[];
+  const cobertura=fontes.tarefas?.completo===true&&fontes.atividades?.completo===true;
+  const extra=regra.calendarioLocalConfirmado===true;
+  const estiloConfirmado=['HUMANO','ROBO','HIBRIDO'].includes(modo);
+  const modeloAplicavel=estiloConfirmado&&escopo==='INBOUND'&&['POSITIVO','NEGATIVO'].includes(lmv);
+  const canais={};
+  const registros=[];
+  const linksBoard=new Set();
+  ligacoes.filter(x=>x.data).forEach(l=>{
+    if(l.tarefaId)linksBoard.add(String(l.tarefaId));
+    registros.push({dia:viCadenciaDiaBrasil_(l.data),data:l.data,canal:'LIGACAO',
+      grau:'REGISTRO_TECNICO',fonte:'BOARD_API4COM',id:String(l.id||''),
+      papel:String(l.funcaoDeclarada||'NAO_COMPROVADO'),descricao:'Tentativa no sistema de telefonia; nao comprova conversa.'});
+  });
+  atividades.filter(x=>x.data).forEach(a=>{
+    const cs=viCadenciaCanaisTexto_(a);
+    cs.forEach(c=>{
+      if(c==='LIGACAO'&&ligacoes.some(l=>l.data&&Math.abs(Date.parse(l.data)-Date.parse(a.data))<=5*60000))return;
+      const titulo=String(a.texto||'');
+      const anotacaoAutomatica=/\[(?:CAD\s*\d+|CONEXAO REALIZADA)\]/i.test(titulo)&&/\bENVIAD[OA]\b/i.test(titulo);
+      registros.push({dia:viCadenciaDiaBrasil_(a.data),data:a.data,canal:c,
+        grau:a.origemClassificacao==='CAMPO_API'?'REGISTRO_RD':'INDICIO_TEXTUAL',
+        fonte:'RD_ATIVIDADES',id:String(a.id||''),papel:'NAO_COMPROVADO',
+        automacaoPossivel:anotacaoAutomatica,
+        descricao:anotacaoAutomatica?'Registro padronizado; origem automatizada a confirmar.':
+          'Acao citada em atividade; conferir autoria e resultado.'});
+    });
+  });
+  registros.sort((a,b)=>a.data.localeCompare(b.data)||a.canal.localeCompare(b.canal));
+  const candidatosTarefa=tarefas.filter(t=>t.concluida&&String(t.tipo||'')==='call'&&!linksBoard.has(String(t.id||'')));
+  const agendadas=tarefas.filter(t=>t.previstaPara).map(t=>({
+    dia:viCadenciaDiaBrasil_(t.previstaPara),assunto:String(t.assunto||'').slice(0,110),
+    concluida:t.concluida===true,id:t.id||'',criadaEm:t.criadaEm||'',
+    concluidaEm:t.concluidaEm||''
+  }));
+  const parada=viCadenciaSinalParada_(atividades);
+  const diaParada=parada?viCadenciaDiaBrasil_(parada.data):'';
+  // A entrada nao confirma o SLA de inicio. O calendario e uma referencia e
+  // nao vira violacao automatica quando falta LMV/versao/feriados locais.
+  const entrada=viCadenciaDiaBrasil_(ctx.inicioCadenciaEm||ctx.criadaEm);
+  const hoje=viCadenciaDiaBrasil_(ctx.agora||new Date());
+  const dias=viCadenciaDiasUteis_(entrada,modeloAplicavel?(lmv==='POSITIVO'?18:6):18,feriados);
+  const porDia={};
+  registros.forEach(r=>{
+    if(!r.dia)return;
+    if(!porDia[r.dia])porDia[r.dia]={LIGACAO:0,WHATSAPP:0,EMAIL:0,itens:[]};
+    porDia[r.dia][r.canal]=(porDia[r.dia][r.canal]||0)+1;
+    porDia[r.dia].itens.push(r);
+  });
+  const calendario=dias.map((dia,i)=>{
+    const encontrado=porDia[dia]||{LIGACAO:0,WHATSAPP:0,EMAIL:0,itens:[]};
+    const esperado=modeloAplicavel?viCadenciaPadraoDia_(i+1,lmv):null;
+    const suspenso=diaParada&&dia>diaParada;
+    let estado='REFERENCIA_SEM_PONTUACAO';
+    if(suspenso)estado='SUSPENSO_POR_CONEXAO';
+    else if(dia>hoje)estado='FUTURO';
+    else if(esperado){
+      const incompleto=Object.keys(esperado).filter(c=>c!=='BREAKDOWN'&&encontrado[c] < esperado[c]);
+      estado=incompleto.length?(cobertura?'COBERTURA_INSUFICIENTE_PARA_CONFIRMACAO':'FONTE_INCOMPLETA'):
+        'INDICIOS_DE_EXECUCAO';
+    }
+    return {dia,numero:i+1,ciclo:Math.floor(i/6)+1,esperado,observado:{
+      ligacoes:encontrado.LIGACAO,whatsapp:encontrado.WHATSAPP,email:encontrado.EMAIL
+    },estado,referencias:encontrado.itens.slice(0,12).map(x=>({fonte:x.fonte,id:x.id,grau:x.grau}))};
+  });
+  const diasComRegistro=Object.keys(porDia).sort();
+  const diasUteisComRegistro=diasComRegistro.filter(d=>viCadenciaEhUtil_(d,feriados));
+  const foraDiaUtil=diasComRegistro.filter(d=>!viCadenciaEhUtil_(d,feriados));
+  const gaps=[];
+  diasUteisComRegistro.forEach((d,i)=>{
+    if(i>0){const p=diasUteisComRegistro[i-1],intervalo=viCadenciaIntervaloDiasUteis_(p,d,feriados);
+      if(intervalo>1)gaps.push({de:p,ate:d,diasUteisSemRegistro:intervalo-1});}
+  });
+  const criterios=[];
+  function item(id,titulo,status,detalhe,fonte,acao,evidencia){
+    criterios.push({id,titulo,status,detalhe,fonte,acao,evidencia:evidencia||''});
+  }
+  item('perfil','Tipo de operacao e regra aplicavel',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
+    'Modo SDR: '+modo+'. Fluxo: '+escopo+'. LMV: '+lmv+
+    '. A nomenclatura das tarefas nao define se o SDR e humano ou robo.',
+    'Estrutura da Cadencia / cadastro do cliente',
+    'Confirmar modo da operacao, origem inbound e LMV para habilitar comparacao da regua.');
+  item('inicio','Inicio da cadencia',registros.length?'INDICIO':'NAO_VERIFICAVEL',
+    'Primeiro contato registrado: '+(registros[0]?.data||'nao localizado')+
+    '. A criacao de tarefas isolada nao comprova tentativa.',
+    'RD / Board','Comparar inicio efetivo com SLA e horario comercial quando homologados.',
+    registros[0]?.fonte||'');
+  item('sequencia','Sequencia dos contatos',modeloAplicavel?'INDICIO':'NAO_VERIFICAVEL',
+    'Dia a dia reconstituido por canal e data, sem exigir nomenclatura CAD. '+
+    (modeloAplicavel?'Modelo esperado aplicado de modo preliminar.':'Nao e seguro pontuar sem perfil e LMV confirmados.'),
+    'Estrutura da Cadencia / RD','Reconciliar a linha do tempo com a versao aprovada.');
+  item('execucao','Execucao real x tarefas',ligacoes.length?'INDICIO':'NAO_VERIFICAVEL',
+    ligacoes.length+' chamada(s) no Board; '+candidatosTarefa.length+
+    ' tarefa(s) de ligacao concluidas sem correspondencia direta no Board.',
+    'Board API4COM / RD','Validar chamadas nao vinculadas; conclusao automatica nao equivale a ligacao.');
+  item('canais','Canais utilizados',registros.length?'INDICIO':'NAO_VERIFICAVEL',
+    'Registro observado: '+registros.filter(x=>x.canal==='LIGACAO').length+' ligacao(oes), '+
+    registros.filter(x=>x.canal==='WHATSAPP').length+' WhatsApp e '+
+    registros.filter(x=>x.canal==='EMAIL').length+' email(s). Os textos podem ser indicios, nao entregas.',
+    'RD / Board','Verificar envio real, autora e destinatario nas fontes acessiveis.');
+  item('dias_uteis','Dias uteis e horario comercial',entrada?'INDICIO':'NAO_VERIFICAVEL',
+    'Calendario Brasil/Sao Paulo: '+dias.length+' dias uteis mapeados; '+
+    foraDiaUtil.length+' dia(s) com registros em fim de semana ou feriado nacional. '+
+    (extra?'Feriados locais configurados.':'Feriados locais e excecoes ainda nao confirmados.'),
+    'Calendario nacional / RD','Validar calendario local e horario da equipe antes de declarar atraso.',
+    foraDiaUtil.join(', '));
+  item('intervalos','Intervalos entre contatos',diasUteisComRegistro.length>1?'INDICIO':'NAO_VERIFICAVEL',
+    gaps.length+' intervalo(s) com ao menos um dia util sem registro de contato entre dias observados.',
+    'RD / Board','Interpretar lacunas segundo a etapa, a regra aplicavel e a completude das fontes.',
+    gaps.map(x=>x.de+' a '+x.ate+': '+x.diasUteisSemRegistro+' dia(s)').slice(0,5).join('; '));
+  item('parada','Interrupcao apos resposta',parada?'INDICIO':'NAO_VERIFICAVEL',
+    parada?'Registro sugere conexao em '+parada.data+
+      '; contatos posteriores devem ser avaliados no contexto, nao como cadencia obrigatoria.':
+      'Sem gatilho de conexao inequívoco na coleta; ausencia nao prova falta de resposta.',
+    'RD · atividades','Confirmar resposta e a efetiva pausa/reclassificacao da negociacao.');
+  item('pendencias','Tarefas pendentes e recuperacao',tarefas.length?'INDICIO':'NAO_VERIFICAVEL',
+    tarefas.filter(x=>!x.concluida).length+' tarefa(s) pendente(s); '+
+    agendadas.length+' com data prevista. Breakup e recuperacao exigem registro contextual.',
+    'RD · tarefas','Separar tarefas vencidas, prorrogadas e suspensas; conferir proxima acao.');
+  return {agente:'CADENCIA',estado:registros.length?'RECONSTRUCAO_PARCIAL':'DADOS_INSUFICIENTES',
+    indicadores:{modoSdr:modo,fluxo:escopo,lmv:lmv,modelo:'ESTRUTURA_CADENCIA_INBOUND',
+      inicioReferencia:entrada,calendarioFeriadosLocaisConfirmado:extra,
+      diasUteisPlanejados:calendario.length,diasUteisComRegistro:diasUteisComRegistro.length,
+      diasForaCalendario:foraDiaUtil,diasComLacuna:gaps.length,
+      ligacoesNoBoard:ligacoes.length,chamadasConcluidasNoRdSemCorrespondenciaNoBoard:candidatosTarefa.length,
+      tentativasCandidatasSemDuplicacao:ligacoes.length+candidatosTarefa.length,
+      diasComLigacoesNoBoard:Array.from(new Set(ligacoes.map(l=>viCadenciaDiaBrasil_(l.data)).filter(Boolean))).sort(),
+      ligacoesComReferenciaGravacao:ligacoes.filter(l=>l.temReferenciaGravacao).length},
+    criterios,calendario,intervalos:gaps,
+    limite:'Sem regua e LMV aplicaveis, registro de canal e feriados locais, a auditoria informa evidencias mas nao certifica compliance. Dias de feriado e fim de semana sao excluidos da contagem.'};
 }
 
 function viCerebroConexao_(ctx) {
@@ -712,7 +961,10 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
   const ctx = { atividades: atividades, tarefas: tarefas, ligacoes: ligacoes, etapas: etapas, timeline: timeline,
     criadaEm: viLeadDataIso_(negociacao.created_at),
     negociacao: { responsavel: String((negociacao.user || {}).name || '') },
-    fontes: fontes, cadastro: {}, regraLead: {} };
+    fontes: fontes, cadastro: {}, regraLead: {}, idCliente:vinculo.idCliente,
+    regraCadencia: String(vinculo.idCliente)==='CLI-20260803131300-C4455D17' ?
+      {modoSdr:'HUMANO',fluxo:'INBOUND_EM_VALIDACAO',lmv:'NAO_CONFIRMADO',
+       fonte:'Estrutura da Cadencia V1',feriadosExtras:[],calendarioLocalConfirmado:false} : {} };
 
   return {
     modo: 'SOMENTE_LEITURA', versao: 'PILOTO_V2_TIPOS_ATIVIDADE', dealId: dealId, idCliente: vinculo.idCliente,
