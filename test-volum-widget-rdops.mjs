@@ -165,9 +165,16 @@ assert.ok(planoSdr.itens.some(x=>/UI_[0-9]+/.test(x.evidencia)));
 const sdrStart=widget.indexOf('function sdr(d)');
 const sdrEnd=widget.indexOf('\nfunction closer(',sdrStart);
 assert.ok(sdrStart>=0&&sdrEnd>sdrStart,'SDR renderer must be present');
+const uiStart=widget.indexOf('const CRITERIOS_VERDE=');
+const uiEnd=widget.indexOf('function group(',uiStart);
+assert.ok(uiStart>=0&&uiEnd>uiStart,'accordion helper must exist');
+const ux=vm.createContext({esc:x=>String(x===null||x===undefined?'':x),String,Array,Number,Object,Set});
+vm.runInContext(widget.slice(uiStart,uiEnd)+
+  '\\nthis.criteriaAccordion=criterionSection;this.criteriaCard=criterionCard;this.criteriaLight=criterionLight;',ux);
 const renderSdr=vm.runInNewContext('('+widget.slice(sdrStart,sdrEnd)+')',{
   section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
   esc:x=>String(x||''),
+  criterionSection:ux.criteriaAccordion,
   group:(title,items)=>'<section>'+title+items.map(x=>'<h3>'+x.titulo+'</h3><p>'+x.detalhe+'</p>').join('')+'</section>'
 });
 const output=renderSdr({diagnosticoRdOperacional:diagSdr,planoOtimizacaoSdr:planoSdr});
@@ -177,6 +184,65 @@ assert.match(output,/LMV e faturamento validados no CRM/);
 assert.match(output,/Passagem de bastão SDR/);
 assert.doesNotMatch(output,/<h3><\/h3>/);
 assert.doesNotMatch(output,/14 não verificáveis/);
+
+assert.match(output,/<details class="criteria-tile"><summary>/,
+  'Each criterion must be collapsed by default');
+assert.equal((output.match(/<details class="criteria-tile">/g)||[]).length,16);
+assert.match(output,/<b>Para ficar verde:<\/b>/);
+assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
+  status:'EVIDENCIADO'}),/criteria-light yellow/,
+  'A recorded clue must NOT automatically be treated as full compliance');
+assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
+  conformidade:'CONFORME'}),/criteria-light green/);
+assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
+  conformidade:'NAO_CONFORME'}),/criteria-light red/);
+assert.match(ux.criteriaCard({id:'no_show',titulo:'No-show',
+  status:'NAO_APLICAVEL'}),/criteria-light na/);
+assert.equal(planoSdr.itens.find(x=>x.id==='handoff').conformidade,'NAO_CONFORME',
+ 'Missing mandatory handoff after Closer stage with complete history is a deviation');
+assert.equal(planoSdr.itens.find(x=>x.id==='cadencia').conformidade,'PENDENTE',
+ 'Cadence cannot be green without the version and expected channels');
+const planoCloser=ctx.viWidgetPlanoCloserHistoricoRd_(inputSdr,diagSdr);
+assert.equal(planoCloser.itens.length,7);
+assert.ok(planoCloser.itens.every(x=>x.titulo&&x.detalhe&&x.conformidade));
+assert.equal(planoCloser.itens.find(x=>x.id==='proposta_pdf').conformidade,'NAO_APLICAVEL',
+  'Proposal not due when in Apresentacao without an evidenced meeting');
+const proposalInput={
+  negociacao:{etapaAtualNome:'Proposta enviada',valorInformado:15000},
+  historicoRdEtapas:linkedStage.historico,tarefas:[],
+  atividades:[],arquivosRd:[{id:'proposal-1',nome:'Proposta Comercial.pdf',extensao:'pdf'}],
+  fontes:{arquivosRd:{completo:true},atividades:{completo:true},tarefas:{completo:true}}
+};
+const closerModel=ctx.viWidgetPlanoCloserHistoricoRd_(proposalInput,onlyDiag);
+assert.equal(closerModel.itens.length,7);
+assert.equal(closerModel.itens.find(x=>x.id==='proposta_pdf').conformidade,'CONFORME');
+assert.equal(closerModel.itens.find(x=>x.id==='valores').conformidade,'PENDENTE',
+  'CRM amount cannot prove price matches the attached PDF');
+assert.equal(closerModel.itens.find(x=>x.id==='recebimento').conformidade,'PENDENTE');
+const closerMissing=ctx.viWidgetPlanoCloserHistoricoRd_({
+  ...proposalInput,arquivosRd:[]},onlyDiag);
+assert.equal(closerMissing.itens.find(x=>x.id==='proposta_pdf').conformidade,'NAO_CONFORME',
+  'Only a complete file source can establish missing PDF');
+const closerPartial=ctx.viWidgetPlanoCloserHistoricoRd_({
+  ...proposalInput,arquivosRd:[],fontes:{arquivosRd:{completo:false},
+    atividades:{completo:false},tarefas:{completo:false}}},onlyDiag);
+assert.equal(closerPartial.itens.find(x=>x.id==='proposta_pdf').conformidade,'PENDENTE',
+  'Never paint red for an inaccessible document source');
+const closerStart=widget.indexOf('function closer(d)');
+const closerEnd=widget.indexOf('\\nfunction ',closerStart+10);
+assert.ok(closerStart>=0&&closerEnd>closerStart);
+const renderCloser=vm.runInNewContext('('+widget.slice(closerStart,closerEnd)+')',{
+  section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
+  esc:x=>String(x||''),
+  criterionSection:ux.criteriaAccordion
+});
+const closerHtml=renderCloser({diagnosticoRdOperacional:onlyDiag,
+  planoOtimizacaoCloser:closerModel});
+assert.match(closerHtml,/7 critérios do Plano Closer/);
+assert.equal((closerHtml.match(/<details class="criteria-tile">/g)||[]).length,7);
+assert.match(closerHtml,/criteria-light green/);
+assert.match(closerHtml,/criteria-light yellow/);
+
 const noVisualSdr=renderSdr({diagnosticoRdOperacional:{ativo:false,motivo:'PAGINACAO_INCOMPLETA'}});
 assert.match(noVisualSdr,/PAGINACAO_INCOMPLETA/);
 assert.doesNotMatch(noVisualSdr,/7 pilares do Plano Wisetec/);
