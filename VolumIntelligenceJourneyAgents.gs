@@ -43,6 +43,24 @@ function viJourneyEventos_(ctx) {
     .filter(a=>a&&a.data).map(viJourneyEvento_)
     .sort((a,b)=>a.data.localeCompare(b.data));
 }
+/**
+ * A CONEXAO nao recebe notas do Closer depois do agendamento. A primeira
+ * referencia de agenda ou entrada em etapa de apresentacao encerra essa
+ * janela. Sem eventos completos, o recorte continua consultivo.
+ */
+function viJourneyEscopoConexao_(ctx) {
+  const eventos=viJourneyEventos_(ctx||{});
+  const janelas=Array.isArray(ctx.janelas)?ctx.janelas:[];
+  const inicioCloser=janelas.filter(j=>j&&j.inicio&&
+    /apresenta|reuniao|demonstrac|proposta|negociac|follow|recovery|recupera/.test(
+      viJourneyNormal_(j.etapaNome||j.nome||'')))
+    .map(j=>j.inicio).sort()[0]||'';
+  const agenda=viJourneyNotas_(eventos,'AGENDA')[0]||null;
+  const fim=[inicioCloser,agenda?.data||''].filter(Boolean).sort()[0]||'';
+  return {eventos:fim?eventos.filter(e=>e.data<=fim):eventos,
+    fimConexao:fim,
+    motivoFim:fim?(agenda?.data===fim?'AGENDA_REGISTRADA':'ENTRADA_ETAPA_CLOSER'):'SEM_MARCO'};
+}
 function viJourneyAfirmativa_(texto, categoria) {
   const t=viJourneyNormal_(texto);
   if(!t)return false;
@@ -111,9 +129,11 @@ function viJourneyMontar_(agente,ctx,criterios,indicadores,limite) {
 /** CONEXAO: a autoria de SDR e o dialogo nunca sao deduzidos de duracao. */
 function viJourneyConexao_(ctx) {
   ctx=ctx||{};
-  const ev=viJourneyEventos_(ctx);
+  const escopo=viJourneyEscopoConexao_(ctx);
+  const ev=escopo.eventos;
   const notas=ev.filter(x=>x.tipo==='note');
-  const chamadas=(ctx.ligacoes||[]).filter(x=>x&&x.data&&String(x.funcaoDeclarada||'').toUpperCase()!=='CLOSER')
+  const chamadas=(ctx.ligacoes||[]).filter(x=>x&&x.data&&String(x.funcaoDeclarada||'').toUpperCase()!=='CLOSER'&&
+    (!escopo.fimConexao||x.data<=escopo.fimConexao))
     .sort((a,b)=>a.data.localeCompare(b.data));
   const resposta=viJourneyBusca_(ev,e=>e.acaoVisual==='EMAIL_RESPONDIDO'||e.tipo==='response');
   const dialogo=viJourneyNotas_(ev,'CONEXAO')[0]||null;
@@ -202,6 +222,7 @@ function viJourneyConexao_(ctx) {
   return viJourneyMontar_('CONEXAO',ctx,itens,{
     canaisSinalizados:canais,primeiroCanalSinalizado:primeiroCanal,
     primeiraRespostaRegistradaEm:conexaoData,minutosAteRespostaIndicativa:minutos,
+    fimJanelaConexaoEm:escopo.fimConexao,causaFimJanelaConexao:escopo.motivoFim,
     ligacoesTecnicasSdrOuSemPapel:chamadas.length,
     ligacoesComGravacao:audios.length,transcricoesReferenciadas:transcricoes.length,
     anotacoesLmvValidado:lmv?1:0,anotacoesDeDor:dor?1:0
@@ -271,7 +292,7 @@ function viJourneyAgenda_(ctx) {
         conviteNota?'Anotacao relata convite enviado, sem evento de envio confirmado.':
         'Convite enviado nao identificado nesta captura.',
       conviteEnviado||conviteNota,'Conferir destinatarios e link de acesso antes do compromisso.',
-      'Convite enviando no prazo a destinatarios corretos, com link valido.','RD · e-mails / anotacoes'),
+      'Convite enviado no prazo a destinatarios corretos, com link valido.','RD · e-mails / anotacoes'),
     viJourneyItem_('agenda_confirmacao','Confirmacao positiva do comprador',
       confirmacao?'INDICIO':viJourneyEstado_(ctx,false),
       confirmacao?'Registro atribui confirmacao positiva de presenca ao comprador.':
@@ -344,7 +365,7 @@ function viJourneyReuniao_(ctx) {
     ligacoes.find(r=>r.temReferenciaGravacao)||null;
   const gravaRd=api.find(a=>a.temLinkGravacao===true&&
     (!marco||!a.data||a.data>=marco))||null;
-  const mencao=viJourneyBusca_(ev,e=>/(?:gravacao|gravada|recording|tldv|link da reuniao)/.test(e.normal)&&
+  const mencao=viJourneyBusca_(ev,e=>/(?:gravacao|gravada|recording|tldv|link da reuniao gravada)/.test(e.normal)&&
     !/(?:nao temos gravacao|sem gravacao|nao foi gravada)/.test(e.normal));
   const transcript=calendario.find(r=>r.transcricaoReferenciada)||
     boardReunioes.find(r=>r.transcricaoDisponivel===true)||
@@ -355,7 +376,8 @@ function viJourneyReuniao_(ctx) {
   const enviados=ev.filter(e=>e.acaoVisual==='EMAIL_ENVIADO'||e.tipo==='email');
   const formalizacao=viJourneyBusca_(enviados,e=>/proposta|formaliz|orcamento|condicoes comerciais|resumo da reuniao/.test(e.normal)&&
     (!marco||e.data>=marco));
-  const notaFormal=viJourneyBusca_(notas,e=>viJourneyAfirmativa_(e.normal,'CONVITE')||
+  const notaFormal=viJourneyBusca_(notas,e=>
+    !/(?:nao enviei|vou enviar|preciso enviar|aguardando envio)/.test(e.normal)&&
     /(?:enviei|encaminhei|enviamos).{0,50}(?:proposta|formalizacao)/.test(e.normal));
   const pdf=arquivos.find(a=>String(a.extensao||'').toLowerCase()==='pdf'&&
     /proposta|orcamento|comercial/.test(viJourneyNormal_(a.nome||'')))||null;

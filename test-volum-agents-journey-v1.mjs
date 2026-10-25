@@ -119,6 +119,33 @@ assert.equal(byId(aNeg,'agenda_recovery').status,'NAO_APLICAVEL');
 assert.notEqual(byId(rNeg,'reuniao_realizacao').status,'INDICIO');
 assert.equal(byId(rNeg,'reuniao_formalizacao').status,'NAO_APLICAVEL');
 assert.equal(byId(rNeg,'reuniao_recebimento').status,'NAO_APLICAVEL');
+const notaTardia={
+  ...neg,
+  atividades:[
+    event('UI_AG','2026-10-13T13:00:00Z','note','Apresentacao agendada para quinta-feira'),
+    event('UI_CL','2026-10-16T18:00:00Z','note','Cliente respondeu ao email da proposta')
+  ],
+  ligacoes:[{id:'sdr1',data:'2026-10-13T12:30:00Z',funcaoDeclarada:'SDR'},
+    {id:'later',data:'2026-10-16T18:00:00Z',funcaoDeclarada:'NAO_COMPROVADO'}],
+  janelas:[{etapaNome:'Proposta enviada',inicio:'2026-10-15T20:00:00Z'}]
+};
+const cTardia=ctx.viJourneyConexao_(notaTardia);
+assert.equal(cTardia.indicadores.ligacoesTecnicasSdrOuSemPapel,1,
+  'ligacao nao atribuida depois da agenda nao deve virar SDR');
+assert.notEqual(byId(cTardia,'marco_conexao').status,'INDICIO',
+  'resposta posterior de proposta nao deve virar primeira conexao SDR');
+assert.equal(cTardia.indicadores.causaFimJanelaConexao,'AGENDA_REGISTRADA');
+const confusao={
+  ...neg,etapaAtual:'Proposta enviada',
+  atividades:[event('UI_INV','2026-10-15T21:00:00Z','note','Enviei convite para a reuniao'),
+    event('UI_LINK','2026-10-15T21:10:00Z','note','Enviei link da reuniao via WhatsApp')]
+};
+const rConfusao=ctx.viJourneyReuniao_(confusao);
+assert.equal(byId(rConfusao,'reuniao_formalizacao').status,'NAO_VERIFICAVEL',
+  'convite enviado nao prova formalizacao de proposta');
+assert.equal(byId(rConfusao,'reuniao_gravacao').status,'NAO_VERIFICAVEL',
+  'link de reuniao nao prova gravacao');
+
 const parcial=ctx.viJourneyConexao_({...neg,historicoVisualCompleto:false});
 assert.equal(byId(parcial,'marco_conexao').status,'FONTE_INCOMPLETA',
   'coleta incompleta nunca prova ausencia de conexao');
