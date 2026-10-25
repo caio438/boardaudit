@@ -129,6 +129,8 @@ jobs:
             ['VolumIntelligenceLead.gs','VolumIntelligenceLead.js'],
             ['VolumRdStageTimeline.gs','VolumRdStageTimeline.js'],
             ['VolumWidgetRdOps.gs','VolumWidgetRdOps.js'],
+            ['VolumIntelligenceJourneyAgents.gs','VolumIntelligenceJourneyAgents.js'],
+            ['VolumWidgetWisetecPilot.gs','VolumWidgetWisetecPilot.js'],
             ['VolumWidgetWebApp.gs','VolumWidgetWebApp.js'],
             ['VolumWidgetPanel.html','VolumWidgetPanel.html']
           ]){

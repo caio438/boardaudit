@@ -22,7 +22,8 @@ try {
  fs.writeFileSync(path.join(live,'appsscript.json'),JSON.stringify(manifest));
  fs.writeFileSync(path.join(repo,'.clasp.json'),JSON.stringify({scriptId:'TEST_BOARD',rootDir:'.'}));
  for(const name of ['VolumIntelligenceLead.gs','VolumRdStageTimeline.gs',
-   'VolumWidgetRdOps.gs','VolumWidgetService.gs','VolumWidgetWebApp.gs'])
+   'VolumWidgetRdOps.gs','VolumIntelligenceJourneyAgents.gs',
+   'VolumWidgetWisetecPilot.gs','VolumWidgetService.gs','VolumWidgetWebApp.gs'])
    fs.writeFileSync(path.join(repo,name),"function test_"+name.replace(/[^a-z]/gi,'_')+"(){}");
  fs.writeFileSync(path.join(repo,'VolumWidgetPanel.html'),'V2');
  const res=prepareWidgetPrivateStage(repo,live,stage,deployments,meta);
@@ -37,6 +38,10 @@ try {
  assert.equal(fs.readFileSync(path.join(stage,'VolumWidgetRdOps.gs'),'utf8'),
    fs.readFileSync(path.join(repo,'VolumWidgetRdOps.gs'),'utf8'),
    'Motor de auditoria Sales Ops precisa ser copiado no release privado');
+ for(const required of ['VolumIntelligenceJourneyAgents.gs','VolumWidgetWisetecPilot.gs'])
+   assert.equal(fs.readFileSync(path.join(stage,required),'utf8'),
+     fs.readFileSync(path.join(repo,required),'utf8'),
+     'Motor novo ausente do pacote privado: '+required);
 
  assert.equal(JSON.parse(fs.readFileSync(path.join(stage,'appsscript.json'),'utf8')).webapp.executeAs,'USER_ACCESSING');
  assert.equal(JSON.parse(fs.readFileSync(meta,'utf8')).widgetId,widgetId);

@@ -583,7 +583,7 @@ function sdr(d){
       detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
       evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
     });
-    let html=pilotPlan(d,'sdr')+section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
+    let html=(typeof pilotPlan==='function'?pilotPlan(d,'sdr'):'')+section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
     html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
       ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
     html+='<p class="small">Régua de cadência: '+esc(
@@ -612,7 +612,7 @@ function closer(d){
   }
   const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
   if(rd&&rd.ativo&&items.length){
-    let html=pilotPlan(d,'closer')+section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    let html=(typeof pilotPlan==='function'?pilotPlan(d,'closer'):'')+section('Plano de Otimização Closer','7 pilares · evidências do RD');
     html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
     html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
     html+=criterionSection('7 critérios do Plano Closer',items);
