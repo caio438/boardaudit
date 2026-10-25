@@ -4,6 +4,7 @@
  *
  * Pré-requisito: VolumIntelligenceLead.gs e ConsumoIA.gs carregados no mesmo projeto.
  */
+// 0.4.6: evidências de e-mail, arquivos e recovery são avaliadas somente por fonte rastreável.
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
   versao: '0.4.6'
