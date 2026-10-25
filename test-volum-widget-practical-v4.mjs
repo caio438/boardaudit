@@ -39,7 +39,8 @@ const weak=ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(empt
 assert.equal(weak.operacional.fonteRdCompleta,false);
 assert.ok(weak.operacional.acoes.some(x=>x.id==='fonte-tarefas'));
 assert.ok(!weak.operacional.acoes.some(x=>x.id==='proximo-passo'));
-assert.match(panel,/\.volum-embedded \.topbar\{display:none\}/);\nassert.match(panel,/\.refresh-wrap\{position:static/);
+assert.match(panel,/\.volum-embedded \.topbar\{display:none\}/);
+assert.match(panel,/\.refresh-wrap\{position:static/);
 assert.match(panel,/function operation\(d\)/);
 assert.match(panel,/Todos os critérios técnicos/);
 const script=(panel.match(/<script>([\s\S]*?)<\/script>/)||[])[1];
