@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.3'
+  versao: '0.4.4'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -817,7 +817,8 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
   const tarefasComAutoria=tarefas.filter(t=>Array.isArray(t.responsaveis)&&t.responsaveis.length>0).length;
   if (tarefas.length>0 && tarefasComAutoria<tarefas.length) avisos.push(
     (tarefas.length-tarefasComAutoria)+' tarefa(s) sem responsável identificado na resposta; não atribuir a SDR ou closer.');
-  avisos.push('Nenhuma ligação do board é atribuída ao papel SDR sem vínculo de operador e função confirmado.');
+  const chamadasSdrDeclaradas=chamadas.filter(c=>c&&c.funcaoDeclarada==='SDR'&&c.origemFuncao==='CAMPO_FUNCAO_BOARD').length;
+  if (!chamadasSdrDeclaradas) avisos.push('Nenhuma ligação do board é atribuída ao papel SDR com função confirmada.');
   if (!coberturaRd) avisos.push('Consultas RD incompletas: ausência de registros não deve ser interpretada como falha.');
   if (emProposta) avisos.push(emailFormalizacao?
     'Há sinal de e-mail de formalização; ainda não confirma anexo, entrega ou aceite do comprador.':
@@ -978,7 +979,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     }
   }
   const foco=acoes[0]||null;
-  parecer.versao='0.4.3';
+  parecer.versao='0.4.4';
   parecer.operacional={
     tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
       noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
@@ -1138,6 +1139,6 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.3';
+  parecer.versao='0.4.4';
   return parecer;
 }
