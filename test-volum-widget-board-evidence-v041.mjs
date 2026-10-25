@@ -62,7 +62,7 @@ const input={modo:'SOMENTE_LEITURA',dealId,
  atividades:[],tarefas:[],ligacoesBoard:enriched,reunioesBoard:[],eventos:[],cerebros:[]};
 const p=ctx.viWidgetAdicionarEvidenciasBoard_(
  ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(input),input),input);
-assert.equal(p.versao,'0.4.6');
+assert.equal(p.versao,'0.4.7');
 assert.equal(p.evidenciasBoardResumo.ligacoes,19);
 assert.equal(p.evidenciasBoardResumo.sdrDeclaradas,19);
 assert.equal(p.evidenciasBoardResumo.duracaoSdrMinima,1);

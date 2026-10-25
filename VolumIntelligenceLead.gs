@@ -53,6 +53,16 @@ function viLeadTextoSeguro_(valor, incluir) {
   return bruto.replace(/https?:\/\/[^\s<>"']+/gi, '[LINK_OMITIDO]').slice(0, VI_LEAD_PILOTO.limiteTexto);
 }
 
+// O texto exibido oculta URLs, mas a classificacao preserva a existencia do link
+// de gravacao (nunca seu endereco ou token assinado).
+function viLeadReferenciaGravacao_(valor) {
+  const texto=String(valor||'');
+  const urls=texto.match(/https?:\/\/[^\s<>"']+/gi)||[];
+  const contexto=/(?:gravac[aã]o|reuni[aã]o\s+gravada|recording|recap\s+da\s+reuni[aã]o|video\s+da\s+reuni[aã]o)/i.test(texto);
+  const plataforma=/(?:tldv\.io|tldv\.com|grain\.com|fathom\.video|fireflies\.ai|loom\.com|zoom\.us\/rec\/|drive\.google\.com\/file\/)/i;
+  return urls.some(link=>plataforma.test(link)||(contexto&&/https?:\/\//i.test(link)));
+}
+
 function viLeadVinculoRd_(linha, dealId) {
   const link = String((linha || {}).LINK_CRM || '');
   return new RegExp('(?:^|/deals/)' + dealId + '(?:$|[/?#])', 'i').test(link);
@@ -69,7 +79,7 @@ function viLeadIntegracao_(dealId, interacoes) {
   }
   const token = obterSegredo_('INTEGRACAO_TOKEN_' + integracao.ID_INTEGRACAO);
   if (!token) throw new Error('Token RD nao configurado nas propriedades protegidas do projeto.');
-  return { idCliente: ids[0], token: token };
+  return { idCliente: ids[0], idIntegracao: String(integracao.ID_INTEGRACAO), token: token };
 }
 
 function viLeadRdGet_(token, caminho, filtros) {
@@ -93,22 +103,33 @@ function viLeadRdGet_(token, caminho, filtros) {
  * Anexos são consultados na API v2, que exige Bearer. Retornamos apenas
  * metadados necessários à auditoria; URL temporária e conteúdo ficam fora.
  */
-function viLeadArquivosRd_(token, dealId) {
-  const vazio={itens:[],fonte:{acessivel:false,completo:false,quantidade:0,motivo:'NAO_CONSULTADO'}};
+function viLeadArquivosRd_(tokenOAuthV2, dealId) {
+  const vazio={itens:[],fonte:{acessivel:false,completo:false,quantidade:0,motivo:'OAUTH_V2_NAO_CONFIGURADO'}};
+  // O token de integracao legado (v1) NAO serve como OAuth2 Bearer da API v2.
+  if (!tokenOAuthV2) return vazio;
+  const itens=[];
+  const limitePaginas=5;
   try {
-    const resposta=requisicaoJson_('https://api.rd.services/crm/v2/deals/'+encodeURIComponent(dealId)+'/files', {
-      method:'get',headers:{Accept:'application/json',Authorization:'Bearer '+token}
-    });
-    const lista=Array.isArray(resposta&&resposta.data)?resposta.data:(Array.isArray(resposta)?resposta:null);
-    if (!lista) throw new Error('Formato inesperado');
-    const itens=lista.map(function(item) {
-      const nome=String(item.name||'').trim().slice(0,240);
-      return {id:String(item.id||''),nome:nome,extensao:(nome.match(/\.([a-z0-9]{1,8})$/i)||[])[1]||'',
-        tamanhoBytes:Math.max(0,Number(item.size)||0),data:viLeadDataIso_(item.created_at)};
-    });
-    return {itens:itens,fonte:{acessivel:true,completo:true,quantidade:itens.length,origem:'RD_V2_DEAL_FILES'}};
+    for (let pagina=1;pagina<=limitePaginas;pagina++) {
+      const query='?page%5Bnumber%5D='+pagina+'&page%5Bsize%5D=100';
+      const resposta=requisicaoJson_('https://api.rd.services/crm/v2/deals/'+encodeURIComponent(dealId)+'/files'+query, {
+        method:'get',headers:{Accept:'application/json',Authorization:'Bearer '+tokenOAuthV2}
+      });
+      if (!resposta || !Array.isArray(resposta.data)) throw new Error('FORMATO_RD_V2');
+      resposta.data.forEach(function(item) {
+        const nome=String(item.name||'').trim().slice(0,240);
+        itens.push({id:String(item.id||''),nome:nome,
+          extensao:(nome.match(/\.([a-z0-9]{1,8})$/i)||[])[1]||'',
+          tamanhoBytes:Math.max(0,Number(item.size)||0),data:viLeadDataIso_(item.created_at)});
+      });
+      const next=String((resposta.links||{}).next||'').trim();
+      if (!next) return {itens:itens,fonte:{acessivel:true,completo:true,quantidade:itens.length,origem:'RD_V2_DEAL_FILES'}};
+    }
+    return {itens:itens,fonte:{acessivel:true,completo:false,quantidade:itens.length,motivo:'LIMITE_PAGINAS_RD_V2',origem:'RD_V2_DEAL_FILES'}};
   } catch (erro) {
-    return Object.assign({},vazio,{fonte:{acessivel:false,completo:false,quantidade:0,motivo:'FALHA_CONSULTA_RD_V2'}});
+    const status=String(erro&&erro.message||'').match(/\b(?:HTTP\s*)?(401|403|429)\b/);
+    return {itens:itens,fonte:{acessivel:false,completo:false,quantidade:itens.length,
+      motivo:status?'HTTP_'+status[1]+'_RD_V2':'FALHA_CONSULTA_RD_V2'}};
   }
 }
 
@@ -228,6 +249,8 @@ function viLeadAtividades_(registros, incluirTextos) {
     autorId: String(item.user_id || ''),
     etapaId: String(item.deal_stage_id || ''),
     textoDisponivel: Boolean(String(item.text || item.description || item.content || '').trim()),
+    temLinkGravacao: viLeadReferenciaGravacao_(item.text || item.description || item.content || ''),
+    textoTruncado: String(item.text || item.description || item.content || '').length > VI_LEAD_PILOTO.limiteTexto,
     texto: viLeadTextoSeguro_(item.text || item.description || item.content || '', incluirTextos)
   }));
 }
@@ -253,7 +276,8 @@ function viLeadTarefas_(tarefas, incluirTextos) {
       // O RD pode devolver IDs de usuario sem indicar papel comercial.
       // Preservamos apenas atribuicao explicita e NUNCA inferimos SDR/Closer do assunto.
       responsaveis: [item.user && item.user.name, item.assigned_to && item.assigned_to.name,
-        item.responsible && item.responsible.name].filter(Boolean)
+        item.responsible && item.responsible.name].concat(
+          Array.isArray(item.users)?item.users.map(u=>u&&u.name):[]).filter(Boolean)
         .map(nome=>String(nome).slice(0,80)).filter((nome,i,arr)=>arr.indexOf(nome)===i),
       dataOriginal: String(item.date || '').trim().slice(0,10)
     };
@@ -564,7 +588,10 @@ function VOLUM_ANALISAR_LEAD(entrada, opcoes) {
 
   const atividades = viLeadAtividades_(atividadesBrutas, incluirTextos);
   const tarefas = viLeadTarefas_(tarefasBrutas, incluirTextos);
-  const arquivosRd = viLeadArquivosRd_(vinculo.token, dealId);
+  let oauthV2='';
+  try { oauthV2=String(obterSegredo_('INTEGRACAO_OAUTH_V2_ACCESS_'+vinculo.idIntegracao)||''); }
+  catch (erroCredencial) { oauthV2=''; }
+  const arquivosRd = viLeadArquivosRd_(oauthV2, dealId);
   fontes.arquivosRd = arquivosRd.fonte;
   const boardVinculado = viLeadInteracoesBoard_(interacoes, dealId, vinculo.idCliente);
   const metadadosTranscricoes = viLeadMetadadosTranscricoesBoard_(
