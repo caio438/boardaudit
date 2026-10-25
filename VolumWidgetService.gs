@@ -6,7 +6,7 @@
  */
 const VOLUM_WIDGET = Object.freeze({
   emailsAutorizados: ['crm@govolum.com', 'caio@govolum.com'],
-  versao: '0.4.4'
+  versao: '0.4.5'
 });
 
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
@@ -979,7 +979,7 @@ function viWidgetRefinarParecerV4_(parecer,leitura) {
     }
   }
   const foco=acoes[0]||null;
-  parecer.versao='0.4.4';
+  parecer.versao='0.4.5';
   parecer.operacional={
     tipo:encerrada?'ENCERRADA':emProposta?'PROPOSTA_E_FOLLOWUP':
       noCloser?'REUNIAO_E_CONTINUIDADE':'QUALIFICACAO_E_CADENCIA',
@@ -1144,6 +1144,6 @@ function viWidgetAdicionarEvidenciasBoard_(parecer,leitura) {
   }
   operativo.fatos=fatos.slice(0,7);
   parecer.operacional=operativo;
-  parecer.versao='0.4.4';
+  parecer.versao='0.4.5';
   return parecer;
 }
