@@ -3,7 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const BOARD_DEPLOYMENT_ID='AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA';
-const WIDGET_VERSION='433';
+const LEGACY_WIDGET_VERSION='433';
 const OVERLAY=[
   'VolumIntelligenceLead.gs',
   'VolumWidgetService.gs',
@@ -18,9 +18,13 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
   const board=matches.find(x=>x.id===BOARD_DEPLOYMENT_ID);
   if(!board || !/^\d+$/.test(board.version))throw new Error('Implantacao do board nao confirmada');
   const other=matches.filter(x=>x.id!==BOARD_DEPLOYMENT_ID && x.version!=='HEAD');
-  const widget=other.filter(x=>x.version===WIDGET_VERSION && /VOLUM|INTELLIGENCE|WIDGET/i.test(x.description));
-  if(widget.length!==1)throw new Error('Implantacao VOLUM privada 433 nao identificada univocamente');
-  if(widget[0].id===board.id)throw new Error('Tentativa de atualizar implantacao do board');
+  // Em publicacoes posteriores a V2 deixa de estar na versao 433.
+  // Identificar pelo marcador unico do deployment atual e usar 433 apenas como fallback legado.
+  const atuais=other.filter(x=>/^VOLUM Intelligence Sales Ops V2(?:\\s|$)/i.test(x.description.trim()));
+  const legados=other.filter(x=>x.version===LEGACY_WIDGET_VERSION && /VOLUM|INTELLIGENCE|WIDGET/i.test(x.description));
+  const widget=atuais.length===1?atuais[0]:(atuais.length===0&&legados.length===1?legados[0]:null);
+  if(!widget)throw new Error('Implantacao VOLUM privada nao identificada univocamente');
+  if(widget.id===board.id)throw new Error('Tentativa de atualizar implantacao do board');
   fs.mkdirSync(stageDir,{recursive:true});
   const sourceFiles=fs.readdirSync(liveDir);
   const entries=sourceFiles.filter(n=>n.endsWith('.js')||n.endsWith('.html')||n==='appsscript.json');
@@ -83,10 +87,10 @@ export function prepareWidgetPrivateStage(repoDir,liveDir,stageDir,deploymentsTe
   const clasp=JSON.parse(fs.readFileSync(claspPath,'utf8'));
   if(!clasp.scriptId)throw new Error('scriptId do BoardAudit ausente');
   fs.writeFileSync(path.join(stageDir,'.clasp.json'),JSON.stringify({scriptId:clasp.scriptId,rootDir:'.'})+'\n',{mode:0o600});
-  const meta={widgetId:widget[0].id,widgetOldVersion:widget[0].version,
+  const meta={widgetId:widget.id,widgetOldVersion:widget.version,
     boardOldVersion:board.version,boardId:board.id,projectScriptId:clasp.scriptId};
   fs.writeFileSync(metaFile,JSON.stringify(meta),{mode:0o600});
-  return {ok:true,files:entries.length,gs:gs.length,widgetVersion:widget[0].version,
+  return {ok:true,files:entries.length,gs:gs.length,widgetVersion:widget.version,
     boardVersion:board.version,boardSourceUnchanged:!routePatched,
     boardRouteOnlyPatch:routePatched,
     manifestBefore:originalConfig.executeAs||'UNKNOWN',manifestAfter:'USER_ACCESSING'};
