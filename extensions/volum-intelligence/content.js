@@ -25,7 +25,10 @@
   };
   const closeInline = () => {
     const host = document.getElementById(INLINE_ID);
-    if (host) host.remove();
+    if (!host) return;
+    if (host.__volumResizeObserver) host.__volumResizeObserver.disconnect();
+    document.body.style.marginRight = host.__volumPreviousMarginRight || '';
+    host.remove();
   };
   const openInline = endpoint => {
     if (!extract() || !/^https:\/\/script\.google\.com\//i.test(String(endpoint || ''))) return;
@@ -40,9 +43,9 @@
     host.setAttribute('aria-label', 'VOLUM Intelligence');
     host.style.cssText = [
       'position:fixed','top:0','right:0','bottom:0','z-index:2147483646',
-      'width:min(430px,100vw)','margin:0','padding:0','border:0','outline:0',
+      'width:440px','margin:0','padding:0','border:0','outline:0',
       'border-radius:0','box-shadow:none','background:#080911','overflow:hidden',
-      'resize:horizontal','min-width:320px','max-width:calc(100vw - 24px)'
+      'resize:horizontal','min-width:360px','max-width:calc(100vw - 24px)'
     ].join(';');
     const controls = document.createElement('div');
     controls.setAttribute('aria-label','Controles da VOLUM');
@@ -85,6 +88,11 @@
     host.appendChild(controls);
     host.appendChild(frame);
     document.body.appendChild(host);
+    host.__volumPreviousMarginRight = document.body.style.marginRight;
+    const reserveSpace = () => { document.body.style.marginRight = Math.ceil(host.getBoundingClientRect().width) + 'px'; };
+    reserveSpace();
+    host.__volumResizeObserver = new ResizeObserver(reserveSpace);
+    host.__volumResizeObserver.observe(host);
   };
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
   const dateToIso = value => {
@@ -134,7 +142,7 @@
     return { dealId: dealId.toLowerCase(), events, coverage: { available: true, complete: !Array.from(panel.querySelectorAll('button')).some(node => clean(node.textContent) === 'Ver mais'), pagesLoaded: pages, totalVisual: events.length, origin: 'RD_UI_HISTORY' } };
   }
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message && message.type === 'VOLUM_OPEN_INLINE_WIDGET') {
+    if (message && message.type === 'VOLUM_OPEN_DOCKED_WIDGET') {
       openInline(message.endpoint);
       sendResponse({ opened: Boolean(document.getElementById(INLINE_ID)) });
       return;
