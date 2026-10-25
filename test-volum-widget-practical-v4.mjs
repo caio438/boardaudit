@@ -24,7 +24,7 @@ function fixture(changes={}){
  eventos:[],cerebros:[],...changes};}
 const input=fixture();
 const out=ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(input),input);
-assert.equal(out.versao,'0.4.0');
+assert.equal(out.versao,'0.4.3');
 assert.equal(out.operacional.tipo,'PROPOSTA_E_FOLLOWUP');
 assert.ok(out.operacional.fatos.some(x=>x.texto.includes('29/10/2026')));
 assert.equal(out.planoOtimizacaoSdr.itens.find(x=>x.id==='voip').status,'NAO_VERIFICAVEL');
@@ -39,7 +39,7 @@ const weak=ctx.viWidgetRefinarParecerV4_(ctx.viWidgetParecerDeterministico_(empt
 assert.equal(weak.operacional.fonteRdCompleta,false);
 assert.ok(weak.operacional.acoes.some(x=>x.id==='fonte-tarefas'));
 assert.ok(!weak.operacional.acoes.some(x=>x.id==='proximo-passo'));
-assert.match(panel,/\.volum-embedded \.topbar\{display:none\}/);
+assert.match(panel,/\.volum-embedded \.topbar\{display:none\}/);\nassert.match(panel,/\.refresh-wrap\{position:static/);
 assert.match(panel,/function operation\(d\)/);
 assert.match(panel,/Todos os critérios técnicos/);
 const script=(panel.match(/<script>([\s\S]*?)<\/script>/)||[])[1];
