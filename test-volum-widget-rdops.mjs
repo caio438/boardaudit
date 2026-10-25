@@ -229,7 +229,7 @@ const closerPartial=ctx.viWidgetPlanoCloserHistoricoRd_({
 assert.equal(closerPartial.itens.find(x=>x.id==='proposta_pdf').conformidade,'PENDENTE',
   'Never paint red for an inaccessible document source');
 const closerStart=widget.indexOf('function closer(d)');
-const closerEnd=widget.indexOf('\\nfunction ',closerStart+10);
+const closerEnd=widget.indexOf(String.fromCharCode(10)+'function ',closerStart+10);
 assert.ok(closerStart>=0&&closerEnd>closerStart);
 const renderCloser=vm.runInNewContext('('+widget.slice(closerStart,closerEnd)+')',{
   section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
