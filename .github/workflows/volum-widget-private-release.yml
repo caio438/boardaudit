@@ -127,6 +127,8 @@ jobs:
           for(const [source,target] of [
             ['VolumWidgetService.gs','VolumWidgetService.js'],
             ['VolumIntelligenceLead.gs','VolumIntelligenceLead.js'],
+            ['VolumRdStageTimeline.gs','VolumRdStageTimeline.js'],
+            ['VolumWidgetRdOps.gs','VolumWidgetRdOps.js'],
             ['VolumWidgetWebApp.gs','VolumWidgetWebApp.js'],
             ['VolumWidgetPanel.html','VolumWidgetPanel.html']
           ]){
