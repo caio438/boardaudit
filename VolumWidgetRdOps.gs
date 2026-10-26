@@ -142,12 +142,13 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
   if(fase==='APRESENTACAO'){
     adicionar('agendamento','Reunião ou compromisso combinado',
       marcoCompromisso||compromissoApi?'INDICIO':'NAO_VERIFICAVEL',
+      marcoCompromisso||null,
       marcoCompromisso||compromissoApi?(agenda?'Há anotação de agendamento. ':
         compromissoApi?'Calendário vinculado contém compromisso datado. ':
         'Uma anotação relata compromisso/no-show, o que indica reunião prevista, mas não comprova aceite ou convite. ')+
         'Confirmar data, horário, participantes e link em fonte estruturada.':
         'Etapa Apresentação não prova agendamento; consultar calendário e notas antes de concluir ausência.',
-      marcoCompromisso,'Conciliar o compromisso mencionado com calendário, horário e resultado antes de avaliar falha de agenda.','ALTA');
+      'Conciliar o compromisso mencionado com calendário, horário e resultado antes de avaliar falha de agenda.','ALTA');
     adicionar('convite','Convite e acesso à reunião',
       convite?(convite.tipo==='EMAIL_ENVIADO'?'EVIDENCIADO':'INDICIO'):'NAO_VERIFICAVEL',convite,
       convite?'Há registro de convite ou link; verificar destinatários e acesso, não presumir aceite.':
