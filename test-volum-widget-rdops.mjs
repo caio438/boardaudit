@@ -275,10 +275,9 @@ assert.equal(sdrForOneNote('LMV validado: positivo').itens.find(x=>x.id==='lmv')
 assert.equal(sdrForOneNote('Segmento: Engenharia').itens.find(x=>x.id==='segmento').conformidade,'CONFORME');
 
 const planoCloser=ctx.viWidgetPlanoCloserHistoricoRd_(inputSdr,diagSdr);
-assert.equal(planoCloser.itens.length,7);
-assert.ok(planoCloser.itens.every(x=>x.titulo&&x.detalhe&&x.conformidade));
-assert.equal(planoCloser.itens.find(x=>x.id==='proposta_pdf').conformidade,'NAO_APLICAVEL',
-  'Proposal not due when in Apresentacao without an evidenced meeting');
+assert.equal(planoCloser.itens.length,0,
+  'Interacao rotulada Closer antes da janela comercial nao transfere responsabilidade automaticamente');
+assert.equal(planoCloser.closer_iniciado.valor,false);
 const proposalInput={
   negociacao:{etapaAtualNome:'Proposta enviada',valorInformado:15000},
   historicoRdEtapas:linkedStage.historico,tarefas:[],
