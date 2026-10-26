@@ -157,7 +157,7 @@
     const refresh=async()=>{
       if(reading)return;
       reading=true;
-      try {latestHistory=await readHistory();
+      try {latestHistory=await readDealEvidence();
         receivers.forEach(reply);
       } catch(error) {
         latestHistory={dealId:dealId.toLowerCase(),events:[],
@@ -200,6 +200,11 @@
     if (/concluiu a tarefa/i.test(text)) return 'TAREFA_CONCLUIDA';
     if (/atualizou a tarefa/i.test(text)) return 'TAREFA_ATUALIZADA';
     if (/alterou a etapa/i.test(text)) return 'ETAPA_ALTERADA';
+    if (/alterou o respons[aá]vel para|alterou respons[aá]vel para/i.test(text)) return 'RESPONSAVEL_ALTERADO';
+    // Conversa com duração/resultado é telefonia efetiva. Não confundir
+    // com uma tarefa cujo título apenas menciona ligação.
+    if (/conversa com .{1,120}(?:resultado:|\d+m\s*\d+s)/i.test(text) ||
+        /atendimento para .{1,80}dura[cç][aã]o de/i.test(text)) return 'CHAMADA_REGISTRADA';
     if (/alterou /i.test(text)) return 'ALTERACAO';
     if (/abriu um WhatsApp Web/i.test(text)) return 'WHATSAPP_ABERTO';
     if (/enviou um e-mail/i.test(text)) return 'EMAIL_ENVIADO';
@@ -211,6 +216,24 @@
     document.querySelector('#dealTabsHistory-tab') ||
     Array.from(document.querySelectorAll('[role="tab"], button')).find(node =>
       /^Hist[oó]rico$/i.test(clean(node.textContent)));
+
+  const findTab = label => Array.from(document.querySelectorAll('[role="tab"], button')).find(node =>
+    new RegExp('^'+label+'$', 'i').test(clean(node.textContent)));
+  const panelForTab = tab => {
+    const controls=tab&&tab.getAttribute('aria-controls');
+    return (controls&&document.getElementById(controls)) || null;
+  };
+  const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
+  const readSourceTab = async label => {
+    const tab=findTab(label);
+    if(!tab)return {available:false,complete:false,reason:'ABA_NAO_LOCALIZADA',text:''};
+    const active=document.querySelector('[role="tab"][aria-selected="true"]');
+    if(tab!==active){tab.click();await pause(500);}
+    const panel=panelForTab(tab);
+    const text=clean(panel?.innerText||'');
+    if(tab!==active&&active?.isConnected)active.click();
+    return {available:Boolean(panel),complete:Boolean(panel&&text),reason:text?'':'PAINEL_VAZIO',text:text.slice(0,60000)};
+  };
 
   const historyCards = panel => panel ?
     Array.from(panel.querySelectorAll('ul[role="list"] > li')) : [];
@@ -276,7 +299,7 @@
         if(!text||/Feche at[eé] 40% mais vendas/i.test(text))return null;
         const timestamps=text.match(/\d{2}\/\d{2}\/\d{2,4}(?:\s+às)?\s+\d{2}:\d{2}/g)||[];
         const dateText=timestamps[timestamps.length-1]||'';
-        const author=clean((text.match(/^(.+?)\s+(?:fez uma anota[cç][aã]o|criou a tarefa|concluiu a tarefa|atualizou a tarefa|alterou |abriu um WhatsApp Web|enviou um e-mail|respondeu um e-?mail)/i)||[])[1]);
+        const author=clean((text.match(/^(.+?)\s+(?:fez uma anota[cç][aã]o|criou a tarefa|concluiu a tarefa|atualizou a tarefa|alterou |abriu um WhatsApp Web|enviou um e-mail|respondeu um e-?mail|Conversa com|conversa com|Atendimento para|atendimento para)/i)||[])[1]);
         const stage=clean((text.match(/na etapa (.+?) do funil/i)||[])[1]);
         return {source:'RD_UI_HISTORY',uiIndex:index,dateText,
           dataLocal:dateToIso(dateText),author,stage,kind:kind(text),
@@ -292,6 +315,17 @@
       // Consultar o Histórico não deve deixar o usuário em outra aba do RD.
       if(activated&&active&&active.isConnected)active.click();
     }
+  };
+
+  // Coleta as mesmas fontes que um operador encontra ao copiar a negociação.
+  // A extensão só lê; classificação e plano permanecem no backend privado.
+  const readDealEvidence = async () => {
+    const history=await readHistory();
+    const labels=[['emails','E-mail'],['tasks','Tarefas'],['files','Arquivos'],['proposals','Propostas']];
+    const sources={};
+    for(const [key,label] of labels)sources[key]=await readSourceTab(label);
+    history.sources=sources;
+    return history;
   };
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

@@ -122,7 +122,8 @@ assert.doesNotMatch(card.innerHTML,/Plano Closer/,
 assert.match(card.innerHTML,/Evidências/);
 app.changeTab('sdr');
 assert.match(card.innerHTML,/7 pilares do Plano Wisetec/);
-assert.match(card.innerHTML,/9 verificações complementares/);
+assert.doesNotMatch(card.innerHTML,/9 verificações complementares/,
+  'A visão executiva deve manter apenas os sete pilares oficiais');
 assert.match(card.innerHTML,/Aplicacao do pitch de qualificacao/);
 app.changeTab('inteligencia');
 assert.match(card.innerHTML,/Inteligência comercial/);

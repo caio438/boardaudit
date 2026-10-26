@@ -95,17 +95,18 @@ assert.ok(diag.acoes.every(x=>x.criterioConclusao&&
  'Critérios prioritários devem ter uma condição de encerramento específica');
 
 const sdr=ctx.viWidgetPlanoSdrHistoricoRd_(leitura,diag);
-assert.equal(sdr.escopo.passagensSdr.length,2,
- 'Etapa apresentação não deve pertencer ao recorte SDR');
-assert.equal(sdr.escopo.totalEventosSdr,2,
- 'Emails, no-show e recovery da apresentação não são prospecção inicial');
+assert.equal(sdr.escopo.passagensSdr.length,3,
+  'Etapa Apresentação permanece SDR enquanto não houver handoff comprovado');
+assert.equal(sdr.escopo.totalEventosSdr,6,
+  'No-show e recovery pertencem ao SDR até uma passagem comprovada');
 assert.equal(sdr.itens.find(x=>x.id==='agenda').status,'INDICIO',
  'Compromisso/no-show registrado é indício de agendamento, não ausência absoluta');
 assert.equal(sdr.itens.find(x=>x.id==='confirmacao').status,'NAO_VERIFICAVEL');
 assert.equal(sdr.itens.find(x=>x.id==='no_show').status,'INDICIO');
 assert.equal(sdr.itens.find(x=>x.id==='voip').status,'INDICIO',
  'Chamada técnica pré-Closer no Board pode reforçar uso de VoIP');
-assert.match(sdr.itens.find(x=>x.id==='registros').detalhe,/1 chamada\(s\) técnica\(s\)/);
+assert.match(sdr.itens.find(x=>x.id==='registros').detalhe,/2 chamada\(s\) técnica\(s\)/,
+ 'Sem handoff comprovado, as chamadas posteriores não podem ser deslocadas ao Closer.');
 assert.ok(sdr.itens.every(x=>x.conformidade!=='NAO_CONFORME'),
  'Sem versão de playbook não converter lacuna em vermelho');
 const closerTgr=ctx.viWidgetPlanoCloserHistoricoRd_(leitura,diag);
@@ -199,5 +200,5 @@ assert.match(widget,/\.criteria-tile\.tone-yellow/);
 assert.match(widget,/box-shadow:0 7px 20px/);
 assert.doesNotMatch(vm.runInContext("leadAgent({agentesDetalhados:[{agente:'LEAD',indicadores:{criadaEm:'2026-10-11T15:13:00Z'},criterios:[]}],prontidaoAgentes:{}})",v),
  /undefined min/,'Sem dado não se mostra undefined min');
-assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_STAGE_EVIDENCE_V2_20261026'/);
+assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026'/);
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');

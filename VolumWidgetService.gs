@@ -161,6 +161,10 @@ function viWidgetRastrearDadosAgentes_(leitura,parecer,solicitouIa){
       tarefasCompletas:leitura.fontes?.tarefas?.completo===true,
       arquivos:(leitura.arquivosRd||[]).length,
       arquivosCompletos:leitura.fontes?.arquivosRd?.completo===true},
+    rdVisualComplementar:Object.keys(leitura.fontesUiRd||{}).map(function(chave){
+      const f=leitura.fontesUiRd[chave]||{};
+      return {fonte:chave,acessivel:f.acessivel===true,completa:f.completo===true,motivo:f.motivo||''};
+    }),
     correlacaoRd:leitura.rastreioAtividades||{motivo:'HISTORICO_VISUAL_NAO_CONCILIADO'},
     board:{interacoes:(leitura.ligacoesBoard||[]).length+(leitura.reunioesBoard||[]).length,
       auditoriasValidadas:(aud.itens||[]).length,
@@ -295,9 +299,14 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const leitura = VOLUM_ANALISAR_LEAD(dealId, { incluirTextos: true });
   if(opcoes&&opcoes.historicoUiRd){
     const conciliacao=viRdConciliarHistoricoUi_(leitura.historicoRdEtapas,opcoes.historicoUiRd,dealId);
-    if(conciliacao.aceito)leitura.historicoRdEtapas=conciliacao.historico;
+    if(conciliacao.aceito){
+      leitura.historicoRdEtapas=conciliacao.historico;
+      leitura.fontesUiRd=conciliacao.historico.fontesUiRd||{};
+    }
   }
   viWidgetNomesEtapasPorEvidencia_(leitura);
+  leitura.evidenciasAbasRd=typeof viWidgetEvidenciasAbasRd_==='function'?
+    viWidgetEvidenciasAbasRd_(leitura):{};
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
