@@ -9921,18 +9921,30 @@
     if (!atual.idAuditoria) return mostrarToast('Auditoria não identificada.', 'error');
     if (!texto.trim()) return mostrarToast('Revise o texto antes de aprovar.', 'error');
     const botao = document.getElementById('btnAprovarEnviarRd');
-    if (botao) { botao.disabled = true; botao.textContent = 'Aprovando...'; }
+    if (botao) {
+      botao.disabled = true;
+      botao.dataset.textoOriginal = botao.textContent;
+      botao.textContent = 'Enviando ao RD...';
+    }
     runnerBoardComProgresso_()
       .withSuccessHandler(resposta => {
+        const publicou = resposta && resposta.publicada === true;
         estado.auditorias = resposta.auditorias || estado.auditorias;
         estado.auditoriaAtual = resposta.auditoria || estado.auditoriaAtual;
-        fecharPreviewRdAuditoria();
+        if (publicou) fecharPreviewRdAuditoria();
+        if (botao && !publicou) {
+          botao.disabled = false;
+          botao.textContent = botao.dataset.textoOriginal || 'Enviar ao RD';
+        }
         renderizarAuditorias();
         if (estado.auditoriaAtual) renderizarPreviewAuditoriaV3(estado.auditoriaAtual);
-        mostrarToast(resposta.mensagem, resposta.publicada === false ? 'warning' : 'success');
+        mostrarToast(resposta.mensagem || 'O RD não confirmou a publicação.', publicou ? 'success' : 'warning');
       })
       .withFailureHandler(erro => {
-        if (botao) { botao.disabled = false; botao.textContent = 'Aprovar e enviar ao RD'; }
+        if (botao) {
+          botao.disabled = false;
+          botao.textContent = botao.dataset.textoOriginal || 'Enviar ao RD';
+        }
         tratarErro(erro);
       })
       .aprovarEEnviarAuditoriaRd({ idAuditoria: atual.idAuditoria, texto: texto });
