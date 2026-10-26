@@ -34,6 +34,7 @@ const real=c.viCerebroLead_({...ctx,ligacoes:[{id:'l1',data:'2026-10-13T12:43:47
 assert.equal(real.criterios.find(x=>x.id==='primeiro_contato').status,'INDICIO');
 assert.ok(real.indicadores.minutosAtePrimeiraLigacao>0);
 assert.match(panel,/function leadAgent\(d\)/);
-assert.match(panel,/'lead','Agente LEAD'/);
+assert.doesNotMatch(panel,/'lead','Agente LEAD'/,
+  'Agentes permanecem no backend, fora da navegação principal');
 assert.match(service,/parecer\.agentesDetalhados/);
 console.log('Agente LEAD: 9 verificacoes, LMV provisório, automacao inicial e primeira ligacao auditados.');

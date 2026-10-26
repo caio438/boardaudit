@@ -129,7 +129,7 @@ const stageSdr=ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{});
 const recSdr=ctx.viRdConciliarHistoricoUi_(stageSdr,sdrUi,deal.id);
 assert.equal(recSdr.aceito,true);
 const inputSdr={negociacao:{etapaAtualNome:'Apresentação',criadaEm:'2026-10-23T08:00:00Z'},
-  historicoRdEtapas:recSdr.historico,tarefas:[],fontes:{}};
+  historicoRdEtapas:recSdr.historico,tarefas:[],ligacoesBoard:[{id:'closer-test',funcaoDeclarada:'CLOSER',data:'2026-10-24T10:00:00Z'}],fontes:{}};
 const diagSdr=ctx.viWidgetDiagnosticoHistoricoRd_(inputSdr);
 assert.equal(diagSdr.ativo,true);
 const planoSdr=ctx.viWidgetPlanoSdrHistoricoRd_(inputSdr,diagSdr);
@@ -228,7 +228,7 @@ assert.equal(planoCloser.itens.find(x=>x.id==='proposta_pdf').conformidade,'NAO_
 const proposalInput={
   negociacao:{etapaAtualNome:'Proposta enviada',valorInformado:15000},
   historicoRdEtapas:linkedStage.historico,tarefas:[],
-  atividades:[],arquivosRd:[{id:'proposal-1',nome:'Proposta Comercial.pdf',extensao:'pdf'}],
+  atividades:[],ligacoesBoard:[{id:'closer-proposal',funcaoDeclarada:'CLOSER',data:'2026-10-25T10:00:00Z'}],arquivosRd:[{id:'proposal-1',nome:'Proposta Comercial.pdf',extensao:'pdf'}],
   fontes:{arquivosRd:{completo:true},atividades:{completo:true},tarefas:{completo:true}}
 };
 const closerModel=ctx.viWidgetPlanoCloserHistoricoRd_(proposalInput,onlyDiag);
@@ -255,7 +255,7 @@ const renderCloser=vm.runInNewContext('('+widget.slice(closerStart,closerEnd)+')
   criterionSection:ux.criteriaAccordion
 });
 const closerHtml=renderCloser({diagnosticoRdOperacional:onlyDiag,
-  planoOtimizacaoCloser:closerModel});
+  closer_iniciado:closerModel.closer_iniciado,planoOtimizacaoCloser:closerModel});
 assert.match(closerHtml,/7 critérios do Plano Closer/);
 assert.equal((closerHtml.match(/<details class="criteria-tile tone-[a-z]+">/g)||[]).length,7);
 assert.match(closerHtml,/criteria-light green/);

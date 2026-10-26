@@ -117,7 +117,8 @@ runner.success(parecer);
 assert.match(card.innerHTML,/Visão geral/);
 assert.match(card.innerHTML,/Inteligência/);
 assert.match(card.innerHTML,/Plano SDR/);
-assert.match(card.innerHTML,/Plano Closer/);
+assert.doesNotMatch(card.innerHTML,/Plano Closer/,
+  'Sem entrada comprovada, a aba do Closer não é exibida');
 assert.match(card.innerHTML,/Evidências/);
 app.changeTab('sdr');
 assert.match(card.innerHTML,/7 pilares do Plano Wisetec/);
@@ -129,7 +130,8 @@ assert.match(card.innerHTML,/Contexto e qualificacao/);
 app.changeFilter('ATENCAO');
 assert.match(card.innerHTML,/Atenção/);
 app.changeTab('closer');
-assert.match(card.innerHTML,/Plano de Otimização Closer/);
+assert.match(card.innerHTML,/Plano de Otimização SDR/,
+  'Navegação forçada ao Closer retorna ao SDR quando não há ownership comprovado');
 app.changeTab('evidencias');
 assert.match(card.innerHTML,/Cobertura e rastreabilidade/);
 const fake=base({negociacao:{...leitura.negociacao,nome:'<img src=x onerror=alert(1)>'}});

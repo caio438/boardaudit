@@ -108,6 +108,18 @@ assert.equal(sdr.itens.find(x=>x.id==='voip').status,'INDICIO',
 assert.match(sdr.itens.find(x=>x.id==='registros').detalhe,/1 chamada\(s\) técnica\(s\)/);
 assert.ok(sdr.itens.every(x=>x.conformidade!=='NAO_CONFORME'),
  'Sem versão de playbook não converter lacuna em vermelho');
+const closerTgr=ctx.viWidgetPlanoCloserHistoricoRd_(leitura,diag);
+assert.equal(closerTgr.closer_iniciado.valor,false,
+  'Apresentação e no-show não comprovam entrada do Closer');
+assert.equal(closerTgr.itens.length,0,
+  'Sem entrada comprovada, Plano Closer é nulo e não cria pendências');
+const leituraCloser={...leitura,
+  ligacoesBoard:leitura.ligacoesBoard.concat([{id:'closer-1',data:'2026-10-17T13:15:00Z',funcaoDeclarada:'CLOSER'}]),
+  reunioesBoard:[{id:'meet-1',data:'2026-10-17T13:00:00Z',funcaoDeclarada:'CLOSER'}]};
+const closerAtivo=ctx.viWidgetPlanoCloserHistoricoRd_(leituraCloser,diag);
+assert.equal(closerAtivo.closer_iniciado.valor,true,
+  'Interação vinculada com papel CLOSER ativa o plano');
+assert.equal(closerAtivo.itens.length,7);
 
 const ctxCad={
  criadaEm:start,inicioCadenciaEm:'2026-10-13T11:00:00Z',

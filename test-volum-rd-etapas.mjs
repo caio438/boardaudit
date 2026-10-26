@@ -171,7 +171,8 @@ assert.equal(reconciled.historico.linhaDoTempo.cobertura.totalReconciliado,103);
 assert.equal(reconciled.historico.linhaDoTempo.eventos.every(x=>x.fonte==='RD_UI_HISTORY'&&/^UI_/.test(x.id)),true);
 assert.equal(ctx.viRdConciliarHistoricoUi_({},visual103,'aaaaaaaaaaaaaaaaaaaaaaaa').aceito,false);
 
-assert.match(widget,/'etapasrd','Etapas RD'/);
+assert.doesNotMatch(widget,/'etapasrd','Etapas RD'/,
+  'A timeline técnica não faz parte da visão principal dos planos');
 assert.match(widget,/function rdWindows\(d\)/);
 assert.match(service,/parecer\.historicoRdEtapas/);
 assert.match(service,/VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO/);
