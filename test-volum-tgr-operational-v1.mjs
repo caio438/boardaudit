@@ -200,5 +200,18 @@ assert.match(widget,/\.criteria-tile\.tone-yellow/);
 assert.match(widget,/box-shadow:0 7px 20px/);
 assert.doesNotMatch(vm.runInContext("leadAgent({agentesDetalhados:[{agente:'LEAD',indicadores:{criadaEm:'2026-10-11T15:13:00Z'},criterios:[]}],prontidaoAgentes:{}})",v),
  /undefined min/,'Sem dado não se mostra undefined min');
-assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026'/);
+assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V4_20261026'/);
+const contract=(itens)=>ctx.viWidgetPlanoContratoV2_({itens},'SDR').itens;
+const evaluated=contract([
+  {id:'missing',status:'SEM_EVIDENCIA',conformidade:'PENDENTE',detalhe:'No matching record'},
+  {id:'provenBad',status:'ATENCAO',conformidade:'NAO_CONFORME',detalhe:'Missed dated task'},
+  {id:'clue',status:'EVIDENCIADO',conformidade:'PENDENTE',detalhe:'Documented signal'},
+  {id:'good',status:'EVIDENCIADO',conformidade:'CONFORME',detalhe:'Conclusive evidence'},
+  {id:'notDue',status:'NAO_APLICAVEL',conformidade:'NAO_APLICAVEL',detalhe:'Meeting not held'}
+]);
+assert.deepEqual(evaluated.map(x=>x.status_execucao),
+  ['NAO_VERIFICAVEL','NAO','PARCIAL','SIM','NAO_VERIFICAVEL']);
+assert.equal(evaluated[4].aplicavel,false);
+assert.match(widget,/const garantir=item=>Object.assign\(\{\},item,/,
+  'SDR V2 normalization must preserve item IDs and analysis fields');
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');
