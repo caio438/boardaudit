@@ -200,5 +200,5 @@ assert.match(widget,/\.criteria-tile\.tone-yellow/);
 assert.match(widget,/box-shadow:0 7px 20px/);
 assert.doesNotMatch(vm.runInContext("leadAgent({agentesDetalhados:[{agente:'LEAD',indicadores:{criadaEm:'2026-10-11T15:13:00Z'},criterios:[]}],prontidaoAgentes:{}})",v),
  /undefined min/,'Sem dado não se mostra undefined min');
-assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026'/);
+assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V5_20261026'/);
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');
