@@ -1,0 +1,106 @@
+name: VOLUM Intelligence - Chrome Web Store
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/volum-intelligence/**'
+      - 'scripts/build-volum-extension.mjs'
+      - 'scripts/verify-volum-extension-package.mjs'
+      - '.github/workflows/volum-extension-webstore.yml'
+  push:
+    tags:
+      - 'volum-extension-v*'
+  workflow_dispatch:
+    inputs:
+      publish_target:
+        description: 'none cria somente artefato; trusted_testers envia para testadores confiáveis'
+        required: true
+        default: 'none'
+        type: choice
+        options: [none, trusted_testers]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: volum-extension-webstore
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      package: ${{ steps.meta.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate source and build deterministic package
+        run: |
+          set -euo pipefail
+          node scripts/build-volum-extension.mjs
+          node scripts/verify-volum-extension-package.mjs
+          node test-volum-widget-cache-v1.mjs
+      - id: meta
+        name: Read release metadata
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./extensions/volum-intelligence/manifest.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "package=dist/volum-intelligence-chrome-$VERSION.zip" >> "$GITHUB_OUTPUT"
+      - name: Enforce tag matches manifest
+        if: startsWith(github.ref, 'refs/tags/volum-extension-v')
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$TAG" = "volum-extension-v$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volum-intelligence-${{ steps.meta.outputs.version }}-${{ github.sha }}
+          path: |
+            ${{ steps.meta.outputs.package }}
+            dist/volum-intelligence-release.json
+          if-no-files-found: error
+          retention-days: 90
+
+  trusted-testers:
+    needs: package
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_target == 'trusted_testers'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: chrome-web-store
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: volum-intelligence-${{ needs.package.outputs.version }}-${{ github.sha }}
+          path: dist
+      - name: Upload and publish only to trusted testers
+        shell: bash
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_WEB_STORE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_WEB_STORE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_WEB_STORE_REFRESH_TOKEN }}
+          EXTENSION_ID: ${{ secrets.CHROME_WEB_STORE_EXTENSION_ID }}
+          PACKAGE: dist/volum-intelligence-chrome-${{ needs.package.outputs.version }}.zip
+        run: |
+          set -euo pipefail
+          for key in CLIENT_ID CLIENT_SECRET REFRESH_TOKEN EXTENSION_ID; do test -n "${!key}" || { echo "::error::Secret CHROME_WEB_STORE_${key#*_} ausente."; exit 1; }; done
+          test -s "$PACKAGE"
+          token="$(curl --fail-with-body -sS https://oauth2.googleapis.com/token \
+            -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).access_token")"
+          test -n "$token"
+          curl --fail-with-body -sS -X PUT -T "$PACKAGE" \
+            -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID" | tee /tmp/upload.json
+          curl --fail-with-body -sS -X POST -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish?publishTarget=trustedTesters" | tee /tmp/publish.json
+          echo "PUBLISHED_TARGET=trusted_testers"
