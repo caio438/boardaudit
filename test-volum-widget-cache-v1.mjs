@@ -164,4 +164,32 @@ assert.equal(ia.referenciasDescartadas,3);
 assert.equal(ia.fatos[0].referencia,'UI_0');
 assert.equal(ia.fatos[0].agente,'CADENCIA');
 assert.equal(ia.fatos[0].confianca,'INDICIO_INTERPRETATIVO_COM_REFERENCIA_RD');
+// Garantia do ZIP distribuivel: arquivos sao exatamente os fontes da
+// extensao 0.3.2, sem ZIP invalido, caminho escapando ou versao anterior.
+const zip=fs.readFileSync(new URL('./dist/volum-intelligence-chrome-0.3.2.zip',import.meta.url));
+const expected=['content.js','manifest.json','options.html','options.js',
+  'service-worker.js','sidebar.css','sidebar.html','sidebar.js'];
+const zipFiles=new Map();
+let pos=0;
+while(pos+30<=zip.length&&zip.readUInt32LE(pos)===0x04034b50){
+  const method=zip.readUInt16LE(pos+8),compressed=zip.readUInt32LE(pos+18);
+  const size=zip.readUInt32LE(pos+22),len=zip.readUInt16LE(pos+26),
+    extra=zip.readUInt16LE(pos+28);
+  const filename=zip.subarray(pos+30,pos+30+len).toString('utf8');
+  const start=pos+30+len+extra,end=start+compressed;
+  assert.equal(method,0,'ZIP armazenado sem compressao irregular');
+  assert.equal(compressed,size,'ZIP coerente sem compressao');
+  assert.ok(expected.includes(filename),'ZIP somente contem arquivos da extensao');
+  assert.ok(end<=zip.length,'ZIP sem byte overflow');
+  const contents=zip.subarray(start,end).toString('utf8');
+  assert.equal(contents,load('extensions/volum-intelligence/'+filename),
+    'Pacote difere do codigo aprovado: '+filename);
+  zipFiles.set(filename,contents);
+  pos=end;
+}
+assert.equal(zipFiles.size,8,'ZIP da extensao completo');
+assert.equal(JSON.parse(zipFiles.get('manifest.json')).version,'0.3.2');
+assert.equal(zip.readUInt32LE(pos),0x02014b50,'central directory ZIP presente');
+assert.ok(zip.includes(Buffer.from([0x50,0x4b,0x05,0x06])),'registro final do ZIP presente');
+
 console.log('VOLUM cache: 1h/conta/negociacao, abas sem RPC, refresh explícito, dedupe, fallback, API-RD/Board/IA com fonte.');

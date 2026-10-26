@@ -98,7 +98,8 @@ function viWidgetConciliarAtividadesAgentes_(leitura,eventos) {
       ['email','note'].includes(String(a.tipo||'').toLowerCase()));
   const usados=new Set();
   let correspondencias=0,ambiguos=0,visuaisSemMatch=0;
-  const mapeadas=(Array.isArray(eventos)?eventos:[]).map(e=>{
+  const visuais=Array.isArray(eventos)?eventos:[];
+  const mapeadas=visuais.map(e=>{
     const visual={id:String(e.id||''),data:e.data,texto:String(e.texto||'').slice(0,950),
       tipo:e.tipo,origemClassificacao:'RD_UI_HISTORY',autor:String(e.autor||''),
       acaoVisual:e.acao,passagemId:String(e.passagemId||''),
@@ -107,6 +108,14 @@ function viWidgetConciliarAtividadesAgentes_(leitura,eventos) {
     if(!tipo||!e.data)return visual;
     const hora=Date.parse(e.data);
     if(!Number.isFinite(hora))return visual;
+    // Ser unico do lado da API nao basta: se dois cartoes visuais de e-mail
+    // caem na janela do mesmo registro, associar o primeiro por ordem cria
+    // falso envio/convite/proposta. Exigir unicidade nos DOIS sentidos.
+    const candidatosVisuais=visuais.filter(other=>
+      (other.acao==='EMAIL_ENVIADO'?'email':other.acao==='ANOTACAO'?'note':'')===tipo&&
+      Number.isFinite(Date.parse(other.data||''))&&
+      Math.abs(Date.parse(other.data)-hora)<=90000);
+    if(candidatosVisuais.length!==1){ambiguos++;return visual;}
     const matches=api.filter(a=>String(a.tipo).toLowerCase()===tipo&&
       !usados.has(String(a.id))&&Math.abs(Date.parse(a.data)-hora)<=90000&&
       (tipo!=='note'||!a.texto||String(e.texto||'').toLowerCase().includes(
@@ -114,16 +123,23 @@ function viWidgetConciliarAtividadesAgentes_(leitura,eventos) {
     if(matches.length!==1){if(matches.length>1)ambiguos++;
       else visuaisSemMatch++;return visual;}
     const achado=matches[0];
+    const horaApi=Date.parse(achado.data);
+    const visuaisCompativeis=visuais.filter(other=>
+      (other.acao==='EMAIL_ENVIADO'?'email':other.acao==='ANOTACAO'?'note':'')===tipo&&
+      Number.isFinite(Date.parse(other.data||''))&&
+      Math.abs(Date.parse(other.data)-horaApi)<=90000);
+    if(visuaisCompativeis.length!==1){ambiguos++;return visual;}
     usados.add(String(achado.id));correspondencias++;
     visual.idAtividadeApi=String(achado.id||'');
     visual.fontesConciliadas.push('RD_API_ATIVIDADES');
+    visual.tipoConciliacao='PAREAMENTO_TEMPORAL_90S_UNICO_AMBOS_SENTIDOS';
     visual.temLinkGravacao=achado.temLinkGravacao===true;
     if(achado.texto&&tipo==='email')visual.texto=(
       String(e.texto||'').slice(0,250)+' · '+String(achado.texto||'').slice(0,700)).slice(0,950);
     return visual;
   });
   return {atividades:mapeadas,rastreio:{
-    modo:'CORRELACAO_UNICA_DEAL_CANAL_90_SEGUNDOS',eventosVisuais:mapeadas.length,
+    modo:'CORRELACAO_MUTUAMENTE_UNICA_DEAL_CANAL_90_SEGUNDOS',eventosVisuais:mapeadas.length,
     atividadesApiElegiveis:api.length,eventosConciliados:correspondencias,
     pareamentosAmbiguos:ambiguos,eventosSemPareamento:visuaisSemMatch,
     politica:'Sem identidade unica, o detalhe da API nao substitui o evento visual.'}};
@@ -351,7 +367,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     }
   }
   if(inteligenciaRd.ativo && parecer.interpretacao)
-    parecer.interpretacao=viWidgetValidarInterpretacaoRd_(parecer.interpretacao,leitura);
+    parecer.interpretacao=viWidgetValidarInterpretacaoRd_(parecer.interpretacao,leitura,parecer.contextoIa);
   // A interpretacao por IA permanece INDICIO, mas agora chega as abas corretas.
   if(parecer.planosIntegradosWisetec?.ativo&&parecer.interpretacao?.fatos?.length){
     const fatos=parecer.interpretacao.fatos;

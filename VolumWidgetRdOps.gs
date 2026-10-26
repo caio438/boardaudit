@@ -267,11 +267,15 @@ function viWidgetAgenteEventoIa_(e,leitura){
   if(/qualific|conex|interesse/.test(s))return 'CONEXAO';
   return e.acao==='NEGOCIACAO_CRIADA'?'LEAD':'CADENCIA';
 }
-function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
+function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) {
   if(!interpretacao || interpretacao.disponivel===false)
     return {disponivel:false,motivo:'IA_INDISPONIVEL',fatos:[],referenciasDescartadas:0};
   const eventos=((leitura.historicoRdEtapas||{}).linhaDoTempo||{}).eventos||[];
   const porId=new Map(eventos.map(e=>[String(e.id||''),e]));
+  // Em producao, nao validar UI_n que existe no RD mas nao estava no
+  // conjunto de referencias efetivamente submetido ao Gemini.
+  const refPrompt=contextoEnviado&&Array.isArray(contextoEnviado.referencias)?
+    new Set(contextoEnviado.referencias.map(x=>String(x.ref||''))):null;
   const normal=x=>String(x||'').normalize('NFD')
     .replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const origem=Array.isArray(interpretacao.fatos)?interpretacao.fatos:[];
@@ -282,7 +286,7 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura) {
     const ref=String(f?.referencia||f?.ref||'');
     const e=porId.get(ref);
     const conclusao=String(f?.conclusao||'').trim();
-    if(!e||!conclusao){descartadas++;continue;}
+    if(!e||(refPrompt&&!refPrompt.has(ref))||!conclusao){descartadas++;continue;}
     const texto=normal(conclusao);
     const eventoTipo=String(e.acao||'OUTRO_VISUAL_RD');
     const fonteTexto=normal(e.texto||'');
