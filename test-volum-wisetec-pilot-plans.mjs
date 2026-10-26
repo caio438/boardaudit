@@ -132,8 +132,10 @@ assert.equal(reuniao.indicadores.auditoriasCloserVinculadas,1);
 assert.notEqual(reuniao.criterios.find(x=>x.id==='reuniao_pitch').conformidade,'CONFORME',
   'auditoria validada sob revisao nao concede conformidade integral');
 assert.match(html,/function pilotPlan\(d,tipo\)/);
-assert.match(html,/pilotPlan\(d,'sdr'\)/);
-assert.match(html,/pilotPlan\(d,'closer'\)/);
+assert.doesNotMatch(html,/pilotPlan\(d,'sdr'\)/,
+  'O plano executivo não deve renderizar o processamento técnico do piloto');
+assert.doesNotMatch(html,/pilotPlan\(d,'closer'\)/,
+  'O plano executivo não deve renderizar o processamento técnico do piloto');
 assert.match(service,/leitura\.auditoriasBoard=typeof viPilotLerAuditoriasBoard_/);
 assert.doesNotMatch(source,/(?:setValues|setValue|UrlFetchApp\.fetch|registrarLog_)\s*\(/,
   'piloto nao pode escrever no CRM nem no Board');

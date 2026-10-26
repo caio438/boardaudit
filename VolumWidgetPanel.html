@@ -182,7 +182,10 @@ const cacheScope=typeof document.querySelector==='function'?
   (document.querySelector('meta[name="volum-cache-scope"]')?.content||''):'';
 const CACHE_VERSION='VOLUM_WIDGET_CACHE_051';
 const CACHE_RESPONSE_VERSION='0.5.1-RD';
-const CACHE_ANALYSIS_REVISION='RD_STAGE_EVIDENCE_V2_20261026';
+// Ownership now uses the dated handoff and the extension collects the source
+// tabs. Old snapshots cannot be reused because they may have cut SDR at the
+// first "Apresentação" stage.
+const CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026';
 const CACHE_TTL_MS=60*60*1000;
 const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
 let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
@@ -662,7 +665,7 @@ function pilotPlan(d,tipo){
   }
   return html;
 }
-function planoV2Cards(plano){const itens=(plano.itens||[]).filter(x=>x.aplicavel!==false);const top=itens.filter(x=>x.acao_recomendada).slice(0,3);let html='<div class="criteria-list">'+itens.map(function(x){const st=x.status_execucao||'NAO_VERIFICAVEL';const tone=st==='SIM'?'green':st==='NAO'?'red':st==='PARCIAL'?'yellow':'na';return '<details class="criteria-tile tone-'+tone+'"><summary><span class="criteria-light '+tone+'">'+(tone==='green'?'✓':tone==='red'?'!':tone==='yellow'?'?':'—')+'</span><span class="criterion-name">'+esc(x.titulo)+' — '+esc(st.replace('_',' '))+'</span><span class="criterion-chevron">›</span></summary><div class="criteria-detail"><p>'+esc(x.resposta_curta||x.detalhe)+'</p>'+(x.acao_recomendada?'<p class="to-do"><b>Ajuste:</b> '+esc(x.acao_recomendada)+'</p>':'')+'<p class="criterion-note">'+esc(x.evidencia_resumida||x.motivo_pendencia||'Sem evidência adicional.')+'</p></div></details>';}).join('')+'</div>';if(top.length)html+='<p class="small">Prioridades: '+esc(top.map(x=>x.titulo).join(' · '))+'</p>';return html;}
+function planoV2Cards(plano){const itens=(plano.itens||[]).filter(x=>x.aplicavel!==false);const top=itens.filter(x=>x.acao_recomendada&&x.status_execucao!=='SIM').slice(0,3);let html='<div class="criteria-list">'+itens.map(function(x){const st=x.status_execucao||'NAO_VERIFICAVEL';const tone=st==='SIM'?'green':st==='NAO'?'red':st==='PARCIAL'?'yellow':'na';return '<details class="criteria-tile tone-'+tone+'"><summary><span class="criteria-light '+tone+'">'+(tone==='green'?'✓':tone==='red'?'!':tone==='yellow'?'?':'—')+'</span><span class="criterion-name">'+esc(x.titulo)+' — '+esc(st.replace('_',' '))+'</span><span class="criterion-chevron">›</span></summary><div class="criteria-detail"><p>'+esc(x.resposta_curta||x.detalhe)+'</p>'+(x.acao_recomendada?'<p class="to-do"><b>Ajuste:</b> '+esc(x.acao_recomendada)+'</p>':'')+'<p class="criterion-note">'+esc(x.evidencia_resumida||x.motivo_pendencia||'Sem evidência adicional.')+'</p><p class="criterion-note">Responsável: '+esc(x.responsavel||'Não confirmado')+'</p></div></details>';}).join('')+'</div>';if(top.length)html+='<p class="small"><b>Correções prioritárias:</b> '+esc(top.map(x=>x.titulo).join(' · '))+'</p>';return html;}
 function sdr(d){
   const rd=d.diagnosticoRdOperacional||null;
   // Compatibilidade com clientes legados ou mocks antigos que nao trazem
@@ -670,12 +673,10 @@ function sdr(d){
   if(!rd){
     const p=d.planoOtimizacaoSdr||{},itens=p.itens||[];
     const oficiais=itens.filter(x=>x.pilar==='OFICIAL');
-    const extras=itens.filter(x=>x.pilar!=='OFICIAL');
     let html=section('Plano de Otimização SDR','Wisetec · '+oficiais.length+' pilares');
     html+='<div class="notice">O papel SDR é atribuído somente quando o campo FUNCAO do board o declara. Ligação curta não comprova conversa; aderência ao pitch exige gravação/transcrição. Não há pontuação automática.</div>';
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
     html+=criterionSection('7 pilares do Plano Wisetec',oficiais);
-    html+=criterionSection('9 verificações complementares',extras);
     return html;
   }
   if(rd&&!rd.ativo){
@@ -696,7 +697,7 @@ function sdr(d){
       detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
       evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
     });
-    let html=(typeof pilotPlan==='function'?pilotPlan(d,'sdr'):'')+section('Plano de Otimização SDR','7 pilares + 9 verificações · Histórico RD');
+    let html=section('Plano de Otimização SDR','7 pilares · Histórico RD');
     html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
       ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
     html+='<p class="small">Régua de cadência: '+esc(
@@ -706,9 +707,8 @@ function sdr(d){
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
     const oficiaisV2={itens:oficiais.map(garantir).map(function(x){return Object.assign(x,plano.itens.find(y=>y.id===x.id)||{});})};
     html+=(typeof planoV2Cards==='function'?planoV2Cards(oficiaisV2):criterionSection('7 pilares do Plano Wisetec',oficiaisV2.itens));
-    // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
-    // em conteúdo vazio na leitura/cópia da interface.
-    html+=criterionSection('9 verificações complementares',extras.map(garantir));
+    // As verificações complementares continuam no contrato e nas evidências,
+    // mas não poluem a leitura executiva do Plano SDR.
     html+='<p class="small">'+esc(plano.aviso||'')+'</p>';
     return html;
   }
@@ -727,7 +727,7 @@ function closer(d){
   }
   const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
   if(rd&&rd.ativo&&items.length){
-    let html=(typeof pilotPlan==='function'?pilotPlan(d,'closer'):'')+section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    let html=section('Plano de Otimização Closer','7 pilares · evidências do RD');
     html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
     html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
     html+=(typeof planoV2Cards==='function'?planoV2Cards(p):criterionSection('7 critérios do Plano Closer',items));

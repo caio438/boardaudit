@@ -368,11 +368,49 @@ function viWidgetPlanoContratoV2_(plano,tipo){
       status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
       resposta_curta:(statusExecucao==='SIM'?'SIM':statusExecucao==='NAO'?'NÃO':statusExecucao==='PARCIAL'?'PARCIAL':'NÃO VERIFICÁVEL')+' — '+String(x.detalhe||'').split(/[.]/)[0]+'.',
       evidencia_resumida:String(x.evidencia||'').slice(0,260),referencias:refs,
-      responsavel:tipo==='SDR'?'SDR responsável a confirmar':'Closer responsável a confirmar',
+      // A tela nunca deve inventar o dono de um desvio. Quando o evento
+      // trouxer autoria, ela é preservada; caso contrário, o papel fica
+      // explicitamente não confirmado.
+      responsavel:x.responsavel||x.autor||(tipo==='SDR'?'Responsável SDR não confirmado':'Responsável Closer não confirmado'),
       acao_recomendada:x.acao||'',motivo_pendencia:statusExecucao==='NAO_VERIFICAVEL'?String(x.regra||x.detalhe||''):''});
   });
   return plano;
 }
+
+/**
+ * Classifica apenas sinais explícitos das abas lidas pela extensão. A UI do RD
+ * nem sempre expõe IDs de API nessas abas, então cada item preserva a fonte
+ * verificável e nunca vira confirmação por mera presença de uma palavra.
+ */
+function viWidgetEvidenciasAbasRd_(leitura){
+  const fontes=leitura.fontesUiRd||{};
+  const texto=chave=>String(fontes[chave]?.texto||'');
+  const normal=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const trecho=(valor,re,limite)=>{
+    const m=normal(valor).match(re);
+    if(!m||m.index===undefined)return '';
+    return String(valor).slice(Math.max(0,m.index-110),m.index+(limite||260)).replace(/\s+/g,' ').trim();
+  };
+  const email=texto('emails'),tasks=texto('tasks'),files=texto('files'),proposals=texto('proposals');
+  const propostaEmail=trecho(email,/proposta|orcamento|condicoes comerciais/,330);
+  const gravacao=trecho(email,/gravac|recording|tldv|meet\.google\.com/,330)||
+    trecho(proposals,/gravac|recording|tldv/,330);
+  const recebimento=trecho(email,/(?:recebi|recebemos|confirmo).{0,65}(?:proposta|orcamento|email)|(?:proposta|orcamento).{0,45}(?:recebid|chegou)/,330);
+  const pdf=trecho(files,/(?:proposta|orcamento|comercial)[^\n]{0,120}\.pdf|\.pdf[^\n]{0,120}(?:proposta|orcamento|comercial)/,260);
+  const proximo=trecho(tasks,/(?:follow.?up|recovery|retorno|proxima acao|proximo passo)[\s\S]{0,180}(?:\d{2}\/\d{2}\/\d{4}|\d{2}:\d{2})/,330);
+  const valor=trecho(proposals,/r\$\s*[\d\.]+,\d{2}/,160);
+  const fonte=(chave,id,conteudo)=>conteudo?{id,fonte:'RD_UI_'+chave.toUpperCase(),texto:conteudo}:null;
+  return {
+    cobertura:Object.keys(fontes).reduce((acc,chave)=>{acc[chave]={acessivel:fontes[chave]?.acessivel===true,completa:fontes[chave]?.completo===true};return acc;},{}),
+    propostaEmail:fonte('email','UI_TAB_EMAIL_PROPOSTA',propostaEmail),
+    gravacao:fonte('email','UI_TAB_EMAIL_GRAVACAO',gravacao),
+    recebimento:fonte('email','UI_TAB_EMAIL_RECEBIMENTO',recebimento),
+    pdf:fonte('files','UI_TAB_ARQUIVOS_PROPOSTA',pdf),
+    proximoPasso:fonte('tasks','UI_TAB_TAREFAS_PROXIMO_PASSO',proximo),
+    valor:fonte('proposals','UI_TAB_PROPOSTAS_VALOR',valor)
+  };
+}
+
 function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const stage=(leitura.historicoRdEtapas||{});
   const visual=(stage.linhaDoTempo||{});
@@ -381,14 +419,16 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const deal=leitura.negociacao||{};
   const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
-  const nomeStage=x=>normal(x.etapaNome||'');
-  const primeiraCloser=janelas.findIndex(j=>
-    /apresentacao|reuniao|proposta|negociacao|fechamento|closer/.test(nomeStage(j)));
-  const pre=primeiraCloser>=0?janelas.slice(0,primeiraCloser):janelas;
+  // "Apresentação" não encerra automaticamente a responsabilidade SDR.
+  // A fronteira é uma passagem comprovada: troca de responsável ou handoff.
+  const handoffEvento=eventos.find(e=>e.acao==='RESPONSAVEL_ALTERADO'&&
+    /respons[aá]vel para\s+\S+/.test(String(e.texto||'')))||
+    eventos.find(e=>e.acao==='ANOTACAO'&&
+      /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel)/.test(normal(e.texto)));
+  const handoffEm=handoffEvento?String(handoffEvento.data||''):'';
+  const pre=handoffEm?janelas.filter(j=>!j.inicio||String(j.inicio)<handoffEm):janelas;
   const ids=new Set(pre.map(j=>String(j.passagemId||'')));
-  // Se ainda nao houve closer, a etapa corrente pertence ao percurso SDR,
-  // salvo se o nome explicito disser o contrario.
-  const sdr=eventos.filter(e=>ids.has(String(e.passagemId||'')));
+  const sdr=eventos.filter(e=>!handoffEm||String(e.data||'')<handoffEm);
   const texto=e=>normal(e.texto||'');
   const data=e=>String(e.data||'');
   const ordered=list=>list.slice().sort((a,b)=>data(a).localeCompare(data(b)));
@@ -404,20 +444,23 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const ligacoes=combinar(sdr.filter(e=>
     ['OUTRO_VISUAL_RD','LIGACAO_REALIZADA','CHAMADA_REGISTRADA'].includes(e.acao)),
     /(?:atendimento para|ligac(?:ao|oes)|telefonema|chamada telefonica|discagem|voip)/);
-  const chamadaVoipRegistrada=ligacoes.find(e=>e.acao==='OUTRO_VISUAL_RD'&&
-    /atendimento para|ligacao realizada|chamada efetuada/.test(texto(e)))||null;
+  const chamadaVoipRegistrada=ligacoes.find(e=>e.acao==='CHAMADA_REGISTRADA'||
+    (e.acao==='OUTRO_VISUAL_RD'&&/atendimento para|ligacao realizada|chamada efetuada/.test(texto(e))))||null;
   const tentativas=[...ligacoes,...emails,...whatsapp].filter((e,i,arr)=>
     arr.findIndex(x=>x.id===e.id)===i);
   const notasResultado=combinar(anotacoes,
     /(?:nao atendeu|nao respondeu|sem resposta|caixa postal|ocupado|retornou|respondeu|agendou|reagendou|confirmou|sem interesse|desqualificad|conversamos|falei com|falou com|atendeu)/);
   const questoes=combinar(anotacoes,/faturamento|lmv|receita|qualific|dor|necessidade|objetivo|sistema atual|segmento|decisor/);
-  const hadCloser=primeiraCloser>=0;
+  // A etapa posterior torna a passagem exigível; somente o handoff comprovado
+  // muda a fronteira de ownership.
+  const entradaCloserComprovada=Boolean(handoffEm);
+  const hadCloser=entradaCloserComprovada||janelas.some(j=>
+    /apresentacao|reuniao|proposta|negociacao|fechamento|closer/.test(normal(j.etapaNome||'')));
   const boardSdr=Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard.filter(l=>
     l?.data&&String(l.funcaoDeclarada||'').toUpperCase()!=='CLOSER'&&
-    (!hadCloser||l.data<janelas[primeiraCloser].inicio)):[];
+    (!entradaCloserComprovada||l.data<handoffEm)):[];
   const agendaContexto=eventos.filter(e=>
-    ids.has(String(e.passagemId||'')) ||
-    (hadCloser && String(e.passagemId||'')===String(janelas[primeiraCloser]?.passagemId||'')));
+    !handoffEm||String(e.data||'')<=handoffEm);
   const notesAgenda=tipe(agendaContexto,'ANOTACAO');
   // O texto do card contém "na etapa Apresentação do funil".
   // Esse sufixo não é evidência de convite ou reunião agendada.
@@ -487,8 +530,8 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     if(status==='NAO_APLICAVEL')conformidade='NAO_APLICAVEL';
     else if(status==='INDICIO'&&e){
       const t=texto(e);
-      if(id==='voip'&&e.acao==='OUTRO_VISUAL_RD'&&
-        /atendimento para|ligacao realizada|chamada efetuada/.test(t))
+      if(id==='voip'&&(e.acao==='CHAMADA_REGISTRADA'||
+        (e.acao==='OUTRO_VISUAL_RD'&&/atendimento para|ligacao realizada|chamada efetuada/.test(t))))
         conformidade='CONFORME';
       if(id==='segmento'&&e.acao==='ANOTACAO'&&
         /(?:segmento|setor|ramo)(?: de atuacao)?\s*[:=-]\s*[\w\s-]{3,45}/.test(t))
@@ -497,7 +540,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
         /(?:lmv|faturamento|receita mensal) (?:validado|confirmado|conferido)\s*[:=-]\s*(?:r\$ ?\d|positivo|negativo|acima|abaixo|entre \d)|(?:cliente|lead) (?:confirmou|validou) (?:o |seu )?(?:lmv|faturamento|receita mensal).{0,45}(?:r\$ ?\d|positivo|negativo|acima|abaixo)/.test(t))
         conformidade='CONFORME';
     }
-    itens.push({id,titulo,status,conformidade,detalhe:msg,evidencia:e?
+    itens.push({id,titulo,status,conformidade,detalhe:msg,responsavel:e?.autor||'',evidencia:e?
       evid+' · '+detalheEvento(e):'',
       fonte:e?'RD_UI_HISTORY · '+e.id:'RD_UI_HISTORY · '+(pre.map(j=>j.etapaNome).join(' → ')||'etapas em validação'),
       acao,prioridade:conformidade==='NAO_CONFORME'?'ALTA':'MEDIA',
@@ -537,11 +580,12 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
       'Registrar nova tentativa de reagendamento conforme cadência de no-show, com data e desfecho.':'',
     'OFICIAL');
   reg('handoff','Passagem de bastão SDR → Closer',
-    repasse.length?'INDICIO':hadCloser?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    (repasse.length||handoffEvento)?'INDICIO':hadCloser?'SEM_EVIDENCIA':'NAO_APLICAVEL',
     repasse.length?'Há anotação de repasse; conferir se inclui LMV, dor, responsável e reunião.':
-      hadCloser?'A negociação avançou para uma etapa de apresentação/reunião, mas não foi encontrada anotação explícita de passagem de bastão.':
+      handoffEvento?'O histórico registra alteração de responsável; confirmar o contexto qualificado transferido.':
+      hadCloser?'Há entrada de Closer comprovada, mas sem anotação explícita de passagem.':
       'Ainda não foi identificada a passagem da negociação para uma etapa de closer.',
-    ultimo(repasse),'Registrar o contexto qualificado, responsável e compromisso acordado na passagem para o Closer.','OFICIAL');
+    ultimo(repasse)||handoffEvento,'Registrar o contexto qualificado, responsável e compromisso acordado na passagem para o Closer.','OFICIAL');
   reg('registros','Registro do resultado após cada ação',
     notasResultado.length?'INDICIO':(saidas.length||ligacoes.length)?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
     notasResultado.length+' anotação(ões) de desfecho antes da fase Closer; '+
@@ -628,7 +672,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     escopo:{passagensSdr:pre.map(j=>({id:j.passagemId,nome:j.etapaNome,
       entrada:j.inicio,saida:j.fim})),totalEventosSdr:sdr.length,
       outrosEventos:eventos.length-sdr.length,diasComEventos:uteis,
-      eventoInicioCloser:hadCloser?janelas[primeiraCloser].inicio:'',
+      eventoInicioCloser:handoffEm,
       regraCadenciaAplicavel:'VERSAO_CLIENTE_NAO_CONFIRMADA'},
     aviso:'Estes critérios analisam os registros anteriores à etapa de apresentação e as evidências de agenda. Sem versão vigente da cadência não atribuem compliance integral.',
     restricoes:['As atribuições SDR/Closer dependem do cadastro de responsáveis da operação.',
@@ -660,15 +704,24 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
       .find(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER')||null;
   const handoffExplicito=todos.find(x=>x.acao==='ANOTACAO'&&
     /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel|resumo para o closer)/.test(normal(x.texto)))||null;
-  const closerIniciado=Boolean(boardCloser||handoffExplicito);
-  const evidenciaEntrada=boardCloser||handoffExplicito||null;
+  const trocaResponsavel=todos.find(x=>x.acao==='RESPONSAVEL_ALTERADO'&&
+    /respons[aá]vel para\s+\S+/.test(String(x.texto||'')))||null;
+  const nomeAssumiu=trocaResponsavel&&((String(trocaResponsavel.texto||'').match(/respons[aá]vel para\s+(.+?)(?:\s+na etapa|$)/i)||[])[1]||'').trim();
+  const atuacaoDireta=trocaResponsavel&&todos.find(x=>String(x.data||'')>=String(trocaResponsavel.data||'')&&
+    ['EMAIL_ENVIADO','EMAIL_RESPONDIDO','CHAMADA_REGISTRADA','WHATSAPP_ABERTO'].includes(x.acao)&&
+    (!nomeAssumiu||normal(x.autor).includes(normal(nomeAssumiu))));
+  // Mudança datada de responsável + atuação comercial direta é entrada na
+  // negociação; etapa sozinha continua insuficiente.
+  const closerIniciado=Boolean(boardCloser||handoffExplicito||(trocaResponsavel&&atuacaoDireta));
+  const evidenciaEntrada=boardCloser||handoffExplicito||trocaResponsavel||null;
   if(!closerIniciado){
     return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:0,itens:[],ativado:false,aplicavel:false,
       closer_iniciado:{valor:false,evidencia:null,motivo:'Nenhuma passagem de bastão, compromisso ou interação atribuída ao Closer foi comprovada.'},
       aviso:'Plano Closer oculto: etapa Apresentação, no-show ou tarefa sem papel comprovado não iniciam responsabilidade do Closer.'},'CLOSER');
   }
   const closerIds=new Set(janelas.slice(Math.max(0,primeira)).map(x=>x.passagemId));
-  const eventos=primeira<0?[]:todos.filter(x=>closerIds.has(x.passagemId));
+  const eventos=trocaResponsavel?todos.filter(x=>String(x.data||'')>=String(trocaResponsavel.data||'')):
+    primeira<0?[]:todos.filter(x=>closerIds.has(x.passagemId));
   const buscar=(type,re)=>eventos.filter(e=>e.acao===type&&(!re||re.test(normal(e.texto)))).sort((a,b)=>
     String(b.data).localeCompare(String(a.data)))[0]||null;
   const notas=eventos.filter(e=>e.acao==='ANOTACAO');
@@ -681,8 +734,9 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
   const devido=propostaAtiva||!!notaReuniao;
   const coberturaVisual=diagnostico&&diagnostico.ativo===true;
   const fontes=leitura.fontes||{};
-  const completoArquivo=(fontes.arquivosRd||{}).completo===true;
-  const completoTarefa=(fontes.tarefas||{}).completo===true;
+  const abas=leitura.evidenciasAbasRd||{};
+  const completoArquivo=(fontes.arquivosRd||{}).completo===true||abas.cobertura?.files?.completa===true;
+  const completoTarefa=(fontes.tarefas||{}).completo===true||abas.cobertura?.tasks?.completa===true;
   const completoNotas=(fontes.atividades||{}).completo===true;
   const arq=Array.isArray(leitura.arquivosRd)?leitura.arquivosRd:[];
   const pdf=arq.filter(a=>String(a.extensao||'').toLowerCase()==='pdf'&&
@@ -701,9 +755,9 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
     /(?:combinamos|acordamos|ficou combinado|proxima reuniao|follow.?up)/.test(normal(e.texto))&&
     /(?:dia \d{1,2}|(?:^|\s)\d{1,2}[\/-]\d{1,2}|as \d{1,2}(?:h|:)|\d{1,2}:\d{2})/.test(normal(e.texto)))||null;
   const proximo=follow.find(t=>t.previstaPara&&t.responsaveis?.filter(Boolean).length)||null;
-  const formal=emails.find(e=>/proposta|formaliz|orcamento|condicoes comerciais/.test(normal(e.texto)))||null;
+  const formal=emails.find(e=>/proposta|formaliz|orcamento|condicoes comerciais/.test(normal(e.texto)))||abas.propostaEmail||null;
   const mencaoGravacao=eventos.find(e=>(e.acao==='ANOTACAO'||e.acao==='EMAIL_ENVIADO')&&
-    /gravac|tldv|recording|link da reuniao gravada/.test(normal(e.texto)))||null;
+    /gravac|tldv|recording|link da reuniao gravada/.test(normal(e.texto)))||abas.gravacao||null;
   const urlGravacao=(leitura.atividades||[]).find(a=>a.temLinkGravacao===true&&
     (primeira<0||janelas.slice(Math.max(0,primeira)).some(j=>
       a.data&&Date.parse(a.data)>=Date.parse(j.inicio)&&
@@ -715,7 +769,7 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
   const positivo=notas.find(e=>
     /(?:cliente|comprador|lead|contato).{0,65}(?:confirmou|acusou).{0,30}(?:recebimento|que recebeu|proposta recebida)|(?:confirmou recebimento|recebimento confirmado pelo cliente)/.test(normal(e.texto))&&
     !/nao recebeu|sem confirmacao|aguardando|perguntamos se recebeu|chegou tudo/.test(normal(e.texto))&&
-    (!formal||e.data>=formal.data))||null;
+    (!formal?.data||e.data>=formal.data))||abas.recebimento||null;
   const perguntou=notas.find(e=>
     /(?:recebeu|chegou).{0,40}(?:email|e-mail|proposta)|chegou tudo|confirmar o recebimento/.test(normal(e.texto)))||null;
   const proximasTarefas=follow.filter(t=>!t.concluida);
@@ -730,11 +784,11 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
     const e=ev&&ev.acao?ev:null;
     const prova=e?(e.id+' · '+(e.dataTexto||e.data||'')+' · '+(e.autor||'')+
       ' · '+viWidgetSanitizar_(e.texto||'').slice(0,220)):
-      ev&&ev.id?'ID '+String(ev.id)+' · '+String(ev.nome||ev.assunto||'').slice(0,170):'';
+      ev&&ev.id?'ID '+String(ev.id)+' · '+String(ev.nome||ev.assunto||ev.texto||'').slice(0,220):'';
     return {id,titulo,conformidade,status:cond==='SIM'?'EVIDENCIADO':
       cond==='FALTA'?'SEM_EVIDENCIA':!devido?'NAO_APLICAVEL':'INDICIO',
       detalhe:devido?detalhe:'Aguardando realização documentada da reunião ou início da etapa de proposta; a obrigação ainda não venceu.',
-      evidencia:prova,acao:devido?acao:'',fonte:fonte||'RD · Histórico',pilar:'OFICIAL'};
+      evidencia:prova,responsavel:(e&&e.autor)||'',acao:devido?acao:'',fonte:fonte||'RD · Histórico',pilar:'OFICIAL'};
   };
   const itens=[
     reg('gravacao','Link da gravação da reunião',urlGravacao?'SIM':mencaoGravacao?'PARCIAL':completoNotas&&propostaAtiva?'FALTA':'PARCIAL',
@@ -749,17 +803,17 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
         notaContexto?'Existe anotação de contexto, mas faltam seções ou confirmação de privacidade.':
         'Não foi localizada anotação estruturada da reunião.',
       'Completar a anotação do Closer com diagnóstico, entendimento, fechamento, gravação e próximo passo.','RD · anotações'),
-    reg('proposta_pdf','PDF da proposta anexado',pdf.length?'SIM':completoArquivo&&propostaAtiva?'FALTA':'PARCIAL',
-      pdf[0]||null,
-      pdf.length?'PDF localizado no recurso Arquivos do negócio. Confirmar versão, valor e destinatário.':
+    reg('proposta_pdf','PDF da proposta anexado',pdf.length||abas.pdf?'SIM':completoArquivo&&propostaAtiva?'FALTA':'PARCIAL',
+      pdf[0]||abas.pdf||null,
+      pdf.length||abas.pdf?'PDF localizado na aba Arquivos do negócio. Confirmar versão, valor e destinatário.':
         completoArquivo&&propostaAtiva?'A etapa de proposta foi iniciada, mas a aba Arquivos foi consultada integralmente sem localizar PDF.':
         'A fonte de arquivos não está integralmente acessível; não é possível reprovar a anexação.',
       'Anexar o PDF de proposta atualizado ao lead.','RD · Arquivos'),
     reg('proximo_passo','Tarefa com data e acordo do próximo passo',
-      proximo&&acordo?'SIM':follow.length?'PARCIAL':completoTarefa?'FALTA':'PARCIAL',
-      proximo||acordo,
+      proximo&&acordo?'SIM':(follow.length||abas.proximoPasso)?'PARCIAL':completoTarefa?'FALTA':'PARCIAL',
+      proximo||acordo||abas.proximoPasso,
       proximo&&acordo?'Há tarefa datada e acordo anotado. Confirmar se o compromisso corresponde ao comprador.':
-        follow.length?'Há tarefa de retorno, mas faltam acordo explícito, data/hora ou responsável.':
+        follow.length||abas.proximoPasso?'Há tarefa de retorno, mas faltam acordo explícito, data/hora ou responsável.':
         'Nenhuma tarefa de continuidade posterior à reunião foi localizada.',
       'Registrar tarefa com data/hora, responsável e compromisso acordado com o lead.','RD · tarefas/anotações'),
     reg('valores','Valores de proposta',valor?'PARCIAL':propostaAtiva?'FALTA':'PARCIAL',

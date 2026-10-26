@@ -307,6 +307,15 @@ function viRdConciliarHistoricoUi_(historico, ui, dealId) {
       semJanela:eventosFora.length,
       lacunas:lacunas},
     limite:'Fonte RD_UI_HISTORY: cada ID UI_n identifica um cartao visual (nao um ID da API). Sem registros completos nao se conclui ausencia de acao.'};
+  // Fontes laterais lidas na mesma sessão autenticada do RD. Ainda não são
+  // atividades de API: só entram no plano após classificação rastreável.
+  const fontesUi=recebido.sources&&typeof recebido.sources==='object'?recebido.sources:{};
+  base.fontesUiRd={};
+  ['emails','tasks','files','proposals'].forEach(function(chave){
+    const f=fontesUi[chave]||{};
+    base.fontesUiRd[chave]={acessivel:f.available===true,completo:f.complete===true,
+      motivo:String(f.reason||''),texto:String(f.text||'').slice(0,60000)};
+  });
   base.eventosHistoricoVisualSemJanela=eventosFora;
   return {historico:base,aceito:true};
 }

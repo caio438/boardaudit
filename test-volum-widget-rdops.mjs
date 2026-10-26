@@ -138,7 +138,8 @@ assert.equal(planoSdr.itens.filter(x=>x.pilar==='OFICIAL').length,7);
 assert.equal(planoSdr.itens.filter(x=>x.pilar==='COMPLEMENTAR').length,9);
 assert.ok(planoSdr.itens.every(x=>x.titulo&&x.detalhe&&x.fonte&&x.status),'No empty SDR cards');
 assert.equal(planoSdr.escopo.totalEventosSdr,6);
-assert.equal(planoSdr.escopo.passagensSdr.length,1);
+assert.equal(planoSdr.escopo.passagensSdr.length,2,
+ 'A stage named Apresentacao does not cut SDR ownership without a proved handoff.');
 assert.equal(planoSdr.itens.find(x=>x.id==='cadencia').status,'INDICIO');
 assert.equal(planoSdr.itens.find(x=>x.id==='no_show').status,'NAO_APLICAVEL');
 assert.equal(planoSdr.itens.find(x=>x.id==='handoff').status,'SEM_EVIDENCIA');
@@ -147,6 +148,36 @@ assert.equal(planoSdr.itens.find(x=>x.id==='lmv').status,'INDICIO');
 
 assert.equal(planoSdr.itens.find(x=>x.id==='agenda').status,'NAO_VERIFICAVEL',
  'The name of the stage Apresentacao must not prove an appointment');
+
+// Ownership is cut at a dated responsibility change, not at the stage label.
+const ownershipUi=makeUi([
+ {kind:'CHAMADA_REGISTRADA',author:'Ezequiel Souza',stage:'Contato feito',dateText:'23/10/2026 09:10',dataLocal:'2026-10-23T09:10:00',detail:'Ezequiel Souza Conversa com contato. 0m 36s Resultado: Ligação não atendida'},
+ {kind:'RESPONSAVEL_ALTERADO',author:'Ezequiel Souza',stage:'Apresentação',dateText:'24/10/2026 12:00',dataLocal:'2026-10-24T12:00:00',detail:'Ezequiel Souza alterou o responsável para Plinio Savagin na etapa Apresentação do funil'},
+ {kind:'CHAMADA_REGISTRADA',author:'Plinio Savagin',stage:'Apresentação',dateText:'25/10/2026 10:10',dataLocal:'2026-10-25T10:10:00',detail:'Plinio Savagin Conversa com contato. 0m 42s Resultado: Ligação não atendida'}
+]);
+const ownershipHistory=ctx.viRdAuditoriaJanelas_(deal,[],[],catalog,{});
+const ownershipLinked=ctx.viRdConciliarHistoricoUi_(ownershipHistory,ownershipUi,deal.id);
+const ownershipRead={negociacao:{etapaAtualNome:'Proposta enviada'},historicoRdEtapas:ownershipLinked.historico,tarefas:[],fontes:{}};
+const ownershipPlan=ctx.viWidgetPlanoSdrHistoricoRd_(ownershipRead,ctx.viWidgetDiagnosticoHistoricoRd_(ownershipRead));
+assert.equal(ownershipPlan.escopo.totalEventosSdr,1);
+assert.equal(ownershipPlan.itens.find(x=>x.id==='handoff').status,'INDICIO');
+assert.equal(ownershipPlan.itens.find(x=>x.id==='voip').status,'INDICIO');
+assert.match(ownershipPlan.itens.find(x=>x.id==='voip').detalhe,/1 evento\(s\) de chamada/);
+
+const tabEvidence=ctx.viWidgetEvidenciasAbasRd_({fontesUiRd:{
+ emails:{acessivel:true,completo:true,texto:'PROPOSTA WISETEC enviada. Cliente respondeu: recebi a proposta.'},
+ tasks:{acessivel:true,completo:true,texto:'Tarefa Passo 7 Follow-up 27/10/2026 08:00'},
+ files:{acessivel:true,completo:true,texto:'Proposta Comercial Silva.pdf'},
+ proposals:{acessivel:true,completo:true,texto:'Valor total R$ 6.050,00'}
+}});
+assert.ok(tabEvidence.propostaEmail&&tabEvidence.recebimento&&tabEvidence.pdf&&tabEvidence.proximoPasso);
+const closerFromOwnership=ctx.viWidgetPlanoCloserHistoricoRd_({...ownershipRead,
+ evidenciasAbasRd:tabEvidence,
+ negociacao:{etapaAtualNome:'Proposta enviada',valorInformado:6050},
+ fontes:{arquivosRd:{completo:false},tarefas:{completo:false},atividades:{completo:false}}},ctx.viWidgetDiagnosticoHistoricoRd_(ownershipRead));
+assert.equal(closerFromOwnership.closer_iniciado.valor,true,
+ 'Dated reassignment plus direct commercial activity activates Closer without relying on the stage name.');
+assert.equal(closerFromOwnership.itens.find(x=>x.id==='proposta_pdf').status,'EVIDENCIADO');
 const onlyStage=makeUi([
  {kind:'ANOTACAO',stage:'Apresentação',dateText:'25/10/2026 11:00',
   dataLocal:'2026-10-25T11:00:00',detail:'Nota genérica na etapa Apresentação do funil'},
@@ -180,15 +211,19 @@ const renderSdr=vm.runInNewContext('('+widget.slice(sdrStart,sdrEnd)+')',{
 });
 const output=renderSdr({diagnosticoRdOperacional:diagSdr,planoOtimizacaoSdr:planoSdr});
 assert.match(output,/7 pilares do Plano Wisetec/);
-assert.match(output,/9 verificações complementares/);
-assert.match(output,/LMV e faturamento validados no CRM/);
+assert.doesNotMatch(output,/9 verificações complementares/);
+assert.doesNotMatch(output,/LMV e faturamento validados no CRM/);
 assert.match(output,/Passagem de bastão SDR/);
 assert.doesNotMatch(output,/<h3><\/h3>/);
 assert.doesNotMatch(output,/14 não verificáveis/);
 
+const legacySdr=renderSdr({planoOtimizacaoSdr:planoSdr});
+assert.doesNotMatch(legacySdr,/9 verificações complementares/,
+  'Legacy responses must keep the executive SDR view limited to seven pillars');
+
 assert.match(output,/<details class="criteria-tile tone-[a-z]+"><summary>/,
   'Each criterion must be collapsed by default');
-assert.equal((output.match(/<details class="criteria-tile tone-[a-z]+">/g)||[]).length,16);
+assert.equal((output.match(/<details class="criteria-tile tone-[a-z]+">/g)||[]).length,7);
 assert.match(output,/<b>Para ficar verde:<\/b>/);
 assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
   status:'EVIDENCIADO'}),/criteria-light yellow/,
@@ -276,5 +311,7 @@ assert.match(widget,/window\.top\.postMessage/);
 assert.match(widget,/chrome-extension/);
 assert.match(chrome,/waitHistoryChange/);
 assert.match(chrome,/findHistoryTab/);
+assert.match(chrome,/readDealEvidence/);
+assert.match(chrome,/\['emails','E-mail'\]/);
 assert.match(service,/viWidgetDiagnosticoHistoricoRd_\(leitura\)/);
 console.log('RD Intelligence: 103 cards retained; BRT windows, full-coverage gate, stage-specific actions and visual iframe handshake passed.');
