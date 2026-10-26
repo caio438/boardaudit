@@ -362,11 +362,17 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) 
 function viWidgetPlanoContratoV2_(plano,tipo){
   // Ausência de registro não é prova de que a ação não ocorreu. "NÃO" só
   // aparece quando a não conformidade foi demonstrada pela fonte completa.
-  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO_VERIFICAVEL',SEM_REGISTRO:'NAO_VERIFICAVEL',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
   plano.itens=(plano.itens||[]).map(function(x){
-    const statusExecucao=x.conformidade==='NAO_CONFORME'?'NAO':(exec[x.status]||'NAO_VERIFICAVEL');
+    // A fonte pode evidenciar uma atividade sem comprovar aderencia a regra.
+    // SIM / NAO exigem respectivamente CONFORME / NAO_CONFORME.
+    const aplicavel=x.status!=='NAO_APLICAVEL'&&x.conformidade!=='NAO_APLICAVEL';
+    const statusExecucao=!aplicavel?'NAO_VERIFICAVEL':
+      x.conformidade==='NAO_CONFORME'?'NAO':
+      x.conformidade==='CONFORME'?'SIM':
+      ['EVIDENCIADO','INDICIO','ATENCAO'].includes(x.status)?'PARCIAL':
+      'NAO_VERIFICAVEL';
     const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
-    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel:x.status!=='NAO_APLICAVEL',
+    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel,
       status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
       resposta_curta:(statusExecucao==='SIM'?'SIM':statusExecucao==='NAO'?'NÃO':statusExecucao==='PARCIAL'?'PARCIAL':'NÃO VERIFICÁVEL')+' — '+String(x.detalhe||'').split(/[.]/)[0]+'.',
       evidencia_resumida:String(x.evidencia||'').slice(0,260),referencias:refs,
