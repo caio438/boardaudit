@@ -257,7 +257,7 @@ const renderCloser=vm.runInNewContext('('+widget.slice(closerStart,closerEnd)+')
 const closerHtml=renderCloser({diagnosticoRdOperacional:onlyDiag,
   planoOtimizacaoCloser:closerModel});
 assert.match(closerHtml,/7 critérios do Plano Closer/);
-assert.equal((closerHtml.match(/<details class="criteria-tile">/g)||[]).length,7);
+assert.equal((closerHtml.match(/<details class="criteria-tile tone-[a-z]+">/g)||[]).length,7);
 assert.match(closerHtml,/criteria-light green/);
 assert.match(closerHtml,/criteria-light yellow/);
 
