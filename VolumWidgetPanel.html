@@ -182,7 +182,7 @@ const cacheScope=typeof document.querySelector==='function'?
   (document.querySelector('meta[name="volum-cache-scope"]')?.content||''):'';
 const CACHE_VERSION='VOLUM_WIDGET_CACHE_051';
 const CACHE_RESPONSE_VERSION='0.5.1-RD';
-const CACHE_ANALYSIS_REVISION='TGR_OPERATIONAL_20261026';
+const CACHE_ANALYSIS_REVISION='RD_STAGE_EVIDENCE_V2_20261026';
 const CACHE_TTL_MS=60*60*1000;
 const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
 let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
@@ -277,7 +277,7 @@ function criterionSection(title,items){
 function group(title,items,open,unidade){return '<details class="group"'+(open?' open':'')+
   '><summary><strong>'+esc(title)+'</strong><small>'+items.length+' '+
   esc(unidade||'critérios')+'</small></summary><div class="group-body">'+
-  itemsWithLegacy(items)+'</div></details>';
+  itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['conexao','Agente CONEXÃO'],['agenda','Agente AGENDA'],['reuniao','Agente REUNIÃO'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
   d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}

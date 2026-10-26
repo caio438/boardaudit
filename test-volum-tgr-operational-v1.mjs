@@ -29,13 +29,13 @@ const ev=(id,acao,data,passagemId,texto,etapaNome)=>({
  dataTexto:data,autor:'Operador de teste',fonte:'RD_UI_HISTORY'});
 const events=[
  ev('UI_1','TAREFA_CRIADA','2026-10-13T11:10:00Z',janelas[1].passagemId,
-   'Ezequiel criou tarefa: primeira ligação','Cadência'),
+   'Vendedor de teste criou tarefa: primeira ligação','Cadência'),
  ev('UI_2','ANOTACAO','2026-10-13T11:25:00Z',janelas[1].passagemId,
    'Cliente ainda não respondeu; tentar novamente','Cadência'),
  ev('UI_3','EMAIL_ENVIADO','2026-10-14T13:36:00Z',janelas[2].passagemId,
-   'Ezequiel enviou e-mail Lembrete 14/10/2026 10:36','Apresentação'),
+   'Vendedor de teste enviou e-mail Lembrete 14/10/2026 10:36','Apresentação'),
  ev('UI_66','ANOTACAO','2026-10-16T13:30:00Z',janelas[2].passagemId,
-   'Ezequiel fez uma anotação: Olá Jose Carlos, Tínhamos nosso compromisso hoje, agora às 10:00, mas você não compareceu à reunião.',
+   'Vendedor de teste fez uma anotação: Olá Cliente de teste, Tínhamos nosso compromisso hoje, agora às 10:00, mas você não compareceu à reunião.',
    'Apresentação'),
  ev('UI_70','TAREFA_CRIADA','2026-10-16T14:30:00Z',janelas[2].passagemId,
    'Criada tarefa de recovery, confirmar reagendamento', 'Apresentação'),
@@ -187,5 +187,5 @@ assert.match(widget,/\.criteria-tile\.tone-yellow/);
 assert.match(widget,/box-shadow:0 7px 20px/);
 assert.doesNotMatch(vm.runInContext("leadAgent({agentesDetalhados:[{agente:'LEAD',indicadores:{criadaEm:'2026-10-11T15:13:00Z'},criterios:[]}],prontidaoAgentes:{}})",v),
  /undefined min/,'Sem dado não se mostra undefined min');
-assert.match(widget,/CACHE_ANALYSIS_REVISION='TGR_OPERATIONAL_20261026'/);
+assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_STAGE_EVIDENCE_V2_20261026'/);
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');

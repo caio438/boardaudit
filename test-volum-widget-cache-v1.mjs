@@ -30,7 +30,7 @@ const history={dealId:deal,events:[{uiIndex:0,kind:'ANOTACAO',detail:'teste'}],
 function runPanel({precache=null}={}){
   const store=new Map();
   const entry={cacheVersion:'VOLUM_WIDGET_CACHE_051',
-    analysisRevision:'TGR_OPERATIONAL_20261026',scope,dealId:deal,
+    analysisRevision:'RD_STAGE_EVIDENCE_V2_20261026',scope,dealId:deal,
     savedAt:Date.now()-10_000,answer:complete};
   if(precache==='valid')store.set('volum_cache_051_'+scope+'_'+deal,JSON.stringify(entry));
   if(precache==='expired')store.set('volum_cache_051_'+scope+'_'+deal,

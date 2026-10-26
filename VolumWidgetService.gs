@@ -420,7 +420,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   delete parecer.contextoIa;
   // Versionar a resposta inteira para identificar o backend realmente implantado.
   parecer.versao='0.5.1-RD';
-  parecer.revisaoAnalise='TGR_OPERATIONAL_20261026';
+  parecer.revisaoAnalise='RD_STAGE_EVIDENCE_V2_20261026';
   return parecer;
 }
 
