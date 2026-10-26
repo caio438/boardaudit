@@ -18,16 +18,28 @@ assert.match(
   'Deploy não exige o SHA exato aprovado.'
 );
 
-assert.doesNotMatch(
+assert.match(
   yaml,
-  /workflow_run:/,
-  'Deploy não deve mais acontecer automaticamente após qualquer validação da main.'
+  /workflow_run:[\s\S]*?Validate Apps Script[\s\S]*?branches:[\s\S]*?- main[\s\S]*?types:[\s\S]*?- completed/,
+  'Deploy automático não aguarda a validação concluída da main.'
 );
 
 assert.match(
   yaml,
-  /github\.sha == inputs\.expected_sha/,
-  'Deploy não confirma que está executando o SHA aprovado.'
+  /github\.event\.workflow_run\.conclusion == 'success'/,
+  'Deploy automático não exige validação verde.'
+);
+
+assert.match(
+  yaml,
+  /github\.sha == github\.event\.workflow_run\.head_sha/,
+  'Deploy automático não confirma que a main ainda está no SHA validado.'
+);
+
+assert.match(
+  yaml,
+  /EXPECTED_SHA: \$\{\{ github\.event_name == 'workflow_run'[\s\S]*?workflow_run\.head_sha[\s\S]*?env\.EXPECTED_SHA/,
+  'Deploy não centraliza o SHA exato entre acionamento manual e automático.'
 );
 
 assert.match(
@@ -98,7 +110,7 @@ assert.match(
 
 assert.match(
   yaml,
-  /BoardAudit approved deploy \$\{\{ inputs\.expected_sha \}\}/,
+  /BoardAudit approved deploy \$\{\{ env\.EXPECTED_SHA \}\}/,
   'Descrição do deployment não registra o SHA aprovado.'
 );
 
@@ -116,7 +128,7 @@ assert.match(
 
 assert.match(
   yaml,
-  /DEPLOYED_SHA=\$\{\{ inputs\.expected_sha \}\}/,
+  /DEPLOYED_SHA=\$\{\{ env\.EXPECTED_SHA \}\}/,
   'Deploy não registra o SHA efetivamente publicado.'
 );
 
@@ -169,5 +181,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  'Deploy seguro validado: SHA aprovado -> snapshot -> push -> deployment -> verificacao ao vivo, sem efeitos operacionais.'
+  'Deploy seguro validado: SHA exato validado -> snapshot -> push -> deployment -> verificacao ao vivo, sem efeitos operacionais.'
 );
