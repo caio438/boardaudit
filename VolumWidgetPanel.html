@@ -185,7 +185,7 @@ const CACHE_RESPONSE_VERSION='0.5.1-RD';
 // Ownership now uses the dated handoff and the extension collects the source
 // tabs. Old snapshots cannot be reused because they may have cut SDR at the
 // first "Apresentação" stage.
-const CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026';
+const CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V4_20261026';
 const CACHE_TTL_MS=60*60*1000;
 const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
 let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
@@ -665,7 +665,7 @@ function pilotPlan(d,tipo){
   }
   return html;
 }
-function planoV2Cards(plano){const itens=(plano.itens||[]).filter(x=>x.aplicavel!==false);const top=itens.filter(x=>x.acao_recomendada&&x.status_execucao!=='SIM').slice(0,3);let html='<div class="criteria-list">'+itens.map(function(x){const st=x.status_execucao||'NAO_VERIFICAVEL';const tone=st==='SIM'?'green':st==='NAO'?'red':st==='PARCIAL'?'yellow':'na';return '<details class="criteria-tile tone-'+tone+'"><summary><span class="criteria-light '+tone+'">'+(tone==='green'?'✓':tone==='red'?'!':tone==='yellow'?'?':'—')+'</span><span class="criterion-name">'+esc(x.titulo)+' — '+esc(st.replace('_',' '))+'</span><span class="criterion-chevron">›</span></summary><div class="criteria-detail"><p>'+esc(x.resposta_curta||x.detalhe)+'</p>'+(x.acao_recomendada?'<p class="to-do"><b>Ajuste:</b> '+esc(x.acao_recomendada)+'</p>':'')+'<p class="criterion-note">'+esc(x.evidencia_resumida||x.motivo_pendencia||'Sem evidência adicional.')+'</p><p class="criterion-note">Responsável: '+esc(x.responsavel||'Não confirmado')+'</p></div></details>';}).join('')+'</div>';if(top.length)html+='<p class="small"><b>Correções prioritárias:</b> '+esc(top.map(x=>x.titulo).join(' · '))+'</p>';return html;}
+function planoV2Cards(plano){const itens=(plano.itens||[]).filter(x=>x.aplicavel!==false);if(!itens.length)return '<p class="muted">Nenhum critério exigível nesta fase da negociação.</p>';const top=itens.filter(x=>x.acao_recomendada&&x.status_execucao!=='SIM').slice(0,3);let html='<div class="criteria-list">'+itens.map(function(x){const st=x.status_execucao||'NAO_VERIFICAVEL';const tone=st==='SIM'?'green':st==='NAO'?'red':st==='PARCIAL'?'yellow':'na';return '<details class="criteria-tile tone-'+tone+'"><summary><span class="criteria-light '+tone+'">'+(tone==='green'?'✓':tone==='red'?'!':tone==='yellow'?'?':'—')+'</span><span class="criterion-name">'+esc(x.titulo)+' — '+esc(st.replace('_',' '))+'</span><span class="criterion-chevron">›</span></summary><div class="criteria-detail"><p>'+esc(x.resposta_curta||x.detalhe)+'</p>'+(x.acao_recomendada?'<p class="to-do"><b>Ajuste:</b> '+esc(x.acao_recomendada)+'</p>':'')+'<p class="criterion-note">'+esc(x.evidencia_resumida||x.motivo_pendencia||'Sem evidência adicional.')+'</p><p class="criterion-note">Responsável: '+esc(x.responsavel||'Não confirmado')+'</p></div></details>';}).join('')+'</div>';if(top.length)html+='<p class="small"><b>Correções prioritárias:</b> '+esc(top.map(x=>x.titulo).join(' · '))+'</p>';return html;}
 function sdr(d){
   const rd=d.diagnosticoRdOperacional||null;
   // Compatibilidade com clientes legados ou mocks antigos que nao trazem
@@ -690,7 +690,8 @@ function sdr(d){
     const extras=itens.filter(x=>x.pilar!=='OFICIAL');
     const escopo=plano.escopo||{};
     const counts=plano.contagem||{};
-    const garantir=item=>({
+    // Preserve V2 status, ownership and evidence when normalizing visible cards.
+    const garantir=item=>Object.assign({},item,{
       titulo:item.titulo||item.id||'Critério sem título',
       status:item.status==='SEM_EVIDENCIA'?'SEM_REGISTRO':item.status,
       conformidade:item.conformidade||'PENDENTE',
@@ -705,7 +706,7 @@ function sdr(d){
         'versão em validação':escopo.regraCadenciaAplicavel||'não informada')+
       '. Sem régua vigente não aprovar cadência integral.</p>';
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
-    const oficiaisV2={itens:oficiais.map(garantir).map(function(x){return Object.assign(x,plano.itens.find(y=>y.id===x.id)||{});})};
+    const oficiaisV2={itens:oficiais.map(garantir)};
     html+=(typeof planoV2Cards==='function'?planoV2Cards(oficiaisV2):criterionSection('7 pilares do Plano Wisetec',oficiaisV2.itens));
     // As verificações complementares continuam no contrato e nas evidências,
     // mas não poluem a leitura executiva do Plano SDR.
