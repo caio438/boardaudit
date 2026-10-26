@@ -145,6 +145,22 @@ button,input{font:inherit}button{cursor:pointer}
 .criteria-detail .criterion-note{color:#9b9ab2;font-size:10px}
 .criteria-legend{font-size:10px;color:#9998ae;line-height:1.5;margin-top:9px}
 
+/* Cartoes por evidencia: tons discretos e sombra cromatica, sem alterar a nota de compliance. */
+.criteria-tile,.validation,.action,.operation-action{position:relative;isolation:isolate;transition:background .18s ease,border-color .18s ease,box-shadow .18s ease}
+.criteria-tile{box-shadow:0 7px 18px rgba(0,0,0,.17)}
+.criteria-tile.tone-green,.validation.tone-green,.action.tone-green,.operation-action.tone-green{background:linear-gradient(135deg,#182d28,#101d20);border-color:#377461;box-shadow:0 7px 19px rgba(60,211,163,.11),inset 3px 0 #55c7a1}
+.criteria-tile.tone-yellow,.validation.tone-yellow,.action.tone-yellow,.operation-action.tone-yellow{background:linear-gradient(135deg,#30271f,#1a1a22);border-color:#806137;box-shadow:0 7px 20px rgba(245,184,92,.11),inset 3px 0 #dfa855}
+.criteria-tile.tone-red,.validation.tone-red,.action.tone-red,.operation-action.tone-red{background:linear-gradient(135deg,#35232b,#1d1823);border-color:#99505f;box-shadow:0 7px 20px rgba(255,127,145,.12),inset 3px 0 #e88695}
+.criteria-tile.tone-violet,.validation.tone-violet,.action.tone-violet,.operation-action.tone-violet{background:linear-gradient(135deg,#29203b,#171522);border-color:#634b91;box-shadow:0 7px 20px rgba(167,115,250,.12),inset 3px 0 #ad8be8}
+.criteria-tile.tone-na,.validation.tone-na,.action.tone-na,.operation-action.tone-na{background:linear-gradient(140deg,#1b1d2a,#121521);border-color:#36384b;box-shadow:0 5px 15px rgba(0,0,0,.13),inset 3px 0 #5b6074}
+.criteria-tile[open]{box-shadow:0 10px 26px rgba(0,0,0,.29)}
+.validation{border:1px solid #37374e;border-radius:10px;margin:9px 0;padding:13px;background:linear-gradient(140deg,#211c31,#151521)}
+.validation:first-child{border-top:1px solid}
+.validation .source{margin-top:10px}
+.action,.operation-action{margin:9px 0;border-radius:11px}
+.action h3,.operation-action h3{color:#f4f0ff}
+.action .done,.operation-action .done{border-top:1px dashed rgba(206,195,235,.25);margin-top:9px;padding-top:9px}
+@media(prefers-reduced-motion:reduce){.criteria-tile,.validation,.action,.operation-action{transition:none}}
 </style>
 <meta name="volum-history-nonce" content="<?= historyNonce ?>">
 <meta name="volum-cache-scope" content="<?= cacheScope ?>">
@@ -166,6 +182,7 @@ const cacheScope=typeof document.querySelector==='function'?
   (document.querySelector('meta[name="volum-cache-scope"]')?.content||''):'';
 const CACHE_VERSION='VOLUM_WIDGET_CACHE_051';
 const CACHE_RESPONSE_VERSION='0.5.1-RD';
+const CACHE_ANALYSIS_REVISION='RD_STAGE_EVIDENCE_V2_20261026';
 const CACHE_TTL_MS=60*60*1000;
 const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
 let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
@@ -178,7 +195,23 @@ function display(x){return val(x).replace(/_/g,' ').replace(/NAO /g,'NÃO ').rep
 function status(s){return '<span class="status-tag state-'+safeClass(s)+'">'+esc(display(s||'PENDENTE'))+'</span>';}
 function humanDate(x){if(!x)return 'Sem data';const date=new Date(x);return Number.isNaN(date.getTime())?esc(x):new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(date);}
 function section(title,extra){return '<div class="section-head"><h2>'+esc(title)+'</h2><small>'+esc(extra||'')+'</small></div>';}
-function itemValidation(x){return '<div class="validation"><div class="validation-head"><h3>'+esc(x.titulo||x.title||x.id||'Critério sem título')+'</h3>'+status(x.status)+'</div><p>'+esc(x.detalhe||'Sem explicação disponível para este critério.')+'</p>'+(x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+(x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+'<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';}
+function itemTone(x){
+  const s=String(x?.status||'').toUpperCase(),conf=String(x?.conformidade||'').toUpperCase();
+  if(conf==='NAO_CONFORME'||s==='DESVIO_CONFIRMADO')return 'red';
+  if(s==='NAO_APLICAVEL')return 'na';
+  if(s==='SEM_REGISTRO'||s==='SEM_EVIDENCIA'||s==='ATENCAO')return 'yellow';
+  if(s==='EVIDENCIADO'||s==='CONFORME'||s==='OK')return 'green';
+  return 'violet';
+}
+function itemValidation(x){
+  x=x||{};
+  return '<div class="validation tone-'+itemTone(x)+'"><div class="validation-head"><h3>'+
+    esc(x.titulo||x.title||x.id||'Critério sem título')+'</h3>'+status(x.status)+'</div>'+
+    '<p>'+esc(x.detalhe||'Sem explicação disponível para este critério.')+'</p>'+
+    (x.evidencia?'<div class="proof-note">'+esc(x.evidencia)+'</div>':'')+
+    (x.acao?'<div class="to-do"><b>Próxima validação:</b> '+esc(x.acao)+'</div>':'')+
+    '<div class="source">Fonte: '+esc(x.fonte||x.referencia||'Dados consultados')+'</div></div>';
+}
 function itemsWithLegacy(items){return (items||[]).map(function(x){return itemValidation(x)}).join('')||'<p class="muted">Nenhum critério disponível nesta leitura.</p>';}
 // Critérios oficiais: CONFORME só quando a prova satisfaz a regra inteira.
 // Um indicio de atividade continua amarelo, mesmo que o banco marque
@@ -225,7 +258,7 @@ function criterionCard(item){
   const evidence=String(x.evidencia||'');
   const action=String(x.acao||x.proximaValidacao||'');
   const origin=String(x.fonte||x.referencia||'Histórico do RD');
-  return '<details class="criteria-tile"><summary>'+
+  return '<details class="criteria-tile tone-'+light.cls+'"><summary>'+
     '<span class="criteria-light '+light.cls+'" role="img" aria-label="'+esc(light.label)+'" title="'+esc(light.label)+'">'+esc(light.glyph)+'</span>'+
     '<span class="criterion-name">'+esc(titulo)+'</span><span class="criterion-chevron" aria-hidden="true">›</span></summary>'+
     '<div class="criteria-detail"><p class="criterion-rule"><b>Para ficar verde:</b> '+esc(required)+'</p>'+
@@ -241,7 +274,10 @@ function criterionSection(title,items){
     esc(title)+'</h3><small>'+list.length+' critérios</small></div>'+
     '<div class="criteria-list">'+list.map(criterionCard).join('')+'</div></div>';
 }
-function group(title,items,open){return '<details class="group"'+(open?' open':'')+'><summary><strong>'+esc(title)+'</strong><small>'+items.length+' critérios</small></summary><div class="group-body">'+itemsWithLegacy(items)+'</div></details>';}
+function group(title,items,open,unidade){return '<details class="group"'+(open?' open':'')+
+  '><summary><strong>'+esc(title)+'</strong><small>'+items.length+' '+
+  esc(unidade||'critérios')+'</small></summary><div class="group-body">'+
+  itemsWithLegacy(items)+'</div></details>';}
 function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['conexao','Agente CONEXÃO'],['agenda','Agente AGENDA'],['reuniao','Agente REUNIÃO'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
   d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}
@@ -256,7 +292,7 @@ function agentReadiness(d,key){
     ' · Tarefas API: '+(r.tarefasApiCompletas?'completas':'parciais/indisponíveis')+
     ' · Resultado: sem pontuação final até homologar regras e evidências.</p>'+
     (b.length?'<details class="group"><summary><strong>Limites para validar compliance</strong><small>'+
-      b.length+' pontos</small></summary><div class="group-body">'+b.map(x=>'<p class="small">'+
+      b.length+' '+(b.length===1?'ponto':'pontos')+'</small></summary><div class="group-body">'+b.map(x=>'<p class="small">'+
       esc(x)+'</p>').join('')+'</div></details>':'')+'</div>';
 }
 function leadAgent(d){const agente=(d.agentesDetalhados||[]).find(x=>x.agente==='LEAD');if(!agente)return section('Agente LEAD','Entrada e classificacao provisoria')+'<p class="muted">Leitura ainda não disponível.</p>';
@@ -266,9 +302,9 @@ html+=agentReadiness(d,'lead');
 const met=agente.indicadores||{};
 html+='<div class="glass"><p><b>Chegada:</b> '+esc(rdMomento(met.criadaEm))+
   ' · <b>Primeiro registro:</b> '+esc(rdMomento(met.primeiraEvidenciaEm))+
-  '</p><p><b>Primeiro WhatsApp registrado:</b> '+esc(met.minutosAtePrimeiroWhatsApp===null?'não verificável':met.minutosAtePrimeiroWhatsApp+' min')+
-  ' · <b>Primeiro e-mail registrado:</b> '+esc(met.minutosAtePrimeiroEmail===null?'não verificável':met.minutosAtePrimeiroEmail+' min')+
-  ' · <b>Primeira ligação técnica:</b> '+esc(met.minutosAtePrimeiraLigacao===null?'não verificável':met.minutosAtePrimeiraLigacao+' min')+
+  '</p><p><b>Primeiro WhatsApp registrado:</b> '+esc(Number.isFinite(met.minutosAtePrimeiroWhatsApp)?met.minutosAtePrimeiroWhatsApp+' min':'não verificável')+
+  ' · <b>Primeiro e-mail registrado:</b> '+esc(Number.isFinite(met.minutosAtePrimeiroEmail)?met.minutosAtePrimeiroEmail+' min':'não verificável')+
+  ' · <b>Primeira ligação técnica:</b> '+esc(Number.isFinite(met.minutosAtePrimeiraLigacao)?met.minutosAtePrimeiraLigacao+' min':'não verificável')+
   '</p><p class="small">Intervalos desde a criação, não comprovação de entrega ou conversa.</p></div>';
 html+=criterionSection('Auditoria da entrada do lead',agente.criterios||[],true);
 html+='<p class="small">'+esc(agente.limite||'')+'</p>';
@@ -336,13 +372,14 @@ function fatosIaAgente(d,agente){
   const fatos=((d.interpretacao||{}).fatos||[]).filter(f=>f.agente===agente);
   if(!fatos.length)return '';
   return section('Interpretação contextual da IA','Indícios com ID de cartão do RD')+
-    group('Gemini · não altera conformidade',fatos.map(f=>({
-      titulo:f.criterio||'Interpretação de registro',
-      status:'INDICIO',detalhe:f.conclusao||'',
-      evidencia:f.referencia+' · '+(f.tipoEvento||'')+' · '+rdMomento(f.data),
+    '<div class="notice">Hipóteses interpretativas da IA; não alteram o compliance.</div>'+
+    fatos.filter(f=>f&&f.conclusao).map(f=>itemValidation({
+      titulo:f.criterio||'Interpretação de registro',status:'INDICIO',
+      detalhe:f.conclusao,
+      evidencia:'Registro '+f.referencia+' · '+(f.tipoEvento||'')+' · '+rdMomento(f.data),
       fonte:'RD_UI_HISTORY · '+f.referencia,
-      acao:'Conferir a anotação e o resultado antes de orientar a equipe.'
-    })),false);
+      acao:'Conferir a origem, o contexto e o playbook antes de orientar a equipe.'
+    })).join('');
 }
 function cacheStatusView(){
   if(cacheVisualizada&&cacheSalvoEm)return '<div class="notice">Análise salva em cache às '+
@@ -383,7 +420,7 @@ function journeyAgent(d,nome,chave,titulo,subtitulo){
   if(a.length){
     html+=section('Próximas verificações','Orientação Sales Ops baseada na etapa');
     html+='<div class="action-list">'+a.map(function(x){
-      return '<div class="action"><h3>'+esc(x.titulo||'Validação necessária')+'</h3>'+
+      return '<div class="action tone-'+itemTone(x)+'"><h3>'+esc(x.titulo||'Validação necessária')+'</h3>'+
         '<p>'+esc(x.acao||'Conferir o registro na fonte')+'</p>'+
         (x.evidencia?'<p class="small">Referência: '+esc(x.evidencia)+'</p>':'')+
         '<p class="small">Fonte: '+esc(x.origem||'RD / Board')+'</p></div>';
@@ -420,7 +457,7 @@ function rdWindows(d){
       '<p class="small">Cada evento conserva tipo, autor, data, etapa textual e origem da evidência. Itens sem ID da API permanecem como evento visual, sem ID inventado.</p></div>';
     html+=group('Linha do tempo visual ('+Number(cobertura.totalReconciliado||0)+')',(visual.eventos||[]).map(function(e){return {
       titulo:(e.dataTexto||rdMomento(e.data))+' · '+display(e.acao),status:'INDICIO',
-      detalhe:e.texto||'Cartão visual sem detalhe textual.',fonte:(e.fonte||'RD_UI_HISTORY')+' · '+(e.autor||'autor não exibido')+(e.etapaNome?' · '+e.etapaNome:'')};}),false);
+      detalhe:e.texto||'Cartão visual sem detalhe textual.',fonte:(e.fonte||'RD_UI_HISTORY')+' · '+(e.autor||'autor não exibido')+(e.etapaNome?' · '+e.etapaNome:'')};}),false,'eventos');
     if((cobertura.lacunas||[]).length)html+='<p class="small warn">Lacunas identificadas: '+esc(cobertura.lacunas.join('; '))+'</p>';
   }
   if((cad.camposPersonalizados||[]).length){
@@ -430,7 +467,7 @@ function rdWindows(d){
         detalhe:'Valor atual: '+(valor||'Não informado')+
           (c.atualizadoEm?' · Atualizado em '+rdMomento(c.atualizadoEm):''),
         fonte:'RD · campos personalizados atuais',acao:'Para auditar alterações passadas, localizar evento histórico correspondente.'};
-    }),false);
+    }),false,'campos');
   }
   const janelas=h.janelas||[];
   if(!janelas.length){
@@ -455,7 +492,7 @@ function rdWindows(d){
         fonte:e.fonte+(e.id?' · ID '+e.id:''),
         evidencia:e.divergenciaEtapaRegistrada?'Etapa indicada pelo evento diverge da janela cronológica.':''};
     });
-    html+=group('Registros nesta passagem ('+Number(j.totalEventos||0)+')',es,false);
+    html+=group('Registros nesta passagem ('+Number(j.totalEventos||0)+')',es,false,'registros');
     if(Number(j.totalEventos||0)>es.length)html+='<p class="small">O painel exibe os '+es.length+
       ' eventos mais recentes desta passagem. O histórico integral permanece na leitura de backend.</p>';
     if((j.alertas||[]).length)html+='<p class="small">Observações: '+esc((j.alertas||[]).join('; '))+'</p>';
@@ -491,10 +528,12 @@ function rdDiagnosticoView(d){
   html+='<div class="glass"><ul class="stack">'+(o.sumario||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
   const semantica=d.interpretacao||{};
   if(semantica.disponivel===true&&Array.isArray(semantica.fatos)&&semantica.fatos.length)
-    html+=group('Leitura contextual das anotações e conversas registradas',
-      semantica.fatos.map(x=>({titulo:x.criterio||'Contexto comercial',status:'INDICIO',
+    html+=section('Leitura contextual da IA','Referências do Histórico · indícios')+
+      semantica.fatos.filter(x=>x&&x.conclusao).map(x=>itemValidation({
+        titulo:x.criterio||'Contexto comercial',status:'INDICIO',
         detalhe:x.conclusao,fonte:'RD · Histórico · '+x.referencia,
-        acao:'Conferir o registro de origem antes de tomar decisão comercial.'})),true);
+        acao:'Conferir a origem, o momento da jornada e o impacto antes de decidir.'
+      })).join('');
   const c=o.criterios||[];
   const pendentes=c.filter(x=>x.estado==='SEM_REGISTRO'||x.estado==='ATENCAO');
   const identificados=c.filter(x=>x.estado==='EVIDENCIADO'||x.estado==='INDICIO');
@@ -510,7 +549,8 @@ function rdDiagnosticoView(d){
       fonte:x.fonte,acao:x.acao})),false);
   if((o.acoes||[]).length){
     html+=section('Decisões recomendadas','Baseadas no Histórico desta negociação');
-    html+=(o.acoes||[]).map((a,i)=>'<article class="operation-action"><span class="eyebrow">'+
+    html+=(o.acoes||[]).map((a,i)=>'<article class="operation-action tone-'+
+      (a.prioridade==='ALTA'?'yellow':'violet')+'"><span class="eyebrow">'+
       esc(a.prioridade)+' · RD · HISTÓRICO</span><h3>'+esc(a.acao)+
       '</h3><p>'+esc(a.porQue)+'</p><p class="done"><b>Concluído quando:</b> '+
       esc(a.criterioConclusao)+'</p></article>').join('');
@@ -587,14 +627,18 @@ function pilotPlan(d,tipo){
     ' · Cobertura: '+esc(fonte.completo?'verificada':'indisponível ou parcial')+'</p></div>';
   const melhorias=(p.melhorias||[]);
   html+='<div class="action-list">'+(melhorias.length?melhorias.map(function(x,i){
-    return '<article class="action"><span class="eyebrow">'+esc(x.prioridade||'VERIFICAR')+
+    return '<article class="action tone-'+(x.prioridade==='ALTA'?'yellow':'violet')+
+      '"><span class="eyebrow">'+esc(x.prioridade||'VERIFICAR')+
       ' · '+esc(x.titulo||'Ajuste')+'</span><h3>'+esc(x.acao||'Conferir evidência')+
       '</h3><p>'+esc(x.porQue||'')+'</p>'+
       (x.evidencia?'<p class="small">Registro: '+esc(x.evidencia)+'</p>':'')+
       '<p class="small">Fonte: '+esc(x.fonte||'RD / Board')+'</p>'+
       '<p class="done"><b>Concluído quando:</b> '+esc(x.criterioConclusao||'Registro validado')+
       '</p></article>';
-  }).join(''):'<p class="muted">Não há correções priorizadas; confira os sete pilares e a cobertura dos dados.</p>')+
+  }).join(''):'<p class="muted">'+(tipo==='closer'?
+      'Nenhuma ação pós-reunião é exigível sem confirmação da realização do encontro. Validar primeiro Agenda e eventual no-show.':
+      'Sem ação prioritária comprovada nesta leitura. Conferir cobertura de fontes, Agenda e os sete pilares antes de concluir.')+
+      '</p>')+
     '</div>';
   if((p.auditorias||[]).length){
     html+=section('Qualidade do pitch já analisada','Auditorias vinculadas do Board');
@@ -609,12 +653,12 @@ function pilotPlan(d,tipo){
   if((p.insightsIa||[]).length){
     html+=section('Interpretações da IA para o Plano '+(tipo==='sdr'?'SDR':'Closer'),
       'Indícios validados por referência visual');
-    html+=group('Referências do Histórico RD',(p.insightsIa||[]).map(x=>({
+    html+=(p.insightsIa||[]).filter(x=>x&&x.conclusao).map(x=>itemValidation({
       titulo:x.criterio||x.agente,status:'INDICIO',
-      detalhe:x.conclusao||'',evidencia:x.referencia,
-      fonte:'Gemini interpretando RD_UI_HISTORY · '+(x.tipoEvento||''),
-      acao:'Conferir o registro e aplicar o playbook antes de concluir.'
-    })),false);
+      detalhe:x.conclusao,evidencia:'Registro '+x.referencia+' · '+(x.tipoEvento||''),
+      fonte:'Gemini interpretando RD_UI_HISTORY',
+      acao:'Conferir origem, contexto e playbook antes de concluir.'
+    })).join('');
   }
   return html;
 }
@@ -750,7 +794,8 @@ function changeTab(tab){if(!currentData)return;activeTab=tab;render(currentData)
 function changeFilter(filter){if(!currentData)return;activeFilter=filter;render(currentData);}
 let historyFromRd=null;
 function cachedEntryValid(e){
-  return !!(e&&e.cacheVersion===CACHE_VERSION&&e.scope===cacheScope&&
+  return !!(e&&e.cacheVersion===CACHE_VERSION&&
+    e.analysisRevision===CACHE_ANALYSIS_REVISION&&e.scope===cacheScope&&
     e.dealId===dealId&&Number(e.savedAt)>0&&Date.now()-Number(e.savedAt)>=0&&
     Date.now()-Number(e.savedAt)<CACHE_TTL_MS&&
     e.answer?.versao===CACHE_RESPONSE_VERSION&&
@@ -797,8 +842,8 @@ function cacheSave(d){
   if(!cacheScope||!d||d.versao!==CACHE_RESPONSE_VERSION||
      d.diagnosticoRdOperacional?.ativo!==true||
      d.trilhaDadosAgentes?.historicoRd?.completo!==true)return;
-  const e={cacheVersion:CACHE_VERSION,scope:cacheScope,dealId,
-    savedAt:Date.now(),answer:d};
+  const e={cacheVersion:CACHE_VERSION,analysisRevision:CACHE_ANALYSIS_REVISION,
+    scope:cacheScope,dealId,savedAt:Date.now(),answer:d};
   // Limitar o armazenamento de dados comerciais no navegador.
   const encoded=JSON.stringify(e);
   if(encoded.length>450000)return;
