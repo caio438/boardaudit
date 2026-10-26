@@ -66,8 +66,22 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
   const nNegada=/nao (?:foi |esta |est[aá] )?(?:agendad|confirmad|enviad|realizad)|tentando agendar|procurando agendar|aguardando confirmacao|sem confirmacao/;
   const agenda=buscar(notas.filter(e=>!nNegada.test(e.normal)),
     /(?:reuniao|apresentacao|demonstracao|encontro).{0,65}(?:agendad|marcad|confirmad)|(?:agendamos|marcamos).{0,40}(?:reuniao|apresentacao|encontro)|reuniao.{0,30}\d{1,2}\/\d{1,2}/);
-  const convite=buscar(enviados,/convite|agenda|reuniao|apresentacao|meet\.google|lembrete/)||
+  // Lembrete prova comunicacao de lembrete, NAO convite enviado ou link.
+  const convite=buscar(enviados,/(?:convite|link.{0,30}(?:reuniao|apresentacao)|meet\.google)/)||
     buscar(notas,/convite enviado|te enviei o convite|convite no seu email/);
+  const noShows=notas.filter(e=>
+    !/(?:nao houve no.?show|sem no.?show|nao foi no.?show|nao faltou|nao ocorreu falta)/.test(e.normal)&&
+    /(?:no.?show|cliente nao compareceu|lead nao compareceu|nao entrou na reuniao|nao compareceu a reuniao|faltou a reuniao|tinhamos nosso compromisso hoje.{0,100}(?:mas|porem|voce nao))/.test(e.normal));
+  const noShow=ultimaDe(noShows);
+  const compromissoRelatado=ultimaDe(notas.filter(e=>
+    /(?:tinhamos|combinamos|marcamos|agendamos).{0,60}(?:compromisso|reuniao|encontro)|nosso compromisso hoje|nosso encontro hoje/.test(e.normal)&&
+    !/(?:nao havia compromisso|nao marcamos|sem compromisso marcado)/.test(e.normal)));
+  const reunioesFonte=(Array.isArray(leitura.reunioesCalendarioBoard)?
+    leitura.reunioesCalendarioBoard:[]).filter(x=>x&&x.data);
+  const compromissoApi=reunioesFonte.filter(x=>
+    !/CANCELAD|DESMARCAD/.test(String(x.status||'').toUpperCase()))
+    .sort((a,b)=>a.data.localeCompare(b.data))[0]||null;
+  const marcoCompromisso=agenda||compromissoRelatado||noShow;
   const lembrete=buscar(enviados,/lembrete|nossa reuniao|nosso compromisso/)||
     buscar(notas,/lembrando.{0,70}(?:compromisso|reuniao|encontro)|logo vamos comecar nosso compromisso/);
   const confirmacao=buscar(notas.filter(e=>!nNegada.test(e.normal)&&(!agenda||e.data>=agenda.data)),
@@ -101,7 +115,14 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
     if((estado==='SEM_REGISTRO'||estado==='ATENCAO')&&acao)acoes.push({
       id,prioridade:prioridade||'MÉDIA',acao,porQue:detalhe+
         (evidenciado?' Evidência: '+evidenciado:''),
-      criterioConclusao:'Registro correspondente identificado no Histórico do RD, com data e responsável.',
+      criterioConclusao:({
+        agendamento:'Data/hora, participantes, responsavel e link confirmados em convite ou calendario; vincular a anotacao de compromisso.',
+        convite:'Evento de envio do convite com destinatarios, horario e link conferidos; lembrete nao substitui convite.',
+        confirmacao:'Resposta afirmativa do comprador, datada apos o convite.',
+        lembrete:'Lembrete enviado no prazo e no canal da regra vigente, com referencia do evento.',
+        no_show:'Resultado da reuniao documentado com data e ausencia do cliente; reconciliação com agenda.',
+        pendencia_etapa:'Tarefa revisada e mantida, transferida ou encerrada com justificativa, responsavel e data.'
+      })[id]||'Registro correspondente identificado, com data, responsavel e resultado da acao.',
       origem:'RD_UI_HISTORY'});
   };
   const factual=(titulo,e,conteudo)=>{
@@ -119,28 +140,38 @@ function viWidgetDiagnosticoHistoricoRd_(leitura) {
   factual('TAREFA CONCLUÍDA',ultimaDe(feitas),basico(ultimaDe(feitas)?.trecho,200));
 
   if(fase==='APRESENTACAO'){
-    adicionar('agendamento','Reunião agendada',''+(agenda?'INDICIO':'SEM_REGISTRO'),agenda,
-      agenda?'Existe anotação de reunião agendada no Histórico. O convite e a presença exigem provas próprias.':
-        'A negociação está em Apresentação, mas não há anotação identificável de data e horário do encontro no Histórico completo.',
-      'Registrar ou localizar data, horário, participantes e link do compromisso.','ALTA');
-    adicionar('convite','Convite e acesso à reunião',convite?(convite.tipo==='EMAIL_ENVIADO'?'EVIDENCIADO':'INDICIO'):'SEM_REGISTRO',convite,
-      convite?'Há registro de convite, lembrete ou instruções; conferir se inclui o acesso correto.':
-        'O Histórico completo não apresenta e-mail de convite identificado nem anotação explícita de seu envio.',
-      'Registrar convite enviado, destinatários, horário e link de acesso.','ALTA');
-    adicionar('confirmacao','Confirmação do participante',confirmacao?'INDICIO':agenda?'SEM_REGISTRO':'NAO_VERIFICAVEL',confirmacao,
+    adicionar('agendamento','Reunião ou compromisso combinado',
+      marcoCompromisso||compromissoApi?'INDICIO':'NAO_VERIFICAVEL',
+      marcoCompromisso||compromissoApi?(agenda?'Há anotação de agendamento. ':
+        compromissoApi?'Calendário vinculado contém compromisso datado. ':
+        'Uma anotação relata compromisso/no-show, o que indica reunião prevista, mas não comprova aceite ou convite. ')+
+        'Confirmar data, horário, participantes e link em fonte estruturada.':
+        'Etapa Apresentação não prova agendamento; consultar calendário e notas antes de concluir ausência.',
+      marcoCompromisso,'Conciliar o compromisso mencionado com calendário, horário e resultado antes de avaliar falha de agenda.','ALTA');
+    adicionar('convite','Convite e acesso à reunião',
+      convite?(convite.tipo==='EMAIL_ENVIADO'?'EVIDENCIADO':'INDICIO'):'NAO_VERIFICAVEL',convite,
+      convite?'Há registro de convite ou link; verificar destinatários e acesso, não presumir aceite.':
+        lembrete?'Lembrete foi enviado, mas NÃO comprova o envio ou o link do convite. Conferir e-mail original/calendário.':
+        'Não foi encontrado convite inequívoco no Histórico; verificar e-mails completos e calendário.',
+      'Confirmar o evento de envio do convite, destinatários, data/hora e link de acesso.','ALTA');
+    adicionar('confirmacao','Confirmação do participante',confirmacao?'INDICIO':marcoCompromisso||compromissoApi?'NAO_VERIFICAVEL':'NAO_VERIFICAVEL',confirmacao,
       confirmacao?'Anotação indica confirmação; conferir o teor e quem confirmou.':
-        agenda?'O agendamento consta, mas não foi encontrada confirmação positiva de presença do comprador.':
+        marcoCompromisso||compromissoApi?'Há compromisso mencionado, mas não há resposta positiva do comprador nesta fonte.':
         'Sem data de reunião evidenciada, não é possível medir a confirmação exigida.',
-      agenda?'Obter e registrar a confirmação do cliente antes do compromisso.':'', 'MÉDIA');
-    adicionar('lembrete','Lembrete pré-reunião',lembrete?(lembrete.tipo==='EMAIL_ENVIADO'?'EVIDENCIADO':'INDICIO'):agenda?'SEM_REGISTRO':'NAO_VERIFICAVEL',lembrete,
+      marcoCompromisso||compromissoApi?'Conferir se o comprador confirmou antes do compromisso.':'', 'MÉDIA');
+    adicionar('lembrete','Lembrete pré-reunião',lembrete?(lembrete.tipo==='EMAIL_ENVIADO'?'EVIDENCIADO':'INDICIO'):'NAO_VERIFICAVEL',lembrete,
       lembrete?'Há envio de e-mail ou anotação de lembrete; verificar antecedência exigida na régua.':
-        agenda?'Não foi encontrado lembrete no Histórico completo; conferir quando era devido.':
+        marcoCompromisso||compromissoApi?'Compromisso mencionado; lembrete não localizado e sua obrigação depende do intervalo e da régua.':
         'Não há compromisso datado para avaliar antecedência do lembrete.',
-      agenda?'Verificar prazo e registrar o lembrete previsto na régua de Agenda.':'','MÉDIA');
-    adicionar('realizacao','Resultado da reunião',realizada?'INDICIO':'NAO_VERIFICAVEL',realizada,
+      marcoCompromisso||compromissoApi?'Conferir se a antecedência permitia lembrete obrigatório.':'','MÉDIA');
+    adicionar('realizacao','Resultado da reunião',realizada?'INDICIO':'NAO_VERIFICAVEL',realizada||noShow,
       realizada?'Uma anotação registra a realização; a etapa, sozinha, não confirma quem participou.':
-        'Não foi encontrado relato explícito de reunião realizada; a data do encontro e seu resultado ainda precisam ser confirmados.',
+        noShow?'Há relato de no-show; isso NÃO é reunião realizada. Confirmar a ocorrência e o próximo reagendamento.':
+        'Sem relato confiável de realização. Conferir resultado e participação no calendário/gravacão.',
       '', 'MÉDIA');
+    if(noShow)adicionar('no_show','Ausência do comprador / no-show relatado','INDICIO',noShow,
+      'Anotação relata ausência no compromisso. É indício de reunião prevista e não comprovação de agendamento aceito, presença ou gravação.',
+      'Vincular no-show ao compromisso e checar a próxima tentativa/reagendamento.','MÉDIA');
   }else if(fase==='PROPOSTA'){
     adicionar('email_proposta','E-mail de formalização',propostaEmail?'EVIDENCIADO':propostaAnotada?'INDICIO':'SEM_REGISTRO',
       propostaEmail||propostaAnotada,
@@ -384,8 +415,14 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     /(?:cliente|lead|comprador|contato).{0,70}confirmou|confirmou presenca|aceitou o convite/)
     .filter(e=>!semConfirmar.test(texto(e)));
   const noShow=combinar(notesAgenda,
-    /no.?show|nao compareceu|faltou (?:a|na) reuniao|nao entrou (?:na|no) reuniao/);
-  const tarefaNoShow=combinar(agendaContexto,/no.?show|reagend|recuperacao de agenda/);
+    /no.?show|nao compareceu|faltou (?:a|na) reuniao|nao entrou (?:na|no) reuniao|tinhamos nosso compromisso hoje.{0,110}(?:mas (?:voce nao|nao houve|nao compareceu)|voce nao)/)
+    .filter(e=>!/nao houve no.?show|sem no.?show|nao foi no.?show/.test(texto(e)));
+  const compromissoDeclarado=combinar(notesAgenda,
+    /tinhamos nosso compromisso hoje|nosso encontro hoje|marcamos.{0,55}(?:reuniao|apresentacao)/)
+    .filter(e=>!/nao marcamos|sem compromisso marcado/.test(texto(e)));
+  const tarefaNoShow=combinar(agendaContexto.filter(e=>
+    ['TAREFA_CRIADA','TAREFA_CONCLUIDA','EMAIL_ENVIADO','ANOTACAO'].includes(e.acao)),
+    /reagend|recuperacao de agenda|recovery|retomada do contato|tentativa de reagendamento/);
   const repasse=combinar(notesAgenda,
     /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel|resumo para o closer)/);
   const notaSegmento=combinar(anotacoes,/segmento|setor de atuacao|ramo|tipo de empresa/);
@@ -472,7 +509,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     'O Histórico RD permite ler anotações e resultados, mas não comprova palavra por palavra a aplicação do pitch SDR.',
     ultimo(questoes),'Conferir o pitch apenas quando existir gravação ou transcrição atribuída ao SDR.','OFICIAL');
   const noShowReal=noShow.length>0;
-  const retomadas=noShowReal?tarefaNoShow.filter(e=>data(e)>=data(ultimo(noShow))):[];
+  const retomadas=noShowReal?tarefaNoShow.filter(e=>data(e)>data(ultimo(noShow))):[];
   reg('no_show','Cadência de recuperação de no-show',
     !noShowReal?'NAO_APLICAVEL':retomadas.length?'INDICIO':'SEM_EVIDENCIA',
     !noShowReal?'Nenhum no-show explícito foi identificado nas anotações do Histórico do RD; não ativar esta cobrança.':
@@ -519,20 +556,26 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
       'Não há anotação de dor, objetivo ou contexto identificável nas passagens SDR.',
     ultimo(notaDor),'Registrar necessidade, dor, objetivo e motivação do contato.');
   reg('agenda','Agendamento com data e responsável',
-    agendaConfirmada.length?'INDICIO':registrosAgenda.length?'INDICIO':hadCloser?'SEM_EVIDENCIA':'NAO_APLICAVEL',
-    agendaConfirmada.length?'Registro de agendamento identificado; verificar data, responsável e canal.':
-      registrosAgenda.length?'Há menção à reunião/agenda, mas o compromisso com data e horário precisa ser comprovado.':
-      hadCloser?'O negócio avançou para apresentação, mas não há evidência textual identificável do agendamento anterior.':
+    agendaConfirmada.length||registrosAgenda.length||compromissoDeclarado.length||noShow.length?
+      'INDICIO':hadCloser?'NAO_VERIFICAVEL':'NAO_APLICAVEL',
+    agendaConfirmada.length?'Anotação de agendamento identificada; conferir data, Closer e acesso.':
+      compromissoDeclarado.length||noShow.length?
+      'Há registro de compromisso/no-show na etapa de reunião. Isso é indício de encontro previsto, mas NÃO prova aceite, horário, convite ou handoff.':
+      registrosAgenda.length?'Há menção à reunião/agenda, sem confirmação estruturada.':
+      hadCloser?'A etapa de apresentação sozinha não prova agendamento. Verificar calendário e comunicação.':
       'Ainda não houve passagem confirmada para reunião.',
-    ultimo(agendaConfirmada)||ultimo(registrosAgenda),
-    'Localizar convite, data, horário e responsável no Histórico do RD.');
+    ultimo(agendaConfirmada)||ultimo(compromissoDeclarado)||ultimo(noShow)||ultimo(registrosAgenda),
+    'Conciliar o compromisso citado com data/hora, participantes, responsável e convite no calendário.');
   reg('confirmacao','Confirmação de presença do cliente',
-    respostasConfirmacao.length?'INDICIO':registrosAgenda.length?'SEM_EVIDENCIA':'NAO_APLICAVEL',
+    respostasConfirmacao.length?'INDICIO':
+      registrosAgenda.length||compromissoDeclarado.length||noShow.length?'NAO_VERIFICAVEL':'NAO_APLICAVEL',
     respostasConfirmacao.length?'Existe anotação atribuindo confirmação ao comprador; conferir data e origem.':
-      registrosAgenda.length?'Agendamento mencionado, mas não foi encontrada confirmação explícita de presença do cliente.':
-      'Não há agendamento documentado que torne esta verificação aplicável.',
+      registrosAgenda.length||compromissoDeclarado.length||noShow.length?
+      'O compromisso é mencionado, mas não foi localizada resposta positiva do cliente. A responsabilidade e o prazo ainda precisam ser confirmados.':
+      'Não há compromisso confirmado que torne esta verificação aplicável.',
     ultimo(respostasConfirmacao),
-    registrosAgenda.length?'Registrar confirmação recebida pelo cliente, não apenas convite ou pergunta de confirmação.':'');
+    registrosAgenda.length||compromissoDeclarado.length||noShow.length?
+      'Verificar confirmação positiva do comprador; convite e lembrete não a substituem.':'');
   reg('valor_reuniao','Valor da reunião explicado no pitch',
     notaValor.length?'INDICIO':'NAO_VERIFICAVEL',
     notaValor.length?'Há anotação sobre benefícios da reunião, mas a fala exata exige áudio/transcrição.':

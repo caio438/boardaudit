@@ -29,11 +29,14 @@ const history={dealId:deal,events:[{uiIndex:0,kind:'ANOTACAO',detail:'teste'}],
   coverage:{available:true,complete:true,totalVisual:1}};
 function runPanel({precache=null}={}){
   const store=new Map();
-  const entry={cacheVersion:'VOLUM_WIDGET_CACHE_051',scope,dealId:deal,
+  const entry={cacheVersion:'VOLUM_WIDGET_CACHE_051',
+    analysisRevision:'TGR_OPERATIONAL_20261026',scope,dealId:deal,
     savedAt:Date.now()-10_000,answer:complete};
   if(precache==='valid')store.set('volum_cache_051_'+scope+'_'+deal,JSON.stringify(entry));
   if(precache==='expired')store.set('volum_cache_051_'+scope+'_'+deal,
     JSON.stringify({...entry,savedAt:Date.now()-3_900_000}));
+  if(precache==='legacy')store.set('volum_cache_051_'+scope+'_'+deal,
+    JSON.stringify({...entry,analysisRevision:undefined}));
   const root={dataset:{dealId:deal}},card={innerHTML:'',textContent:''};
   const listeners={},messages=[],rpcCalls=[],timers=new Map();
   let nextTimer=1;
@@ -78,6 +81,8 @@ assert.equal(hit.rpcCalls.length,0,'troca de aba nao chama backend');
 assert.ok(!hit.messages.some(x=>x.value.type==='VOLUM_REQUEST_RD_UI_HISTORY'),
   'cache valido impede releitura do Historico RD na abertura');
 
+const legacy=runPanel({precache:'legacy'});
+assert.equal(legacy.store.size,0,'cache de revisao antiga e descartado ao abrir');
 const remote=runPanel();
 assert.equal(remote.messages[0].value.op,'GET','consulta armazenamento extensao');
 remote.respondCache(remote.entry);

@@ -73,7 +73,8 @@ assert.equal(semanticOk.fatos[0].referencia,'UI_3');
 assert.equal(res.canais.whatsappAbertos,1);
 assert.equal(res.canais.emailsEnviados,1);
 assert.equal(res.criterios.find(x=>x.id==='lembrete').estado,'EVIDENCIADO');
-assert.equal(res.criterios.find(x=>x.id==='confirmacao').estado,'SEM_REGISTRO');
+assert.equal(res.criterios.find(x=>x.id==='confirmacao').estado,'NAO_VERIFICAVEL',
+ 'Sem resposta positiva e sem calendario nao implica reprovacao de confirmacao.');
 assert.equal(res.criterios.find(x=>x.id==='pendencia_etapa').estado,'ATENCAO');
 assert.ok(res.acoes.every(x=>!/^executar.{0,30}terceira liga/i.test(x.acao)),
  'an overdue/next SDR call cannot be generic next best action in presentation');
@@ -144,7 +145,7 @@ assert.equal(planoSdr.itens.find(x=>x.id==='handoff').status,'SEM_EVIDENCIA');
 assert.equal(planoSdr.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
 assert.equal(planoSdr.itens.find(x=>x.id==='lmv').status,'INDICIO');
 
-assert.equal(planoSdr.itens.find(x=>x.id==='agenda').status,'SEM_EVIDENCIA',
+assert.equal(planoSdr.itens.find(x=>x.id==='agenda').status,'NAO_VERIFICAVEL',
  'The name of the stage Apresentacao must not prove an appointment');
 const onlyStage=makeUi([
  {kind:'ANOTACAO',stage:'Apresentação',dateText:'25/10/2026 11:00',
@@ -158,7 +159,7 @@ const onlyInput={negociacao:{etapaAtualNome:'Apresentação'},historicoRdEtapas:
   tarefas:[],fontes:{}};
 const onlyDiag=ctx.viWidgetDiagnosticoHistoricoRd_(onlyInput);
 const onlyPlan=ctx.viWidgetPlanoSdrHistoricoRd_(onlyInput,onlyDiag);
-assert.equal(onlyPlan.itens.find(x=>x.id==='agenda').status,'SEM_EVIDENCIA');
+assert.equal(onlyPlan.itens.find(x=>x.id==='agenda').status,'NAO_VERIFICAVEL');
 assert.equal(onlyPlan.itens.find(x=>x.id==='confirmacao').status,'NAO_APLICAVEL');
 
 assert.ok(planoSdr.itens.some(x=>/UI_[0-9]+/.test(x.evidencia)));
@@ -185,9 +186,9 @@ assert.match(output,/Passagem de bastão SDR/);
 assert.doesNotMatch(output,/<h3><\/h3>/);
 assert.doesNotMatch(output,/14 não verificáveis/);
 
-assert.match(output,/<details class="criteria-tile"><summary>/,
+assert.match(output,/<details class="criteria-tile tone-[a-z]+"><summary>/,
   'Each criterion must be collapsed by default');
-assert.equal((output.match(/<details class="criteria-tile">/g)||[]).length,16);
+assert.equal((output.match(/<details class="criteria-tile tone-[a-z]+">/g)||[]).length,16);
 assert.match(output,/<b>Para ficar verde:<\/b>/);
 assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
   status:'EVIDENCIADO'}),/criteria-light yellow/,
@@ -198,8 +199,8 @@ assert.match(ux.criteriaCard({id:'cadencia',titulo:'Cadência',
   conformidade:'NAO_CONFORME'}),/criteria-light red/);
 assert.match(ux.criteriaCard({id:'no_show',titulo:'No-show',
   status:'NAO_APLICAVEL'}),/criteria-light na/);
-assert.equal(planoSdr.itens.find(x=>x.id==='handoff').conformidade,'NAO_CONFORME',
- 'Missing mandatory handoff after Closer stage with complete history is a deviation');
+assert.equal(planoSdr.itens.find(x=>x.id==='handoff').conformidade,'PENDENTE',
+ 'Sem playbook e ownership confirmado, handoff ausente nao e desvio homologado');
 assert.equal(planoSdr.itens.find(x=>x.id==='cadencia').conformidade,'PENDENTE',
  'Cadence cannot be green without the version and expected channels');
 

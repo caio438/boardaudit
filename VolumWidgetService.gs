@@ -153,6 +153,7 @@ function viWidgetRastrearDadosAgentes_(leitura,parecer,solicitouIa){
     versao:'TRILHA_DE_EVIDENCIAS_V1',
     negociacaoIdConfirmado:leitura.dealId||'',
     historicoRd:{eventos:(h.eventos||[]).length,completo:c.completo===true,
+      nomesEtapas:leitura.historicoRdEtapas?.nomesEtapasRastreio||{},
       paginas:Number(c.paginasCarregadas||0),lacunas:(c.lacunas||[]).slice(0,5)},
     rdApi:{atividades:(leitura.atividades||[]).length,
       atividadesCompletas:leitura.fontes?.atividades?.completo===true,
@@ -246,6 +247,44 @@ function viWidgetAgentesDetalhados_(leitura) {
   return base.map(a=>substitutos[a.agente]||a);
 }
 
+/**
+ * Reconciliacao conservadora de NOMES de etapa: o ID e a janela sao da API
+ * RD. O nome atual so entra quando o ID bate com a etapa confirmada na
+ * negociacao; nomes antigos so entram quando os cartoes VISUAIS da mesma
+ * passagem exibem um unico nome nao vazio. Nunca atribuir por proximidade
+ * de texto entre negocios ou inventar etapa "SDR".
+ */
+function viWidgetNomesEtapasPorEvidencia_(leitura) {
+  const h=leitura?.historicoRdEtapas||{},j=Array.isArray(h.janelas)?h.janelas:[];
+  const visual=Array.isArray(h.linhaDoTempo?.eventos)?h.linhaDoTempo.eventos:[];
+  const current=leitura?.negociacao||{};
+  let RD=0,visualResolvido=0,semNome=0;
+  const normal=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const valido=x=>!!String(x||'').trim()&&!/ETAPA_SEM_NOME_CONFIRMADO|^Etapa RD \(/i.test(String(x));
+  const last=j[j.length-1];
+  if(last&&String(last.etapaId).toLowerCase()===String(current.etapaAtualId||'').toLowerCase()&&
+     !valido(last.etapaNome)&&valido(current.etapaAtualNome)){
+    last.etapaNome=String(current.etapaAtualNome).slice(0,120);
+    last.fonteNome='RD_DEAL_STAGE_ID_CONFIRMADO';RD++;
+  }
+  j.forEach(janela=>{
+    if(valido(janela.etapaNome))return;
+    const arr=visual.filter(e=>e.passagemId===janela.passagemId&&
+      valido(e.etapaNome)).map(e=>String(e.etapaNome).trim().slice(0,120));
+    const byName=new Map();
+    arr.forEach(x=>byName.set(normal(x),x));
+    if(byName.size===1&&arr.length>=2){
+      janela.etapaNome=[...byName.values()][0];
+      janela.fonteNome='RD_UI_HISTORY_ETAPA_UNICA';visualResolvido++;
+    }else semNome++;
+  });
+  j.forEach((v,i)=>{if(i<j.length-1&&valido(j[i+1].etapaNome))
+    v.proximaEtapaNome=j[i+1].etapaNome;});
+  h.nomesEtapasRastreio={confirmadasRD:RD,unicasNoVisual:visualResolvido,
+    semNome,politica:'Nunca classificar uma etapa sem nome como SDR ou Closer por palpite.'};
+  return h.nomesEtapasRastreio;
+}
+
 function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   const email = viWidgetEmailSessao_();
   const emailSolicitado = String(identidade || '').trim().toLowerCase();
@@ -258,6 +297,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     const conciliacao=viRdConciliarHistoricoUi_(leitura.historicoRdEtapas,opcoes.historicoUiRd,dealId);
     if(conciliacao.aceito)leitura.historicoRdEtapas=conciliacao.historico;
   }
+  viWidgetNomesEtapasPorEvidencia_(leitura);
   if (leitura.modo !== 'SOMENTE_LEITURA') {
     throw new Error('A auditoria foi interrompida: modo de leitura invalido.');
   }
@@ -333,7 +373,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     janelas:(recorteRd.janelas||[]).map(function(j) {
       return {
         passagemId:j.passagemId,visita:j.visita,etapaId:j.etapaId,
-        etapaNome:j.etapaNome,inicio:j.inicio,fim:j.fim,
+        etapaNome:j.etapaNome,fonteNome:j.fonteNome||'',inicio:j.inicio,fim:j.fim,
         fimInformado:j.fimInformado,proximaEtapaNome:j.proximaEtapaNome,
         status:j.status,duracaoMinutos:j.duracaoMinutos,
         contagens:j.contagens,compliance:j.compliance,
@@ -380,6 +420,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
   delete parecer.contextoIa;
   // Versionar a resposta inteira para identificar o backend realmente implantado.
   parecer.versao='0.5.1-RD';
+  parecer.revisaoAnalise='TGR_OPERATIONAL_20261026';
   return parecer;
 }
 
@@ -1117,7 +1158,7 @@ function viWidgetInterpretarGemini_(contexto, dealId) {
   const inicio = Date.now();
   const chave = obterSegredo_('GEMINI_API_KEY');
   if (!chave) throw new Error('Gemini nao configurado no projeto.');
-  const prompt = 'Voce e um auditor Sales Ops. Interprete apenas as evidencias fornecidas do mesmo lead. Se a fonte for RD_UI_HISTORY, para CADA fato forneça uma referencia UI_n exata presente no contexto, e interprete a etapa atual e o caminho anterior sem misturar etapas. Nunca invente transcricoes, dor, decisor, autor ou acao sem registro. Responda SOMENTE JSON com: fatos (lista de objetos criterio, conclusao, referencia, fonte, data, confianca), lacunas (lista de objetos criterio, motivo, proximaVerificacao), recomendacoes (lista de objetos prioridade, acao, justificativa, criterioConclusao). '+
+  const prompt = 'Voce e um Sales Ops expert auditando a jornada desta negociacao. Use SOMENTE evidencias do lead fornecidas. Priorize qualidade operacional sobre narrar atividades comuns: para cada fato explique a situacao, o risco ou lacuna verificavel e a proxima validacao concreta (se faltar prova, explicite). Nao crie fatos sobre emails enviados ou chamadas apenas para repetir o cartao. Se nao houver achado util, retorne fatos []. Cada fato deve ter criterio claro, conclusao objetiva e referencia UI_n EXATA recebida no contexto; se nao houver referencia adequada, nao emita o fato. Separe a prospeccao SDR da etapa de Apresentacao/Closer e de recovery apos no-show. Etapa Closer nao prova realizacao de reuniao; lembrete enviado nao prova convite/link; nota de no-show sugere compromisso anterior mas nao comprova agenda aceita; tarefa concluida nao comprova ligacao. Nunca invente fala, transcricao, dor, LMV validado, decisor, autor ou prazo sem fonte. Responda SOMENTE JSON com: fatos (lista de objetos criterio, conclusao, referencia, fonte, data, confianca), lacunas (lista de objetos criterio, motivo, proximaVerificacao), recomendacoes (lista de objetos prioridade, acao, justificativa, criterioConclusao). '+
     'Nunca confunda tarefa criada com executada, e-mail enviado com recebido, arquivo PDF com entrega, link de convite com gravacao, ou anotacao do vendedor com mensagem direta do cliente. '+
     'NAO classifique ausencia de registro como falha quando a consulta for incompleta. Nao invente links ou datas. Evidencias: '+JSON.stringify(contexto);
   const resposta = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent', {

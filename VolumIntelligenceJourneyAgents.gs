@@ -76,7 +76,7 @@ function viJourneyAfirmativa_(texto, categoria) {
       /(?:cliente|lead|comprador|participante|contato).{0,60}(?:confirmou|aceitou).{0,35}(?:presenca|participacao|convite)|(?:presenca confirmada pelo cliente|cliente confirmou o horario)/.test(t);
   if(categoria==='NO_SHOW')
     return !/(?:nao houve no.?show|sem no.?show|nao foi no.?show|nao faltou|nao ocorreu falta)/.test(t) &&
-      /(?:no.?show|cliente nao compareceu|lead nao compareceu|comprador nao compareceu|cliente faltou a reuniao|nao apareceu na reuniao)/.test(t);
+      /(?:no.?show|cliente nao compareceu|lead nao compareceu|comprador nao compareceu|cliente faltou a reuniao|nao apareceu na reuniao|nao entrou na reuniao|tinhamos nosso compromisso hoje.{0,110}(?:mas (?:voce nao|nao houve|nao compareceu)|voce nao))/.test(t);
   if(categoria==='REALIZADA')
     return !/(?:nao foi realizad|sem reuniao|nao aconteceu|nao compareceu|foi cancelad|desmarc|nao ocorreu)/.test(t) &&
       /(?:reuniao|apresentacao|demonstracao).{0,60}(?:realizad|concluid|aconteceu)|(?:realizamos|fizemos|concluimos) (?:a |uma )?(?:reuniao|apresentacao|demonstracao)/.test(t);
@@ -164,13 +164,16 @@ function viJourneyConexao_(ctx) {
   const conectado=Date.parse(conexaoData);
   const minutos=Number.isFinite(criado)&&Number.isFinite(conectado)&&conectado>=criado?
     Math.round((conectado-criado)/60000):null;
-  const primeiroCanal=resposta?'EMAIL_RESPOSTA':textoWhats?'WHATSAPP_RELATADO':dialogo?'CONTATO_RELATADO': 'NAO_DETERMINADO';
+  const primeiroCanal=resposta?'EMAIL_RESPOSTA':textoWhats?'WHATSAPP_RELATADO':'CANAL_NAO_CONFIRMADO';
+  const conexaoRelatada=Boolean(dialogo||resposta||textoWhats);
   const itens=[
     viJourneyItem_('canal_conexao','Canal da conexao',
-      canais.length?'INDICIO':viJourneyEstado_(ctx,false),
-      canais.length?'Sinais por fonte: '+canais.join(', ')+'. Canal de origem da conversa ainda pode exigir confirmacao.':
-        'Nenhum canal de conversa efetiva pode ser certificado nos registros disponiveis.',
-      evidenciaContato||chamadas[0], 'Validar o primeiro canal de resposta do comprador e registrar o resultado.',
+      conexaoRelatada?'INDICIO':viJourneyEstado_(ctx,false),
+      conexaoRelatada?'Contato/retorno relatado. Sinais: '+canais.join(', ')+
+        '. Conferir o canal e o resultado da conversa.':
+        'Existem '+chamadas.length+' ligacao(oes) tecnicas, mas discagem, WhatsApp aberto ou email enviado NAO comprovam conexao com o cliente.',
+      evidenciaContato||textoWhats||chamadas[0],
+      'Verificar retorno/atendimento comprovado e atribuir o canal somente com evidência do comprador.',
       'Distinguir ligacao efetuada, atendimento, resposta e contato humano.','RD / Board'),
     viJourneyItem_('marco_conexao','Quando houve a primeira resposta',
       evidenciaContato?'INDICIO':viJourneyEstado_(ctx,false),
@@ -250,6 +253,11 @@ function viJourneyAgenda_(ctx) {
     (t.tipo==='meeting'||/reuniao|apresentacao|demonstracao/.test(viJourneyNormal_(t.assunto))));
   const registrosAgenda=viJourneyNotas_(ev,'AGENDA');
   const primeiraAgenda=registrosAgenda[0]||null;
+  // Mensagem "Tínhamos nosso compromisso hoje, agora às 10:00" é
+  // relato de compromisso (indício), não convite nem aceite confirmado.
+  const compromissoRelatado=viJourneyBusca_(notas,e=>
+    /(?:tinhamos|marcamos|combinamos).{0,65}(?:compromisso|reuniao|apresentacao)|nosso compromisso hoje/.test(e.normal)&&
+    !/(?:nao marcamos|nao combinamos|sem compromisso|nao houve compromisso)/.test(e.normal));
   const agendaData=primeiraAgenda?.data||'';
   const agendamentosReais=reunioes.filter(r=>!/CANCELAD|DESMARCAD/.test(String(r.status||'')));
   const proxima=agendamentosReais.slice().sort((a,b)=>a.data.localeCompare(b.data)).at(-1)||
@@ -259,7 +267,7 @@ function viJourneyAgenda_(ctx) {
   const horas=Date.parse(dataReuniao)>=Date.parse(agendaData)&&agendaData&&dataReuniao?
     Math.round((Date.parse(dataReuniao)-Date.parse(agendaData))/3600000*10)/10:null;
   const emails=ev.filter(e=>e.acaoVisual==='EMAIL_ENVIADO'||e.tipo==='email');
-  const conviteEnviado=viJourneyBusca_(emails,e=>/(?:convite|agenda|acesso.{0,30}reuniao|reuniao.{0,30}link)/.test(e.normal));
+  const conviteEnviado=viJourneyBusca_(emails,e=>/(?:convite|link.{0,35}(?:reuniao|apresentacao)|(?:reuniao|apresentacao).{0,35}link|meet\.google)/.test(e.normal));
   const conviteNota=viJourneyBusca_(notas,e=>viJourneyAfirmativa_(e.normal,'CONVITE'));
   const confirmacao=viJourneyNotas_(ev,'PRESENCA').filter(e=>!agendaData||e.data>=agendaData)[0]||null;
   const lembrete=viJourneyBusca_(emails,e=>/lembrete|nossa reuniao|nosso compromisso/.test(e.normal))||
@@ -268,6 +276,16 @@ function viJourneyAgenda_(ctx) {
   const sinaisNoShow=viJourneyNotas_(ev,'NO_SHOW');
   const noShowCalendario=reunioes.filter(r=>/(NO[_ -]?SHOW|NAO[_ -]?COMPAREC)/.test(String(r.status||'')));
   const noShowSinal=noShowCalendario[0]||sinaisNoShow[0]||null;
+  const notaDeCompromisso=primeiraAgenda||compromissoRelatado||sinaisNoShow[0]||null;
+  const horarioRelatado=compromissoRelatado?.normal?.match(
+    /(?:hoje|agora|compromisso).{0,55}(?:as\s*)?(\d{1,2}[:h]\d{2})/);
+  const horarioCompromissoRelatado=horarioRelatado?(function(){
+    const dt=new Date(compromissoRelatado.data);
+    if(!Number.isFinite(dt.getTime()))return '';
+    const dia=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',
+      day:'2-digit',month:'2-digit',year:'numeric'}).format(dt);
+    return dia+' as '+horarioRelatado[1].replace('h',':')+' (anotacao, nao calendario)';
+  })():'';
   const marcoNoShow=noShowSinal?.data||dataReuniao;
   const retomar=tarefas.filter(t=>t&&/(?:no.?show|reagend|recovery|retomad|follow.?up|nova tentativa)/.test(
     viJourneyNormal_(String(t.assunto||'')+' '+String(t.anotacao||'')))&&
@@ -280,16 +298,19 @@ function viJourneyAgenda_(ctx) {
   const naoAplicavelNoShow=!noShowSinal;
   const itens=[
     viJourneyItem_('agenda_registro','Agendamento na jornada',
-      primeiraAgenda||proxima?'INDICIO':viJourneyEstado_(ctx,false),
+      notaDeCompromisso||proxima?'INDICIO':viJourneyEstado_(ctx,false),
       primeiraAgenda||proxima?'Existe registro de agendamento ou compromisso datado, sem assumir aceite.':
+        notaDeCompromisso?'Anotacao menciona compromisso/no-show; a reuniao foi prevista segundo o registro, mas aceite e agendamento estruturado nao foram comprovados.':
         'Nao foi identificado agendamento afirmativo ou compromisso datado.',
-      primeiraAgenda||proxima,'Conferir quando e por qual canal a reuniao foi combinada.',
+      notaDeCompromisso||proxima,'Conferir quando e por qual canal a reuniao foi combinada.',
       'Agendamento datado, com contexto e responsavel confirmado.','RD · historico / calendario'),
     viJourneyItem_('agenda_data','Data e hora da reuniao',
-      dataReuniao?'EVIDENCIADO':viJourneyEstado_(ctx,false),
+      dataReuniao?'EVIDENCIADO':horarioCompromissoRelatado?'INDICIO':viJourneyEstado_(ctx,false),
       dataReuniao?'Compromisso previsto para '+dataReuniao+'; tarefa/calendario nao comprova realizacao.':
+        horarioCompromissoRelatado?'Compromisso mencionado em '+horarioCompromissoRelatado+
+        '. Conferir a data exata e o agendamento no calendario.':
         'Data/hora do compromisso nao recuperada da fonte estruturada.',
-      proxima,'Vincular compromisso a data/hora, participantes e canal de acesso.',
+      proxima||compromissoRelatado,'Vincular compromisso a data/hora, participantes e canal de acesso.',
       'Compromisso datado com horario local e participantes.','RD · tarefas / Board calendario'),
     viJourneyItem_('agenda_intervalo','Intervalo entre agendamento e reuniao',
       horas!==null?'INDICIO':'NAO_VERIFICAVEL',
@@ -342,6 +363,8 @@ function viJourneyAgenda_(ctx) {
   ];
   return viJourneyMontar_('AGENDA',ctx,itens,{
     agendamentoRegistradoEm:agendaData,compromissoEm:dataReuniao,
+    horarioMencionadoEmAnotacao:horarioCompromissoRelatado,
+    compromissoRelatadoSemCalendario:Boolean(notaDeCompromisso&&!proxima),
     horasEntreAgendamentoEReuniao:horas,
     calendarioReunioes:reunioes.length,tarefasReuniao:tarefasReuniao.length,
     noShowsComStatusNoCalendario:noShowCalendario.length,
