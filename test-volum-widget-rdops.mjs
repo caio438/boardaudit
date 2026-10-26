@@ -217,6 +217,17 @@ assert.match(output,/Passagem de bastão SDR/);
 assert.doesNotMatch(output,/<h3><\/h3>/);
 assert.doesNotMatch(output,/14 não verificáveis/);
 
+const renderSdrV2=vm.runInNewContext('('+widget.slice(sdrStart,sdrEnd)+')',{
+  section:(title,detail)=>'<section>'+title+' · '+detail+'</section>',
+  esc:x=>String(x||''),criterionSection:ux.criteriaAccordion,
+  planoV2Cards:plano=>JSON.stringify(plano)
+});
+const cardsContract=renderSdrV2({diagnosticoRdOperacional:diagSdr,planoOtimizacaoSdr:planoSdr});
+assert.match(cardsContract,/"id":"cadencia"/,
+  'O cartão executivo preserva o identificador do contrato V2');
+assert.match(cardsContract,/"status_execucao":"PARCIAL"/,
+  'O cartão recebe o status calculado pelo backend, sem cair no padrão não verificável');
+
 const legacySdr=renderSdr({planoOtimizacaoSdr:planoSdr});
 assert.doesNotMatch(legacySdr,/9 verificações complementares/,
   'Legacy responses must keep the executive SDR view limited to seven pillars');

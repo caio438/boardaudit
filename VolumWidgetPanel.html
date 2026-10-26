@@ -564,7 +564,8 @@ function rdDiagnosticoView(d){
   html+='<p class="small">'+esc(o.limite||'')+'</p>';
   return html;
 }
-function overview(d){if(d.diagnosticoRdOperacional)return rdDiagnosticoView(d);const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
+function overview(d){if(d.diagnosticoRdOperacional){const o=d.diagnosticoRdOperacional||{},acoes=(o.acoes||[]).slice(0,3);let html=section('Próxima decisão Sales Ops','Conclusões da negociação');html+=acoes.length?'<div class="action-list">'+acoes.map(function(a){return '<article class="action tone-'+(a.prioridade==='ALTA'?'yellow':'violet')+'"><span class="eyebrow">'+esc(a.prioridade||'REVISAR')+'</span><h3>'+esc(a.acao||'Conferir a evidência principal')+'</h3><p>'+esc(a.porQue||'')+'</p></article>';}).join('')+'</div>':'<p class="muted">Sem desvio comprovado. Consulte os planos para verificar pendências e evidências.</p>';return html+'<p class="small">Os detalhes, fontes e limites ficam nos Planos e em Evidências.</p>';}
+const rec=(d.recomendacoes||[]);let html='<div class="hero"><span class="kicker">DIAGNÓSTICO COMERCIAL</span><h2>'+esc(d.status||'Leitura consultiva')+'</h2><span class="status-tag risk-'+safeClass(d.risco)+'">Risco: '+esc(d.risco||'Não classificado')+'</span><p>Confiança: '+esc(d.confianca||'Não determinada')+'. A situação indica atenção, não conclusão automática de compliance.</p><button type="button" class="next" onclick="changeTab(\'inteligencia\')">Explorar inteligência comercial ↗</button></div>';
 html+=playbook(d);
 html+=section('Próxima melhor ação','Sales Ops');
 html+='<div class="glass"><div class="eyebrow">AÇÃO RECOMENDADA</div><p style="margin:9px 0;font-size:13px;font-weight:600">'+esc(d.proximaAcao||'Validar contexto do lead')+'</p><p class="muted">Como confirmar: '+esc(d.regraDeDecisao||'Obter evidência do resultado')+'</p></div>';
@@ -687,15 +688,24 @@ function sdr(d){
   const plano=d.planoOtimizacaoSdr||{},itens=plano.itens||[];
   if(rd&&rd.ativo&&plano.fonte==='RD_UI_HISTORY'){
     const oficiais=itens.filter(x=>x.pilar==='OFICIAL');
-    const extras=itens.filter(x=>x.pilar!=='OFICIAL');
     const escopo=plano.escopo||{};
-    const counts=plano.contagem||{};
     const garantir=item=>({
+      id:item.id,
+      plano:item.plano,
+      criterio:item.criterio||item.id,
+      aplicavel:item.aplicavel,
       titulo:item.titulo||item.id||'Critério sem título',
       status:item.status==='SEM_EVIDENCIA'?'SEM_REGISTRO':item.status,
       conformidade:item.conformidade||'PENDENTE',
       detalhe:item.detalhe||'Nenhuma explicação foi produzida para este critério.',
-      evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico'
+      evidencia:item.evidencia||'',acao:item.acao||'',fonte:item.fonte||'RD · Histórico',
+      status_execucao:item.status_execucao,
+      status_conformidade:item.status_conformidade,
+      resposta_curta:item.resposta_curta,
+      evidencia_resumida:item.evidencia_resumida,
+      responsavel:item.responsavel,
+      acao_recomendada:item.acao_recomendada,
+      motivo_pendencia:item.motivo_pendencia
     });
     let html=section('Plano de Otimização SDR','7 pilares · Histórico RD');
     html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
@@ -705,7 +715,7 @@ function sdr(d){
         'versão em validação':escopo.regraCadenciaAplicavel||'não informada')+
       '. Sem régua vigente não aprovar cadência integral.</p>';
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
-    const oficiaisV2={itens:oficiais.map(garantir).map(function(x){return Object.assign(x,plano.itens.find(y=>y.id===x.id)||{});})};
+    const oficiaisV2={itens:oficiais.map(garantir)};
     html+=(typeof planoV2Cards==='function'?planoV2Cards(oficiaisV2):criterionSection('7 pilares do Plano Wisetec',oficiaisV2.itens));
     // As verificações complementares continuam no contrato e nas evidências,
     // mas não poluem a leitura executiva do Plano SDR.

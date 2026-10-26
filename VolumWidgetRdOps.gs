@@ -360,9 +360,11 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) 
  * Nenhum SLA numerico sera inventado sem versao de playbook homologada.
  */
 function viWidgetPlanoContratoV2_(plano,tipo){
-  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO',SEM_REGISTRO:'NAO',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
+  // Ausência de registro não é prova de que a ação não ocorreu. "NÃO" só
+  // aparece quando a não conformidade foi demonstrada pela fonte completa.
+  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO_VERIFICAVEL',SEM_REGISTRO:'NAO_VERIFICAVEL',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
   plano.itens=(plano.itens||[]).map(function(x){
-    const statusExecucao=exec[x.status]||'NAO_VERIFICAVEL';
+    const statusExecucao=x.conformidade==='NAO_CONFORME'?'NAO':(exec[x.status]||'NAO_VERIFICAVEL');
     const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
     return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel:x.status!=='NAO_APLICAVEL',
       status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
