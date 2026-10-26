@@ -360,11 +360,17 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) 
  * Nenhum SLA numerico sera inventado sem versao de playbook homologada.
  */
 function viWidgetPlanoContratoV2_(plano,tipo){
-  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO',SEM_REGISTRO:'NAO',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
+  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',NAO_VERIFICAVEL:'NAO_VERIFICAVEL'};
   plano.itens=(plano.itens||[]).map(function(x){
-    const statusExecucao=exec[x.status]||'NAO_VERIFICAVEL';
+    // Missing evidence is not proof of non-execution. A negative answer
+    // requires a separately established non-compliance decision.
+    const aplicavel=x.status!=='NAO_APLICAVEL'&&x.conformidade!=='NAO_APLICAVEL';
+    const semProva=x.status==='SEM_EVIDENCIA'||x.status==='SEM_REGISTRO';
+    const statusExecucao=!aplicavel?'NAO_VERIFICAVEL':
+      semProva?(x.conformidade==='NAO_CONFORME'?'NAO':'NAO_VERIFICAVEL'):
+      (exec[x.status]||'NAO_VERIFICAVEL');
     const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
-    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel:x.status!=='NAO_APLICAVEL',
+    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel,
       status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
       resposta_curta:(statusExecucao==='SIM'?'SIM':statusExecucao==='NAO'?'NÃO':statusExecucao==='PARCIAL'?'PARCIAL':'NÃO VERIFICÁVEL')+' — '+String(x.detalhe||'').split(/[.]/)[0]+'.',
       evidencia_resumida:String(x.evidencia||'').slice(0,260),referencias:refs,
