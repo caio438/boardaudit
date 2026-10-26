@@ -385,7 +385,10 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const criadas=tipe(sdr,'TAREFA_CRIADA');
   const emails=tipe(sdr,'EMAIL_ENVIADO');
   const whatsapp=tipe(sdr,'WHATSAPP_ABERTO');
-  const ligacoes=combinar(sdr,/(?:atendimento para|ligac(?:ao|oes)|telefonema|chamada telefonica|discagem|voip)/);
+  // Título de tarefa de ligação não é uma tentativa técnica.
+  const ligacoes=combinar(sdr.filter(e=>
+    ['OUTRO_VISUAL_RD','LIGACAO_REALIZADA','CHAMADA_REGISTRADA'].includes(e.acao)),
+    /(?:atendimento para|ligac(?:ao|oes)|telefonema|chamada telefonica|discagem|voip)/);
   const chamadaVoipRegistrada=ligacoes.find(e=>e.acao==='OUTRO_VISUAL_RD'&&
     /atendimento para|ligacao realizada|chamada efetuada/.test(texto(e)))||null;
   const tentativas=[...ligacoes,...emails,...whatsapp].filter((e,i,arr)=>
@@ -394,6 +397,9 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     /(?:nao atendeu|nao respondeu|sem resposta|caixa postal|ocupado|retornou|respondeu|agendou|reagendou|confirmou|sem interesse|desqualificad|conversamos|falei com|falou com|atendeu)/);
   const questoes=combinar(anotacoes,/faturamento|lmv|receita|qualific|dor|necessidade|objetivo|sistema atual|segmento|decisor/);
   const hadCloser=primeiraCloser>=0;
+  const boardSdr=Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard.filter(l=>
+    l?.data&&String(l.funcaoDeclarada||'').toUpperCase()!=='CLOSER'&&
+    (!hadCloser||l.data<janelas[primeiraCloser].inicio)):[];
   const agendaContexto=eventos.filter(e=>
     ids.has(String(e.passagemId||'')) ||
     (hadCloser && String(e.passagemId||'')===String(janelas[primeiraCloser]?.passagemId||'')));
@@ -460,16 +466,10 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const detalheEvento=e=>e?viWidgetSanitizar_(e.texto||'').slice(0,260):'';
   const reg=(id,titulo,status,msg,e,acao,pilar)=>{
     const evid=ref(e);
-    // Verde apenas se a evidencia atender ao critério específico, não por
-    // encontrar uma palavra solta. Vermelho = falta obrigatória comprovada
-    // na etapa já encerrada ou tarefa vencida. Não presumir SLA de cadência.
+    // Vermelho exige obrigatoriedade homologada e evidencia do desvio.
+    // Tarefa vencida ou anotacao ausente nao permite reprovar o SDR.
     let conformidade='PENDENTE';
-    const obrigatoriosDepoisDoHandoff=new Set([
-      'handoff','registros','segmento','lmv','qualificacao','agenda']);
     if(status==='NAO_APLICAVEL')conformidade='NAO_APLICAVEL';
-    else if(status==='ATENCAO')conformidade='NAO_CONFORME';
-    else if(status==='SEM_EVIDENCIA'&&hadCloser&&
-      obrigatoriosDepoisDoHandoff.has(id))conformidade='NAO_CONFORME';
     else if(status==='INDICIO'&&e){
       const t=texto(e);
       if(id==='voip'&&e.acao==='OUTRO_VISUAL_RD'&&
@@ -502,9 +502,12 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     ultimo(tentativas)||ultimo(saidas)||ultimo(criadas),
     'Confrontar os dias e canais registrados com a Estrutura da Cadência aplicável, separando início da cadência e recovery.','OFICIAL');
   reg('voip','Uso de ligação nas tentativas',
-    ligacoes.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
-    ligacoes.length+' registro(s) mencionam ligação ou atendimento no Histórico RD. Tarefa ou duração não comprova conversa; analisar seu resultado documentado.',
-    chamadaVoipRegistrada||ultimo(ligacoes),'Relacionar cada ligação registrada ao resultado da tentativa no CRM.','OFICIAL');
+    ligacoes.length||boardSdr.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
+    ligacoes.length+' evento(s) de chamada no RD (sem títulos de tarefas) e '+
+    boardSdr.length+' chamada(s) técnica(s) do Board antes da etapa Closer. '+
+    'Discagem não comprova atendimento; confirmar papel, autoria e desfecho.',
+    chamadaVoipRegistrada||ultimo(ligacoes),
+    'Conciliar a telefonia efetiva, o resultado de cada chamada e a autoria SDR.','OFICIAL');
   reg('pitch','Aplicação do pitch de qualificação','NAO_VERIFICAVEL',
     'O Histórico RD permite ler anotações e resultados, mas não comprova palavra por palavra a aplicação do pitch SDR.',
     ultimo(questoes),'Conferir o pitch apenas quando existir gravação ou transcrição atribuída ao SDR.','OFICIAL');
@@ -526,17 +529,19 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     ultimo(repasse),'Registrar o contexto qualificado, responsável e compromisso acordado na passagem para o Closer.','OFICIAL');
   reg('registros','Registro do resultado após cada ação',
     notasResultado.length?'INDICIO':(saidas.length||ligacoes.length)?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
-    notasResultado.length+' anotação(ões) de desfecho localizadas para '+saidas.length+
-      ' tarefa(s) concluída(s) e '+ligacoes.length+
-      ' registro(s) de ligação. Uma nota pode cobrir várias tentativas; não há correspondência um a um demonstrada.',
+    notasResultado.length+' anotação(ões) de desfecho antes da fase Closer; '+
+      saidas.length+' tarefa(s) concluída(s) visualmente; '+
+      boardSdr.length+' chamada(s) técnica(s) do Board e '+ligacoes.length+
+      ' evento(s) de telefonia do RD. Essas fontes não formam pares automaticamente.',
     ultimo(notasResultado)||ultimo(saidas),
     'Reconciliar cada tentativa de ligação/contato com o desfecho registrado, sem criar eventos duplicados.','OFICIAL');
   reg('tarefas','Marcação e execução das tarefas no prazo',
     vencidas.length||foraPrazo.length?'ATENCAO':
       tarefasSdr.length?'INDICIO':sdr.length?'SEM_EVIDENCIA':'NAO_VERIFICAVEL',
-    tarefasSdr.length+' tarefa(s) criada(s) enquanto a negociação estava na jornada SDR; '+
+    tarefasSdr.length+' tarefa(s) criada(s) antes da etapa Closer; '+
       vencidas.length+' aberta(s) vencida(s) e '+foraPrazo.length+
-      ' concluída(s) após data prevista. Não atribuir autoria SDR apenas pelo nome da tarefa.',
+      ' com conclusão posterior à data prevista (API). Uma conclusão posterior pode ter ocorrido em Agenda/Closer. '+
+      'Sem prazos homologados, tratar como revisão operacional e não como reprovação do SDR.',
     ultimo(sdr.filter(e=>e.acao==='TAREFA_CONCLUIDA'||e.acao==='TAREFA_CRIADA')),
     'Revisar datas previstas e efetivas das tarefas com seus responsáveis; justificar e corrigir pendências.','OFICIAL');
 
