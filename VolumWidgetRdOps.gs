@@ -359,6 +359,20 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) 
  * mas evidencia nessa etapa nao e atribuida automaticamente ao SDR.
  * Nenhum SLA numerico sera inventado sem versao de playbook homologada.
  */
+function viWidgetPlanoContratoV2_(plano,tipo){
+  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO',SEM_REGISTRO:'NAO',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
+  plano.itens=(plano.itens||[]).map(function(x){
+    const statusExecucao=exec[x.status]||'NAO_VERIFICAVEL';
+    const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
+    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel:x.status!=='NAO_APLICAVEL',
+      status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
+      resposta_curta:(statusExecucao==='SIM'?'SIM':statusExecucao==='NAO'?'NÃO':statusExecucao==='PARCIAL'?'PARCIAL':'NÃO VERIFICÁVEL')+' — '+String(x.detalhe||'').split(/[.]/)[0]+'.',
+      evidencia_resumida:String(x.evidencia||'').slice(0,260),referencias:refs,
+      responsavel:tipo==='SDR'?'SDR responsável a confirmar':'Closer responsável a confirmar',
+      acao_recomendada:x.acao||'',motivo_pendencia:statusExecucao==='NAO_VERIFICAVEL'?String(x.regra||x.detalhe||''):''});
+  });
+  return plano;
+}
 function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const stage=(leitura.historicoRdEtapas||{});
   const visual=(stage.linhaDoTempo||{});
@@ -608,7 +622,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     NAO_VERIFICAVEL:0,NAO_APLICAVEL:0};
   itens.forEach(x=>{conta[x.status]=(conta[x.status]||0)+1;});
   const uteis=Array.from(new Set(sdr.filter(e=>e.data).map(e=>e.data.slice(0,10)))).sort();
-  return {titulo:'Plano de Otimização SDR',versao:'RD_HISTORY_STAGE_V1',
+  return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização SDR',versao:'RD_HISTORY_STAGE_V2',
     fonte:'RD_UI_HISTORY',coberturaCompleta:aplicavel,clienteReferencia:'Wisetec',
     total:itens.length,oficial:7,complementar:9,itens,contagem:conta,
     escopo:{passagensSdr:pre.map(j=>({id:j.passagemId,nome:j.etapaNome,
@@ -619,7 +633,7 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     aviso:'Estes critérios analisam os registros anteriores à etapa de apresentação e as evidências de agenda. Sem versão vigente da cadência não atribuem compliance integral.',
     restricoes:['As atribuições SDR/Closer dependem do cadastro de responsáveis da operação.',
       'Conformidade de pitch precisa de gravação/transcrição.',
-      'Não equiparar abertura de WhatsApp a mensagem enviada.']};
+      'Não equiparar abertura de WhatsApp a mensagem enviada.']},'SDR');
 }
 
 
@@ -637,6 +651,22 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
     .toLowerCase().replace(/\s+/g,' ').trim();
   const primeira=janelas.findIndex(x=>
     /apresenta|reuniao|demonstrac|proposta|fechamento|negociac/.test(normal(x.etapaNome)));
+  // Etapa não é ownership. O Closer só existe no plano quando o Board/RD
+  // traz uma evidência de entrada: handoff explícito, compromisso/ligação
+  // atribuído a ele ou reunião vinculada ao seu papel.
+  const boardCloser=(Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[])
+    .find(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER')||
+    (Array.isArray(leitura.reunioesBoard)?leitura.reunioesBoard:[])
+      .find(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER')||null;
+  const handoffExplicito=todos.find(x=>x.acao==='ANOTACAO'&&
+    /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel|resumo para o closer)/.test(normal(x.texto)))||null;
+  const closerIniciado=Boolean(boardCloser||handoffExplicito);
+  const evidenciaEntrada=boardCloser||handoffExplicito||null;
+  if(!closerIniciado){
+    return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:0,itens:[],ativado:false,aplicavel:false,
+      closer_iniciado:{valor:false,evidencia:null,motivo:'Nenhuma passagem de bastão, compromisso ou interação atribuída ao Closer foi comprovada.'},
+      aviso:'Plano Closer oculto: etapa Apresentação, no-show ou tarefa sem papel comprovado não iniciam responsabilidade do Closer.'},'CLOSER');
+  }
   const closerIds=new Set(janelas.slice(Math.max(0,primeira)).map(x=>x.passagemId));
   const eventos=primeira<0?[]:todos.filter(x=>closerIds.has(x.passagemId));
   const buscar=(type,re)=>eventos.filter(e=>e.acao===type&&(!re||re.test(normal(e.texto)))).sort((a,b)=>
@@ -751,7 +781,8 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
         'Não foi possível confirmar execução da sequência completa de follow-up, inclusive lembretes e recovery.',
       'Comparar envio, confirmação, agenda, lembretes e desfechos com as datas e canais da cadência vigente.','RD · Histórico/tarefas')
   ];
-  return {titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:itens.length,
+  return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:itens.length,ativado:true,
+    closer_iniciado:{valor:true,evidencia:evidenciaEntrada?{id:evidenciaEntrada.id||'',data:evidenciaEntrada.data||'',fonte:boardCloser?'BOARD':'RD_UI_HISTORY'}:null},
     itens,aplicavel:devido,escopo:{passagensCloser:janelas.slice(Math.max(0,primeira)).length,
-      eventosCloser:eventos.length},aviso:'Verde só quando há comprovação operacional suficiente daquele item. A aderência integral à régua e ao pitch depende de eventos e fontes próprias; falta de acesso não vira vermelho.'};
+    eventosCloser:eventos.length},aviso:'Verde só quando há comprovação operacional suficiente daquele item. A aderência integral à régua e ao pitch depende de eventos e fontes próprias; falta de acesso não vira vermelho.'},'CLOSER');
 }

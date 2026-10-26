@@ -82,6 +82,7 @@ const onlyTasks=c.viCerebroCadencia_({...ctx,ligacoes:[],atividades:[]});
 assert.equal(onlyTasks.criterios.find(x=>x.id==='inicio').status,'NAO_VERIFICAVEL');
 assert.equal(onlyTasks.indicadores.tentativasCandidatasSemDuplicacao,3);
 assert.match(panel,/function cadenceAgent\(d\)/);
-assert.match(panel,/'cadencia','Agente CADÊNCIA'/);
+assert.doesNotMatch(panel,/'cadencia','Agente CADÊNCIA'/,
+  'Agente de cadência não deve ocupar a navegação da visão executiva');
 assert.match(service,/calendario:a\.calendario/);
 console.log('CADENCIA: dia util Brasil 12/10, feriados, nome livre, canal, telefonia, papel, interrupcao, fonte e robô protegidos.');

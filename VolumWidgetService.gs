@@ -325,6 +325,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     // Aplicar o Plano SDR aos eventos das passagens anteriores a Apresentacao.
     parecer.planoOtimizacaoSdr=viWidgetPlanoSdrHistoricoRd_(leitura,inteligenciaRd);
     parecer.planoOtimizacaoCloser=viWidgetPlanoCloserHistoricoRd_(leitura,inteligenciaRd);
+    parecer.closer_iniciado=parecer.planoOtimizacaoCloser.closer_iniciado||{valor:false,evidencia:null};
     parecer.status=inteligenciaRd.titulo;
     parecer.risco=inteligenciaRd.semRegistro?'ATENÇÃO OPERACIONAL':'SEM DESVIO CONFIRMADO';
     parecer.confianca='ALTA NA COBERTURA DO HISTÓRICO RD; REGRAS EM VALIDAÇÃO';

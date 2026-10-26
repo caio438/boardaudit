@@ -278,7 +278,7 @@ function group(title,items,open,unidade){return '<details class="group"'+(open?'
   '><summary><strong>'+esc(title)+'</strong><small>'+items.length+' '+
   esc(unidade||'critérios')+'</small></summary><div class="group-body">'+
   itemsWithLegacy(items)+'</div></details>';}
-function tabs(){const list=[['visao','Visão geral'],['etapasrd','Etapas RD'],['lead','Agente LEAD'],['cadencia','Agente CADÊNCIA'],['conexao','Agente CONEXÃO'],['agenda','Agente AGENDA'],['reuniao','Agente REUNIÃO'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['closer','Plano Closer'],['evidencias','Evidências']];return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
+function tabs(){const list=[['visao','Visão geral'],['inteligencia','Inteligência'],['sdr','Plano SDR'],['evidencias','Evidências']];if(currentData?.closer_iniciado?.valor===true)list.splice(3,0,['closer','Plano Closer']);if(activeTab==='closer'&&currentData?.closer_iniciado?.valor!==true)activeTab='sdr';return '<nav class="tabs" aria-label="Seções da auditoria">'+list.map(function(x){return '<button class="tab" type="button" aria-selected="'+(activeTab===x[0])+'" onclick="changeTab(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</nav>';}
 function agentDia(d){return /^\d{4}-\d{2}-\d{2}$/.test(String(d||''))?
   d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):rdMomento(d);}
 function agentReadiness(d,key){
@@ -662,6 +662,7 @@ function pilotPlan(d,tipo){
   }
   return html;
 }
+function planoV2Cards(plano){const itens=(plano.itens||[]).filter(x=>x.aplicavel!==false);const top=itens.filter(x=>x.acao_recomendada).slice(0,3);let html='<div class="criteria-list">'+itens.map(function(x){const st=x.status_execucao||'NAO_VERIFICAVEL';const tone=st==='SIM'?'green':st==='NAO'?'red':st==='PARCIAL'?'yellow':'na';return '<details class="criteria-tile tone-'+tone+'"><summary><span class="criteria-light '+tone+'">'+(tone==='green'?'✓':tone==='red'?'!':tone==='yellow'?'?':'—')+'</span><span class="criterion-name">'+esc(x.titulo)+' — '+esc(st.replace('_',' '))+'</span><span class="criterion-chevron">›</span></summary><div class="criteria-detail"><p>'+esc(x.resposta_curta||x.detalhe)+'</p>'+(x.acao_recomendada?'<p class="to-do"><b>Ajuste:</b> '+esc(x.acao_recomendada)+'</p>':'')+'<p class="criterion-note">'+esc(x.evidencia_resumida||x.motivo_pendencia||'Sem evidência adicional.')+'</p></div></details>';}).join('')+'</div>';if(top.length)html+='<p class="small">Prioridades: '+esc(top.map(x=>x.titulo).join(' · '))+'</p>';return html;}
 function sdr(d){
   const rd=d.diagnosticoRdOperacional||null;
   // Compatibilidade com clientes legados ou mocks antigos que nao trazem
@@ -703,7 +704,8 @@ function sdr(d){
         'versão em validação':escopo.regraCadenciaAplicavel||'não informada')+
       '. Sem régua vigente não aprovar cadência integral.</p>';
     html+='<div class="criteria-legend">✓ Verde: critério integralmente comprovado · ! Vermelho: desvio demonstrado · ? Amarelo: informação parcial ou validação pendente · — Não aplicável. Clique em um item para ver a evidência.</div>';
-    html+=criterionSection('7 pilares do Plano Wisetec',oficiais.map(garantir));
+    const oficiaisV2={itens:oficiais.map(garantir).map(function(x){return Object.assign(x,plano.itens.find(y=>y.id===x.id)||{});})};
+    html+=(typeof planoV2Cards==='function'?planoV2Cards(oficiaisV2):criterionSection('7 pilares do Plano Wisetec',oficiaisV2.itens));
     // Deixar as 9 verificações VISÍVEIS: o grupo fechado anterior resultava
     // em conteúdo vazio na leitura/cópia da interface.
     html+=criterionSection('9 verificações complementares',extras.map(garantir));
@@ -716,6 +718,7 @@ function sdr(d){
     '<div class="notice">'+esc(fonte||'Não foi possível completar a reconstrução do Histórico do RD.')+'</div>';
 }
 function closer(d){
+  if(d.closer_iniciado?.valor!==true)return '';
   const rd=d.diagnosticoRdOperacional||null;
   if(rd&&!rd.ativo){
     return section('Plano Closer — coleta incompleta','Aguardando Histórico RD')+
@@ -727,7 +730,7 @@ function closer(d){
     let html=(typeof pilotPlan==='function'?pilotPlan(d,'closer'):'')+section('Plano de Otimização Closer','7 pilares · evidências do RD');
     html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
     html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
-    html+=criterionSection('7 critérios do Plano Closer',items);
+    html+=(typeof planoV2Cards==='function'?planoV2Cards(p):criterionSection('7 critérios do Plano Closer',items));
     html+='<p class="small">'+esc(p.aviso||'')+'</p>';
     return html;
   }
@@ -782,7 +785,7 @@ const evidence=d.evidencias||[];
 html+=section('Últimas evidências','Anotações acessíveis')+'<div class="glass"><ul class="stack">'+(evidence.map(function(x){return '<li class="evidence"><time>'+humanDate(x.data)+' · '+esc(x.fonte)+'</time>'+esc(x.texto)+'</li>'}).join('')||'<li class="muted">Nenhuma evidência textual disponível.</li>')+'</ul></div>';
 html+='<div class="glass"><div class="eyebrow">LIMITES DE INTERPRETAÇÃO</div><ul class="stack">'+(d.limites||[]).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div>';
 return html;}
-function render(d){currentData=d||{};const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
+function render(d){currentData=d||{};if(activeTab==='closer'&&currentData.closer_iniciado?.valor!==true)activeTab='sdr';const info=currentData.negociacao||{};const header='<div class="intro"><span class="eyebrow">SALES OPS / '+esc(currentData.versao||'V4')+'</span><h1>'+esc(info.nome||'Negociação RD')+'</h1><p class="lede">Diagnóstico comercial orientado por evidências, em tempo de leitura.</p><div class="meta"><span class="chip"><span class="dot"></span>'+esc(info.etapaAtualNome||'Etapa não informada')+'</span><span class="chip">'+esc(currentData.agenteAtual||'Agente não mapeado')+'</span><span class="chip">Somente leitura</span></div></div>';
 const notice=currentData.diagnosticoRdOperacional?
 '<div class="notice">'+esc(currentData.diagnosticoRdOperacional.ativo?
  'Leitura de execução do Histórico RD, com origem, autor e etapa. Não confunda abertura de WhatsApp, tarefa concluída ou convite com conversa realizada.':
