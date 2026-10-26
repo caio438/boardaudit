@@ -3,6 +3,105 @@
  * Nao usa Board/API4COM como substituto de etapas ou comprovante de conversa.
  * Regras de prazo especificas pertencem ao playbook homologado do cliente.
  */
+/**
+ * Mapa de responsabilidade por negociacao. Um unico evento recebe um agente
+ * principal para fins de distribuicao; outros agentes podem consultar a prova
+ * sem criar uma segunda obrigacao. Os marcos sao indícios rastreáveis,
+ * nao certificacao de compliance.
+ */
+function viWidgetMapaResponsabilidades_(leitura) {
+  const historico=(leitura||{}).historicoRdEtapas||{};
+  const linhas=Array.isArray(historico.linhaDoTempo?.eventos)?
+    historico.linhaDoTempo.eventos.slice():[];
+  const eventos=linhas.sort((a,b)=>String(a.data||'').localeCompare(String(b.data||''))||
+    Number(a.uiIndex||0)-Number(b.uiIndex||0));
+  const janelas=Array.isArray(historico.janelas)?historico.janelas:[];
+  const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/\s+/g,' ').trim();
+  const etapa=e=>String(e.etapaNome||janelas.find(j=>j.passagemId===e.passagemId)?.etapaNome||'');
+  const comercial=e=>/apresenta|reuniao|demonstrac|proposta|negociac|fechamento|closer/.test(normal(etapa(e)));
+  const texto=e=>normal(e.texto||'');
+  const temData=e=>Number.isFinite(Date.parse(e?.data||''));
+  const candidatas=[];
+  // Handoff explicito deve ser afirmativo: "preciso fazer handoff" nao transfere.
+  eventos.filter(e=>e.acao==='ANOTACAO'&&temData(e)&&
+    /passagem de bastao|handoff (?:feito|realizado|concluido)|encaminhad[oa] ao closer|passei para o closer|closer assumiu|closer responsavel/.test(texto(e))&&
+    !/nao (?:houve|fiz|foi|consegui)|pendente|preciso (?:fazer|realizar)|ainda falta/.test(texto(e)))
+    .forEach(e=>candidatas.push({id:e.id||'',data:e.data,tipo:'HANDOFF_EXPLICITO',
+      fonte:'RD_UI_HISTORY',autor:String(e.autor||'').slice(0,100)}));
+  // Uma troca na etapa comercial nao basta: o novo responsavel precisa atuar
+  // depois da transferencia. Uma transferencia de roteamento no inicio do
+  // funil, por si so, nunca inicia o Closer.
+  eventos.filter(e=>e.acao==='RESPONSAVEL_ALTERADO'&&temData(e)&&comercial(e))
+    .forEach(e=>{
+      const nome=((String(e.texto||'').match(/respons[aá]vel para\s+(.+?)(?:\s+na etapa\b|$)/i)||[])[1]||'').trim();
+      if(!nome)return;
+      const atuou=eventos.some(outro=>outro.data>e.data&&
+        ['ANOTACAO','EMAIL_ENVIADO','EMAIL_RESPONDIDO','CHAMADA_REGISTRADA','WHATSAPP_ABERTO'].includes(outro.acao)&&
+        normal(outro.autor)===normal(nome));
+      if(atuou)candidatas.push({id:e.id||'',data:e.data,tipo:'TROCA_COM_ATUACAO',
+        fonte:'RD_UI_HISTORY',autor:nome.slice(0,100)});
+    });
+  const tecnicas=[...(Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[]),
+    ...(Array.isArray(leitura.reunioesBoard)?leitura.reunioesBoard:[])];
+  tecnicas.filter(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER'&&temData(x))
+    .forEach(x=>candidatas.push({id:String(x.id||''),data:String(x.data),
+      tipo:'PAPEL_CLOSER_BOARD',fonte:'BOARD',autor:''}));
+  candidatas.sort((a,b)=>a.data.localeCompare(b.data)||
+    (a.fonte==='RD_UI_HISTORY'?-1:1));
+  const marcoCloser=candidatas[0]||null;
+  const corte=marcoCloser?.data||'';
+  const sdr=eventos.filter(e=>!corte||String(e.data||'')<corte);
+  const primeiroContato=sdr.find(e=>['CHAMADA_REGISTRADA','EMAIL_ENVIADO','WHATSAPP_ABERTO'].includes(e.acao))||null;
+  const temInterlocutorDiferente=e=>{
+    if(e.acao!=='ANOTACAO')return false;
+    const participantes=[...String(e.texto||'').matchAll(/\[\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}(?::\d{2})?\]\s*([^:\n]{2,90}):/g)]
+      .map(m=>normal(m[1]));
+    const autor=normal(e.autor);
+    return participantes.some(nome=>nome&&autor&&nome!==autor&&!nome.includes('volum sales ops'));
+  };
+  const resposta=sdr.find(e=>e.acao==='EMAIL_RESPONDIDO'||temInterlocutorDiferente(e))||null;
+  const primeiroAgendamento=sdr.find(e=>{
+    const t=texto(e).replace(/\s+na etapa .+? do funil\b.*$/,'');
+    if(!['ANOTACAO','EMAIL_ENVIADO','EMAIL_RESPONDIDO','TAREFA_CRIADA','TAREFA_ATUALIZADA'].includes(e.acao))return false;
+    return /agendad|marcad|convite|lembrete|reagend|no.?show|compromisso|reuniao online/.test(t);
+  })||null;
+  const atribuicoes=eventos.map(e=>{
+    const t=texto(e).replace(/\s+na etapa .+? do funil\b.*$/,'');
+    let agente='CADENCIA',papel='SDR';
+    if(e.acao==='NEGOCIACAO_CRIADA')agente='LEAD';
+    else if(corte&&String(e.data||'')>=corte){agente='REUNIAO';papel='CLOSER';}
+    else if(['ANOTACAO','EMAIL_ENVIADO','EMAIL_RESPONDIDO','TAREFA_CRIADA',
+      'TAREFA_ATUALIZADA','TAREFA_CONCLUIDA'].includes(e.acao)&&
+      /agendad|marcad|convite|lembrete|reagend|no.?show|compromisso|reuniao online/.test(t))
+      agente='AGENDA';
+    else if(e.acao==='EMAIL_RESPONDIDO'||temInterlocutorDiferente(e)||
+      (e.acao==='ANOTACAO'&&/faturamento|lmv|qualific|necessidade|diagnostico|segmento|decisor|cliente respondeu/.test(t)))
+      agente='CONEXAO';
+    return {id:String(e.id||''),data:String(e.data||''),tipo:String(e.acao||''),
+      agentePrincipal:agente,papel,fonte:'RD_UI_HISTORY'};
+  });
+  const contagem={LEAD:0,CADENCIA:0,CONEXAO:0,AGENDA:0,REUNIAO:0};
+  const exemplos={LEAD:[],CADENCIA:[],CONEXAO:[],AGENDA:[],REUNIAO:[]};
+  atribuicoes.forEach(x=>{contagem[x.agentePrincipal]++;
+    if(exemplos[x.agentePrincipal].length<3)exemplos[x.agentePrincipal].push(x.id);});
+  const inicio=String(leitura.negociacao?.criadaEm||historico.cadastroAtual?.criadoEm||'');
+  return {versao:'OWNERSHIP_FUNIL_V1',fonte:'RD_UI_HISTORY + BOARD',
+    completo:historico.linhaDoTempo?.cobertura?.completo===true,
+    marcoCloser,closerIniciado:Boolean(marcoCloser),
+    marcos:{lead:inicio,primeiraTentativa:primeiroContato?.data||'',
+      primeiraRespostaIndicativa:resposta?.data||'',
+      inicioAgendaIndicativo:primeiroAgendamento?.data||'',closer:corte},
+    janelas:{
+      LEAD:{inicio,fim:primeiroContato?.data||''},
+      CADENCIA:{inicio:primeiroContato?.data||inicio,fim:corte},
+      CONEXAO:{inicio:resposta?.data||'',fim:primeiroAgendamento?.data||corte},
+      AGENDA:{inicio:primeiroAgendamento?.data||'',fim:corte},
+      REUNIAO:{inicio:corte,fim:''}},
+    contagem,exemplos,atribuicoes,
+    politica:'Etapa Apresentacao nao comprova ownership. No-show exige evento independente da tarefa. Cada evento possui um agente principal; evidencias podem ser compartilhadas sem duplicar exigencias.'};
+}
+
 function viWidgetDiagnosticoHistoricoRd_(leitura) {
   const h=leitura.historicoRdEtapas||{};
   const timeline=h.linhaDoTempo||{};
@@ -362,11 +461,16 @@ function viWidgetValidarInterpretacaoRd_(interpretacao,leitura,contextoEnviado) 
 function viWidgetPlanoContratoV2_(plano,tipo){
   // Ausência de registro não é prova de que a ação não ocorreu. "NÃO" só
   // aparece quando a não conformidade foi demonstrada pela fonte completa.
-  const exec={EVIDENCIADO:'SIM',INDICIO:'PARCIAL',ATENCAO:'PARCIAL',SEM_EVIDENCIA:'NAO_VERIFICAVEL',SEM_REGISTRO:'NAO_VERIFICAVEL',NAO_VERIFICAVEL:'NAO_VERIFICAVEL',NAO_APLICAVEL:'NAO_VERIFICAVEL'};
   plano.itens=(plano.itens||[]).map(function(x){
-    const statusExecucao=x.conformidade==='NAO_CONFORME'?'NAO':(exec[x.status]||'NAO_VERIFICAVEL');
+    const aplicavel=x.status!=='NAO_APLICAVEL'&&x.conformidade!=='NAO_APLICAVEL';
+    // Uma atividade documentada sem a regra totalmente atendida e PARCIAL.
+    const statusExecucao=!aplicavel?'NAO_VERIFICAVEL':
+      x.conformidade==='NAO_CONFORME'?'NAO':
+      x.conformidade==='CONFORME'?'SIM':
+      ['EVIDENCIADO','INDICIO','ATENCAO'].includes(x.status)?'PARCIAL':
+      'NAO_VERIFICAVEL';
     const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
-    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel:x.status!=='NAO_APLICAVEL',
+    return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel,
       status_execucao:statusExecucao,status_conformidade:x.conformidade||'PENDENTE',
       resposta_curta:(statusExecucao==='SIM'?'SIM':statusExecucao==='NAO'?'NÃO':statusExecucao==='PARCIAL'?'PARCIAL':'NÃO VERIFICÁVEL')+' — '+String(x.detalhe||'').split(/[.]/)[0]+'.',
       evidencia_resumida:String(x.evidencia||'').slice(0,260),referencias:refs,
@@ -421,13 +525,11 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
   const deal=leitura.negociacao||{};
   const normal=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
-  // "Apresentação" não encerra automaticamente a responsabilidade SDR.
-  // A fronteira é uma passagem comprovada: troca de responsável ou handoff.
-  const handoffEvento=eventos.find(e=>e.acao==='RESPONSAVEL_ALTERADO'&&
-    /respons[aá]vel para\s+\S+/.test(String(e.texto||'')))||
-    eventos.find(e=>e.acao==='ANOTACAO'&&
-      /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel)/.test(normal(e.texto)));
-  const handoffEm=handoffEvento?String(handoffEvento.data||''):'';
+  // A mesma fronteira e utilizada pelos cinco agentes e pelos dois planos.
+  // Mudanca de etapa ou roteamento inicial nao bastam para ativar o Closer.
+  const mapa=leitura.mapaResponsabilidades||viWidgetMapaResponsabilidades_(leitura);
+  const handoffEm=mapa.marcoCloser?.data||'';
+  const handoffEvento=eventos.find(e=>e.id===mapa.marcoCloser?.id)||null;
   const pre=handoffEm?janelas.filter(j=>!j.inicio||String(j.inicio)<handoffEm):janelas;
   const ids=new Set(pre.map(j=>String(j.passagemId||'')));
   const sdr=eventos.filter(e=>!handoffEm||String(e.data||'')<handoffEm);
@@ -503,7 +605,8 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     return Number.isFinite(ms)&&pre.some(j=>{
       const inicio=Date.parse(j.inicio||'');
       const fim=j.fim?Date.parse(j.fim):Infinity;
-      return Number.isFinite(inicio)&&ms>=inicio&&ms<fim;
+      return Number.isFinite(inicio)&&ms>=inicio&&ms<fim&&
+        (!handoffEm||ms<Date.parse(handoffEm));
     });
   };
   const tarefasSdr=tarefas.filter(t=>nasJanelas(t.criadaEm||''));
@@ -674,9 +777,9 @@ function viWidgetPlanoSdrHistoricoRd_(leitura,diagnostico) {
     escopo:{passagensSdr:pre.map(j=>({id:j.passagemId,nome:j.etapaNome,
       entrada:j.inicio,saida:j.fim})),totalEventosSdr:sdr.length,
       outrosEventos:eventos.length-sdr.length,diasComEventos:uteis,
-      eventoInicioCloser:handoffEm,
+      eventoInicioCloser:handoffEm,provaInicioCloser:mapa.marcoCloser||null,
       regraCadenciaAplicavel:'VERSAO_CLIENTE_NAO_CONFIRMADA'},
-    aviso:'Estes critérios analisam os registros anteriores à etapa de apresentação e as evidências de agenda. Sem versão vigente da cadência não atribuem compliance integral.',
+    aviso:'Estes critérios analisam a jornada SDR ate a passagem comprovada de responsabilidade, inclusive Agenda. Sem regua homologada, nao atribuem compliance integral.',
     restricoes:['As atribuições SDR/Closer dependem do cadastro de responsáveis da operação.',
       'Conformidade de pitch precisa de gravação/transcrição.',
       'Não equiparar abertura de WhatsApp a mensagem enviada.']},'SDR');
@@ -697,33 +800,18 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
     .toLowerCase().replace(/\s+/g,' ').trim();
   const primeira=janelas.findIndex(x=>
     /apresenta|reuniao|demonstrac|proposta|fechamento|negociac/.test(normal(x.etapaNome)));
-  // Etapa não é ownership. O Closer só existe no plano quando o Board/RD
-  // traz uma evidência de entrada: handoff explícito, compromisso/ligação
-  // atribuído a ele ou reunião vinculada ao seu papel.
-  const boardCloser=(Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[])
-    .find(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER')||
-    (Array.isArray(leitura.reunioesBoard)?leitura.reunioesBoard:[])
-      .find(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER')||null;
-  const handoffExplicito=todos.find(x=>x.acao==='ANOTACAO'&&
-    /(?:passagem de bastao|handoff|encaminhad[oa] ao closer|passei para o closer|closer responsavel|resumo para o closer)/.test(normal(x.texto)))||null;
-  const trocaResponsavel=todos.find(x=>x.acao==='RESPONSAVEL_ALTERADO'&&
-    /respons[aá]vel para\s+\S+/.test(String(x.texto||'')))||null;
-  const nomeAssumiu=trocaResponsavel&&((String(trocaResponsavel.texto||'').match(/respons[aá]vel para\s+(.+?)(?:\s+na etapa|$)/i)||[])[1]||'').trim();
-  const atuacaoDireta=trocaResponsavel&&todos.find(x=>String(x.data||'')>=String(trocaResponsavel.data||'')&&
-    ['EMAIL_ENVIADO','EMAIL_RESPONDIDO','CHAMADA_REGISTRADA','WHATSAPP_ABERTO'].includes(x.acao)&&
-    (!nomeAssumiu||normal(x.autor).includes(normal(nomeAssumiu))));
-  // Mudança datada de responsável + atuação comercial direta é entrada na
-  // negociação; etapa sozinha continua insuficiente.
-  const closerIniciado=Boolean(boardCloser||handoffExplicito||(trocaResponsavel&&atuacaoDireta));
-  const evidenciaEntrada=boardCloser||handoffExplicito||trocaResponsavel||null;
+  const mapa=leitura.mapaResponsabilidades||viWidgetMapaResponsabilidades_(leitura);
+  const closerIniciado=mapa.closerIniciado===true;
+  const marcoCloser=mapa.marcoCloser||null;
+  const inicioCloser=marcoCloser?.data||'';
+  const evidenciaEntrada=marcoCloser;
+  const boardCloser=marcoCloser?.fonte==='BOARD'?marcoCloser:null;
   if(!closerIniciado){
     return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:0,itens:[],ativado:false,aplicavel:false,
       closer_iniciado:{valor:false,evidencia:null,motivo:'Nenhuma passagem de bastão, compromisso ou interação atribuída ao Closer foi comprovada.'},
       aviso:'Plano Closer oculto: etapa Apresentação, no-show ou tarefa sem papel comprovado não iniciam responsabilidade do Closer.'},'CLOSER');
   }
-  const closerIds=new Set(janelas.slice(Math.max(0,primeira)).map(x=>x.passagemId));
-  const eventos=trocaResponsavel?todos.filter(x=>String(x.data||'')>=String(trocaResponsavel.data||'')):
-    primeira<0?[]:todos.filter(x=>closerIds.has(x.passagemId));
+  const eventos=todos.filter(x=>inicioCloser&&String(x.data||'')>=inicioCloser);
   const buscar=(type,re)=>eventos.filter(e=>e.acao===type&&(!re||re.test(normal(e.texto)))).sort((a,b)=>
     String(b.data).localeCompare(String(a.data)))[0]||null;
   const notas=eventos.filter(e=>e.acao==='ANOTACAO');
@@ -745,12 +833,8 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
     /proposta|orcamento|apresentacao|comercial/i.test(a.nome||''));
   const value=Number((leitura.negociacao||{}).valorInformado);
   const valor=Number.isFinite(value)&&value>0;
-  const tarefas=(leitura.tarefas||[]).filter(t=>{
-    if(!t.criadaEm)return false;
-    const data=Date.parse(t.criadaEm);
-    return janelas.slice(Math.max(0,primeira)).some(j=>
-      data>=Date.parse(j.inicio)&&(!j.fim||data<Date.parse(j.fim)));
-  });
+  const tarefas=(leitura.tarefas||[]).filter(t=>
+    t&&t.criadaEm&&inicioCloser&&Date.parse(t.criadaEm)>=Date.parse(inicioCloser));
   const follow=tarefas.filter(t=>/(?:follow|retorno|proposta|recovery|acompanhar|pr[oó]xim)/i.test(
     String(t.assunto||'')+' '+String(t.anotacao||'')));
   const acordo=notas.find(e=>
@@ -763,6 +847,7 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
   const urlGravacao=(leitura.atividades||[]).find(a=>a.temLinkGravacao===true&&
     (primeira<0||janelas.slice(Math.max(0,primeira)).some(j=>
       a.data&&Date.parse(a.data)>=Date.parse(j.inicio)&&
+      Date.parse(a.data)>=Date.parse(inicioCloser)&&
       (!j.fim||Date.parse(a.data)<Date.parse(j.fim)))))||null;
   const notaContexto=notas.find(e=>/diagnostico|faturamento|necessidade|dor|objetivo/.test(normal(e.texto)))||null;
   const notaCompleta=notas.find(e=>/diagnostico|necessidade|dor/.test(normal(e.texto))&&
@@ -838,7 +923,7 @@ function viWidgetPlanoCloserHistoricoRd_(leitura,diagnostico) {
       'Comparar envio, confirmação, agenda, lembretes e desfechos com as datas e canais da cadência vigente.','RD · Histórico/tarefas')
   ];
   return viWidgetPlanoContratoV2_({titulo:'Plano de Otimização Closer',fonte:'RD_UI_HISTORY',total:itens.length,ativado:true,
-    closer_iniciado:{valor:true,evidencia:evidenciaEntrada?{id:evidenciaEntrada.id||'',data:evidenciaEntrada.data||'',fonte:boardCloser?'BOARD':'RD_UI_HISTORY'}:null},
+    closer_iniciado:{valor:true,evidencia:evidenciaEntrada?{id:evidenciaEntrada.id||'',data:evidenciaEntrada.data||'',fonte:evidenciaEntrada.fonte||'RD_UI_HISTORY',tipo:evidenciaEntrada.tipo||''}:null},
     itens,aplicavel:devido,escopo:{passagensCloser:janelas.slice(Math.max(0,primeira)).length,
-    eventosCloser:eventos.length},aviso:'Verde só quando há comprovação operacional suficiente daquele item. A aderência integral à régua e ao pitch depende de eventos e fontes próprias; falta de acesso não vira vermelho.'},'CLOSER');
+    eventosCloser:eventos.length,inicioCloser,marcoCloser},aviso:'Verde só quando há comprovação operacional suficiente daquele item. A aderência integral à régua e ao pitch depende de eventos e fontes próprias; falta de acesso não vira vermelho.'},'CLOSER');
 }
