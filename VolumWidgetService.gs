@@ -305,6 +305,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
     }
   }
   viWidgetNomesEtapasPorEvidencia_(leitura);
+  leitura.mapaResponsabilidades=viWidgetMapaResponsabilidades_(leitura);
   leitura.evidenciasAbasRd=typeof viWidgetEvidenciasAbasRd_==='function'?
     viWidgetEvidenciasAbasRd_(leitura):{};
   if (leitura.modo !== 'SOMENTE_LEITURA') {
@@ -323,6 +324,7 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
       limite:a.limite||''};
   });
   parecer.prontidaoAgentes=viWidgetProntidaoAgentes_(leitura,parecer.agentesDetalhados);
+  parecer.responsabilidadeFunil=leitura.mapaResponsabilidades;
   parecer.auditoriaOperacional=viWidgetAuditoriaOperacional_(leitura);
 
   // Uma captura visual completa substitui os palpites de funil e os totais do

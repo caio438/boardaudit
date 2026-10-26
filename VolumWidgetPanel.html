@@ -185,7 +185,7 @@ const CACHE_RESPONSE_VERSION='0.5.1-RD';
 // Ownership now uses the dated handoff and the extension collects the source
 // tabs. Old snapshots cannot be reused because they may have cut SDR at the
 // first "Apresentação" stage.
-const CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026';
+const CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V5_20261026';
 const CACHE_TTL_MS=60*60*1000;
 const cacheStorageKey='volum_cache_051_'+cacheScope+'_'+dealId;
 let cacheVisualizada=false,cacheSalvoEm=0,cacheErro='';
@@ -708,6 +708,8 @@ function sdr(d){
       motivo_pendencia:item.motivo_pendencia
     });
     let html=section('Plano de Otimização SDR','7 pilares · Histórico RD');
+    const resp=d.responsabilidadeFunil||{};
+    if(resp.marcoCloser)html+='<p class="small">Fronteira SDR → Closer: '+esc(humanDate(resp.marcoCloser.data))+' · '+esc(resp.marcoCloser.tipo||'registro de passagem')+'.</p>';
     html+='<p class="small">Registros anteriores ao Closer: '+Number((escopo.passagensSdr||[]).length)+
       ' passagem(ns) · '+Number(escopo.totalEventosSdr||0)+' evento(s). Clique em cada critério para ver a prova.</p>';
     html+='<p class="small">Régua de cadência: '+esc(
@@ -738,6 +740,7 @@ function closer(d){
   const p=d.planoOtimizacaoCloser||{},items=Array.isArray(p.itens)?p.itens:[];
   if(rd&&rd.ativo&&items.length){
     let html=section('Plano de Otimização Closer','7 pilares · evidências do RD');
+    if(d.responsabilidadeFunil?.marcoCloser)html+='<p class="small">Responsabilidade Closer iniciada por '+esc(d.responsabilidadeFunil.marcoCloser.tipo||'evidência de passagem')+' · '+esc(humanDate(d.responsabilidadeFunil.marcoCloser.data))+'.</p>';
     html+='<p class="muted">Um item só fica verde com a prova exigida. A etapa de Apresentação, sozinha, não comprova que a reunião aconteceu nem torna proposta e follow-up vencidos.</p>';
     html+='<div class="criteria-legend">✓ Verde: comprovado · ! Vermelho: desvio confirmado · ? Amarelo: parcialmente comprovado ou pendente · — Não aplicável.</div>';
     html+=(typeof planoV2Cards==='function'?planoV2Cards(p):criterionSection('7 critérios do Plano Closer',items));
