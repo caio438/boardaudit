@@ -245,7 +245,7 @@ function viRdConciliarHistoricoUi_(historico, ui, dealId) {
   if(String(recebido.dealId||'').toLowerCase()!==String(dealId||'').toLowerCase())
     return {historico:base,aceito:false,motivo:'DEAL_ID_UI_NAO_CONFERE'};
   const bruto=Array.isArray(recebido.events)?recebido.events:[];
-  if(bruto.length>250)return {historico:base,aceito:false,motivo:'LIMITE_EVENTOS_UI'};
+  if(bruto.length>600)return {historico:base,aceito:false,motivo:'LIMITE_EVENTOS_UI'};
   const vistos={},eventos=[],invalidos=[];
   bruto.forEach(function(e,i){
     if(!e||typeof e!=='object'){invalidos.push('CARD_INVALIDO_'+i);return;}
