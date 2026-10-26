@@ -12,15 +12,40 @@
     const button = document.createElement('button');
     button.id = 'volum-intelligence-trigger';
     button.type = 'button';
-    button.textContent = 'VOLUM · Auditar';
+    // Marca reduzida da VOLUM: o CTA precisa ocupar pouco espaço no RD sem
+    // perder identificação visual. O texto permanece para leitores de tela.
+    button.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 18" focusable="false"><path d="M2 2 12 16 22 2"/></svg><span>Auditar</span>';
     button.setAttribute('aria-label', 'Abrir auditoria VOLUM');
     button.style.cssText = [
       'position:fixed','right:18px','bottom:22px','z-index:2147483647',
       'border:0','border-radius:999px','padding:12px 16px',
-      'background:#161C3D','color:#fff','font:600 13px Arial,sans-serif',
-      'box-shadow:0 4px 16px rgba(0,0,0,.24)','cursor:pointer'
+      'display:flex','align-items:center','gap:7px','background:#161C3D','color:#fff',
+      'font:600 13px Arial,sans-serif','box-shadow:0 4px 16px rgba(0,0,0,.24)','cursor:pointer'
     ].join(';');
-    button.addEventListener('click', () => chrome.runtime.sendMessage({ type: 'VOLUM_OPEN_PANEL' }));
+    const showFailure = message => {
+      button.title = message;
+      button.style.background = '#8f3154';
+      button.querySelector('span').textContent = 'Configurar';
+      setTimeout(() => {
+        button.style.background = '#161C3D';
+        button.querySelector('span').textContent = 'Auditar';
+      }, 3600);
+    };
+    button.addEventListener('click', () => {
+      button.disabled=true;
+      button.style.opacity='.72';
+      chrome.runtime.sendMessage({ type: 'VOLUM_OPEN_PANEL' }, response => {
+        button.disabled=false;
+        button.style.opacity='1';
+        if(chrome.runtime.lastError) return showFailure('A extensão não respondeu. Atualize a aba do RD e tente novamente.');
+        if(!response || response.opened!==true){
+          const reason=String(response?.reason||'');
+          return showFailure(reason==='ENDPOINT_NAO_CONFIGURADO'
+            ? 'Configure a URL privada da VOLUM nas opções da extensão.'
+            : 'Não foi possível abrir esta negociação. Atualize a aba do RD e tente novamente.');
+        }
+      });
+    });
     document.body.appendChild(button);
   };
   const closeInline = () => {

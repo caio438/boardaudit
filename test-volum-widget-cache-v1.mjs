@@ -170,8 +170,8 @@ assert.equal(ia.fatos[0].referencia,'UI_0');
 assert.equal(ia.fatos[0].agente,'CADENCIA');
 assert.equal(ia.fatos[0].confianca,'INDICIO_INTERPRETATIVO_COM_REFERENCIA_RD');
 // Garantia do ZIP distribuivel: arquivos sao exatamente os fontes da
-// extensao 0.3.2, sem ZIP invalido, caminho escapando ou versao anterior.
-const zip=fs.readFileSync(new URL('./dist/volum-intelligence-chrome-0.3.2.zip',import.meta.url));
+// extensao 0.3.10, sem ZIP invalido, caminho escapando ou versao anterior.
+const zip=fs.readFileSync(new URL('./dist/volum-intelligence-chrome-0.3.10.zip',import.meta.url));
 const expected=['content.js','manifest.json','options.html','options.js',
   'service-worker.js','sidebar.css','sidebar.html','sidebar.js'];
 const zipFiles=new Map();
@@ -193,7 +193,7 @@ while(pos+30<=zip.length&&zip.readUInt32LE(pos)===0x04034b50){
   pos=end;
 }
 assert.equal(zipFiles.size,8,'ZIP da extensao completo');
-assert.equal(JSON.parse(zipFiles.get('manifest.json')).version,'0.3.2');
+assert.equal(JSON.parse(zipFiles.get('manifest.json')).version,'0.3.10');
 assert.equal(zip.readUInt32LE(pos),0x02014b50,'central directory ZIP presente');
 assert.ok(zip.includes(Buffer.from([0x50,0x4b,0x05,0x06])),'registro final do ZIP presente');
 

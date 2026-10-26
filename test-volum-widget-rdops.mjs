@@ -11,6 +11,14 @@ const chrome=fs.readFileSync(new URL('./extensions/volum-intelligence/content.js
 const sidebar=fs.readFileSync(new URL('./extensions/volum-intelligence/sidebar.js',import.meta.url),'utf8');
 const webapp=fs.readFileSync(new URL('./VolumWidgetWebApp.gs',import.meta.url),'utf8');
 [core,stages,ops,service,chrome,sidebar].forEach(src=>new Function(src));
+assert.match(service,/eventos\.length>600/,
+ 'Historicos longos devem ser aceitos; o limite anterior de 250 bloqueava negociações reais.');
+assert.match(service,/detail:String\(e\.detail\|\|''\)\.slice\(0,1800\)/,
+ 'O transporte do Histórico precisa ser compactado antes de chegar ao Apps Script.');
+assert.match(chrome,/ENDPOINT_NAO_CONFIGURADO/,
+ 'O botão precisa explicar quando a URL privada não estiver configurada.');
+assert.match(chrome,/viewBox="0 0 24 18"/,
+ 'O CTA deve usar a marca reduzida da VOLUM.');
 assert.match(widget,/function rdDiagnosticoView\(/);
 new Function((widget.match(/<script>([\s\S]*?)<\/script>/)||[])[1]);
 const ctx=vm.createContext({Object,Array,String,Number,Set,Date,Boolean,Math,RegExp,Error,Intl});
