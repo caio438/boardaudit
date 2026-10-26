@@ -367,7 +367,10 @@ function viWidgetPlanoContratoV2_(plano,tipo){
     const aplicavel=x.status!=='NAO_APLICAVEL'&&x.conformidade!=='NAO_APLICAVEL';
     const semProva=x.status==='SEM_EVIDENCIA'||x.status==='SEM_REGISTRO';
     const statusExecucao=!aplicavel?'NAO_VERIFICAVEL':
-      semProva?(x.conformidade==='NAO_CONFORME'?'NAO':'NAO_VERIFICAVEL'):
+      x.conformidade==='NAO_CONFORME'?'NAO':
+      x.conformidade==='CONFORME'?'SIM':
+      semProva?'NAO_VERIFICAVEL':
+      x.status==='EVIDENCIADO'?'PARCIAL':
       (exec[x.status]||'NAO_VERIFICAVEL');
     const refs=Array.from(new Set((String(x.evidencia||'').match(/(?:UI_|ID )[^\s·,;]+/g)||[])));
     return Object.assign(x,{plano:tipo,criterio:x.id,aplicavel,
