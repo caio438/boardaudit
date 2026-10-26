@@ -181,7 +181,15 @@ function prepararEnvioAuditoriaRd(id){
 // passa por revisão explícita e por todos os gates de audRdCtx_: aprovação,
 // validação, hash da fonte, Google Doc, vínculo da negociação e integração RD.
 function enviarAuditoriaParaRd(d){d=d||{};var registro=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',String(d.idAuditoria||'').trim());if(!registro)throw new Error('Auditoria não encontrada.');var c=audRdCtx_(d.idAuditoria),textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim(),texto=textoEditado||String(audRdTexto_(c)).trim();if(!texto)throw new Error('A anotação do RD ficou vazia.');texto=audRdSanitizarTextoPublico_(texto);if(texto.indexOf(String(c.a.LINK_DOCUMENTO))<0)texto+='\n\nAuditoria completa: '+String(c.a.LINK_DOCUMENTO);if(textoEditado){audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA,{RD_TEXTO_APROVADO:texto,RD_TEXTO_APROVADO_EM:new Date()});c.a.RD_TEXTO_APROVADO=texto;}var ja=String(c.a.RD_STATUS||'').toUpperCase()==='PUBLICADA',ativId=String(c.a.RD_ACTIVITY_ID||'');if(!ja){var notas=audRdNotas_(c.token,c.dealId),legado='[BOARDAUDIT:'+c.a.ID_AUDITORIA+']';var dup=notas.find(function(x){var t=audRdTextoNota_(x);return t.indexOf(legado)>=0||audRdCmp_(t)===audRdCmp_(texto);});if(dup){ja=true;ativId=String(dup.id||dup._id||(dup.activity||{}).id||'');}}
-if(!ja){var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{method:'post',contentType:'application/json',payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})}),at=rr.activity||rr.data||rr||{};ativId=String(at.id||at._id||'');audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'');}
+if(!ja){
+  var rr=requisicaoJson_(APP.rdBaseUrl+'/activities?token='+encodeURIComponent(c.token),{
+    method:'post',contentType:'application/json',
+    payload:audRdJsonSeguro_({activity:{user_id:c.volum.id,deal_id:c.dealId,text:texto}})
+  });
+  var at=rr.activity||rr.data||rr||{};
+  ativId=String(at.id||at._id||'').trim();
+  if(!ativId)throw new Error('O RD não confirmou o ID da anotação. O resultado não foi marcado como publicado.');
+}
 var ts=audRdTarefas_(c);audRdStatus_(c.a.ID_AUDITORIA,'PUBLICADA',ativId,'',ts);return{sucesso:true,publicada:true,duplicada:ja,mensagem:(ja?'A anotação já estava no histórico. ':'Resultado registrado no histórico. ')+'As tarefas do VOLUM e do SDR foram conferidas.',auditoria:audV3AuditoriaFront_(audV3Localizar_('AUDITORIAS','ID_AUDITORIA',c.a.ID_AUDITORIA)),auditorias:audV3ListarAuditoriasFront_()};}
 function aprovarEEnviarAuditoriaRd(d){
   d=d||{};
@@ -194,18 +202,7 @@ function aprovarEEnviarAuditoriaRd(d){
   var a=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id);
   if(!a)throw new Error('Auditoria não encontrada.');
   if(String(a.STATUS||'').toUpperCase()!=='APROVADA')aprovarAuditoriaV3(id);
-  try{
-    return enviarAuditoriaParaRd({idAuditoria:id,texto:texto});
-  }catch(erro){
-    var atual=audV3Localizar_('AUDITORIAS','ID_AUDITORIA',id);
-    return{
-      sucesso:true,
-      publicada:false,
-      mensagem:'Auditoria aprovada e texto do RD salvo. Envio pendente: '+String(erro&&erro.message?erro.message:erro),
-      auditoria:audV3AuditoriaFront_(atual),
-      auditorias:audV3ListarAuditoriasFront_()
-    };
-  }
+  return enviarAuditoriaParaRd({idAuditoria:id,texto:texto});
 }
 function audRdCtx_(id) {
   audRdEstr_();
