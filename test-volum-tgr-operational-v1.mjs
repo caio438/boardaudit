@@ -209,9 +209,9 @@ const evaluated=contract([
   {id:'good',status:'EVIDENCIADO',conformidade:'CONFORME',detalhe:'Conclusive evidence'},
   {id:'notDue',status:'NAO_APLICAVEL',conformidade:'NAO_APLICAVEL',detalhe:'Meeting not held'}
 ]);
-assert.deepEqual(evaluated.map(x=>x.status_execucao),
+assert.deepEqual(Array.from(evaluated,x=>x.status_execucao),
   ['NAO_VERIFICAVEL','NAO','PARCIAL','SIM','NAO_VERIFICAVEL']);
 assert.equal(evaluated[4].aplicavel,false);
-assert.match(widget,/const garantir=item=>Object.assign\(\{\},item,/,
+assert.ok(widget.includes('const garantir=item=>Object.assign({},item,'),
   'SDR V2 normalization must preserve item IDs and analysis fields');
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');
