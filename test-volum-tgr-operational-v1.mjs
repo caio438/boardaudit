@@ -200,5 +200,16 @@ assert.match(widget,/\.criteria-tile\.tone-yellow/);
 assert.match(widget,/box-shadow:0 7px 20px/);
 assert.doesNotMatch(vm.runInContext("leadAgent({agentesDetalhados:[{agente:'LEAD',indicadores:{criadaEm:'2026-10-11T15:13:00Z'},criterios:[]}],prontidaoAgentes:{}})",v),
  /undefined min/,'Sem dado não se mostra undefined min');
-assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V3_20261026'/);
+assert.match(widget,/CACHE_ANALYSIS_REVISION='RD_FULL_EVIDENCE_OWNERSHIP_V4_20261026'/);
+const contract=ctx.viWidgetPlanoContratoV2_({itens:[
+  {id:'valid',status:'EVIDENCIADO',conformidade:'CONFORME',detalhe:'Aderência provada'},
+  {id:'trace',status:'EVIDENCIADO',conformidade:'PENDENTE',detalhe:'Registro sem confirmação'},
+  {id:'missing',status:'SEM_EVIDENCIA',conformidade:'PENDENTE',detalhe:'Fonte não cobre a ação'},
+  {id:'noncompliant',status:'ATENCAO',conformidade:'NAO_CONFORME',detalhe:'Regra violada'},
+  {id:'notdue',status:'NAO_APLICAVEL',conformidade:'NAO_APLICAVEL',detalhe:'Reunião não realizada'}
+]},'SDR').itens;
+assert.deepEqual(Array.from(contract,x=>x.status_execucao),
+  ['SIM','PARCIAL','NAO_VERIFICAVEL','NAO','NAO_VERIFICAVEL'],
+  'SIM e NAO exigem decisão de conformidade, indício não prova execução');
+assert.equal(contract[4].aplicavel,false,'Não aplicar critério não exigível');
 console.log('TGR: no-show/agenda vs convite, escopo SDR/Closer, VoIP real, cadencia, cores e cache atualizados.');
