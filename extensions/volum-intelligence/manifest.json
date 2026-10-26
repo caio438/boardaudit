@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VOLUM Intelligence",
-  "version": "0.3.2",
+  "version": "0.3.10",
   "description": "Inteligência comercial Sales Ops, planos SDR e Closer e evidências do RD Station CRM (somente leitura).",
   "permissions": [
     "storage",

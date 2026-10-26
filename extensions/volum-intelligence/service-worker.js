@@ -11,8 +11,8 @@ async function openInlineWidget(tabId, url) {
   const saved = await chrome.storage.local.get('volumEndpoint');
   const endpoint = String(saved.volumEndpoint || '');
   if (!/^https:\/\/script\.google\.com\//i.test(endpoint)) return { opened: false, reason: 'ENDPOINT_NAO_CONFIGURADO' };
-  await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_INLINE_WIDGET', endpoint: endpoint });
-  return { opened: true };
+  const result = await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_INLINE_WIDGET', endpoint: endpoint });
+  return result && result.opened ? { opened: true } : { opened: false, reason: 'CONTEUDO_RD_NAO_DISPONIVEL' };
 }
 
 chrome.action.onClicked.addListener(tab => {
@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
   if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
-    openInlineWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false }));
+    openInlineWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false, reason: 'FALHA_ABRIR_WIDGET' }));
     return true;
   }
 });

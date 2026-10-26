@@ -437,9 +437,19 @@ function VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId, identidade, opcoes) {
 function VOLUM_WIDGET_AUDITAR_SESSAO_COM_HISTORICO(dealId, historicoUiRd, usarGemini) {
   const seguro=historicoUiRd&&typeof historicoUiRd==='object'?historicoUiRd:{};
   const eventos=Array.isArray(seguro.events)?seguro.events:[];
-  if(eventos.length>250)throw new Error('Historico visual acima do limite seguro de leitura.');
+  // Negociações longas são normais. O limite anterior (250) interrompia a
+  // auditoria justamente onde há mais contexto. Reduzimos cada cartão ao
+  // necessário para a evidência e aceitamos uma linha do tempo completa.
+  if(eventos.length>600)throw new Error('Historico visual excede 600 eventos; atualize a leitura para processar a negociacao em lote.');
+  const compacto=Object.assign({},seguro,{events:eventos.map(function(e,i){
+    e=e&&typeof e==='object'?e:{};
+    return {source:String(e.source||'RD_UI_HISTORY'),uiIndex:Number.isFinite(Number(e.uiIndex))?Number(e.uiIndex):i,
+      dateText:String(e.dateText||'').slice(0,40),dataLocal:String(e.dataLocal||'').slice(0,40),
+      author:String(e.author||'').slice(0,160),stage:String(e.stage||'').slice(0,160),
+      kind:String(e.kind||'OUTRO_VISUAL_RD').slice(0,80),detail:String(e.detail||'').slice(0,1800)};
+  })});
   return VOLUM_WIDGET_AUDITAR_NEGOCIACAO(dealId,viWidgetEmailSessao_(),{
-    usarGemini:usarGemini===true,historicoUiRd:seguro
+    usarGemini:usarGemini===true,historicoUiRd:compacto
   });
 }
 
