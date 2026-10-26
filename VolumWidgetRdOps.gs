@@ -44,7 +44,11 @@ function viWidgetMapaResponsabilidades_(leitura) {
     });
   const tecnicas=[...(Array.isArray(leitura.ligacoesBoard)?leitura.ligacoesBoard:[]),
     ...(Array.isArray(leitura.reunioesBoard)?leitura.reunioesBoard:[])];
-  tecnicas.filter(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER'&&temData(x))
+  const inicioEtapaComercial=janelas.filter(j=>j?.inicio&&
+    /apresenta|reuniao|demonstrac|proposta|negociac|fechamento|closer/.test(normal(j.etapaNome)))
+    .map(j=>j.inicio).sort()[0]||'';
+  tecnicas.filter(x=>String(x.funcaoDeclarada||'').toUpperCase()==='CLOSER'&&
+    temData(x)&&(!inicioEtapaComercial||String(x.data)>=inicioEtapaComercial))
     .forEach(x=>candidatas.push({id:String(x.id||''),data:String(x.data),
       tipo:'PAPEL_CLOSER_BOARD',fonte:'BOARD',autor:''}));
   candidatas.sort((a,b)=>a.data.localeCompare(b.data)||
