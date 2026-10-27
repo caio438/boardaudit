@@ -430,3 +430,61 @@ function VOLUM_V2_CONSOLIDAR_PLANO_(snapshot, agentResults) {
     rule: 'Canvas/etapa define ocorrência; CRM/evidência define execução e registro; ausência não é falha automática.'
   };
 }
+
+function VOLUM_V2_AGREGAR_FUNIL_(snapshots) {
+  var rows = volumV2Array_(snapshots);
+  var byPhase = {};
+  var byOwner = {};
+  var macro = {
+    schema: 'VOLUM_SALES_OPS_V2_FUNNEL',
+    totalLeads: rows.length,
+    leadsWithCompleteCoverage: 0,
+    leadsWithoutNextStep: 0,
+    sdr: { conformes: 0, parciais: 0, desvios: 0, naoVerificaveis: 0 },
+    closer: { conformes: 0, parciais: 0, desvios: 0, naoAplicaveis: 0, naoVerificaveis: 0 },
+    byPhase: byPhase,
+    byOwner: byOwner,
+    priorities: []
+  };
+  rows.forEach(function (row) {
+    var plan = row.plan || row.plano || {};
+    var phase = volumV2Texto_(row.currentPhase || row.phase ||
+      plan.currentState && plan.currentState.phase || 'NAO_MAPEADA').toUpperCase();
+    byPhase[phase] = (byPhase[phase] || 0) + 1;
+    if (row.coverage && row.coverage.complete === true) macro.leadsWithCompleteCoverage++;
+    var sdrStatus = volumV2Texto_(row.sdrStatus || plan.process && plan.process.sdrStatus).toUpperCase();
+    var closerStatus = volumV2Texto_(row.closerStatus || plan.process && plan.process.closerStatus).toUpperCase();
+    var sdrKey = sdrStatus === VOLUM_V2_STATUS.CUMPRIDO ? 'conformes' :
+      sdrStatus === VOLUM_V2_STATUS.NAO_CUMPRIDO ? 'desvios' :
+      sdrStatus === VOLUM_V2_STATUS.NAO_VERIFICAVEL ? 'naoVerificaveis' : 'parciais';
+    macro.sdr[sdrKey]++;
+    if (closerStatus === VOLUM_V2_STATUS.NAO_APLICAVEL) macro.closer.naoAplicaveis++;
+    else {
+      var closerKey = closerStatus === VOLUM_V2_STATUS.CUMPRIDO ? 'conformes' :
+        closerStatus === VOLUM_V2_STATUS.NAO_CUMPRIDO ? 'desvios' :
+        closerStatus === VOLUM_V2_STATUS.NAO_VERIFICAVEL ? 'naoVerificaveis' : 'parciais';
+      macro.closer[closerKey]++;
+    }
+    var owner = row.owner || plan.currentState && plan.currentState.owner || {};
+    var ownerId = volumV2Id_(owner.id || owner.userId || owner.name || 'SEM_RESPONSAVEL');
+    byOwner[ownerId] = byOwner[ownerId] || { id: ownerId, name: owner.name || '', role: owner.role || '', leads: 0, unresolved: 0 };
+    byOwner[ownerId].leads++;
+    var unresolved = Number(row.unresolvedCriteria || plan.process && plan.process.unresolvedCriteria || 0);
+    byOwner[ownerId].unresolved += unresolved;
+    if (row.withoutNextStep === true || plan.withoutNextStep === true) macro.leadsWithoutNextStep++;
+    if (unresolved > 0 || sdrStatus === VOLUM_V2_STATUS.NAO_CUMPRIDO || closerStatus === VOLUM_V2_STATUS.NAO_CUMPRIDO) {
+      macro.priorities.push({
+        dealId: row.dealId || plan.dealId || '',
+        phase: phase,
+        owner: owner.name || '',
+        unresolved: unresolved,
+        sdrStatus: sdrStatus,
+        closerStatus: closerStatus
+      });
+    }
+  });
+  macro.priorities.sort(function (a, b) {
+    return Number(b.unresolved) - Number(a.unresolved) || String(a.dealId).localeCompare(String(b.dealId));
+  });
+  return macro;
+}
