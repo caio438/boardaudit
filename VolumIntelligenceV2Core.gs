@@ -229,3 +229,89 @@ function VOLUM_V2_CONSTRUIR_LINHA_TEMPO_(raw, configInput) {
     }
   };
 }
+
+/**
+ * Adapta a leitura já existente do lead ao contrato canônico V2.
+ * Não faz novas consultas, não altera o CRM e não acessa fontes privadas.
+ */
+function VOLUM_V2_SNAPSHOT_FROM_LEAD_(leitura, configInput) {
+  var data = leitura || {};
+  var deal = data.negociacao || {};
+  var config = VOLUM_V2_NORMALIZAR_CONFIG_(configInput || {
+    tenantId: data.idCliente || '',
+    crm: 'RD_STATION',
+    pipelines: [],
+    users: []
+  });
+  var stageMap = VOLUM_V2_MAPEAR_ETAPA_(
+    config,
+    deal.pipelineId || '',
+    deal.etapaAtualId || '',
+    deal.etapaAtualNome || ''
+  );
+  var events = [];
+  volumV2Array_(data.eventos).forEach(function (event) {
+    var type = event.tipo || event.acao || 'UNKNOWN';
+    events.push(VOLUM_V2_NORMALIZAR_EVENTO_({
+      id: event.ref || event.id || '',
+      dealId: data.dealId,
+      type: type,
+      occurredAt: event.data,
+      source: event.fonte || 'CRM',
+      sourceId: event.ref || event.id || '',
+      stageId: event.etapaId || '',
+      stageName: event.etapaNome || '',
+      evidenceStatus: event.confianca || VOLUM_V2_EVIDENCIA.INDICIO,
+      textAvailable: Boolean(event.textoDisponivel)
+    }, {
+      dealId: data.dealId,
+      stageMap: VOLUM_V2_MAPEAR_ETAPA_(
+        config,
+        event.pipelineId || '',
+        event.etapaId || '',
+        event.etapaNome || ''
+      ),
+      userMap: VOLUM_V2_NORMALIZAR_USUARIO_({
+        id: event.autorId || event.ownerId,
+        name: event.autor || event.responsavel
+      }, config)
+    }));
+  });
+  var fontes = data.fontes || {};
+  return {
+    schema: 'VOLUM_SALES_OPS_V2',
+    version: config.version,
+    tenantId: config.tenantId,
+    crm: config.crm,
+    deal: {
+      id: volumV2Id_(data.dealId),
+      name: volumV2Texto_(deal.nome),
+      pipelineId: stageMap.pipelineId || '',
+      pipelineName: stageMap.pipelineName || '',
+      currentStage: stageMap,
+      owner: VOLUM_V2_NORMALIZAR_USUARIO_({
+        id: deal.responsavelId || '',
+        name: deal.responsavel
+      }, config)
+    },
+    users: config.users,
+    pipelines: config.pipelines,
+    events: events.sort(function (a, b) {
+      return String(a.occurredAt).localeCompare(String(b.occurredAt));
+    }),
+    coverage: {
+      complete: fontes.atividades && fontes.atividades.completo === true &&
+        fontes.tarefas && fontes.tarefas.completo === true,
+      missingSources: Object.keys(fontes).filter(function (key) {
+        return fontes[key] && fontes[key].completo === false;
+      }),
+      authorizedSources: ['CRM', 'BOARD_METADATA'],
+      sourceSnapshot: fontes
+    },
+    legacy: {
+      version: volumV2Texto_(data.versao),
+      readOnly: data.modo === 'SOMENTE_LEITURA',
+      agentResultsAvailable: Array.isArray(data.cerebros) && data.cerebros.length > 0
+    }
+  };
+}
