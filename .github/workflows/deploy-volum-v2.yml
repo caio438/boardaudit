@@ -1,0 +1,64 @@
+name: Deploy VOLUM Sales Ops V2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: volum-v2-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VOLUM_D1_DATABASE_ID: ${{ secrets.VOLUM_D1_DATABASE_ID }}
+    steps:
+      - name: Validate production secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          test -n "$VOLUM_D1_DATABASE_ID" || { echo "::error::Missing VOLUM_D1_DATABASE_ID"; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate V2
+        run: npm test
+
+      - name: Install Wrangler
+        run: npm install --global wrangler@latest
+
+      - name: Bind production D1
+        working-directory: v2/worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i "s/REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID/$VOLUM_D1_DATABASE_ID/g" wrangler.toml
+          grep -q "$VOLUM_D1_DATABASE_ID" wrangler.toml
+
+      - name: Apply D1 migrations
+        working-directory: v2/worker
+        run: npx wrangler d1 migrations apply volum-v2 --remote
+
+      - name: Deploy Worker
+        working-directory: v2/worker
+        run: npx wrangler deploy
+
+      - name: Print deployment route
+        run: echo "VOLUM V2 Worker deployed from the validated main revision."
