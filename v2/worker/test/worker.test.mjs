@@ -24,11 +24,13 @@ test("does not expose routes without D1", async () => {
 
 class MockDb {
   prepare(sql) {
+    const all = async () => sql.includes("audit_client_rollups")
+      ? { results: [{ tenant_id: "acme", client_name: "Acme", total_audits: 2, total_plans: 1, open_plans: 1, distinct_deals: 1, by_agent_json: "{}", by_status_json: "{}", by_period_json: "{}", plan_summary_json: "{}" }] }
+      : { results: [] };
     return {
+      all,
       bind: (...args) => ({
-        all: async () => sql.includes("audit_client_rollups")
-          ? { results: [{ tenant_id: "acme", client_name: "Acme", total_audits: 2, total_plans: 1, open_plans: 1, distinct_deals: 1, by_agent_json: "{}", by_status_json: "{}", by_period_json: "{}", plan_summary_json: "{}" }] }
-          : { results: [] },
+        all,
         run: async () => ({ success: true, args })
       })
     };
