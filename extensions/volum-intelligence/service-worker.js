@@ -5,27 +5,37 @@ function dealId(url) {
   return match ? match[1].toLowerCase() : '';
 }
 
-async function openInlineWidget(tabId, url) {
+async function openNativeWidget(tabId, url) {
   const id = dealId(url);
   if (!id) return { opened: false, reason: 'NEGOCIACAO_RD_NAO_ABERTA' };
-  const saved = await chrome.storage.local.get('volumEndpoint');
-  const endpoint = String(saved.volumEndpoint || '');
-  if (!/^https:\/\/script\.google\.com\//i.test(endpoint)) return { opened: false, reason: 'ENDPOINT_NAO_CONFIGURADO' };
-  const result = await chrome.tabs.sendMessage(tabId, { type: 'VOLUM_OPEN_INLINE_WIDGET', endpoint: endpoint });
-  return result && result.opened ? { opened: true } : { opened: false, reason: 'CONTEUDO_RD_NAO_DISPONIVEL' };
+  if (!chrome.sidePanel || typeof chrome.sidePanel.open !== 'function') {
+    return { opened: false, reason: 'CHROME_SIDE_PANEL_INDISPONIVEL' };
+  }
+  try {
+    await chrome.sidePanel.open({ tabId });
+    return { opened: true, dealId: id };
+  } catch (error) {
+    return {
+      opened: false,
+      reason: 'FALHA_ABRIR_SIDE_PANEL',
+      detail: String(error && error.message || '')
+    };
+  }
 }
 
 chrome.action.onClicked.addListener(tab => {
-  openInlineWidget(tab.id, tab.url).catch(console.warn);
+  openNativeWidget(tab.id, tab.url).catch(console.warn);
 });
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'VOLUM_DEAL_ID') {
-    const id = dealId(message.url);
-    sendResponse({ dealId: id });
+    sendResponse({ dealId: dealId(message.url) });
     return;
   }
   if (message.type === 'VOLUM_OPEN_PANEL' && sender.tab) {
-    openInlineWidget(sender.tab.id, sender.tab.url).then(sendResponse).catch(() => sendResponse({ opened: false, reason: 'FALHA_ABRIR_WIDGET' }));
+    openNativeWidget(sender.tab.id, sender.tab.url)
+      .then(sendResponse)
+      .catch(() => sendResponse({ opened: false, reason: 'FALHA_ABRIR_WIDGET' }));
     return true;
   }
 });
