@@ -20,3 +20,41 @@ test("does not expose routes without D1", async () => {
   const response = await handleRequest(new Request("https://v2.example/v2/clients/acme"), {});
   assert.equal(response.status, 503);
 });
+
+
+class MockDb {
+  prepare(sql) {
+    const all = async () => sql.includes("audit_client_rollups")
+      ? { results: [{ tenant_id: "acme", client_name: "Acme", total_audits: 2, total_plans: 1, open_plans: 1, distinct_deals: 1, by_agent_json: "{}", by_status_json: "{}", by_period_json: "{}", plan_summary_json: "{}" }] }
+      : { results: [] };
+    return {
+      all,
+      bind: (...args) => ({
+        all,
+        run: async () => ({ success: true, args })
+      })
+    };
+  }
+}
+
+test("returns persisted client rollups", async () => {
+  const response = await handleRequest(new Request("https://v2.example/v2/aggregate"), { DB: new MockDb() });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).clients[0].tenantId, "acme");
+});
+
+test("accepts normalized CRM snapshot and timeline events", async () => {
+  const request = new Request("https://v2.example/v2/snapshots", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      tenantId: "acme",
+      deal: { id: "deal-1", currentStage: { volumPhase: "CONEXAO" } },
+      events: [{ id: "event-1", type: "NOTE", source: "CRM" }],
+      coverage: { complete: true }
+    })
+  });
+  const response = await handleRequest(request, { DB: new MockDb() });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).snapshot.events, 1);
+});

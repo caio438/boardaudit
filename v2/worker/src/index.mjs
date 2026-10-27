@@ -97,6 +97,105 @@ async function listPlans(env, tenantId, dealId = "") {
   return (result.results || []).map(rowToPlan);
 }
 
+async function saveSnapshot(env, input) {
+  const snapshot = input?.snapshot || input;
+  const deal = snapshot?.deal || {};
+  const tenantId = safeText(snapshot?.tenantId);
+  const dealId = safeText(deal.id || snapshot?.dealId);
+  if (!tenantId || !dealId) throw new Error("snapshot tenantId and deal.id are required");
+  const capturedAt = safeText(snapshot.capturedAt || snapshot.generatedAt || new Date().toISOString());
+  const snapshotId = safeText(snapshot.snapshotId) || [tenantId, dealId, capturedAt].join(":");
+  const stage = deal.currentStage || {};
+  const coverage = snapshot.coverage || {};
+  await env.DB.prepare(`
+    INSERT INTO lead_snapshots (
+      snapshot_id, tenant_id, deal_id, schema_name, version, pipeline_id, stage_id,
+      volum_phase, coverage_complete, missing_sources_json, payload_json, captured_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(snapshot_id) DO UPDATE SET
+      version=excluded.version, pipeline_id=excluded.pipeline_id, stage_id=excluded.stage_id,
+      volum_phase=excluded.volum_phase, coverage_complete=excluded.coverage_complete,
+      missing_sources_json=excluded.missing_sources_json, payload_json=excluded.payload_json,
+      captured_at=excluded.captured_at, updated_at=CURRENT_TIMESTAMP
+  `).bind(
+    snapshotId, tenantId, dealId, safeText(snapshot.schema || "VOLUM_SALES_OPS_V2"),
+    safeText(snapshot.version || "V2.0.0"), safeText(deal.pipelineId),
+    safeText(stage.stageId), safeText(stage.volumPhase),
+    coverage.complete === true ? 1 : 0,
+    JSON.stringify(coverage.missingSources || []), JSON.stringify(snapshot), capturedAt
+  ).run();
+
+  const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+  for (const event of events) {
+    await env.DB.prepare(`
+      INSERT INTO lead_events (
+        event_id, snapshot_id, tenant_id, deal_id, occurred_at, event_type, source,
+        actor_user_id, actor_name, actor_role, volum_phase, evidence_status, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(snapshot_id, event_id) DO UPDATE SET
+        occurred_at=excluded.occurred_at, event_type=excluded.event_type,
+        source=excluded.source, actor_user_id=excluded.actor_user_id,
+        actor_name=excluded.actor_name, actor_role=excluded.actor_role,
+        volum_phase=excluded.volum_phase, evidence_status=excluded.evidence_status,
+        payload_json=excluded.payload_json
+    `).bind(
+      safeText(event.id || event.eventId), snapshotId, tenantId, dealId,
+      safeText(event.occurredAt), safeText(event.type || "UNKNOWN"),
+      safeText(event.source || "CRM"), safeText(event.actorUserId),
+      safeText(event.actorName), safeText(event.actorRole),
+      safeText(event.volumPhase), safeText(event.evidence?.status),
+      JSON.stringify(event.payload || event)
+    ).run();
+  }
+  return { snapshotId, tenantId, dealId, events: events.length };
+}
+
+async function latestSnapshot(env, tenantId, dealId) {
+  const result = await env.DB.prepare(`
+    SELECT * FROM lead_snapshots
+    WHERE tenant_id = ? AND deal_id = ?
+    ORDER BY captured_at DESC LIMIT 1
+  `).bind(tenantId, dealId).all();
+  const row = (result.results || [])[0];
+  if (!row) return null;
+  return {
+    snapshotId: row.snapshot_id,
+    tenantId: row.tenant_id,
+    dealId: row.deal_id,
+    schema: row.schema_name,
+    version: row.version,
+    pipelineId: row.pipeline_id,
+    stageId: row.stage_id,
+    volumPhase: row.volum_phase,
+    coverageComplete: Boolean(row.coverage_complete),
+    missingSources: JSON.parse(row.missing_sources_json || "[]"),
+    capturedAt: row.captured_at,
+    payload: JSON.parse(row.payload_json || "{}")
+  };
+}
+
+async function listRollups(env) {
+  const result = await env.DB.prepare(
+    "SELECT * FROM audit_client_rollups ORDER BY client_name, tenant_id"
+  ).all();
+  return (result.results || []).map((row) => ({
+    tenantId: row.tenant_id,
+    clientName: row.client_name,
+    totalAudits: row.total_audits,
+    averageScorePercent: row.average_score_percent,
+    latestScorePercent: row.latest_score_percent,
+    totalPlans: row.total_plans,
+    openPlans: row.open_plans,
+    distinctDeals: row.distinct_deals,
+    auditToPlanRate: row.audit_to_plan_rate,
+    byAgent: JSON.parse(row.by_agent_json || "{}"),
+    byStatus: JSON.parse(row.by_status_json || "{}"),
+    byPeriod: JSON.parse(row.by_period_json || "{}"),
+    plans: JSON.parse(row.plan_summary_json || "{}"),
+    refreshedAt: row.refreshed_at
+  }));
+}
+
 async function saveAudit(env, audit) {
   const row = buildAuditLedgerRow(audit);
   await env.DB.prepare(`
@@ -217,11 +316,25 @@ export async function handleRequest(request, env = {}) {
     const dealId = decodeURIComponent(leadMatch[1]);
     const tenantId = safeText(url.searchParams.get("tenantId"));
     if (!tenantId) return json({ error: "tenantId_required" }, 400);
-    const [audits, plans] = await Promise.all([
+    const [audits, plans, snapshot] = await Promise.all([
       listAudits(env, tenantId, dealId),
-      listPlans(env, tenantId, dealId)
+      listPlans(env, tenantId, dealId),
+      latestSnapshot(env, tenantId, dealId)
     ]);
-    return json({ tenantId, dealId, audits, plans });
+    return json({ tenantId, dealId, snapshot, audits, plans });
+  }
+
+  if (request.method === "GET" && url.pathname === "/v2/aggregate") {
+    return json({ clients: await listRollups(env) });
+  }
+
+  if (request.method === "POST" && url.pathname === "/v2/snapshots") {
+    try {
+      const saved = await saveSnapshot(env, await body(request));
+      return json({ ok: true, snapshot: saved }, 201);
+    } catch (error) {
+      return json({ error: error.message || "invalid_snapshot" }, 400);
+    }
   }
 
   if (request.method === "POST" && url.pathname === "/v2/audits") {

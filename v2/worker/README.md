@@ -6,11 +6,13 @@ API somente leitura para o CRM na Widget e escrita controlada para os motores do
 
 - `GET /health`
 - `GET /v2/clients/:tenantId` — auditorias, planos e agregado do cliente
-- `GET /v2/leads/:dealId?tenantId=...` — histórico do lead
+- `GET /v2/leads/:dealId?tenantId=...` — snapshot, auditorias e planos do lead
+- `GET /v2/aggregate` — agregado de todos os clientes
+- `POST /v2/snapshots` — persiste snapshot normalizado e eventos do CRM
 - `POST /v2/audits` — grava/atualiza auditoria idempotente
 - `POST /v2/plans` — grava/atualiza Plano SDR/Closer
 
-O Worker não coleta conversas privadas. Ele recebe resultados normalizados de fontes autorizadas do CRM e dos motores V2. O endpoint aceita `x-volum-api-key` quando `VOLUM_API_KEY` estiver configurada.
+O Worker não coleta conversas privadas. O snapshot recebido deve conter somente dados autorizados e normalizados do CRM. Ele recebe resultados normalizados de fontes autorizadas do CRM e dos motores V2. O endpoint aceita `x-volum-api-key` quando `VOLUM_API_KEY` estiver configurada.
 
 ## Configuração
 
