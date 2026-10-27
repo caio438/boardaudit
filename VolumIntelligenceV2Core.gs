@@ -315,3 +315,118 @@ function VOLUM_V2_SNAPSHOT_FROM_LEAD_(leitura, configInput) {
     }
   };
 }
+
+function volumV2PlanoStatus_(item) {
+  var raw = volumV2Texto_(item && (item.status || item.resultado || item.estado)).toUpperCase();
+  if (raw === 'CONFORME' || raw === 'CUMPRIDO' || raw === 'EVIDENCIADO') return VOLUM_V2_STATUS.CUMPRIDO;
+  if (raw === 'PARCIAL' || raw === 'INDICIO' || raw === 'ATENCAO') return VOLUM_V2_STATUS.PARCIAL;
+  if (raw === 'NAO_CONFORME' || raw === 'NAO_CUMPRIDO' || raw === 'DESVIO_EXECUCAO') return VOLUM_V2_STATUS.NAO_CUMPRIDO;
+  if (raw === 'NAO_APLICAVEL') return VOLUM_V2_STATUS.NAO_APLICAVEL;
+  if (raw === 'CONTRADITORIO') return VOLUM_V2_STATUS.CONTRADITORIO;
+  return VOLUM_V2_STATUS.NAO_VERIFICAVEL;
+}
+
+function volumV2PlanoAgente_(item) {
+  return volumV2Texto_(item && (item.agent || item.agente || item.ownerAgent)).toUpperCase();
+}
+
+function volumV2PlanoDestino_(agent) {
+  if (['LEAD', 'CADENCIA', 'CONEXAO', 'AGENDA'].indexOf(agent) >= 0) return 'SDR';
+  if (['REUNIAO', 'CLOSER', 'FOLLOW-UP', 'FOLLOW_UP', 'RECOVERY'].indexOf(agent) >= 0) return 'CLOSER';
+  return '';
+}
+
+function volumV2PlanoItem_(item, agent, snapshot) {
+  var status = volumV2PlanoStatus_(item);
+  return {
+    id: volumV2Texto_(item && (item.id || item.criterionId || item.criterio || item.title)),
+    agent: agent,
+    stage: volumV2Texto_(item && (item.stage || item.etapa || agent)).toUpperCase(),
+    criterion: volumV2Texto_(item && (item.criterion || item.criterio || item.title || item.titulo)),
+    status: status,
+    conclusion: volumV2Texto_(item && (item.conclusion || item.detalhe || item.detail || item.resultado)),
+    evidence: volumV2Texto_(item && (item.evidence || item.evidencia || item.fonte)),
+    action: volumV2Texto_(item && (item.action || item.acao || item.recommendation || item.recomendacao)),
+    responsible: volumV2Texto_(item && (item.responsible || item.responsavel || item.role)).toUpperCase(),
+    applicable: status !== VOLUM_V2_STATUS.NAO_APLICAVEL,
+    dealId: snapshot && snapshot.deal ? snapshot.deal.id : ''
+  };
+}
+
+function VOLUM_V2_CONSOLIDAR_PLANO_(snapshot, agentResults) {
+  var input = snapshot || {};
+  var results = volumV2Array_(agentResults || input.agents || input.cerebros);
+  var seen = {};
+  var items = [];
+  results.forEach(function (agentResult) {
+    var agent = volumV2PlanoAgente_(agentResult);
+    var rawItems = volumV2Array_(agentResult && (agentResult.items || agentResult.itens || agentResult.criteria || agentResult.criterios));
+    rawItems.forEach(function (rawItem, index) {
+      var item = volumV2PlanoItem_(rawItem, agent || 'UNKNOWN', input);
+      if (!item.id) item.id = agent + ':' + index;
+      if (!item.criterion) item.criterion = item.id;
+      var key = item.agent + '|' + item.id;
+      if (seen[key]) return;
+      seen[key] = true;
+      items.push(item);
+    });
+  });
+  var sdr = items.filter(function (item) { return item.applicable && volumV2PlanoDestino_(item.agent) === 'SDR'; });
+  var closer = items.filter(function (item) { return item.applicable && volumV2PlanoDestino_(item.agent) === 'CLOSER'; });
+  var statusOf = function (list) {
+    if (!list.length) return VOLUM_V2_STATUS.NAO_APLICAVEL;
+    if (list.some(function (item) { return item.status === VOLUM_V2_STATUS.NAO_CUMPRIDO; })) return VOLUM_V2_STATUS.NAO_CUMPRIDO;
+    if (list.some(function (item) { return item.status === VOLUM_V2_STATUS.PARCIAL || item.status === VOLUM_V2_STATUS.CONTRADITORIO; })) return VOLUM_V2_STATUS.PARCIAL;
+    if (list.every(function (item) { return item.status === VOLUM_V2_STATUS.CUMPRIDO; })) return VOLUM_V2_STATUS.CUMPRIDO;
+    return VOLUM_V2_STATUS.NAO_VERIFICAVEL;
+  };
+  var unresolved = function (list) {
+    return list.filter(function (item) {
+      return item.status === VOLUM_V2_STATUS.NAO_CUMPRIDO ||
+        item.status === VOLUM_V2_STATUS.PARCIAL ||
+        item.status === VOLUM_V2_STATUS.CONTRADITORIO;
+    });
+  };
+  var events = volumV2Array_(input.events).map(function (event) {
+    return {
+      date: event.occurredAt || '',
+      type: event.type || '',
+      source: event.source || '',
+      stage: event.volumPhase || event.stageName || '',
+      actor: event.actorName || '',
+      evidence: event.evidence && event.evidence.status || ''
+    };
+  });
+  events.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  return {
+    schema: 'VOLUM_SALES_OPS_V2_PLAN',
+    dealId: input.deal && input.deal.id || '',
+    currentState: {
+      phase: input.deal && input.deal.currentStage && input.deal.currentStage.volumPhase || '',
+      stage: input.deal && input.deal.currentStage && input.deal.currentStage.stageName || '',
+      owner: input.deal && input.deal.owner || {},
+      lastEvent: events.length ? events[events.length - 1] : null
+    },
+    history: events,
+    process: {
+      status: statusOf(items),
+      sdrStatus: statusOf(sdr),
+      closerStatus: statusOf(closer),
+      totalCriteria: items.length,
+      applicableCriteria: sdr.length + closer.length,
+      unresolvedCriteria: unresolved(items).length
+    },
+    planSdr: {
+      status: statusOf(sdr),
+      items: sdr,
+      unresolved: unresolved(sdr)
+    },
+    planCloser: {
+      status: statusOf(closer),
+      items: closer,
+      unresolved: unresolved(closer)
+    },
+    coverage: input.coverage || {},
+    rule: 'Canvas/etapa define ocorrência; CRM/evidência define execução e registro; ausência não é falha automática.'
+  };
+}
