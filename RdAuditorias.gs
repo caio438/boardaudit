@@ -262,6 +262,16 @@ function audRdCtx_(id) {
   audV3ExigirGatePublicavel_(resultado, a.TIPO_AUDITORIA);
 
   var dealId = audRdDeal_(i);
+  if (!dealId) {
+    dealId = audRdResolverDealPorOportunidade_(a, i);
+    if (dealId) {
+      i.LINK_CRM = audV3RdLinkNegociacao_(dealId);
+      audV3Atualizar_('INTERACOES', 'ID_INTERACAO', a.ID_INTERACAO, {
+        LINK_CRM: i.LINK_CRM,
+        ATUALIZADO_EM: new Date()
+      });
+    }
+  }
   if (!dealId) throw new Error('A interação não possui negociação do RD vinculada. Informe o vínculo manualmente quando necessário.');
   var it = typeof obterIntegracaoCliente_ === 'function' ? obterIntegracaoCliente_(a.ID_CLIENTE, 'RD_STATION') : null;
   if (!it || String(it.ATIVO || '').toUpperCase() !== 'SIM') throw new Error('A integração RD deste cliente não está ativa.');
@@ -282,6 +292,27 @@ function audRdCtx_(id) {
 }
 function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO','RD_TEXTO_APROVADO','RD_TEXTO_APROVADO_EM','HASH_RESULTADO']);}
 function audRdDeal_(i){var item=i||{},tipoInteracao=String(item.TIPO_INTERACAO||'').toUpperCase(),l=String(item.LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];if(tipoInteracao==='REUNIAO')return'';m=String(item.DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
+function audRdChaveOportunidade_(v){
+  return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ').trim();
+}
+function audRdResolverDealPorOportunidade_(auditoria, interacao){
+  var alvo=audRdChaveOportunidade_((interacao||{}).OPORTUNIDADE||(interacao||{}).TITULO);
+  if(!alvo||typeof audV3Ler_!=='function')return'';
+  var ids={};
+  audV3Ler_('INTERACOES').forEach(function(item){
+    if(String((item||{}).ID_CLIENTE||'')!==String((auditoria||{}).ID_CLIENTE||''))return;
+    if(audRdChaveOportunidade_((item||{}).OPORTUNIDADE||(item||{}).TITULO)!==alvo)return;
+    var deal=audRdDeal_(item);
+    if(deal)ids[deal]=true;
+  });
+  var encontrados=Object.keys(ids);
+  return encontrados.length===1?encontrados[0]:'';
+}
+function audRdLinkGravacao_(c){
+  var i=(c||{}).i||{};
+  return String(i.URL_GRAVACAO||i.LINK_ORIGINAL||'').trim();
+}
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}
 function audRdUsuarios_(token){var r=requisicaoJson_(APP.rdBaseUrl+'/users?token='+encodeURIComponent(token)+'&active=true&limit=200',{method:'get',headers:{Accept:'application/json'}});return Array.isArray(r)?r:(r.users||r.data||r.results||r.items||[]);}
@@ -743,8 +774,8 @@ function audRdTextoCloser_(c) {
     p1,
     p2,
     '',
-    c.i.URL_GRAVACAO ? 'Gravação: ' + c.i.URL_GRAVACAO : '',
-    c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : ''
+    c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : '',
+    audRdLinkGravacao_(c) ? 'Gravação: ' + audRdLinkGravacao_(c) : ''
   ];
 
   return linhas.filter(function(x, i, a) {
@@ -831,7 +862,7 @@ function audRdTextoCloserCanonico_(c) {
     acoes.length ? acoes.join(n) : '1. Nenhuma ação adicional registrada.',
     '',
     c.a.LINK_DOCUMENTO ? 'Auditoria completa: ' + c.a.LINK_DOCUMENTO : '',
-    c.i.URL_GRAVACAO ? 'Gravação: ' + c.i.URL_GRAVACAO : ''
+    audRdLinkGravacao_(c) ? 'Gravação: ' + audRdLinkGravacao_(c) : ''
   ].filter(function(linha, indice, lista) { return linha !== '' || (indice > 0 && lista[indice - 1] !== ''); }).join(n).trim());
 }
 

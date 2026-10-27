@@ -699,6 +699,10 @@ assert.ok(!sdrCompacto.includes("'SE EU FOSSE O SDR, FARIA ASSIM'"), 'Formatter 
 assert.ok(!sdrCompacto.includes("'DESVIOS EM RELAÇÃO AO PITCH/PROCESSO'"), 'Formatter SDR voltou ao bloco extenso com pitch literal.');
 assert.ok(rd.includes("textoEditado=String(d.texto||c.a.RD_TEXTO_APROVADO||'').trim()"), 'Envio ao RD deve aceitar exatamente o texto revisado pelo usuário.');
 assert.ok(rd.includes("texto=textoEditado||String(audRdTexto_(c)).trim()"), 'Envio ao RD deve manter o formatter canônico apenas como fallback.');
+assert.ok(rd.includes('function audRdResolverDealPorOportunidade_'), 'RD não tenta reaproveitar o vínculo único já registrado para a mesma oportunidade.');
+assert.ok(rd.includes('encontrados.length===1'), 'Vínculo por nome da oportunidade não é protegido contra ambiguidade.');
+assert.ok(rd.includes('function audRdLinkGravacao_'), 'RD não usa uma fonte única para link da gravação.');
+assert.ok(rd.includes("'Auditoria completa: ' + c.a.LINK_DOCUMENTO") && rd.includes("'Gravação: ' + audRdLinkGravacao_(c)"), 'Anotação no RD não exibe a auditoria seguida da gravação.' );
 assert.ok(rd.includes('O RD não confirmou o ID da anotação'), 'Publicação sem ID confirmado pelo RD não pode ser marcada como concluída.');
 assert.ok(!rd.includes('Auditoria aprovada e texto do RD salvo. Envio pendente:'), 'Falha de publicação não pode ser transformada em sucesso aparente.');
 
