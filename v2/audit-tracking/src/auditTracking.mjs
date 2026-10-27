@@ -33,12 +33,13 @@ export function normalizeAuditRecord(input = {}) {
     throw new Error("audit dealId/leadId is required");
   }
 
+  const period = text(input.period || generatedAt.slice(0, 7));
   const auditId = text(input.auditId || input.id) ||
     [
       text(input.tenantId || input.clientId || input.clienteId),
       text(input.dealId || input.leadId),
       agent || "PROCESSO",
-      text(input.runId || generatedAt)
+      text(input.runId || period)
     ].join(":");
 
   return {
@@ -60,7 +61,7 @@ export function normalizeAuditRecord(input = {}) {
     evidenceCoverage: numberOrNull(input.evidenceCoverage ?? input.coberturaEvidencia),
     sourceSnapshotId: text(input.sourceSnapshotId || input.snapshotId),
     generatedAt,
-    period: text(input.period || generatedAt.slice(0, 7)),
+    period,
     published: input.published === true,
     metadata: input.metadata || {}
   };
