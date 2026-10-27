@@ -1,0 +1,1 @@
+As migrations são mantidas em `v2/audit-tracking/migrations` para que o ledger e o Worker usem o mesmo contrato D1.
