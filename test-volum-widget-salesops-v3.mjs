@@ -67,7 +67,7 @@ assert.equal(weak.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
 assert.equal(weak.itens.find(x=>x.id==='lmv').status,'NAO_VERIFICAVEL');
 assert.equal(weak.itens.find(x=>x.id==='voip').status,'NAO_VERIFICAVEL');
 
-const script=(panel.match(/<script>([\\s\\S]*?)<\\/script>/)||[])[1];
+const script=(panel.match(/<script>([\s\S]*?)<\/script>/)||[])[1];
 assert.ok(script,'Painel V3 deve ter script.');
 new Function(script);
 assert.match(panel,/Space\\+Grotesk/);
