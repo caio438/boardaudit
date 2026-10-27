@@ -16,27 +16,23 @@ const serviceContext=vm.createContext({Date,Intl,String,Number,Array,Boolean,Mat
 vm.runInContext(service,serviceContext,{timeout:3000});
 function base(overrides={}) {
  return {
-  modo:'SOMENTE_LEITURA',dealId:'6acc888b98976f0023dc583f',
-  negociacao:{
-    nome:'Exemplo Wisetec',etapaAtualNome:'Proposta enviada',etapaOrigem:'CONSULTA_ETAPA_RD',
-    criadaEm:'2026-10-20T08:30:00Z',responsavel:'Closer Modelo',
-    previsaoFechamento:'2026-10-21',valorInformado:3500,estadoFechamento:'EM_ABERTO'
+  modo:'SOMENTE_LEITURA',dealId:'6acc888b98976f0023dc583f',negociacao:{
+   nome:'Exemplo Wisetec',etapaAtualNome:'Proposta enviada',etapaOrigem:'CONSULTA_ETAPA_RD',
+   criadaEm:'2026-10-20T08:30:00Z',responsavel:'Closer Modelo',
+   previsaoFechamento:'2026-10-21',valorInformado:3500,estadoFechamento:'EM_ABERTO'
   },
   fontes:{tarefas:{acessivel:true,completo:true},atividades:{acessivel:true,completo:true}},
   atividades:[
-    {tipo:'note',data:'2026-10-20T10:00:00Z',textoDisponivel:true,texto:'Segmento: distribuidora. LMV: 90 mil. Dor: estoque manual. Decisor: diretoria. Reunião agendada.'},
-    {tipo:'note',data:'2026-10-21T10:00:00Z',textoDisponivel:true,texto:'No-show. O lead não atendeu.'}
+   {tipo:'note',data:'2026-10-20T10:00:00Z',textoDisponivel:true,texto:'Segmento: distribuidora. LMV: 90 mil. Dor: estoque manual. Decisor: diretoria. Reunião agendada.'},
+   {tipo:'note',data:'2026-10-21T10:00:00Z',textoDisponivel:true,texto:'No-show. O lead não atendeu.'}
   ],
   tarefas:[
-    {id:'a',tipo:'call',assunto:'Cadência dia 1 ligação 1',criadaEm:'2026-10-20T10:30:00Z',
-     previstaPara:'2026-10-20T12:30:00Z',concluida:true,concluidaEm:'2026-10-20T12:33:00Z'},
-    {id:'b',tipo:'call',assunto:'Retomada no-show',criadaEm:'2026-10-22T10:30:00Z',
-     previstaPara:'2026-11-02T12:30:00Z',concluida:false}
+   {id:'a',tipo:'call',assunto:'Cadência dia 1 ligação 1',criadaEm:'2026-10-20T10:30:00Z',previstaPara:'2026-10-20T12:30:00Z',concluida:true,concluidaEm:'2026-10-20T12:33:00Z'},
+   {id:'b',tipo:'call',assunto:'Retomada no-show',criadaEm:'2026-10-22T10:30:00Z',previstaPara:'2026-11-02T12:30:00Z',concluida:false}
   ],
   ligacoesBoard:[{data:'2026-10-20T12:33:00Z',duracaoSegundos:65,temReferenciaGravacao:true}],
   eventos:[{data:'2026-10-20T10:00:00Z',tipo:'CRIACAO_TAREFA',fonte:'RD'}],
-  cerebros:[],
-  ...overrides
+  cerebros:[],...overrides
  };
 }
 const leitura=base();
@@ -64,10 +60,7 @@ assert.ok(!parecer.status.includes('CONCORRENTE'),'Nao atendeu nao implica perda
 assert.equal(parecer.agenteAtual,'FOLLOW-UP / RECOVERY');
 assert.equal(parecer.criteriosPlanoWisetec.length,7);
 assert.ok(sdr.itens.every(x=>x.acao&&x.fonte&&x.detalhe));
-const noHistory=base({
- atividades:[],tarefas:[],ligacoesBoard:[],eventos:[],
- fontes:{tarefas:{acessivel:false},atividades:{acessivel:false}}
-});
+const noHistory=base({atividades:[],tarefas:[],ligacoesBoard:[],eventos:[],fontes:{tarefas:{acessivel:false},atividades:{acessivel:false}}});
 const weak=serviceContext.viWidgetPlanoSdr_(noHistory);
 assert.equal(weak.contagem.ATENCAO,0);
 assert.equal(weak.itens.find(x=>x.id==='pitch').status,'NAO_VERIFICAVEL');
@@ -87,8 +80,9 @@ assert.match(ext,/searchParams\.set\('dealId',id\)/);
 assert.match(extCss,/color-scheme:dark/);
 assert.doesNotMatch(extHtml,/<footer|<header/);
 assert.equal(manifest.version,'0.3.10');
-assert.ok(!manifest.permissions.includes('sidePanel'),'Painel nativo cria a tarja cinza que não pode ser estilizada.');
-assert.equal(Object.hasOwn(manifest,'side_panel'),false);
+assert.ok(manifest.permissions.includes('sidePanel'),'A extensão deve usar o Chrome Side Panel nativo.');
+assert.deepEqual(manifest.side_panel,{default_path:'sidebar.html'});
+assert.match(worker,/chrome\.sidePanel\.open\(\{ tabId \}\)/);
 assert.match(content,/VOLUM_OPEN_INLINE_WIDGET/);
 assert.match(content,/volum-intelligence-inline-shell/);
 assert.match(content,/box-shadow:none/);
@@ -98,18 +92,13 @@ assert.match(content,/Fechar VOLUM/);
 
 const card={textContent:'',innerHTML:''};
 const doc={getElementById:id=>id==='volum-root'?{dataset:{dealId:'6acc888b98976f0023dc583f'}}:id==='card'?card:null,
- querySelector:sel=>sel.includes('volum-history-nonce')?{content:'b'.repeat(32)}:
-   sel.includes('volum-cache-scope')?{content:'a'.repeat(32)}:null,
+ querySelector:sel=>sel.includes('volum-history-nonce')?{content:'b'.repeat(32)}:sel.includes('volum-cache-scope')?{content:'a'.repeat(32)}:null,
  documentElement:{classList:{add(){}}}};
-const runner={withSuccessHandler(fn){this.success=fn;return this;},withFailureHandler(fn){this.failure=fn;return this;},
-  VOLUM_WIDGET_AUDITAR_SESSAO(id,useIa){this.args=[id,useIa];}};
-const win={top:{postMessage(){}},addEventListener(){},
-  localStorage:{getItem:()=>null,removeItem(){},setItem(){}}};
-const app=vm.createContext({document:doc,window:win,google:{script:{run:runner}},
-  setTimeout:()=>1,clearTimeout:()=>{},
-  Intl,Date,Array,Number,Math,RegExp,Set,String,Object});
+const runner={withSuccessHandler(fn){this.success=fn;return this;},withFailureHandler(fn){this.failure=fn;return this;},VOLUM_WIDGET_AUDITAR_SESSAO(id,useIa){this.args=[id,useIa];}};
+const win={top:{postMessage(){}},addEventListener(){},localStorage:{getItem:()=>null,removeItem(){},setItem(){}}};
+const app=vm.createContext({document:doc,window:win,google:{script:{run:runner}},setTimeout:()=>1,clearTimeout:()=>{},Intl,Date,Array,Number,Math,RegExp,Set,String,Object});
 vm.runInContext(script,app,{timeout:3000});
-app.runAudit(); // Teste da RPC isolada, apos a etapa de cache/historico.
+app.runAudit();
 assert.equal(runner.args[0],'6acc888b98976f0023dc583f');
 assert.equal(runner.args[1],true);
 assert.match(card.textContent,/Lendo a negociação|Atualizando/);
@@ -117,13 +106,11 @@ runner.success(parecer);
 assert.match(card.innerHTML,/Visão geral/);
 assert.match(card.innerHTML,/Inteligência/);
 assert.match(card.innerHTML,/Plano SDR/);
-assert.doesNotMatch(card.innerHTML,/Plano Closer/,
-  'Sem entrada comprovada, a aba do Closer não é exibida');
+assert.doesNotMatch(card.innerHTML,/Plano Closer/,'Sem entrada comprovada, a aba do Closer não é exibida');
 assert.match(card.innerHTML,/Evidências/);
 app.changeTab('sdr');
 assert.match(card.innerHTML,/7 pilares do Plano Wisetec/);
-assert.doesNotMatch(card.innerHTML,/9 verificações complementares/,
-  'A visão executiva deve manter apenas os sete pilares oficiais');
+assert.doesNotMatch(card.innerHTML,/9 verificações complementares/,'A visão executiva deve manter apenas os sete pilares oficiais');
 assert.match(card.innerHTML,/Aplicacao do pitch de qualificacao/);
 app.changeTab('inteligencia');
 assert.match(card.innerHTML,/Inteligência comercial/);
@@ -131,8 +118,7 @@ assert.match(card.innerHTML,/Contexto e qualificacao/);
 app.changeFilter('ATENCAO');
 assert.match(card.innerHTML,/Atenção/);
 app.changeTab('closer');
-assert.match(card.innerHTML,/Plano de Otimização SDR/,
-  'Navegação forçada ao Closer retorna ao SDR quando não há ownership comprovado');
+assert.match(card.innerHTML,/Plano de Otimização SDR/,'Navegação forçada ao Closer retorna ao SDR quando não há ownership comprovado');
 app.changeTab('evidencias');
 assert.match(card.innerHTML,/Cobertura e rastreabilidade/);
 const fake=base({negociacao:{...leitura.negociacao,nome:'<img src=x onerror=alert(1)>'}});
