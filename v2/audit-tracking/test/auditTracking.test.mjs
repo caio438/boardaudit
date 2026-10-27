@@ -39,7 +39,7 @@ test("aggregates audit volume, scores and plans by client", () => {
 
 test("creates a D1-ready ledger row", () => {
   const row = buildAuditLedgerRow({ tenantId: "x", dealId: "d", agent: "AGENDA", status: "CUMPRIDO", score: 9 });
-  assert.equal(row.audit_id, "x:d:AGENDA");
+  assert.equal(row.audit_id, "x:d:AGENDA:2026-10");
   assert.equal(row.score_percent, 90);
   assert.equal(row.published, 0);
 });
