@@ -8342,6 +8342,7 @@ function audV3FilaAprovacaoAutomaticaCloser_() {
       String(a.STATUS || '').toUpperCase() === 'EM_REVISAO' &&
       String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
       String(a.HASH_FONTE || '').trim() && String(a.RESULTADO_JSON || '').trim() &&
+      String(a.AUTOMACAO_STATUS || '').toUpperCase() !== 'APROVACAO_AUTOMATICA_BLOQUEADA' &&
       String(a.RD_STATUS || '').toUpperCase() !== 'PUBLICADA';
   }).sort(function(a,b){return String(a.SOLICITADO_EM||'').localeCompare(String(b.SOLICITADO_EM||''));});
 }
@@ -8356,8 +8357,14 @@ function PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV(limite) {
       aprovarAuditoriaV3(a.ID_AUDITORIA);
       resultado.aprovadas++;
     } catch (erro) {
+      const motivo = String(erro && erro.message || erro || 'Falha na aprovação automática').slice(0, 350);
       resultado.erros++;
-      resultado.detalhes.push({ idAuditoria: a.ID_AUDITORIA, erro: String(erro && erro.message || erro).slice(0, 220) });
+      resultado.detalhes.push({ idAuditoria: a.ID_AUDITORIA, erro: motivo.slice(0, 220) });
+      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', a.ID_AUDITORIA, {
+        AUTOMACAO_STATUS: 'APROVACAO_AUTOMATICA_BLOQUEADA',
+        AUTOMACAO_ERRO: motivo,
+        AUTOMACAO_ATUALIZADO_EM: new Date()
+      });
     }
   });
   resultado.pendentes = audV3FilaAprovacaoAutomaticaCloser_().length;
