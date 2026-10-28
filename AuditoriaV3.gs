@@ -2186,38 +2186,24 @@ function audV3FinalizarAutomaticamente_(idAuditoria) {
   const tipo = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
 
   if (tipo === 'CLOSER') {
-    // Documento de revisão usa o snapshot validado; aprovação e RD permanecem humanos.
     if (String(auditoria.STATUS || '').toUpperCase() !== 'EM_REVISAO' ||
         String(auditoria.VALIDACAO_STATUS || '').toUpperCase() !== 'VALIDADA' ||
         !String(auditoria.HASH_FONTE || '').trim() ||
         !String(auditoria.RESULTADO_JSON || '').trim()) {
-      throw new Error('A auditoria Closer automática não ficou concluída e validada para revisão humana.');
+      throw new Error('A auditoria Closer automática não ficou concluída e validada para aprovação.');
     }
-    audV3PersistirDocumentoAprovacao_(id, { somenteDocumento: true });
+    const aprovacao = aprovarAuditoriaV3(id);
+    const atualizada = audV3Localizar_('AUDITORIAS', 'ID_AUDITORIA', id) || {};
     const rd = {
       aplicavel: false,
       publicada: false,
-      status: 'AGUARDANDO_APROVACAO',
-      mensagem: 'Auditoria Closer concluída e aguardando aprovação humana. Nenhum envio ao RD foi realizado.'
+      status: String(atualizada.RD_STATUS || 'AGUARDANDO_VINCULO'),
+      mensagem: 'Auditoria Closer aprovada automaticamente. Envio ao RD permanece manual.'
     };
-    if (String(auditoria.RD_STATUS || '').toUpperCase() !== 'PUBLICADA') {
-      audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
-        RD_STATUS: 'AGUARDANDO_APROVACAO',
-        RD_ERRO: '',
-        AUTOMACAO_STATUS: 'CONCLUIDA_AGUARDANDO_APROVACAO',
-        AUTOMACAO_ERRO: '',
-        CONCLUIDO_EM: auditoria.CONCLUIDO_EM || new Date(),
-        AUTOMACAO_ATUALIZADO_EM: new Date()
-      });
-    }
-    audV3Atualizar_('INTERACOES', 'ID_INTERACAO', auditoria.ID_INTERACAO, {
-      STATUS_AUDITORIA: 'CONCLUIDA_AGUARDANDO_APROVACAO',
-      ATUALIZADO_EM: new Date()
-    });
     return {
       sucesso: true,
-      mensagem: 'Auditoria Closer concluída e validada. Documento de revisão salvo. Revise e aprove antes do envio manual ao RD.',
-      aprovacao: null,
+      mensagem: 'Auditoria Closer validada, aprovada e documentada automaticamente. Envio ao RD permanece manual.',
+      aprovacao: aprovacao,
       rd: rd
     };
   }
@@ -8348,6 +8334,35 @@ function audV3FilaReparoDocumentoCloser_(dados) {
   }).sort(function(a, b) {
     return String(a.SOLICITADO_EM || '').localeCompare(String(b.SOLICITADO_EM || ''));
   });
+}
+
+function audV3FilaAprovacaoAutomaticaCloser_() {
+  return audV3Ler_('AUDITORIAS').filter(function(a) {
+    return String(a.TIPO_AUDITORIA || '').toUpperCase() === 'CLOSER' &&
+      String(a.STATUS || '').toUpperCase() === 'EM_REVISAO' &&
+      String(a.VALIDACAO_STATUS || '').toUpperCase() === 'VALIDADA' &&
+      String(a.HASH_FONTE || '').trim() && String(a.RESULTADO_JSON || '').trim() &&
+      String(a.RD_STATUS || '').toUpperCase() !== 'PUBLICADA';
+  }).sort(function(a,b){return String(a.SOLICITADO_EM||'').localeCompare(String(b.SOLICITADO_EM||''));});
+}
+
+function PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV(limite) {
+  if (boardModoManual_()) return boardRespostaManual_('PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV');
+  const maximo = Math.max(1, Math.min(5, Number(limite || 5)));
+  const fila = audV3FilaAprovacaoAutomaticaCloser_();
+  const resultado = { sucesso: true, aprovadas: 0, erros: 0, pendentes: fila.length, detalhes: [] };
+  fila.slice(0, maximo).forEach(function(a) {
+    try {
+      aprovarAuditoriaV3(a.ID_AUDITORIA);
+      resultado.aprovadas++;
+    } catch (erro) {
+      resultado.erros++;
+      resultado.detalhes.push({ idAuditoria: a.ID_AUDITORIA, erro: String(erro && erro.message || erro).slice(0, 220) });
+    }
+  });
+  resultado.pendentes = audV3FilaAprovacaoAutomaticaCloser_().length;
+  resultado.sucesso = resultado.erros === 0;
+  return resultado;
 }
 
 function PROCESSAR_REPARO_DOCUMENTOS_CLOSER_TLDV() {

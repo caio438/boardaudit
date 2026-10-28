@@ -28,8 +28,8 @@ assert.match(audit, /tipoAuditoria: 'CLOSER'/);
 assert.match(audit, /fonte: 'TLDV'/);
 assert.match(audit, /evitarDuplicidade: true/);
 assert.match(audit, /audV3FinalizarAutomaticamente_\(idAuditoria\)/);
-assert.match(audit, /CONCLUIDA_AGUARDANDO_APROVACAO/);
-assert.match(audit, /AGUARDANDO_APROVACAO/);
+assert.match(audit, /PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV/);
+assert.match(audit, /aprovarAuditoriaV3\(id\)/);
 assert.match(audit, /maxPorExecucao: 1/);
 assert.match(audit, /backlogAnteriorAoCutoffIgnorado: true/);
 
