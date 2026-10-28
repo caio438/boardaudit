@@ -281,6 +281,100 @@ function audRdCtx_(id) {
   };
 }
 function audRdEstr_(){audV3GarantirColunas_(audV3Planilha_(),'AUDITORIAS',['RD_STATUS','RD_ACTIVITY_ID','RD_PUBLICADO_EM','RD_TAREFA_VOLUM_ID','RD_TAREFA_SDR_ID','RD_ERRO','RD_TEXTO_APROVADO','RD_TEXTO_APROVADO_EM','HASH_RESULTADO']);}
+var AUD_RD_LEAD_HISTORY_CACHE={};
+function audRdLeadHistoryConfigs_(){return{
+  'CLI-20260803131300-C4455D17':{cliente:'Wisetec',planilha:'1Nh12213F28wNoiNPObQV8jeXaEJeFuLNpw92Z6RkJoM',aba:'LEAD HISTORY',email:'email',id:['ID'],empresa:'empresa',nome:'nome'},
+  'CLI-20260803141041-D761F4A6':{cliente:'Buffet Mais',planilha:'1BsS7ZHSzZzXaxH7HYWyuU-SlH0MNcBdby_iiteIME0s',aba:'LEAD HISTORY',email:'email',id:['ID'],empresa:'empresa',nome:'nome'},
+  'CLI-20260807143730-0CD8AF8D':{cliente:'Delta SI',planilha:'1el9jUKywzKgq1bXyrSszoFuNHAIrJ544WuOTdkcu8e8',aba:'LEAD HISTORY',email:'email',id:['ID'],empresa:'empresa',nome:'nome'},
+  'CLI-20260813140127-35CD82A6':{cliente:'Pro-Franchising',planilha:'1P47EEWDx3I1JN5fznae093xCvqYhqVjv1Sm7Cd9x1cI',aba:'LEAD HISTORY',email:'email',id:['ID'],empresa:'empresa',nome:'nome'},
+  'CLI_VOL_MELIUS':{cliente:'Melius',planilha:'1ZtVBGF5zt1kd8RdYUm6otyPkU7SuJuBnoqhKHZRgavc',aba:'LEAD HISTORY',email:'email',id:['ID','ID NEW PIPE'],empresa:'empresa',nome:'nome'}
+};}
+function audRdLeadHistoryCabecalho_(v){return normalizarTextoComparacao_(String(v||'')).toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');}
+function audRdLeadHistoryEmails_(interacao){
+  var texto=String((interacao||{}).LEAD||'')+' '+String((interacao||{}).PARTICIPANTES_JSON||'');
+  var encontrados=texto.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig)||[],vistos={};
+  return encontrados.map(function(v){return String(v).trim().toLowerCase();}).filter(function(v){if(vistos[v])return false;vistos[v]=true;return true;});
+}
+function audRdLeadHistoryIndice_(idCliente){
+  if(AUD_RD_LEAD_HISTORY_CACHE[idCliente])return AUD_RD_LEAD_HISTORY_CACHE[idCliente];
+  var cfg=audRdLeadHistoryConfigs_()[idCliente];
+  if(!cfg)return null;
+  var aba=SpreadsheetApp.openById(cfg.planilha).getSheetByName(cfg.aba);
+  if(!aba)throw new Error('Aba '+cfg.aba+' não encontrada no Lead History de '+cfg.cliente+'.');
+  var valores=aba.getDataRange().getDisplayValues();
+  var cabecalhos=(valores.shift()||[]).map(audRdLeadHistoryCabecalho_),pos={};
+  cabecalhos.forEach(function(h,i){if(h&&!Object.prototype.hasOwnProperty.call(pos,h))pos[h]=i;});
+  var colunaEmail=pos[audRdLeadHistoryCabecalho_(cfg.email)],colunaEmpresa=pos[audRdLeadHistoryCabecalho_(cfg.empresa)],colunaNome=pos[audRdLeadHistoryCabecalho_(cfg.nome)];
+  var colunasId=cfg.id.map(function(h){return pos[audRdLeadHistoryCabecalho_(h)];}).filter(function(i){return i!==undefined;});
+  if(colunaEmail===undefined||!colunasId.length)throw new Error('Colunas de e-mail/ID não encontradas no Lead History de '+cfg.cliente+'.');
+  var indice={},emailsSemId={};
+  valores.forEach(function(linha){
+    var email=String(linha[colunaEmail]||'').trim().toLowerCase();
+    if(!email)return;
+    var ids=[];
+    colunasId.forEach(function(coluna){var m=String(linha[coluna]||'').match(/\b[0-9a-f]{24}\b/i);if(m&&ids.indexOf(String(m[0]).toLowerCase())<0)ids.push(String(m[0]).toLowerCase());});
+    if(!ids.length){emailsSemId[email]=true;return;}
+    if(!indice[email])indice[email]=[];
+    ids.forEach(function(id){indice[email].push({id:id,empresa:String(linha[colunaEmpresa]||'').trim(),nome:String(linha[colunaNome]||'').trim()});});
+  });
+  AUD_RD_LEAD_HISTORY_CACHE[idCliente]={cfg:cfg,porEmail:indice,emailsSemId:emailsSemId};
+  return AUD_RD_LEAD_HISTORY_CACHE[idCliente];
+}
+function audRdResolverVinculoLeadHistory_(interacao,opcoes){
+  var item=interacao||{},idCliente=String(item.ID_CLIENTE||''),base=audRdLeadHistoryIndice_(idCliente);
+  if(!base)return{status:'CLIENTE_SEM_CONFIG'};
+  var emails=audRdLeadHistoryEmails_(item),porId={},semId=[];
+  emails.forEach(function(email){
+    var achados=base.porEmail[email]||[];
+    if(!achados.length&&base.emailsSemId[email])semId.push(email);
+    achados.forEach(function(c){if(!porId[c.id])porId[c.id]={id:c.id,empresa:c.empresa,nome:c.nome,emails:[]};porId[c.id].emails.push(email);});
+  });
+  var candidatos=Object.keys(porId).map(function(id){return porId[id];});
+  if(candidatos.length!==1)return{status:candidatos.length?'AMBIGUO':(semId.length?'ID_RD_INVALIDO_OU_AUSENTE':'SEM_CORRESPONDENCIA'),emails:emails,candidatos:candidatos.length,emailsSemId:semId};
+  var candidato=candidatos[0],link=audV3RdLinkNegociacao_(candidato.id);
+  if(opcoes&&opcoes.persistir===true){
+    var alteracoes={LINK_CRM:link,ATUALIZADO_EM:new Date()};
+    if(!String(item.OPORTUNIDADE||'').trim())alteracoes.OPORTUNIDADE=candidato.empresa||candidato.nome||String(item.TITULO||'');
+    audV3Atualizar_('INTERACOES','ID_INTERACAO',item.ID_INTERACAO,alteracoes);
+    item.LINK_CRM=link;
+    if(alteracoes.OPORTUNIDADE)item.OPORTUNIDADE=alteracoes.OPORTUNIDADE;
+  }
+  return{status:'VINCULADO',dealId:candidato.id,linkCrm:link,email:candidato.emails[0]||'',oportunidade:candidato.empresa||candidato.nome||''};
+}
+function RECONCILIAR_VINCULOS_RD_LEAD_HISTORY(){
+  AUD_RD_LEAD_HISTORY_CACHE={};
+  var auditorias=lerObjetos_(APP.sheets.auditorias),interacoes=lerObjetos_(APP.sheets.interacoes),porInteracao={},auditoriasPorInteracao={};
+  interacoes.forEach(function(i){porInteracao[String(i.ID_INTERACAO||'')]=i;});
+  auditorias.forEach(function(a){var id=String(a.ID_INTERACAO||'');if(!auditoriasPorInteracao[id])auditoriasPorInteracao[id]=[];auditoriasPorInteracao[id].push(a);});
+  var resumo={analisadas:0,vinculadas:0,jaVinculadas:0,semCorrespondencia:0,semIdRdValido:0,ambiguas:0,clientesSemConfig:0,prontasParaEnvio:0,enviosRd:0,detalhes:[]};
+  Object.keys(auditoriasPorInteracao).forEach(function(idInteracao){
+    var grupo=auditoriasPorInteracao[idInteracao].filter(function(a){return String(a.TIPO_AUDITORIA||'').toUpperCase()==='CLOSER'&&String(a.STATUS||'').toUpperCase()!=='DESCARTADA';});
+    if(!grupo.length)return;
+    var i=porInteracao[idInteracao];if(!i)return;
+    resumo.analisadas++;
+    if(audRdDeal_(i)){resumo.jaVinculadas++;return;}
+    var r;
+    try{r=audRdResolverVinculoLeadHistory_(i,{persistir:true});}catch(e){r={status:'ERRO',erro:String(e&&e.message||e)};}
+    if(r.status==='VINCULADO'){
+      resumo.vinculadas++;
+      grupo.forEach(function(a){
+        if(String(a.STATUS||'').toUpperCase()==='APROVADA'&&String(a.VALIDACAO_STATUS||'').toUpperCase()==='VALIDADA'&&String(a.LINK_DOCUMENTO||'').trim()&&String(a.RD_STATUS||'').toUpperCase()!=='PUBLICADA'){
+          audV3Atualizar_('AUDITORIAS','ID_AUDITORIA',a.ID_AUDITORIA,{RD_STATUS:'PRONTA_ENVIO',RD_ERRO:'',AUTOMACAO_ATUALIZADO_EM:new Date()});
+          resumo.prontasParaEnvio++;
+        }
+      });
+      resumo.detalhes.push({idInteracao:idInteracao,cliente:i.ID_CLIENTE,status:r.status,dealId:r.dealId,oportunidade:r.oportunidade});
+    }else{
+      if(r.status==='AMBIGUO')resumo.ambiguas++;
+      else if(r.status==='ID_RD_INVALIDO_OU_AUSENTE')resumo.semIdRdValido++;
+      else if(r.status==='CLIENTE_SEM_CONFIG')resumo.clientesSemConfig++;
+      else resumo.semCorrespondencia++;
+      resumo.detalhes.push({idInteracao:idInteracao,cliente:i.ID_CLIENTE,status:r.status,erro:r.erro||''});
+    }
+  });
+  if(typeof limparCachesDados_==='function')limparCachesDados_();
+  return resumo;
+}
 function audRdDeal_(i){var item=i||{},tipoInteracao=String(item.TIPO_INTERACAO||'').toUpperCase(),l=String(item.LINK_CRM||''),m=l.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i);if(m)return m[1];if(tipoInteracao==='REUNIAO')return'';m=String(item.DESCRICAO_ORIGEM||'').match(/(?:deal(?:_id)?|negocia(?:cao|ção))[^0-9a-f]{0,12}([0-9a-f]{24})/i);return m?m[1]:'';}
 function audRdNormalizarDeal_(v){var t=String(v||'').trim();if(!t)return'';var m=t.match(/(?:\/deals\/|^)([0-9a-f]{24})(?:\b|\/|\?|$)/i)||t.match(/\b([0-9a-f]{24})\b/i);if(!m)throw new Error('Informe o ID de 24 caracteres da negociação do RD ou cole o link completo da negociação.');return String(m[1]).toLowerCase();}
 function audV3RdLinkNegociacao_(v){var t=String(v||'').trim();if(!t)return'';var id=audRdNormalizarDeal_(t);return'https://crm.rdstation.com/app/deals/'+encodeURIComponent(id)+'?view=pipeline';}

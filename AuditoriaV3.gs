@@ -2541,6 +2541,14 @@ function audV3PersistirDocumentoAprovacao_(idAuditoria, opcoes) {
   });
 
   const tipoAuditoria = String(auditoria.TIPO_AUDITORIA || '').toUpperCase();
+  if (tipoAuditoria === 'CLOSER' && !String(interacao.LINK_CRM || '').trim() &&
+      typeof audRdResolverVinculoLeadHistory_ === 'function') {
+    try {
+      audRdResolverVinculoLeadHistory_(interacao, { persistir: true });
+    } catch (erroVinculoLeadHistory) {
+      console.warn('Lead History não resolveu o vínculo RD: ' + String(erroVinculoLeadHistory && erroVinculoLeadHistory.message || erroVinculoLeadHistory));
+    }
+  }
   audV3Atualizar_('AUDITORIAS', 'ID_AUDITORIA', id, {
     AUTOMACAO_STATUS: tipoAuditoria === 'CLOSER'
       ? 'CONCLUIDA_AGUARDANDO_CANONICO'

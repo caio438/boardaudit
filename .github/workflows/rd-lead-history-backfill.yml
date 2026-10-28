@@ -1,0 +1,86 @@
+name: Reconcile RD deals from Lead History
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reconcile-rd-deals:
+    if: >-
+      ${{ github.event.issue.number == 142 &&
+          github.event.comment.user.login == 'caio438' &&
+          github.event.comment.body == '/rd-lead-history-backfill' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: apps-script-production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Authenticate Apps Script owner
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          npx clasp versions >/tmp/lead-history-versions.txt
+          node <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync(process.env.HOME+'/.clasprc.json','utf8'));
+          const token=j?.tokens?.default?.access_token||j?.token?.access_token||j?.access_token||'';
+          if(!token)throw new Error('Token Apps Script ausente.');
+          fs.writeFileSync('/tmp/lead-history-token',token,{mode:0o600});
+          NODE
+      - name: Reconcile exact Lead History matches
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/lead-history-token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          code="$(curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" -o /tmp/lead-history-result.txt -w '%{http_code}' "$BASE?ops_rd_lead_history_backfill=1" || true)"
+          test "$code" = "200"
+          node <<'NODE'
+          const fs=require('fs');
+          const raw=fs.readFileSync('/tmp/lead-history-result.txt','utf8').trim();
+          const first=raw.indexOf('{'),last=raw.lastIndexOf('}');
+          if(first<0||last<first)throw new Error('JSON ausente.');
+          const data=JSON.parse(raw.slice(first,last+1));
+          const r=data.reconciliacao||{};
+          const ok=data.sucesso===true&&data.envioRd==='NAO_EXECUTADO'&&Number(r.enviosRd||0)===0;
+          const lines=['## Vínculos RD pelo Lead History','',
+            '- Interações analisadas: '+Number(r.analisadas||0),
+            '- Novos vínculos exatos: '+Number(r.vinculadas||0),
+            '- Já vinculadas: '+Number(r.jaVinculadas||0),
+            '- Auditorias prontas para envio manual: '+Number(r.prontasParaEnvio||0),
+            '- Sem correspondência: '+Number(r.semCorrespondencia||0),
+            '- Sem ID RD válido: '+Number(r.semIdRdValido||0),
+            '- Ambíguas (não alteradas): '+Number(r.ambiguas||0),
+            '- Envio ao RD executado: '+Number(r.enviosRd||0),'',
+            ok?'**Reconciliação concluída sem publicar no RD.**':'**Reconciliação não confirmada.**'];
+          fs.writeFileSync('/tmp/lead-history-report.md',lines.join('\n'));
+          if(!ok)process.exit(1);
+          NODE
+      - name: Publish report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/lead-history-report.md ]; then
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/lead-history-report.md
+          else
+            gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body "A reconciliação RD pelo Lead History não produziu relatório válido."
+          fi
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/lead-history-token
