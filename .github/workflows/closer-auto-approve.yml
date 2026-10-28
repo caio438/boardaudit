@@ -1,0 +1,49 @@
+name: Auto approve validated Closer audits
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  approve:
+    if: ${{ github.event.issue.number == 142 && github.event.comment.user.login == 'caio438' && github.event.comment.body == '/closer-auto-approve' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: apps-script-production
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Authenticate owner
+        env: { CLASPRC_JSON: "${{ secrets.CLASPRC_JSON }}" }
+        run: |
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          npx clasp versions >/dev/null
+          node -e "const f=require('fs'),j=JSON.parse(f.readFileSync(process.env.HOME+'/.clasprc.json'));f.writeFileSync('/tmp/token',j?.tokens?.default?.access_token||j?.token?.access_token||j?.access_token||'')"
+      - name: Approve eligible audits
+        run: |
+          set -euo pipefail
+          TOKEN="$(cat /tmp/token)"
+          BASE="https://script.google.com/macros/s/AKfycbz9guo1cK-9T5Hdy_RjHt5yn0JuRjY2b37IlqJ9xPdHC47mL_jbliR5TaTK94Hh3SUQEA/exec"
+          total=0
+          for n in $(seq 1 10); do
+            curl -sS --max-time 300 --location-trusted --oauth2-bearer "$TOKEN" "$BASE?ops_closer_auto_approve=1" -o /tmp/approve.json
+            approved="$(node -e "const f=require('fs'),d=JSON.parse(f.readFileSync('/tmp/approve.json'));if(d.envioRdCloser!=='BLOQUEADO')process.exit(2);console.log(Number(d.aprovacao?.aprovadas||0))")"
+            pending="$(node -e "const f=require('fs'),d=JSON.parse(f.readFileSync('/tmp/approve.json'));console.log(Number(d.aprovacao?.pendentes||0))")"
+            total=$((total+approved))
+            [ "$pending" -eq 0 ] && break
+          done
+          printf '## Aprovação automática Closer\n\n- Aprovadas nesta execução: %s\n- Pendentes elegíveis: %s\n- Envio ao RD: 0\n\n**Auditorias válidas aprovadas; publicação no RD continua manual.**\n' "$total" "$pending" > /tmp/report.md
+      - name: Publish report
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh issue comment 142 --repo "$GITHUB_REPOSITORY" --body-file /tmp/report.md
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" /tmp/token

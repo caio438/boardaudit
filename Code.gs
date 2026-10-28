@@ -1101,6 +1101,18 @@ function doGet(e) {
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_closer_auto_approve || '') === '1') {
+    const ativoAutoApprove = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoAutoApprove = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoAutoApprove || !efetivoAutoApprove || ativoAutoApprove !== efetivoAutoApprove) {
+      throw new Error('Aprovação automática Closer restrita à conta proprietária.');
+    }
+    return ContentService.createTextOutput(JSON.stringify({
+      aprovacao: PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV(5),
+      envioRdCloser: 'BLOQUEADO'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_closer_tldv_status || '') === '1') {
     const ativoOpsCloserStatus = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsCloserStatus = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();

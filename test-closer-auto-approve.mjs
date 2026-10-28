@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const audit=fs.readFileSync('AuditoriaV3.gs','utf8');
+const code=fs.readFileSync('Code.gs','utf8');
+const flow=fs.readFileSync('.github/workflows/closer-auto-approve.yml','utf8');
+assert.match(audit,/function PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV/);
+assert.match(audit,/String\(a\.STATUS \|\| ''\)\.toUpperCase\(\) === 'EM_REVISAO'/);
+assert.match(audit,/aprovarAuditoriaV3\(a\.ID_AUDITORIA\)/);
+assert.match(code,/ops_closer_auto_approve/);
+assert.match(flow,/\/closer-auto-approve/);
+assert.match(flow,/envioRdCloser!=='BLOQUEADO'/);
+console.log('Autoaprovação Closer validada sem publicação no RD.');
