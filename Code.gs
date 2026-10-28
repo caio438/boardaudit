@@ -1115,6 +1115,22 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (String(parametros.ops_rd_lead_history_backfill || '') === '1') {
+    const ativoOpsLeadHistory = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+    const efetivoOpsLeadHistory = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+    if (!ativoOpsLeadHistory || !efetivoOpsLeadHistory || ativoOpsLeadHistory !== efetivoOpsLeadHistory) {
+      throw new Error('Reconciliação RD pelo Lead History restrita à conta proprietária.');
+    }
+    if (typeof RECONCILIAR_VINCULOS_RD_LEAD_HISTORY !== 'function') {
+      throw new Error('Reconciliação RD pelo Lead History indisponível nesta versão.');
+    }
+    return ContentService.createTextOutput(JSON.stringify({
+      sucesso: true,
+      reconciliacao: RECONCILIAR_VINCULOS_RD_LEAD_HISTORY(),
+      envioRd: 'NAO_EXECUTADO'
+    }, null, 2)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (String(parametros.ops_closer_tldv_sync || '') === '1') {
     const ativoOpsCloserSync = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
     const efetivoOpsCloserSync = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
