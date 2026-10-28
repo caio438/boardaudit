@@ -9,6 +9,7 @@ assert.match(audit,/aprovarAuditoriaV3\(a\.ID_AUDITORIA\)/);
 assert.match(audit,/APROVACAO_AUTOMATICA_BLOQUEADA/);
 assert.match(audit,/AUTOMACAO_ERRO: motivo/);
 assert.match(code,/ops_closer_auto_approve/);
+assert.match(code,/PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV\(1\)/);
 assert.match(flow,/\/closer-auto-approve/);
 assert.match(flow,/envioRdCloser!=='BLOQUEADO'/);
 assert.match(flow,/Bloqueadas por integridade\/qualidade/);

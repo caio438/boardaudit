@@ -1108,7 +1108,7 @@ function doGet(e) {
       throw new Error('Aprovação automática Closer restrita à conta proprietária.');
     }
     return ContentService.createTextOutput(JSON.stringify({
-      aprovacao: PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV(5),
+      aprovacao: PROCESSAR_APROVACAO_AUTOMATICA_CLOSER_TLDV(1),
       envioRdCloser: 'BLOQUEADO'
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
