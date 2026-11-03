@@ -195,6 +195,39 @@ function vmRdMultiConsulta_(ctx,dealId,board) {
   };
 }
 
+/**
+ * Descoberta inicial por uma negociacao conhecida, sem exigir escopo previo.
+ * Retorna apenas IDs e metadados necessarios para configurar o cliente.
+ */
+function VOLUM_RD_CLIENTE_DESCOBRIR_ESCOPO(idCliente, dealId) {
+  vmBmCloserAutorizar_();
+  var cliente = vmRdMultiCliente_(idCliente);
+  var integracao = vmRdMultiIntegracao_(cliente);
+  var id = vmBmCloserId_(dealId);
+  var bruto = viLeadRdGet_(integracao.token, '/deals/' + id, {});
+  var d = bruto && bruto.deal || bruto || {};
+  if (String(d.id || d._id || '').toLowerCase() !== id) {
+    throw new Error('Identidade da negociacao nao confirmada no RD.');
+  }
+  return {
+    modo: 'SOMENTE_LEITURA_RD',
+    cliente: cliente.nome,
+    idCliente: cliente.id,
+    dealId: id,
+    pipelineId: String((d.deal_pipeline || {}).id || d.deal_pipeline_id || ''),
+    pipelineNome: vmBmCloserTexto_((d.deal_pipeline || {}).name, 120),
+    stageId: String((d.deal_stage || {}).id || d.deal_stage_id || ''),
+    stageNome: vmBmCloserTexto_((d.deal_stage || {}).name, 120),
+    userId: String((d.user || {}).id || d.user_id || ''),
+    userNome: vmBmCloserTexto_((d.user || {}).name, 120),
+    status: vmBmCloserTexto_(d.status, 40),
+    win: d.win,
+    hold: d.hold,
+    fechadoEm: viLeadDataIso_(d.closed_at),
+    consultadoEm: new Date().toISOString()
+  };
+}
+
 function VOLUM_RD_CLIENTE_CONSULTAR(idCliente,dealId) {
   var ctx = vmRdMultiCtx_(idCliente);
   return vmRdMultiConsulta_(ctx,dealId,lerObjetos_(APP.sheets.interacoes));
