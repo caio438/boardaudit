@@ -64,7 +64,7 @@ ctx.viLeadRdGet_ = () => ({deal: {
  user:{id:'bbbbbbbbbbbbbbbbbbbbbbbb',name:'Closer teste'},
  win:null,hold:null,closed_at:null,status:'open'
 }});
-const discovered=ctx.VOLUM_RD_CLIENTE_DESCOBRIR_ESCOPО('CLI-INGEE','dddddddddddddddddddddddd');
+const discovered=ctx.VOLUM_RD_CLIENTE_DESCOBRIR_ESCOPO('CLI-INGEE','dddddddddddddddddddddddd');
 assert.equal(discovered.pipelineId,'aaaaaaaaaaaaaaaaaaaaaaaa');
 assert.equal(discovered.stageId,'cccccccccccccccccccccccc');
 assert.equal(discovered.userId,'bbbbbbbbbbbbbbbbbbbbbbbb');
