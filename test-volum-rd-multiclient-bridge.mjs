@@ -57,6 +57,19 @@ assert.equal(ctx.vmRdMultiElegivel_({...sample,win:false},scope),false);
 assert.equal(ctx.vmRdMultiElegivel_({...sample,hold:true},scope),false);
 assert.equal(ctx.vmRdMultiElegivel_({...sample,user:{id:'zzzz'}},scope),false);
 assert.equal(ctx.vmRdMultiElegivel_({...sample,status:'lost'},scope),false);
+ctx.viLeadRdGet_ = () => ({deal: {
+ id:'dddddddddddddddddddddddd',
+ deal_pipeline:{id:'aaaaaaaaaaaaaaaaaaaaaaaa',name:'Pipeline teste'},
+ deal_stage:{id:'cccccccccccccccccccccccc',name:'REUNIÃO'},
+ user:{id:'bbbbbbbbbbbbbbbbbbbbbbbb',name:'Closer teste'},
+ win:null,hold:null,closed_at:null,status:'open'
+}});
+const discovered=ctx.VOLUM_RD_CLIENTE_DESCOBRIR_ESCOPО('CLI-INGEE','dddddddddddddddddddddddd');
+assert.equal(discovered.pipelineId,'aaaaaaaaaaaaaaaaaaaaaaaa');
+assert.equal(discovered.stageId,'cccccccccccccccccccccccc');
+assert.equal(discovered.userId,'bbbbbbbbbbbbbbbbbbbbbbbb');
+assert.equal(discovered.stageNome,'REUNIÃO');
+
 const available=ctx.VOLUM_RD_CONTAS_DISPONIVEIS();
 assert.equal(available.totalPermitidas,10);
 assert.ok(available.contas.some(x=>x.nome==='INGEE'&&x.credencialRegistrada&&x.escopoConfigurado));
