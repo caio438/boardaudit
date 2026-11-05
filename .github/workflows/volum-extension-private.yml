@@ -1,0 +1,60 @@
+name: VOLUM Intelligence - Private Distribution
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/volum-intelligence/**'
+      - 'scripts/build-volum-extension.mjs'
+      - 'scripts/verify-volum-extension-package.mjs'
+      - '.github/workflows/volum-extension-private.yml'
+  push:
+    tags:
+      - 'volum-extension-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: volum-extension-private-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate source and build deterministic package
+        run: |
+          set -euo pipefail
+          node scripts/build-volum-extension.mjs
+          node scripts/verify-volum-extension-package.mjs
+          node test-volum-widget-cache-v1.mjs
+      - id: meta
+        name: Read package metadata
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./extensions/volum-intelligence/manifest.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Enforce tag matches manifest
+        if: startsWith(github.ref, 'refs/tags/volum-extension-v')
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$TAG" = "volum-extension-v$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volum-intelligence-${{ steps.meta.outputs.version }}-${{ github.sha }}
+          path: |
+            dist/volum-intelligence-chrome-${{ steps.meta.outputs.version }}.zip
+            dist/volum-intelligence-release.json
+          if-no-files-found: error
+          retention-days: 90
