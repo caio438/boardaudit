@@ -176,7 +176,7 @@ const OPERACAO_CLIENTES_VOLUMBERG = Object.freeze({
   conac_flow: { carteira: 'THIAGO', gestores: '', sdrs: '', closers: '' },
   date_a_home: { carteira: 'CAIO', gestores: 'Cateno/João Abelha', sdrs: 'Fernanda/Fabiane', closers: 'Fernanda/João' },
   delta_si: { carteira: 'THIAGO', gestores: 'Wlad/Nino', sdrs: 'Henrique', closers: 'Wlad' },
-  devyx: { carteira: 'CAIO', gestores: 'Leandro Oliveira', sdrs: 'Beatriz/Mateus', closers: 'Fernanda Santos' },
+  devyx: { carteira: 'CAIO', gestores: 'Leandro Oliveira', sdrs: 'Beatriz/Mateus', closers: 'Beatriz Stefane' },
   gestao_festa: { carteira: 'THIAGO', gestores: 'Juliana/João', sdrs: 'Letícia', closers: 'Fabiana' },
   gestqual: { carteira: 'CAIO', gestores: 'Elias', sdrs: 'Lucas/Wesley', closers: 'Lucas/Wesley' },
   gopliance: { carteira: 'CAIO', gestores: 'Rafael', sdrs: 'Robô', closers: 'Rafael' },
